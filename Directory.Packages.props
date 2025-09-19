@@ -5,33 +5,33 @@
 
   <ItemGroup>
     <!-- Logging -->
-    <PackageVersion Include="Serilog" Version="4.0.2" />
+    <PackageVersion Include="Serilog" Version="3.1.1" />
     <PackageVersion Include="Serilog.AspNetCore" Version="8.0.0" />
     <PackageVersion Include="Serilog.Sinks.Console" Version="5.0.1" />
-    <PackageVersion Include="Serilog.Formatting.Compact" Version="3.0.0" />
+    <PackageVersion Include="Serilog.Formatting.Compact" Version="2.0.0" />
+    <PackageVersion Include="Serilog.Settings.Configuration" Version="8.0.0" />
 
     <!-- Data -->
     <PackageVersion Include="Dapper" Version="2.1.35" />
     <PackageVersion Include="Npgsql" Version="8.0.3" />
 
     <!-- Migrations -->
-    <PackageVersion Include="FluentMigrator.Runner" Version="5.2.0" />
-    <PackageVersion Include="FluentMigrator.Runner.Postgres" Version="5.2.0" />
+    <PackageVersion Include="FluentMigrator.Runner" Version="5.2.2" />
+    <PackageVersion Include="FluentMigrator.Runner.Postgres" Version="5.2.2" />
 
     <!-- HealthChecks -->
     <PackageVersion Include="AspNetCore.HealthChecks.NpgSql" Version="8.0.1" />
 
+    <!-- Authentication -->
+    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
+
+    <!-- Analyzers -->
+    <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="8.0.0" />
+
     <!-- Tests -->
+    <PackageVersion Include="coverlet.collector" Version="6.0.0" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageVersion Include="xunit" Version="2.9.0" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageVersion Include="coverlet.collector" Version="6.0.0" />
-    <PackageVersion Include="FluentMigrator.Extensions.Postgres" Version="5.2.0" />
-    <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.3" />
-    <PackageVersion Include="Serilog.Settings.Configuration" Version="8.0.0" />
-    <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="8.0.0" />
   </ItemGroup>
 </Project>
