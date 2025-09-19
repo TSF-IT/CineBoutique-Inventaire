@@ -9,4 +9,12 @@
     <ProjectReference Include="../inventory-domain/CineBoutique.Inventory.Domain.csproj" />
     <ProjectReference Include="../inventory-shared/CineBoutique.Inventory.Shared.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.35" />
+    <PackageReference Include="FluentMigrator.Extensions.Postgres" Version="5.2.0" />
+    <PackageReference Include="FluentMigrator.Runner" Version="5.2.0" />
+    <PackageReference Include="FluentMigrator.Runner.Postgres" Version="5.2.0" />
+    <PackageReference Include="Npgsql" Version="8.0.3" />
+  </ItemGroup>
 </Project>
