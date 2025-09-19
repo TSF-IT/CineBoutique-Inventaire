@@ -2,11 +2,11 @@
 
 Ce dépôt monorepo regroupe l'ensemble des composants nécessaires à la future application d'inventaire CinéBoutique.
 
-## Structure actuelle
+## Structure
 
-- `src/inventory-api` : projet ASP.NET Core minimal API.
+- `src/inventory-api` : projet ASP.NET Core minimal API exposant les endpoints d'inventaire et gérant l'authentification par PIN/JWT.
+- `src/inventory-infra` : infrastructure et accès aux données (FluentMigrator, Dapper, seeding de démonstration).
 - `src/inventory-domain` : bibliothèque pour les règles métier.
-- `src/inventory-infra` : infrastructure et accès aux données.
 - `src/inventory-shared` : contrats et DTO partagés.
 - `src/inventory-web` : client PWA React (Vite + TypeScript).
 - `tests/*` : projets de tests automatisés associés.
@@ -14,6 +14,50 @@ Ce dépôt monorepo regroupe l'ensemble des composants nécessaires à la future
 
 Chaque projet .NET cible .NET 8 et applique des analyzers configurés en avertissements bloquants.
 
-## Prochaines étapes
+## Démarrage rapide en local
 
-Les étapes suivantes ajouteront progressivement le modèle de données, l'API complète, le client PWA et l'intégration Docker/CI.
+Une stack Docker Compose est fournie pour orchestrer l'API et PostgreSQL.
+
+```bash
+docker compose up --build
+```
+
+Dans un second terminal, vérifiez la santé et la connectivité de l'API :
+
+```bash
+curl http://localhost:8080/health
+curl http://localhost:8080/ready
+curl http://localhost:8080/locations
+```
+
+Les migrations FluentMigrator et le seed de démonstration (4 zones et 50 produits factices) sont exécutés automatiquement au démarrage lorsque `AppSettings:SeedOnStartup` vaut `true` (activé par défaut en environnement `Development`). Les utilisateurs de test sont définis dans `src/inventory-api/appsettings.Development.json` :
+
+- Alice — PIN `1111`
+- Bob — PIN `2222`
+- Charly — PIN `3333`
+- Dana — PIN `4444`
+
+L'endpoint `POST /auth/pin` retourne un JWT court si le PIN est valide. Les endpoints principaux actuellement exposés sont :
+
+- `GET /health` : liveness simple.
+- `GET /ready` : vérifie l'accès à PostgreSQL (`SELECT 1`).
+- `GET /locations` : liste les zones d'inventaire seedées.
+- `GET /products/{code}` : recherche par SKU ou code EAN-8/EAN-13.
+- `POST /auth/pin` : authentification par PIN/JWT (utilisateurs définis dans la configuration).
+
+## Configuration applicative
+
+- Chaîne de connexion PostgreSQL : `ConnectionStrings:Default` (surchargée dans Docker via variable d'environnement `ConnectionStrings__Default`).
+- Paramètres généraux : `AppSettings` (ex. `SeedOnStartup`).
+- Authentification : `Authentication` (issuer, audience, secret JWT, durée, utilisateurs PIN).
+
+## Scripts utiles
+
+Pour exécuter la solution en local hors conteneur :
+
+```bash
+dotnet restore
+dotnet build
+```
+
+Les migrations sont exécutées automatiquement au démarrage de l'API.
