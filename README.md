@@ -62,3 +62,13 @@ dotnet build
 ```
 
 Les migrations sont exécutées automatiquement au démarrage de l'API.
+
+## Gestion centralisée des packages NuGet
+
+La solution s'appuie sur la Central Package Management de .NET via le fichier `Directory.Packages.props` situé à la racine du dépôt. Toutes les dépendances NuGet partagent ainsi un catalogue de versions unique.
+
+Pour vérifier les mises à jour disponibles, exécutez la commande suivante :
+
+```bash
+dotnet list package --outdated
+```
