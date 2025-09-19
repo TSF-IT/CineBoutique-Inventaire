@@ -1,0 +1,9 @@
+**/bin/
+**/obj/
+**/.vs/
+.git
+.gitignore
+README.md
+tests/
+src/inventory-web/
+build/
