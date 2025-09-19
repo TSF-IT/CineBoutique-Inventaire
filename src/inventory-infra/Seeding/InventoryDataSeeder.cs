@@ -18,21 +18,33 @@ public sealed class InventoryDataSeeder
 
     public async Task SeedAsync(CancellationToken cancellationToken)
     {
-        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken).ConfigureAwait(false);
 
         try
         {
-            await SeedLocationsAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
-            await SeedProductsAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+            var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
-            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await SeedLocationsAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+                await SeedProductsAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+
+                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                _logger.LogError(ex, "Échec de l'initialisation des données de démonstration.");
+                throw;
+            }
+            finally
+            {
+                await transaction.DisposeAsync().ConfigureAwait(false);
+            }
         }
-        catch (Exception ex)
+        finally
         {
-            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-            _logger.LogError(ex, "Échec de l'initialisation des données de démonstration.");
-            throw;
+            await connection.DisposeAsync().ConfigureAwait(false);
         }
     }
 
