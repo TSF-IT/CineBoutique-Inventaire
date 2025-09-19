@@ -1,0 +1,48 @@
+# .NET
+bin/
+obj/
+*.user
+*.rsuser
+*.suo
+*.userosscache
+*.sln.docstates
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+.nuget/
+
+# Rider
+.idea/
+
+# Visual Studio Code
+.vscode/
+
+# Logs
+*.log
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Vite
+*.local
+*.cache
+
+# Coverage
+coverage/
+*.coverage
+*.coveragexml
+TestResults/
+
+# Env
+.env
+.env.*
+
+# Misc
+.DS_Store
+Thumbs.db
