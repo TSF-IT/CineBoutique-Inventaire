@@ -19,7 +19,8 @@ Chaque projet .NET cible .NET 8 et applique des analyzers configurés en avertis
 Une stack Docker Compose est fournie pour orchestrer l'API et PostgreSQL.
 
 ```bash
-docker compose up --build
+docker compose build --no-cache
+docker compose up
 ```
 
 Dans un second terminal, vérifiez la santé et la connectivité de l'API :
