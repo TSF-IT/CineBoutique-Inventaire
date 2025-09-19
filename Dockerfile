@@ -4,13 +4,16 @@ WORKDIR /src
 
 # Copie des fichiers de projet pour optimiser le cache Docker
 COPY Directory.Build.props ./
+COPY Directory.Packages.props ./
 COPY CineBoutique.Inventory.sln ./
 COPY src/inventory-domain/CineBoutique.Inventory.Domain.csproj src/inventory-domain/
 COPY src/inventory-shared/CineBoutique.Inventory.Shared.csproj src/inventory-shared/
 COPY src/inventory-infra/CineBoutique.Inventory.Infrastructure.csproj src/inventory-infra/
 COPY src/inventory-api/CineBoutique.Inventory.Api.csproj src/inventory-api/
+COPY tests/inventory.api.tests/CineBoutique.Inventory.Api.Tests.csproj tests/inventory.api.tests/
+COPY tests/inventory.domain.tests/CineBoutique.Inventory.Domain.Tests.csproj tests/inventory.domain.tests/
 
-RUN dotnet restore src/inventory-api/CineBoutique.Inventory.Api.csproj
+RUN dotnet restore CineBoutique.Inventory.sln
 
 # Copie du reste des sources et publication
 COPY src/ src/

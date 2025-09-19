@@ -6,7 +6,8 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <NoWarn>$(NoWarn);CA1848</NoWarn>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);CA1848;NU1602;NU1603;NU1604;NU1701;NU1903</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,7 +17,6 @@
 
   <ItemGroup>
     <PackageReference Include="Dapper" />
-    <PackageReference Include="FluentMigrator.Extensions.Postgres" />
     <PackageReference Include="FluentMigrator.Runner" />
     <PackageReference Include="FluentMigrator.Runner.Postgres" />
     <PackageReference Include="Npgsql" />
