@@ -7,7 +7,7 @@ public sealed class CreateInventorySchema : Migration
 {
     public override void Up()
     {
-        Create.Table("Product").IfNotExists()
+        Create.Table("Product")
             .WithColumn("Id").AsGuid().PrimaryKey()
             .WithColumn("Sku").AsString(32).NotNullable()
             .WithColumn("Name").AsString(256).NotNullable()
@@ -26,7 +26,7 @@ public sealed class CreateInventorySchema : Migration
                 .OnColumn("Ean").Ascending();
         }
 
-        Create.Table("Location").IfNotExists()
+        Create.Table("Location")
             .WithColumn("Id").AsGuid().PrimaryKey()
             .WithColumn("Code").AsString(32).NotNullable()
             .WithColumn("Name").AsString(256).NotNullable()
@@ -38,13 +38,13 @@ public sealed class CreateInventorySchema : Migration
                 .OnColumn("Code").Ascending();
         }
 
-        Create.Table("InventorySession").IfNotExists()
+        Create.Table("InventorySession")
             .WithColumn("Id").AsGuid().PrimaryKey()
             .WithColumn("Name").AsString(256).NotNullable()
             .WithColumn("StartedAtUtc").AsDateTimeOffset().NotNullable()
             .WithColumn("CompletedAtUtc").AsDateTimeOffset().Nullable();
 
-        Create.Table("CountingRun").IfNotExists()
+        Create.Table("CountingRun")
             .WithColumn("Id").AsGuid().PrimaryKey()
             .WithColumn("InventorySessionId").AsGuid().NotNullable()
             .WithColumn("LocationId").AsGuid().NotNullable()
@@ -65,7 +65,7 @@ public sealed class CreateInventorySchema : Migration
                 .ToTable("Location").PrimaryColumn("Id");
         }
 
-        Create.Table("CountLine").IfNotExists()
+        Create.Table("CountLine")
             .WithColumn("Id").AsGuid().PrimaryKey()
             .WithColumn("CountingRunId").AsGuid().NotNullable()
             .WithColumn("ProductId").AsGuid().NotNullable()
@@ -86,7 +86,7 @@ public sealed class CreateInventorySchema : Migration
                 .ToTable("Product").PrimaryColumn("Id");
         }
 
-        Create.Table("Conflict").IfNotExists()
+        Create.Table("Conflict")
             .WithColumn("Id").AsGuid().PrimaryKey()
             .WithColumn("CountLineId").AsGuid().NotNullable()
             .WithColumn("Status").AsString(64).NotNullable()
@@ -101,7 +101,7 @@ public sealed class CreateInventorySchema : Migration
                 .ToTable("CountLine").PrimaryColumn("Id");
         }
 
-        Create.Table("Audit").IfNotExists()
+        Create.Table("Audit")
             .WithColumn("Id").AsGuid().PrimaryKey()
             .WithColumn("EntityName").AsString(256).NotNullable()
             .WithColumn("EntityId").AsString(128).NotNullable()
