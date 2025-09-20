@@ -16,7 +16,7 @@ public sealed class InventoryDataSeeder
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public async Task SeedAsync(CancellationToken cancellationToken)
+    public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
         var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken).ConfigureAwait(false);
 
