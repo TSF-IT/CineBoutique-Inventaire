@@ -28,9 +28,8 @@ public sealed class CreateInventorySchema : Migration
 
         Create.Table("Location")
             .WithColumn("Id").AsGuid().PrimaryKey()
-            .WithColumn("Code").AsString(32).NotNullable()
-            .WithColumn("Name").AsString(256).NotNullable()
-            .WithColumn("CreatedAtUtc").AsDateTimeOffset().NotNullable();
+            .WithColumn("Code").AsString(32).NotNullable().Unique()
+            .WithColumn("Label").AsString(128).NotNullable();
 
         if (!Schema.Table("Location").Index("IX_Location_Code").Exists())
         {
