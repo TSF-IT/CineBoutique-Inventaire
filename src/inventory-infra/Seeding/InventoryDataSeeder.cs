@@ -1,7 +1,9 @@
+using System.Collections.Generic;
 using System.Globalization;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace CineBoutique.Inventory.Infrastructure.Seeding;
 
@@ -18,60 +20,49 @@ public sealed class InventoryDataSeeder
 
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
-        var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var connection = _connectionFactory.CreateConnection();
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
         try
         {
-            var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            await SeedLocationsAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+            await SeedProductsAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
 
-            try
-            {
-                await SeedLocationsAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
-                await SeedProductsAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
-
-                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-                _logger.LogError(ex, "Échec de l'initialisation des données de démonstration.");
-                throw;
-            }
-            finally
-            {
-                await transaction.DisposeAsync().ConfigureAwait(false);
-            }
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         }
-        finally
+        catch (Exception ex)
         {
-            await connection.DisposeAsync().ConfigureAwait(false);
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            _logger.LogError(ex, "Échec de l'initialisation des données de démonstration.");
+            throw;
         }
     }
 
-    private static async Task SeedLocationsAsync(System.Data.IDbConnection connection, System.Data.IDbTransaction transaction, CancellationToken cancellationToken)
+    private static async Task SeedLocationsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, CancellationToken cancellationToken)
     {
-        const string locationCountSql = "SELECT COUNT(1) FROM \"Location\";";
-        var locationCount = await connection.ExecuteScalarAsync<int>(new CommandDefinition(locationCountSql, transaction: transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
-
-        if (locationCount > 0)
+        var zones = new List<(string Code, string Label)>();
+        for (var i = 1; i <= 20; i++)
         {
-            return;
+            zones.Add(($"B{i}", $"Zone B{i}"));
         }
 
-        const string insertSql = "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Name\", \"CreatedAtUtc\") VALUES (@Id, @Code, @Name, @CreatedAtUtc);";
-        var utcNow = DateTimeOffset.UtcNow;
-        var locations = Enumerable.Range(1, 4)
-            .Select(index => new
-            {
-                Id = Guid.NewGuid(),
-                Code = index.ToString(CultureInfo.InvariantCulture),
-                Name = $"Zone {index}",
-                CreatedAtUtc = utcNow
-            });
-
-        foreach (var location in locations)
+        for (var i = 1; i <= 19; i++)
         {
-            await connection.ExecuteAsync(new CommandDefinition(insertSql, location, transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
+            zones.Add(($"S{i}", $"Zone S{i}"));
+        }
+
+        const string sql = @"
+INSERT INTO ""Location"" (""Id"", ""Code"", ""Label"")
+VALUES (@Id, @Code, @Label)
+ON CONFLICT (""Code"") DO UPDATE SET ""Label"" = EXCLUDED.""Label"";
+";
+
+        foreach (var zone in zones)
+        {
+            var parameters = new { Id = Guid.NewGuid(), zone.Code, zone.Label };
+            var command = new CommandDefinition(sql, parameters, transaction, cancellationToken: cancellationToken);
+            await connection.ExecuteAsync(command).ConfigureAwait(false);
         }
     }
 
