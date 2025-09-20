@@ -7,6 +7,8 @@ public sealed class CreateInventorySchema : Migration
 {
     public override void Up()
     {
+        Execute.Sql("CREATE EXTENSION IF NOT EXISTS \"pgcrypto\";");
+
         Create.Table("Product")
             .WithColumn("Id").AsGuid().PrimaryKey()
             .WithColumn("Sku").AsString(32).NotNullable()
@@ -27,7 +29,7 @@ public sealed class CreateInventorySchema : Migration
         }
 
         Create.Table("Location")
-            .WithColumn("Id").AsGuid().PrimaryKey()
+            .WithColumn("Id").AsGuid().PrimaryKey().WithDefaultValue(SystemMethods.NewGuid)
             .WithColumn("Code").AsString(32).NotNullable().Unique()
             .WithColumn("Label").AsString(128).NotNullable();
 
@@ -125,5 +127,7 @@ public sealed class CreateInventorySchema : Migration
         Delete.Table("InventorySession").IfExists();
         Delete.Table("Location").IfExists();
         Delete.Table("Product").IfExists();
+
+        Execute.Sql("DROP EXTENSION IF EXISTS \"pgcrypto\";");
     }
 }
