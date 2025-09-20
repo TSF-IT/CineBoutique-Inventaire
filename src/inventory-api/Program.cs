@@ -5,9 +5,11 @@ using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Infrastructure.Database;
 using CineBoutique.Inventory.Infrastructure.DependencyInjection;
+using CineBoutique.Inventory.Infrastructure.Migrations;
 using CineBoutique.Inventory.Infrastructure.Seeding;
 using Dapper;
 using FluentMigrator.Runner;
+using FluentMigrator.Runner.Processors;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -29,6 +31,27 @@ try
         .WriteTo.Console(new RenderedCompactJsonFormatter()));
 
     builder.Services.Configure<AppSettingsOptions>(builder.Configuration.GetSection("AppSettings"));
+
+    var connectionString = builder.Configuration.GetConnectionString("Default");
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        throw new InvalidOperationException("La chaîne de connexion 'Default' doit être configurée.");
+    }
+
+    builder.Services
+        .AddFluentMigratorCore()
+        .ConfigureRunner(rb => rb
+            .AddPostgres()
+            .WithGlobalConnectionString(connectionString)
+            .ScanIn(typeof(CreateInventorySchema).Assembly)
+            .For.Migrations())
+        .AddLogging(lb => lb.AddFluentMigratorConsole());
+
+    builder.Services.Configure<ProcessorOptions>(options =>
+    {
+        options.Timeout = TimeSpan.FromSeconds(90);
+        options.ProviderSwitches = string.Empty;
+    });
 
     var authenticationSection = builder.Configuration.GetSection("Authentication");
     var authenticationOptions = authenticationSection.Get<AuthenticationOptions>()
@@ -98,11 +121,13 @@ try
         var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
         runner.MigrateUp();
 
-        var appSettings = scope.ServiceProvider.GetRequiredService<IOptions<AppSettingsOptions>>().Value;
-        if (appSettings.SeedOnStartup)
+        if (builder.Configuration.GetValue<bool>("AppSettings:SeedOnStartup"))
         {
-            var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
-            await seeder.SeedAsync(CancellationToken.None).ConfigureAwait(false);
+            var seeder = scope.ServiceProvider.GetService<InventoryDataSeeder>();
+            if (seeder is not null)
+            {
+                await seeder.SeedAsync(CancellationToken.None).ConfigureAwait(false);
+            }
         }
     }
 
