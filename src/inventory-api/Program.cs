@@ -9,6 +9,7 @@ using CineBoutique.Inventory.Infrastructure.Migrations;
 using CineBoutique.Inventory.Infrastructure.Seeding;
 using Dapper;
 using FluentMigrator.Runner;
+using FluentMigrator.Runner.Initialization;
 using FluentMigrator.Runner.Processors;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
@@ -53,13 +54,21 @@ try
             .For.Migrations())
         .AddLogging(lb => lb.AddFluentMigratorConsole());
 
+    builder.Services.Configure<SelectingProcessorAccessorOptions>(options =>
+    {
+        options.ProcessorId = "Postgres";
+    });
+
     builder.Services
         .AddOptions<ProcessorOptions>()
         .Configure(options =>
         {
             options.Timeout = TimeSpan.FromSeconds(90);
             options.ProviderSwitches = string.Empty;
+            options.PreviewOnly = false;
         });
+
+    builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<ProcessorOptions>>().Value);
 
     var authenticationSection = builder.Configuration.GetSection("Authentication");
     var authenticationOptions = authenticationSection.Get<AuthenticationOptions>()
