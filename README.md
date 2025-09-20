@@ -16,11 +16,17 @@ Chaque projet .NET cible .NET 8 et applique des analyzers configurés en avertis
 
 ## Démarrage rapide en local
 
-Une stack Docker Compose est fournie pour orchestrer l'API et PostgreSQL.
+Une stack Docker Compose est fournie pour orchestrer l'API et PostgreSQL. La base de données utilisée est nommée `cineboutique`.
 
 ```bash
 docker compose build --no-cache
 docker compose up
+```
+
+Si un volume de données persiste d'une exécution précédente, créez manuellement la base :
+
+```bash
+docker exec -it cineboutique-inventaire-db-1 psql -U postgres -d postgres -c "CREATE DATABASE cineboutique;"
 ```
 
 Dans un second terminal, vérifiez la santé et la connectivité de l'API :
@@ -31,7 +37,7 @@ curl http://localhost:8080/ready
 curl http://localhost:8080/locations
 ```
 
-Les migrations FluentMigrator et le seed de démonstration (4 zones et 50 produits factices) sont exécutés automatiquement au démarrage lorsque `AppSettings:SeedOnStartup` vaut `true` (activé par défaut en environnement `Development`). Les utilisateurs de test sont définis dans `src/inventory-api/appsettings.Development.json` :
+Les migrations FluentMigrator et le seed de démonstration (zones `B1` à `B20`, `S1` à `S19` et 50 produits factices) sont exécutés automatiquement au démarrage lorsque `AppSettings:SeedOnStartup` vaut `true` (activé par défaut en environnement `Development`). Les utilisateurs de test sont définis dans `src/inventory-api/appsettings.Development.json` :
 
 - Alice — PIN `1111`
 - Bob — PIN `2222`
