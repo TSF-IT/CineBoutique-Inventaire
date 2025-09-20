@@ -24,6 +24,12 @@ try
 {
     var builder = WebApplication.CreateBuilder(args);
 
+    builder.Host.UseDefaultServiceProvider(options =>
+    {
+        options.ValidateOnBuild = false;
+        options.ValidateScopes = false;
+    });
+
     builder.Host.UseSerilog((context, services, configuration) => configuration
         .ReadFrom.Configuration(context.Configuration)
         .ReadFrom.Services(services)
@@ -47,11 +53,13 @@ try
             .For.Migrations())
         .AddLogging(lb => lb.AddFluentMigratorConsole());
 
-    builder.Services.Configure<ProcessorOptions>(options =>
-    {
-        options.Timeout = TimeSpan.FromSeconds(90);
-        options.ProviderSwitches = string.Empty;
-    });
+    builder.Services
+        .AddOptions<ProcessorOptions>()
+        .Configure(options =>
+        {
+            options.Timeout = TimeSpan.FromSeconds(90);
+            options.ProviderSwitches = string.Empty;
+        });
 
     var authenticationSection = builder.Configuration.GetSection("Authentication");
     var authenticationOptions = authenticationSection.Get<AuthenticationOptions>()
@@ -121,12 +129,12 @@ try
         var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
         runner.MigrateUp();
 
-        if (builder.Configuration.GetValue<bool>("AppSettings:SeedOnStartup"))
+        if (app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup"))
         {
-            var seeder = scope.ServiceProvider.GetService<InventoryDataSeeder>();
+            var seeder = scope.ServiceProvider.GetService<CineBoutique.Inventory.Infrastructure.Seeding.InventoryDataSeeder>();
             if (seeder is not null)
             {
-                await seeder.SeedAsync(CancellationToken.None).ConfigureAwait(false);
+                await seeder.SeedAsync().ConfigureAwait(false);
             }
         }
     }
