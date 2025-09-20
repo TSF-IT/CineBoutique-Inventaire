@@ -53,15 +53,14 @@ public sealed class InventoryDataSeeder
         }
 
         const string sql = @"
-INSERT INTO ""Location"" (""Id"", ""Code"", ""Label"")
-VALUES (@Id, @Code, @Label)
+INSERT INTO ""Location"" (""Code"", ""Label"")
+VALUES (@Code, @Label)
 ON CONFLICT (""Code"") DO UPDATE SET ""Label"" = EXCLUDED.""Label"";
 ";
 
         foreach (var zone in zones)
         {
-            var parameters = new { Id = Guid.NewGuid(), zone.Code, zone.Label };
-            var command = new CommandDefinition(sql, parameters, transaction, cancellationToken: cancellationToken);
+            var command = new CommandDefinition(sql, new { zone.Code, zone.Label }, transaction, cancellationToken: cancellationToken);
             await connection.ExecuteAsync(command).ConfigureAwait(false);
         }
     }
