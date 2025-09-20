@@ -69,6 +69,14 @@ dotnet build
 
 Les migrations sont exécutées automatiquement au démarrage de l'API.
 
+### Vérifications PostgreSQL en ligne de commande
+
+Une fois connecté au conteneur PostgreSQL (`docker exec -it cineboutique-inventaire-db-1 psql -U postgres -d cineboutique`), les commandes suivantes permettent de valider l'état de la base :
+
+- `\dx` pour vérifier que les extensions `uuid-ossp` et `pgcrypto` sont bien installées.
+- `\dt` pour lister les tables créées par la migration (`Product`, `Location`, `InventorySession`, `CountingRun`, `CountLine`, `Conflict`, `Audit`).
+- `SELECT COUNT(*) FROM "Location";` afin de confirmer la présence des 39 emplacements (`B1` à `B20`, `S1` à `S19`).
+
 ## Gestion centralisée des packages NuGet
 
 La solution s'appuie sur la Central Package Management de .NET via le fichier `Directory.Packages.props` situé à la racine du dépôt. Toutes les dépendances NuGet partagent ainsi un catalogue de versions unique.

@@ -1,3 +1,4 @@
+using System.Linq;
 using FluentMigrator;
 
 namespace CineBoutique.Inventory.Infrastructure.Migrations;
@@ -11,7 +12,7 @@ public sealed class CreateInventorySchema : Migration
         Execute.Sql("CREATE EXTENSION IF NOT EXISTS \"pgcrypto\";");
 
         Create.Table("Product")
-            .WithColumn("Id").AsGuid().PrimaryKey()
+            .WithColumn("Id").AsGuid().PrimaryKey().WithDefaultValue(SystemMethods.NewGuid)
             .WithColumn("Sku").AsString(32).NotNullable()
             .WithColumn("Name").AsString(256).NotNullable()
             .WithColumn("Ean").AsString(13).Nullable()
@@ -40,14 +41,24 @@ public sealed class CreateInventorySchema : Migration
                 .OnColumn("Code").Ascending();
         }
 
+        var locationValues = string.Join(",\n", Enumerable.Range(1, 20).Select(i => $"('B{i}', 'Zone B{i}')")
+            .Concat(Enumerable.Range(1, 19).Select(i => $"('S{i}', 'Zone S{i}')")));
+
+        var locationSeedSql = $@"
+INSERT INTO ""Location"" (""Code"", ""Label"")
+VALUES {locationValues}
+ON CONFLICT (""Code"") DO UPDATE SET ""Label"" = EXCLUDED.""Label"";";
+
+        Execute.Sql(locationSeedSql);
+
         Create.Table("InventorySession")
-            .WithColumn("Id").AsGuid().PrimaryKey()
+            .WithColumn("Id").AsGuid().PrimaryKey().WithDefaultValue(SystemMethods.NewGuid)
             .WithColumn("Name").AsString(256).NotNullable()
             .WithColumn("StartedAtUtc").AsDateTimeOffset().NotNullable()
             .WithColumn("CompletedAtUtc").AsDateTimeOffset().Nullable();
 
         Create.Table("CountingRun")
-            .WithColumn("Id").AsGuid().PrimaryKey()
+            .WithColumn("Id").AsGuid().PrimaryKey().WithDefaultValue(SystemMethods.NewGuid)
             .WithColumn("InventorySessionId").AsGuid().NotNullable()
             .WithColumn("LocationId").AsGuid().NotNullable()
             .WithColumn("StartedAtUtc").AsDateTimeOffset().NotNullable()
@@ -68,7 +79,7 @@ public sealed class CreateInventorySchema : Migration
         }
 
         Create.Table("CountLine")
-            .WithColumn("Id").AsGuid().PrimaryKey()
+            .WithColumn("Id").AsGuid().PrimaryKey().WithDefaultValue(SystemMethods.NewGuid)
             .WithColumn("CountingRunId").AsGuid().NotNullable()
             .WithColumn("ProductId").AsGuid().NotNullable()
             .WithColumn("Quantity").AsDecimal(18, 3).NotNullable()
@@ -89,7 +100,7 @@ public sealed class CreateInventorySchema : Migration
         }
 
         Create.Table("Conflict")
-            .WithColumn("Id").AsGuid().PrimaryKey()
+            .WithColumn("Id").AsGuid().PrimaryKey().WithDefaultValue(SystemMethods.NewGuid)
             .WithColumn("CountLineId").AsGuid().NotNullable()
             .WithColumn("Status").AsString(64).NotNullable()
             .WithColumn("Notes").AsString(1024).Nullable()
@@ -104,7 +115,7 @@ public sealed class CreateInventorySchema : Migration
         }
 
         Create.Table("Audit")
-            .WithColumn("Id").AsGuid().PrimaryKey()
+            .WithColumn("Id").AsGuid().PrimaryKey().WithDefaultValue(SystemMethods.NewGuid)
             .WithColumn("EntityName").AsString(256).NotNullable()
             .WithColumn("EntityId").AsString(128).NotNullable()
             .WithColumn("EventType").AsString(64).NotNullable()
