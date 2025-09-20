@@ -7,6 +7,7 @@ public sealed class CreateInventorySchema : Migration
 {
     public override void Up()
     {
+        Execute.Sql("CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";");
         Execute.Sql("CREATE EXTENSION IF NOT EXISTS \"pgcrypto\";");
 
         Create.Table("Product")
@@ -128,6 +129,7 @@ public sealed class CreateInventorySchema : Migration
         Delete.Table("Location").IfExists();
         Delete.Table("Product").IfExists();
 
+        Execute.Sql("DROP EXTENSION IF EXISTS \"uuid-ossp\";");
         Execute.Sql("DROP EXTENSION IF EXISTS \"pgcrypto\";");
     }
 }
