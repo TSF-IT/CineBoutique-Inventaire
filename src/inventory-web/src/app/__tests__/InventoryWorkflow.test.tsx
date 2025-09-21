@@ -16,23 +16,21 @@ const { fetchLocationsMock, fetchProductMock, restartInventoryRunMock } = vi.hoi
         id: 'zone-1',
         code: 'RES',
         label: 'Réserve',
-        description: 'Arrière boutique',
         isBusy: false,
-        inProgressBy: null,
-        countType: null,
-        runId: null,
-        startedAtUtc: null,
+        busyBy: null,
+        activeRunId: null,
+        activeCountType: null,
+        activeStartedAtUtc: null,
       },
       {
         id: 'zone-2',
         code: 'SAL1',
         label: 'Salle 1',
-        description: null,
         isBusy: true,
-        inProgressBy: 'paul.dupont',
-        countType: 1,
-        runId: 'run-1',
-        startedAtUtc: new Date().toISOString(),
+        busyBy: 'paul.dupont',
+        activeCountType: 1,
+        activeRunId: 'run-1',
+        activeStartedAtUtc: new Date().toISOString(),
       },
     ]),
   ),
@@ -89,7 +87,7 @@ describe('Workflow d\'inventaire', () => {
     fireEvent.click(screen.getByRole('button', { name: /Zone Salle 1 occupée/ }))
 
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Rejoindre le comptage en cours' })).toBeInTheDocument(),
+      expect(screen.getByRole('button', { name: 'Reprendre le comptage en cours' })).toBeInTheDocument(),
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Fermer' }))
