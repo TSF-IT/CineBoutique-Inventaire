@@ -1,3 +1,3 @@
 namespace CineBoutique.Inventory.Api.Models;
 
-public sealed record LocationDto(Guid Id, string Code, string Name);
+public sealed record LocationDto(string Code, string Label);
