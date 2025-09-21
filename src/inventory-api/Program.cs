@@ -1,5 +1,8 @@
+using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
+using System.Linq;
 using CineBoutique.Inventory.Api.Auth;
 using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Models;
@@ -193,16 +196,43 @@ try
         return Results.Ok(new { status = "ready" });
     });
 
-    app.MapGet("/api/locations", async (IDbConnection connection, CancellationToken cancellationToken) =>
+    app.MapGet("/api/locations", async (int? countType, IDbConnection connection, CancellationToken cancellationToken) =>
     {
+        if (countType.HasValue && countType is not (1 or 2))
+        {
+            return Results.BadRequest(new { message = "Le paramètre countType doit valoir 1 ou 2." });
+        }
+
         await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-        const string sql = @"SELECT ""Id"", ""Code"", ""Label""
-FROM ""Location""
-ORDER BY ""Code"";";
+        const string sql = @"WITH active_runs AS (
+    SELECT
+        cr.""LocationId"",
+        cr.""Id"" AS ""RunId"",
+        cr.""CountType"",
+        cr.""StartedAtUtc"",
+        cr.""OperatorDisplayName"",
+        ROW_NUMBER() OVER (PARTITION BY cr.""LocationId"" ORDER BY cr.""StartedAtUtc"" DESC) AS rn
+    FROM ""CountingRun"" cr
+    WHERE cr.""CompletedAtUtc"" IS NULL
+      AND (@CountType IS NULL OR cr.""CountType"" = @CountType)
+)
+SELECT
+    l.""Id"",
+    l.""Code"",
+    l.""Label"",
+    NULL::text AS ""Description"",
+    (ar.""RunId"" IS NOT NULL) AS ""IsBusy"",
+    ar.""OperatorDisplayName"" AS ""InProgressBy"",
+    ar.""CountType"",
+    ar.""RunId"",
+    ar.""StartedAtUtc""
+FROM ""Location"" l
+LEFT JOIN active_runs ar ON l.""Id"" = ar.""LocationId"" AND ar.rn = 1
+ORDER BY l.""Code"";";
 
         var locations = await connection
-            .QueryAsync<LocationDto>(new CommandDefinition(sql, cancellationToken: cancellationToken))
+            .QueryAsync<LocationDto>(new CommandDefinition(sql, new { CountType = countType }, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
         return Results.Ok(locations);
@@ -213,7 +243,50 @@ ORDER BY ""Code"";";
     .WithOpenApi(op =>
     {
         op.Summary = "Liste les emplacements (locations)";
-        op.Description = "Retourne Code et Label pour toutes les locations, triées par Code.";
+        op.Description = "Retourne les métadonnées et l'état d'occupation des locations, filtré par type de comptage optionnel.";
+        op.Parameters ??= new List<OpenApiParameter>();
+        if (!op.Parameters.Any(parameter => string.Equals(parameter.Name, "countType", StringComparison.OrdinalIgnoreCase)))
+        {
+            op.Parameters.Add(new OpenApiParameter
+            {
+                Name = "countType",
+                In = ParameterLocation.Query,
+                Required = false,
+                Description = "Type de comptage ciblé (1 pour premier passage, 2 pour second).",
+                Schema = new OpenApiSchema { Type = "integer", Minimum = 1, Maximum = 2 }
+            });
+        }
+        return op;
+    });
+
+    app.MapPost("/api/inventories/{locationId:guid}/restart", async (Guid locationId, int countType, IDbConnection connection, CancellationToken cancellationToken) =>
+    {
+        if (countType is not (1 or 2))
+        {
+            return Results.BadRequest(new { message = "Le paramètre countType doit valoir 1 ou 2." });
+        }
+
+        await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+        const string sql = @"UPDATE ""CountingRun""
+SET ""CompletedAtUtc"" = @NowUtc
+WHERE ""LocationId"" = @LocationId
+  AND ""CompletedAtUtc"" IS NULL
+  AND ""CountType"" = @CountType;";
+
+        var now = DateTimeOffset.UtcNow;
+        await connection.ExecuteAsync(new CommandDefinition(sql, new { LocationId = locationId, CountType = countType, NowUtc = now }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        return Results.NoContent();
+    })
+    .WithName("RestartInventoryForLocation")
+    .WithTags("Inventories")
+    .Produces(StatusCodes.Status204NoContent)
+    .Produces(StatusCodes.Status400BadRequest)
+    .WithOpenApi(op =>
+    {
+        op.Summary = "Force la clôture des comptages actifs pour une zone et un type donnés.";
+        op.Description = "Permet de terminer les runs ouverts sur une zone pour relancer un nouveau comptage.";
         return op;
     });
 
@@ -284,4 +357,8 @@ static async Task EnsureConnectionOpenAsync(IDbConnection connection, Cancellati
             connection.Open();
             break;
     }
+}
+
+public partial class Program
+{
 }
