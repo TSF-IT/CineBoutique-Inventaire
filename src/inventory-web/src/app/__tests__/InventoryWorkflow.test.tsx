@@ -6,18 +6,38 @@ import { InventoryLayout } from '../pages/inventory/InventoryLayout'
 import { InventoryUserStep } from '../pages/inventory/InventoryUserStep'
 import { InventoryCountTypeStep } from '../pages/inventory/InventoryCountTypeStep'
 import { InventoryLocationStep } from '../pages/inventory/InventoryLocationStep'
-import { InventoryConfirmStep } from '../pages/inventory/InventoryConfirmStep'
 import { InventorySessionPage } from '../pages/inventory/InventorySessionPage'
+import { ApiError } from '../api/client'
 
-const { fetchLocationsMock, verifyInventoryMock, fetchProductMock } = vi.hoisted(() => ({
+const { fetchLocationsMock, fetchProductMock, restartInventoryRunMock } = vi.hoisted(() => ({
   fetchLocationsMock: vi.fn(() =>
     Promise.resolve([
-      { id: 'zone-1', code: 'RES', label: 'Réserve', description: 'Arrière boutique' },
-      { id: 'zone-2', code: 'SAL1', label: 'Salle 1' },
+      {
+        id: 'zone-1',
+        code: 'RES',
+        label: 'Réserve',
+        description: 'Arrière boutique',
+        isBusy: false,
+        inProgressBy: null,
+        countType: null,
+        runId: null,
+        startedAtUtc: null,
+      },
+      {
+        id: 'zone-2',
+        code: 'SAL1',
+        label: 'Salle 1',
+        description: null,
+        isBusy: true,
+        inProgressBy: 'paul.dupont',
+        countType: 1,
+        runId: 'run-1',
+        startedAtUtc: new Date().toISOString(),
+      },
     ]),
   ),
-  verifyInventoryMock: vi.fn(() => Promise.resolve({ hasActive: false })),
   fetchProductMock: vi.fn(() => Promise.resolve({ ean: '123', name: 'Popcorn caramel' })),
+  restartInventoryRunMock: vi.fn(() => Promise.resolve()),
 }))
 
 vi.mock('../api/inventoryApi', async (importOriginal) => {
@@ -25,8 +45,8 @@ vi.mock('../api/inventoryApi', async (importOriginal) => {
   return {
     ...actual,
     fetchLocations: fetchLocationsMock,
-    verifyInventoryInProgress: verifyInventoryMock,
     fetchProductByEan: fetchProductMock,
+    restartInventoryRun: restartInventoryRunMock,
   }
 })
 
@@ -40,7 +60,6 @@ const renderInventoryRoutes = (initialEntry: string) =>
             <Route path="start" element={<InventoryUserStep />} />
             <Route path="count-type" element={<InventoryCountTypeStep />} />
             <Route path="location" element={<InventoryLocationStep />} />
-            <Route path="confirm" element={<InventoryConfirmStep />} />
             <Route path="session" element={<InventorySessionPage />} />
           </Route>
         </Routes>
@@ -51,8 +70,8 @@ const renderInventoryRoutes = (initialEntry: string) =>
 describe('Workflow d\'inventaire', () => {
   beforeEach(() => {
     fetchLocationsMock.mockClear()
-    verifyInventoryMock.mockClear()
     fetchProductMock.mockClear()
+    restartInventoryRunMock.mockClear()
   })
 
   it('permet de sélectionner utilisateur, type et zone', async () => {
@@ -65,14 +84,20 @@ describe('Workflow d\'inventaire', () => {
     fireEvent.click(screen.getByRole('button', { name: /1 comptage/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Sélectionner la zone' }))
 
-    await waitFor(() => expect(fetchLocationsMock).toHaveBeenCalled())
-    fireEvent.click(screen.getByRole('button', { name: /Réserve/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Vérifier la disponibilité' }))
+    await waitFor(() => expect(fetchLocationsMock).toHaveBeenCalledWith({ countType: 1 }))
 
-    await waitFor(() => expect(verifyInventoryMock).toHaveBeenCalled())
+    fireEvent.click(screen.getByRole('button', { name: /Zone Salle 1 occupée/ }))
+
     await waitFor(() =>
-      expect(screen.getByText('Zone disponible')).toBeInTheDocument(),
+      expect(screen.getByRole('button', { name: 'Rejoindre le comptage en cours' })).toBeInTheDocument(),
     )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fermer' }))
+
+    fireEvent.click(screen.getByRole('button', { name: /Zone Réserve libre/ }))
+
+    await waitFor(() => expect(screen.getByText(/Session de comptage/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByText(/Réserve/).length).toBeGreaterThan(0))
   })
 
   it('ajoute un produit via saisie manuelle simulant une douchette', async () => {
@@ -83,11 +108,8 @@ describe('Workflow d\'inventaire', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /1 comptage/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Sélectionner la zone' }))
-    await waitFor(() => expect(fetchLocationsMock).toHaveBeenCalled())
-    fireEvent.click(screen.getByRole('button', { name: /Réserve/ }))
-    fireEvent.click(screen.getByRole('button', { name: 'Vérifier la disponibilité' }))
-    await waitFor(() => expect(verifyInventoryMock).toHaveBeenCalled())
-    fireEvent.click(screen.getByRole('button', { name: 'Démarrer le comptage' }))
+    await waitFor(() => expect(fetchLocationsMock).toHaveBeenCalledWith({ countType: 1 }))
+    fireEvent.click(screen.getByRole('button', { name: /Zone Réserve libre/ }))
 
     const input = await screen.findByLabelText('Scanner (douchette ou saisie)')
     fireEvent.change(input, { target: { value: '123' } })
@@ -95,5 +117,28 @@ describe('Workflow d\'inventaire', () => {
 
     await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('123'))
     await waitFor(() => expect(screen.getByText('Popcorn caramel')).toBeInTheDocument())
+  })
+
+  it("affiche la feuille d'actions et gère un redémarrage en erreur", async () => {
+    restartInventoryRunMock.mockRejectedValueOnce(new ApiError('Redémarrage impossible'))
+
+    renderInventoryRoutes('/inventory/start')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Amélie' }))
+    await waitFor(() => expect(screen.getByText('Quel type de comptage ?')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: /1 comptage/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sélectionner la zone' }))
+
+    await waitFor(() => expect(fetchLocationsMock).toHaveBeenCalledWith({ countType: 1 }))
+
+    fireEvent.click(screen.getByRole('button', { name: /Zone Salle 1 occupée/ }))
+    const restartButton = await screen.findByRole('button', { name: 'Redémarrer un nouveau comptage' })
+
+    fireEvent.click(restartButton)
+
+    await waitFor(() => expect(restartInventoryRunMock).toHaveBeenCalledWith('zone-2', 1))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Redémarrage impossible')
   })
 })

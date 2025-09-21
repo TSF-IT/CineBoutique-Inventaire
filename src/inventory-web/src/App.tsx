@@ -5,7 +5,6 @@ import { InventoryLayout } from './app/pages/inventory/InventoryLayout'
 import { InventoryUserStep } from './app/pages/inventory/InventoryUserStep'
 import { InventoryCountTypeStep } from './app/pages/inventory/InventoryCountTypeStep'
 import { InventoryLocationStep } from './app/pages/inventory/InventoryLocationStep'
-import { InventoryConfirmStep } from './app/pages/inventory/InventoryConfirmStep'
 import { InventorySessionPage } from './app/pages/inventory/InventorySessionPage'
 import { AdminLayout } from './app/pages/admin/AdminLayout'
 import { AdminLoginPage } from './app/pages/admin/AdminLoginPage'
@@ -29,7 +28,6 @@ const RouterView = () => {
         { path: 'start', element: <InventoryUserStep /> },
         { path: 'count-type', element: <InventoryCountTypeStep /> },
         { path: 'location', element: <InventoryLocationStep /> },
-        { path: 'confirm', element: <InventoryConfirmStep /> },
         { path: 'session', element: <InventorySessionPage /> },
       ],
     },

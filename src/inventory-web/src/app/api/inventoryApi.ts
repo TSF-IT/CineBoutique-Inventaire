@@ -1,12 +1,5 @@
 import { LocationsSchema } from '../types/inventory'
-import type {
-  CountType,
-  InventoryCheckResponse,
-  InventorySummary,
-  Location,
-  ManualProductInput,
-  Product,
-} from '../types/inventory'
+import type { CountType, InventorySummary, Location, ManualProductInput, Product } from '../types/inventory'
 import { ApiError, apiClient } from './client'
 
 const normaliseLocationsPayload = (payload: unknown): unknown => {
@@ -30,9 +23,10 @@ export const fetchInventorySummary = async (): Promise<InventorySummary> => {
   return data
 }
 
-export const fetchLocations = async (): Promise<Location[]> => {
+export const fetchLocations = async (options?: { countType?: CountType }): Promise<Location[]> => {
   try {
-    const { data } = await apiClient.get('/locations')
+    const params = options?.countType ? { countType: options.countType } : undefined
+    const { data } = await apiClient.get('/locations', { params })
     const normalised = normaliseLocationsPayload(data)
     const parsed = LocationsSchema.safeParse(normalised)
     if (!parsed.success) {
@@ -53,16 +47,6 @@ export const fetchLocations = async (): Promise<Location[]> => {
   }
 }
 
-export const verifyInventoryInProgress = async (
-  locationId: string,
-  countType: CountType,
-): Promise<InventoryCheckResponse> => {
-  const { data } = await apiClient.get<InventoryCheckResponse>('/inventories/check', {
-    params: { locationId, countType },
-  })
-  return data
-}
-
 export const fetchProductByEan = async (ean: string): Promise<Product> => {
   const { data } = await apiClient.get<Product>(`/products/${ean}`)
   return data
@@ -71,4 +55,8 @@ export const fetchProductByEan = async (ean: string): Promise<Product> => {
 export const createManualProduct = async (payload: ManualProductInput): Promise<Product> => {
   const { data } = await apiClient.post<Product>('/products', payload)
   return data
+}
+
+export const restartInventoryRun = async (locationId: string, countType: CountType): Promise<void> => {
+  await apiClient.post(`/inventories/${locationId}/restart`, undefined, { params: { countType } })
 }

@@ -54,9 +54,10 @@ L'endpoint `POST /auth/pin` retourne un JWT court si le PIN est valide. Les endp
 
 - `GET /health` : liveness simple.
 - `GET /ready` : vérifie l'accès à PostgreSQL (`SELECT 1`).
-- `GET /locations` : liste les zones d'inventaire seedées.
+- `GET /locations` : liste les zones d'inventaire et l'état d'occupation courant (filtrable par type de comptage).
 - `GET /products/{code}` : recherche par SKU ou code EAN-8/EAN-13.
 - `POST /auth/pin` : authentification par PIN/JWT (utilisateurs définis dans la configuration).
+- `POST /api/inventories/{locationId}/restart` : clôture les runs actifs d'une zone pour redémarrer un comptage.
 
 ## Configuration applicative
 
@@ -95,7 +96,7 @@ npm run test
 Fonctionnalités principales :
 
 - PWA mobile-first avec manifest, service worker (vite-plugin-pwa) et icônes servies via CDN (personnalisables hors dépôt).
-- Workflow guidé pour lancer un inventaire (sélection utilisateur → type → zone → vérification des sessions actives).
+- Workflow guidé pour lancer un inventaire (sélection utilisateur → type → zone avec statut en temps réel → scan).
 - Scan des codes-barres via caméra (getUserMedia + `@zxing/browser`) ou douchette Bluetooth simulée via champ de saisie.
 - Gestion des produits hors référentiel (ajout manuel avec panneau coulissant).
 - Espace administrateur protégé (login + CRUD des zones avec interactions swipe).
