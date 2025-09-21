@@ -1,69 +1,66 @@
-# React + TypeScript + Vite
+# CinéBoutique – Inventaire (PWA)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Application React 18 + Vite + TypeScript pour piloter les inventaires CinéBoutique. L'interface est pensée mobile-first (iPhone/iPad) tout en restant confortable sur desktop. Elle consomme l'API ASP.NET Core exposée sur `/api/*` et fonctionne en mode PWA (manifest + service worker via `vite-plugin-pwa`).
 
-Currently, two official plugins are available:
+## Démarrage
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Par défaut l'API est attendue sur `http://localhost:8080`. En production conteneurisée, l'application est servie par Nginx sur `http://localhost:3000` (voir `Dockerfile`).
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Scripts disponibles
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- `npm run dev` : serveur de développement Vite avec HMR.
+- `npm run build` : compilation TypeScript + build Vite (artifacts dans `dist/`).
+- `npm run preview` : prévisualisation du build.
+- `npm run test` / `npm run test:watch` : suite de tests Vitest + Testing Library.
+- `npm run lint` : vérification ESLint.
+
+## Stack front
+
+- React 18 + React Router 6
+- TailwindCSS 3 pour le design system mobile-first
+- Axios pour la communication HTTP
+- `@zxing/browser` pour la lecture des codes-barres via caméra
+- `react-swipeable` pour les interactions swipe en listes
+- PWA : `vite-plugin-pwa`, manifest, icônes servies via CDN (personnalisables), service worker auto-update
+
+## Fonctionnalités clés
+
+- **Accueil** : vue synthétique du nombre de comptages actifs et des conflits éventuels.
+- **Assistant d'inventaire** : sélection utilisateur → type de comptage (simple/double) → zone (API `/api/locations`) → vérification qu'aucune session n'est déjà ouverte.
+- **Scan produit** : via caméra (getUserMedia) ou douchette Bluetooth HID (champ de saisie focus permanent). Recherche `/api/products/{ean}` et ajout manuel possible.
+- **Gestion des sessions** : affichage des articles scannés, quantités modifiables, distinction des ajouts manuels.
+- **Espace administrateur** : authentification simple (JWT côté API), CRUD des zones avec interactions swipe.
+- **Panneaux coulissants** plutôt que modales intrusives pour les formulaires secondaires.
+
+## Tests
+
+Les tests couvrent :
+
+- l'affichage des indicateurs d'accueil,
+- le workflow d'inventaire (mock API),
+- l'ajout d'un produit via une saisie simulant une douchette Bluetooth.
+
+Exécution :
+
+```bash
+npm run test
 ```
+
+## Docker
+
+Le dossier contient un `Dockerfile` multi-stage (build Node puis runtime Nginx) et un `nginx.conf` servant l'application en SPA avec proxy `/api` vers l'API ASP.NET Core.
+
+## Ressources graphiques
+
+Le dépôt ne contient aucune image (icône, logo, etc.) afin de rester 100 % texte. Pour personnaliser l'identité visuelle :
+
+1. Consultez `assets/README.md` pour comprendre comment intégrer des visuels locaux sans les versionner.
+2. Ajoutez vos fichiers dans `public/assets/` (ignoré par Git) ou servez-les depuis un CDN interne.
+3. Adaptez ensuite `vite.config.ts` pour pointer vers vos propres URLs.
+
+Par défaut, la PWA référence des icônes publiques Icons8 qui garantissent un fonctionnement immédiat sans ressources binaires dans le repository.
