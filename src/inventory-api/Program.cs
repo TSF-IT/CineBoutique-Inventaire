@@ -169,14 +169,13 @@ try
     if (app.Environment.IsDevelopment())
     {
         app.UseCors(DevCorsPolicyName);
+        app.UseSwagger();
+        app.UseSwaggerUI(c =>
+        {
+            c.SwaggerEndpoint("/swagger/v1/swagger.json", "CinéBoutique Inventory API v1");
+            c.RoutePrefix = "swagger";
+        });
     }
-
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "CinéBoutique Inventory API v1");
-        c.RoutePrefix = "swagger";
-    });
 
     app.UseSerilogRequestLogging();
 
@@ -198,9 +197,8 @@ try
     {
         await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-        const string sql = @"
-SELECT ""Code"", ""Label""
-FROM ""public"".""Location""
+        const string sql = @"SELECT ""Id"", ""Code"", ""Label""
+FROM ""Location""
 ORDER BY ""Code"";";
 
         var locations = await connection
