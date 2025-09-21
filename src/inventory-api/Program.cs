@@ -196,50 +196,84 @@ try
         return Results.Ok(new { status = "ready" });
     });
 
+    app.MapGet("/api/inventories/summary", async (IDbConnection connection, CancellationToken cancellationToken) =>
+    {
+        await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+        const string summarySql = @"SELECT
+    (SELECT COUNT(*)::int FROM ""InventorySession"" WHERE ""CompletedAtUtc"" IS NULL) AS ""ActiveSessions"",
+    (SELECT COUNT(*)::int FROM ""CountingRun"" WHERE ""CompletedAtUtc"" IS NULL) AS ""OpenRuns"",
+    (
+        SELECT MAX(value) FROM (
+            SELECT MAX(""CreatedAtUtc"") AS value FROM ""Audit""
+            UNION ALL
+            SELECT MAX(""CountedAtUtc"") FROM ""CountLine""
+            UNION ALL
+            SELECT MAX(""StartedAtUtc"") FROM ""CountingRun""
+            UNION ALL
+            SELECT MAX(""CompletedAtUtc"") FROM ""CountingRun""
+        ) AS activity
+    ) AS ""LastActivityUtc"";";
+
+        var summary = await connection
+            .QuerySingleAsync<InventorySummaryDto>(new CommandDefinition(summarySql, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return Results.Ok(summary);
+    })
+    .WithName("GetInventorySummary")
+    .WithTags("Inventories")
+    .Produces<InventorySummaryDto>(StatusCodes.Status200OK)
+    .WithOpenApi(op =>
+    {
+        op.Summary = "Récupère un résumé des inventaires en cours.";
+        op.Description = "Fournit un aperçu synthétique incluant les sessions actives, les runs ouverts et la dernière activité.";
+        return op;
+    });
+
     app.MapGet("/api/locations", async (int? countType, IDbConnection connection, CancellationToken cancellationToken) =>
     {
-        if (countType.HasValue && countType is not (1 or 2))
+        if (countType.HasValue && countType is not (1 or 2 or 3))
         {
-            return Results.BadRequest(new { message = "Le paramètre countType doit valoir 1 ou 2." });
+            return Results.BadRequest(new { message = "Le paramètre countType doit valoir 1, 2 ou 3." });
         }
 
         await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
         const string sql = @"WITH active_runs AS (
-    SELECT
+    SELECT DISTINCT ON (cr.""LocationId"")
         cr.""LocationId"",
-        cr.""Id"" AS ""RunId"",
-        cr.""CountType"",
-        cr.""StartedAtUtc"",
-        cr.""OperatorDisplayName"",
-        ROW_NUMBER() OVER (PARTITION BY cr.""LocationId"" ORDER BY cr.""StartedAtUtc"" DESC) AS rn
+        cr.""Id"" AS ""ActiveRunId"",
+        cr.""CountType"" AS ""ActiveCountType"",
+        cr.""StartedAtUtc"" AS ""ActiveStartedAtUtc"",
+        cr.""OperatorDisplayName"" AS ""BusyBy""
     FROM ""CountingRun"" cr
     WHERE cr.""CompletedAtUtc"" IS NULL
       AND (@CountType IS NULL OR cr.""CountType"" = @CountType)
+    ORDER BY cr.""LocationId"", cr.""StartedAtUtc"" DESC
 )
 SELECT
     l.""Id"",
     l.""Code"",
     l.""Label"",
-    NULL::text AS ""Description"",
-    (ar.""RunId"" IS NOT NULL) AS ""IsBusy"",
-    ar.""OperatorDisplayName"" AS ""InProgressBy"",
-    ar.""CountType"",
-    ar.""RunId"",
-    ar.""StartedAtUtc""
+    (ar.""ActiveRunId"" IS NOT NULL) AS ""IsBusy"",
+    ar.""BusyBy"",
+    ar.""ActiveRunId"",
+    ar.""ActiveCountType"",
+    ar.""ActiveStartedAtUtc""
 FROM ""Location"" l
-LEFT JOIN active_runs ar ON l.""Id"" = ar.""LocationId"" AND ar.rn = 1
-ORDER BY l.""Code"";";
+LEFT JOIN active_runs ar ON l.""Id"" = ar.""LocationId""
+ORDER BY l.""Code"" ASC;";
 
         var locations = await connection
-            .QueryAsync<LocationDto>(new CommandDefinition(sql, new { CountType = countType }, cancellationToken: cancellationToken))
+            .QueryAsync<LocationListItemDto>(new CommandDefinition(sql, new { CountType = countType }, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
         return Results.Ok(locations);
     })
     .WithName("GetLocations")
     .WithTags("Locations")
-    .Produces<IEnumerable<LocationDto>>(StatusCodes.Status200OK)
+    .Produces<IEnumerable<LocationListItemDto>>(StatusCodes.Status200OK)
     .WithOpenApi(op =>
     {
         op.Summary = "Liste les emplacements (locations)";
@@ -252,8 +286,8 @@ ORDER BY l.""Code"";";
                 Name = "countType",
                 In = ParameterLocation.Query,
                 Required = false,
-                Description = "Type de comptage ciblé (1 pour premier passage, 2 pour second).",
-                Schema = new OpenApiSchema { Type = "integer", Minimum = 1, Maximum = 2 }
+                Description = "Type de comptage ciblé (1 pour premier passage, 2 pour second, 3 pour contrôle).",
+                Schema = new OpenApiSchema { Type = "integer", Minimum = 1, Maximum = 3 }
             });
         }
         return op;
@@ -261,9 +295,9 @@ ORDER BY l.""Code"";";
 
     app.MapPost("/api/inventories/{locationId:guid}/restart", async (Guid locationId, int countType, IDbConnection connection, CancellationToken cancellationToken) =>
     {
-        if (countType is not (1 or 2))
+        if (countType is not (1 or 2 or 3))
         {
-            return Results.BadRequest(new { message = "Le paramètre countType doit valoir 1 ou 2." });
+            return Results.BadRequest(new { message = "Le paramètre countType doit valoir 1, 2 ou 3." });
         }
 
         await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);

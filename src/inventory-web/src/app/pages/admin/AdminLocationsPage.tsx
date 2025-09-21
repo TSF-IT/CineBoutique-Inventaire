@@ -115,9 +115,11 @@ export const AdminLocationsPage = () => {
                     </p>
                   )}
                   <p className="text-lg font-semibold text-slate-900 dark:text-white">{locationItem.label}</p>
-                  {locationItem.description && (
-                    <p className="text-sm text-slate-600 dark:text-slate-400">{locationItem.description}</p>
-                  )}
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    {locationItem.isBusy
+                      ? `Occupée${locationItem.busyBy ? ` par ${locationItem.busyBy}` : ''}`
+                      : 'Libre'}
+                  </p>
                 </div>
               </SwipeActionItem>
             ))}

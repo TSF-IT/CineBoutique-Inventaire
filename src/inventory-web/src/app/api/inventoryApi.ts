@@ -25,7 +25,7 @@ export const fetchInventorySummary = async (): Promise<InventorySummary> => {
 
 export const fetchLocations = async (options?: { countType?: CountType }): Promise<Location[]> => {
   try {
-    const params = options?.countType ? { countType: options.countType } : undefined
+    const params = options?.countType !== undefined ? { countType: options.countType } : undefined
     const { data } = await apiClient.get('/locations', { params })
     const normalised = normaliseLocationsPayload(data)
     const parsed = LocationsSchema.safeParse(normalised)

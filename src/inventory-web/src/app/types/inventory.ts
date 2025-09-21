@@ -1,28 +1,29 @@
 import { z } from 'zod'
 
-export type CountType = 1 | 2
+export type CountType = 1 | 2 | 3
 
 export interface InventorySummary {
-  activeCounts: number
-  conflicts: number
+  activeSessions: number
+  openRuns: number
+  lastActivityUtc: string | null
 }
 
 export const LocationSchema = z.object({
   id: z.string().uuid(),
   code: z.string(),
   label: z.string(),
-  description: z.string().nullable().optional(),
   isBusy: z.boolean(),
-  inProgressBy: z.string().nullable(),
-  countType: z
+  busyBy: z.string().nullable(),
+  activeRunId: z.string().uuid().nullable().optional(),
+  activeCountType: z
     .number()
     .int()
-    .refine((value) => value === 1 || value === 2, {
-      message: 'countType doit être 1 ou 2',
+    .refine((value) => value === 1 || value === 2 || value === 3, {
+      message: 'activeCountType doit être 1, 2 ou 3',
     })
-    .nullable(),
-  runId: z.string().uuid().nullable(),
-  startedAtUtc: z.string().datetime({ offset: true }).nullable(),
+    .nullable()
+    .optional(),
+  activeStartedAtUtc: z.string().datetime({ offset: true }).nullable().optional(),
 })
 
 export const LocationsSchema = z.array(LocationSchema)

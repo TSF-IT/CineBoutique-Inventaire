@@ -4,7 +4,9 @@ import { vi } from 'vitest'
 import { HomePage } from '../pages/home/HomePage'
 
 vi.mock('../api/inventoryApi', () => ({
-  fetchInventorySummary: vi.fn(() => Promise.resolve({ activeCounts: 3, conflicts: 1 })),
+  fetchInventorySummary: vi.fn(() =>
+    Promise.resolve({ activeSessions: 3, openRuns: 1, lastActivityUtc: '2025-01-01T12:00:00Z' }),
+  ),
 }))
 
 describe('HomePage', () => {
@@ -16,8 +18,9 @@ describe('HomePage', () => {
     )
 
     await waitFor(() => {
+      expect(screen.getByText('Sessions actives')).toBeInTheDocument()
       expect(screen.getByText('3')).toBeInTheDocument()
-      expect(screen.getByText('1')).toBeInTheDocument()
+      expect(screen.getByText('Runs ouverts')).toBeInTheDocument()
     })
 
     expect(screen.getByRole('button', { name: 'Débuter un inventaire' })).toBeInTheDocument()
