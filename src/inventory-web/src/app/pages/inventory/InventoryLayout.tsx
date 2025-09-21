@@ -4,13 +4,12 @@ import { Page } from '../../components/Page'
 import { ThemeToggle } from '../../components/ThemeToggle'
 import { useInventory } from '../../contexts/InventoryContext'
 
-const STEPS = ['Utilisateur', 'Type de comptage', 'Zone', 'Validation']
+const STEPS = ['Utilisateur', 'Type de comptage', 'Zone', 'Scan']
 
 const stepIndexByPath: Record<string, number> = {
   '/inventory/start': 0,
   '/inventory/count-type': 1,
   '/inventory/location': 2,
-  '/inventory/confirm': 3,
   '/inventory/session': 3,
 }
 
