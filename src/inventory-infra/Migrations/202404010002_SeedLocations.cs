@@ -1,65 +1,63 @@
-using System.Collections.Generic;
+using System;
 using FluentMigrator;
 
-namespace CineBoutique.Inventory.Infrastructure.Migrations;
-
-[Migration(202404010002, "Seed initial Location data: B1..B20, S1..S19")]
-public sealed class SeedLocations : Migration
+namespace CineBoutique.Inventory.Infrastructure.Migrations
 {
-    private static readonly IReadOnlyCollection<string> LocationCodes = BuildLocationCodes();
-
-    public override void Up()
+    [Migration(202404010002)]
+    public class Migration_202404010002_SeedLocations : Migration
     {
-        EnsureLocationCodeUniqueIndex();
-
-        foreach (var code in LocationCodes)
+        public override void Up()
         {
-            InsertLocationIfMissing(code);
+            // 1) Sécuriser l’unicité du Code (idempotent)
+            Execute.Sql(@"
+CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Location_Code""
+ON ""public"".""Location"" (""Code"");
+");
+
+            // 2) Générer les codes à insérer
+            //   - B1..B20
+            //   - S1..S19
+            var bCodes = new string[20];
+            for (int i = 1; i <= 20; i++)
+                bCodes[i - 1] = $"B{i}";
+
+            var sCodes = new string[19];
+            for (int i = 1; i <= 19; i++)
+                sCodes[i - 1] = $"S{i}";
+
+            // 3) Insérer de façon idempotente (WHERE NOT EXISTS)
+            foreach (var code in bCodes)
+                InsertLocationIfNotExists(code);
+
+            foreach (var code in sCodes)
+                InsertLocationIfNotExists(code);
         }
-    }
 
-    public override void Down()
-    {
-        Execute.Sql("DELETE FROM \"Location\" WHERE \"Code\" LIKE 'B%' OR \"Code\" LIKE 'S%';");
-    }
-
-    private static IReadOnlyCollection<string> BuildLocationCodes()
-    {
-        var codes = new List<string>(39);
-
-        for (var i = 1; i <= 20; i++)
+        public override void Down()
         {
-            codes.Add($"B{i}");
+            // Supprime uniquement ce que cette migration a ajouté
+            Execute.Sql(@"
+DELETE FROM ""public"".""Location""
+WHERE ""Code"" LIKE 'B%' OR ""Code"" LIKE 'S%';
+");
         }
 
-        for (var i = 1; i <= 19; i++)
+        private void InsertLocationIfNotExists(string code)
         {
-            codes.Add($"S{i}");
+            // Label = "Zone {Code}"
+            var label = $"Zone {code}";
+
+            // NB: on utilise uuid_generate_v4() pour la colonne Id.
+            //     Idempotence via WHERE NOT EXISTS.
+            //     On échappe les guillemets correctement avec verbatim string et interpolation simple.
+            var sql = $@"
+INSERT INTO ""public"".""Location"" (""Id"", ""Code"", ""Label"")
+SELECT uuid_generate_v4(), '{code}', '{label}'
+WHERE NOT EXISTS (
+    SELECT 1 FROM ""public"".""Location"" WHERE ""Code"" = '{code}'
+);";
+
+            Execute.Sql(sql);
         }
-
-        return codes;
-    }
-
-    private void InsertLocationIfMissing(string code)
-    {
-        var label = $"Zone {code}";
-        var escapedCode = EscapeSqlLiteral(code);
-        var escapedLabel = EscapeSqlLiteral(label);
-
-        var sql = $@"INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\")
-SELECT uuid_generate_v4(), '{escapedCode}', '{escapedLabel}'
-WHERE NOT EXISTS (SELECT 1 FROM \"Location\" WHERE \"Code\" = '{escapedCode}');";
-
-        Execute.Sql(sql);
-    }
-
-    private static string EscapeSqlLiteral(string value)
-    {
-        return value.Replace("'", "''");
-    }
-
-    private void EnsureLocationCodeUniqueIndex()
-    {
-        Execute.Sql("CREATE UNIQUE INDEX IF NOT EXISTS \"IX_Location_Code\" ON \"public\".\"Location\" (\"Code\" ASC);");
     }
 }
