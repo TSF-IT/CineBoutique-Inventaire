@@ -6,7 +6,7 @@
   <ItemGroup>
     <!-- Logging -->
     <PackageVersion Include="Serilog" Version="3.1.1" />
-    <PackageVersion Include="Serilog.AspNetCore" Version="8.0.0" />
+    <PackageVersion Include="Serilog.AspNetCore" Version="8.0.1" />
     <PackageVersion Include="Serilog.Sinks.Console" Version="5.0.1" />
     <PackageVersion Include="Serilog.Formatting.Compact" Version="2.0.0" />
     <PackageVersion Include="Serilog.Settings.Configuration" Version="8.0.0" />
@@ -16,18 +16,15 @@
     <PackageVersion Include="Npgsql" Version="8.0.3" />
 
     <!-- Migrations -->
-    <PackageVersion Include="FluentMigrator.Runner" Version="5.2.2" />
-    <PackageVersion Include="FluentMigrator.Runner.Postgres" Version="5.2.2" />
-
-    <!-- HealthChecks -->
-    <PackageVersion Include="AspNetCore.HealthChecks.NpgSql" Version="8.0.1" />
+    <PackageVersion Include="FluentMigrator.Runner" Version="5.2.0" />
+    <PackageVersion Include="FluentMigrator.Runner.Postgres" Version="5.2.0" />
 
     <!-- Authentication -->
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
 
     <!-- Documentation -->
-    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="8.0.*" />
-    <PackageVersion Include="Swashbuckle.AspNetCore" Version="6.5.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="8.0.8" />
+    <PackageVersion Include="Swashbuckle.AspNetCore" Version="6.6.2" />
 
     <!-- Analyzers -->
     <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="8.0.0" />
