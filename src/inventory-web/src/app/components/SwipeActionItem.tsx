@@ -51,7 +51,7 @@ export const SwipeActionItem = ({ children, onEdit, onDelete }: SwipeActionItemP
       <div
         {...handlers}
         className={clsx(
-          'relative z-10 bg-slate-900/70 p-4 transition-transform duration-200',
+          'relative z-10 rounded-2xl border border-slate-200 bg-white p-4 transition-transform duration-200 dark:border-slate-700 dark:bg-slate-900/70',
           revealed ? '-translate-x-40' : 'translate-x-0',
         )}
       >

@@ -16,15 +16,15 @@ export const AdminLoginPage = () => {
     setError(null)
     try {
       await login(username, password)
-    } catch (err) {
+    } catch {
       setError('Identifiants invalides ou droits insuffisants.')
     }
   }
 
   return (
     <Card className="max-w-md">
-      <h2 className="text-2xl font-semibold text-white">Connexion</h2>
-      <p className="text-sm text-slate-400">Accès réservé aux administrateurs de CinéBoutique.</p>
+      <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Connexion</h2>
+      <p className="text-sm text-slate-600 dark:text-slate-400">Accès réservé aux administrateurs de CinéBoutique.</p>
       <form className="mt-6 flex flex-col gap-4" onSubmit={handleSubmit}>
         <TextField label="Identifiant" value={username} onChange={(event) => setUsername(event.target.value)} />
         <TextField
@@ -33,7 +33,7 @@ export const AdminLoginPage = () => {
           value={password}
           onChange={(event) => setPassword(event.target.value)}
         />
-        {error && <p className="text-sm text-red-300">{error}</p>}
+        {error && <p className="text-sm text-red-600 dark:text-red-300">{error}</p>}
         <Button type="submit" disabled={loading} className="py-3">
           {loading ? 'Connexion…' : 'Se connecter'}
         </Button>

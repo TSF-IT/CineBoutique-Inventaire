@@ -1,6 +1,7 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Stepper } from '../../components/Stepper'
 import { Page } from '../../components/Page'
+import { ThemeToggle } from '../../components/ThemeToggle'
 import { useInventory } from '../../contexts/InventoryContext'
 
 const STEPS = ['Utilisateur', 'Type de comptage', 'Zone', 'Validation']
@@ -27,15 +28,18 @@ export const InventoryLayout = () => {
   return (
     <Page className="gap-8">
       <div className="flex flex-col gap-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-sm uppercase tracking-[0.25em] text-brand-200">CinéBoutique</p>
-            <h1 className="text-3xl font-bold text-white">Assistant d&apos;inventaire</h1>
+            <p className="text-sm uppercase tracking-[0.25em] text-brand-500 dark:text-brand-200">CinéBoutique</p>
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Assistant d&apos;inventaire</h1>
           </div>
-          <div className="hidden text-right text-xs text-slate-500 sm:block">
-            <p>Utilisateur : {selectedUser ?? '–'}</p>
-            <p>Type : {countType ?? '–'}</p>
-            <p>Zone : {selectedLocation?.name ?? '–'}</p>
+          <div className="flex flex-col items-end gap-3 sm:flex-row sm:items-center">
+            <div className="hidden text-right text-xs text-slate-500 dark:text-slate-400 sm:block">
+              <p>Utilisateur : {selectedUser ?? '–'}</p>
+              <p>Type : {countType ?? '–'}</p>
+              <p>Zone : {selectedLocation?.label ?? '–'}</p>
+            </div>
+            <ThemeToggle />
           </div>
         </div>
         <Stepper steps={STEPS} activeIndex={activeIndex} />

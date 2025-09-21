@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 export type CountType = 1 | 2
 
 export interface InventorySummary {
@@ -5,11 +7,16 @@ export interface InventorySummary {
   conflicts: number
 }
 
-export interface Location {
-  id: string
-  name: string
-  description?: string | null
-}
+export const LocationSchema = z.object({
+  id: z.string().uuid(),
+  code: z.string(),
+  label: z.string(),
+  description: z.string().nullable().optional(),
+})
+
+export const LocationsSchema = z.array(LocationSchema)
+
+export type Location = z.infer<typeof LocationSchema>
 
 export interface InventoryCheckResponse {
   hasActive: boolean

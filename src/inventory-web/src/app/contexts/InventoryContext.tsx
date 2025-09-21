@@ -123,6 +123,7 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
   return <InventoryContext.Provider value={value}>{children}</InventoryContext.Provider>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useInventory = () => {
   const context = useContext(InventoryContext)
   if (!context) {
