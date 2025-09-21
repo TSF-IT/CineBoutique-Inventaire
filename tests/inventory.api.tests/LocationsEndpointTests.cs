@@ -83,14 +83,14 @@ public sealed class LocationsEndpointTests : IClassFixture<TestDatabaseFixture>,
 
         var busy = payload.Single(item => item.Code == "S1");
         Assert.True(busy.IsBusy);
-        Assert.Equal(seed.RunId, busy.RunId);
-        Assert.Equal("alice.durand", busy.InProgressBy);
-        Assert.Equal(1, busy.CountType);
-        Assert.NotNull(busy.StartedAtUtc);
+        Assert.Equal(seed.RunId, busy.ActiveRunId);
+        Assert.Equal("alice.durand", busy.BusyBy);
+        Assert.Equal((short)1, busy.ActiveCountType);
+        Assert.NotNull(busy.ActiveStartedAtUtc);
 
         var free = payload.Single(item => item.Code == "S2");
         Assert.False(free.IsBusy);
-        Assert.Null(free.RunId);
+        Assert.Null(free.ActiveRunId);
 
         Assert.Equal(1, Factory.ConnectionCounter.CommandCount);
     }
@@ -115,7 +115,7 @@ public sealed class LocationsEndpointTests : IClassFixture<TestDatabaseFixture>,
         Assert.NotNull(payload);
         var busy = payload.Single(item => item.Code == "S1");
         Assert.False(busy.IsBusy);
-        Assert.Null(busy.RunId);
+        Assert.Null(busy.ActiveRunId);
         Assert.Equal(1, Factory.ConnectionCounter.CommandCount);
     }
 
@@ -286,10 +286,9 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType, @Operator);";
         Guid Id,
         string Code,
         string Label,
-        string? Description,
         bool IsBusy,
-        string? InProgressBy,
-        int? CountType,
-        Guid? RunId,
-        DateTimeOffset? StartedAtUtc);
+        string? BusyBy,
+        Guid? ActiveRunId,
+        short? ActiveCountType,
+        DateTimeOffset? ActiveStartedAtUtc);
 }

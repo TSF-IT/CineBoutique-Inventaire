@@ -8,17 +8,39 @@ import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { Page } from '../../components/Page'
 import { SectionTitle } from '../../components/SectionTitle'
 import { useAsync } from '../../hooks/useAsync'
+import type { InventorySummary } from '../../types/inventory'
+
+const formatLastActivity = (value: string | null) => {
+  if (!value) {
+    return 'Non disponible'
+  }
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return 'Non disponible'
+  }
+  return new Intl.DateTimeFormat('fr-FR', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date)
+}
 
 export const HomePage = () => {
   const navigate = useNavigate()
   const { data, loading, error } = useAsync(fetchInventorySummary, [], {
-    initialValue: { activeCounts: 0, conflicts: 0 },
+    initialValue: null,
   })
 
   const hasContextInfos = useMemo(
-    () => (data?.activeCounts ?? 0) > 0 || (data?.conflicts ?? 0) > 0,
-    [data?.activeCounts, data?.conflicts],
+    () => {
+      if (!data) {
+        return false
+      }
+      return (data.activeSessions ?? 0) > 0 || (data.openRuns ?? 0) > 0 || Boolean(data.lastActivityUtc)
+    },
+    [data?.activeSessions, data?.lastActivityUtc, data?.openRuns],
   )
+
+  const displaySummary: InventorySummary | null = data ?? null
 
   return (
     <Page>
@@ -36,25 +58,28 @@ export const HomePage = () => {
       <Card className="flex flex-col gap-4">
         <SectionTitle>État des inventaires</SectionTitle>
         {loading && <LoadingIndicator label="Chargement des indicateurs" />}
-        {Boolean(error) && (
-          <EmptyState title="Indisponible" description="Impossible de récupérer les informations pour l'instant." />
-        )}
-        {!loading && !error && data && hasContextInfos && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {!loading && hasContextInfos && displaySummary && (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="rounded-2xl border border-brand-300 bg-brand-100/70 p-5 dark:border-brand-500/30 dark:bg-brand-500/10">
-              <p className="text-sm uppercase text-brand-600 dark:text-brand-200">Comptages en cours</p>
-              <p className="mt-2 text-4xl font-bold text-brand-700 dark:text-white">{data.activeCounts}</p>
+              <p className="text-sm uppercase text-brand-600 dark:text-brand-200">Sessions actives</p>
+              <p className="mt-2 text-4xl font-bold text-brand-700 dark:text-white">{displaySummary.activeSessions}</p>
             </div>
-            <div className="rounded-2xl border border-red-300 bg-red-100/70 p-5 dark:border-red-500/40 dark:bg-red-500/10">
-              <p className="text-sm uppercase text-red-600 dark:text-red-200">Conflits détectés</p>
-              <p className="mt-2 text-4xl font-bold text-red-700 dark:text-red-200">{data.conflicts}</p>
+            <div className="rounded-2xl border border-emerald-300 bg-emerald-100/70 p-5 dark:border-emerald-500/40 dark:bg-emerald-500/10">
+              <p className="text-sm uppercase text-emerald-700 dark:text-emerald-200">Runs ouverts</p>
+              <p className="mt-2 text-4xl font-bold text-emerald-700 dark:text-emerald-100">{displaySummary.openRuns}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-300 bg-slate-100/70 p-5 dark:border-slate-600/60 dark:bg-slate-900/40">
+              <p className="text-sm uppercase text-slate-600 dark:text-slate-300">Dernière activité</p>
+              <p className="mt-2 text-lg font-semibold text-slate-800 dark:text-white">
+                {formatLastActivity(displaySummary.lastActivityUtc)}
+              </p>
             </div>
           </div>
         )}
-        {!loading && !error && data && !hasContextInfos && (
+        {!loading && (!displaySummary || !hasContextInfos || Boolean(error)) && (
           <EmptyState
-            title="Tout est calme"
-            description="Aucun comptage en cours ni conflit détecté. Vous pouvez démarrer sereinement."
+            title="Pas encore de données"
+            description="Le résumé d'inventaire n'est pas disponible pour le moment. Vous pourrez le consulter dès qu'un comptage aura débuté."
           />
         )}
       </Card>

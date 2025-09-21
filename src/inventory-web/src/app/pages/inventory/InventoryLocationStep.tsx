@@ -25,14 +25,12 @@ export const InventoryLocationStep = () => {
 
   const loadLocations = useCallback(
     async (options?: { isCancelled?: () => boolean }) => {
-      if (!countType) {
-        return
-      }
       const isCancelled = options?.isCancelled ?? (() => false)
       setLoading(true)
       setError(null)
       try {
-        const data = await fetchLocations({ countType })
+        const effectiveCountType = countType ?? 1
+        const data = await fetchLocations({ countType: effectiveCountType })
         if (!isCancelled()) {
           setLocations(Array.isArray(data) ? data : [])
         }
@@ -63,9 +61,6 @@ export const InventoryLocationStep = () => {
   }, [countType, navigate, selectedUser])
 
   useEffect(() => {
-    if (!countType) {
-      return
-    }
     let cancelled = false
     void loadLocations({ isCancelled: () => cancelled })
     return () => {
@@ -131,23 +126,21 @@ export const InventoryLocationStep = () => {
   }
 
   const handleJoin = (zone: Location) => {
-    if (!zone.runId) {
+    if (!zone.activeRunId) {
       return
     }
     setLocation(zone)
-    setSessionId(zone.runId)
+    setSessionId(zone.activeRunId)
     closeSheet()
     navigate('/inventory/session')
   }
 
   const handleRestart = async (zone: Location) => {
-    if (!countType) {
-      return
-    }
     setActionLoading(true)
     setActionError(null)
     try {
-      await restartInventoryRun(zone.id, countType)
+      const effectiveCountType = countType ?? 1
+      await restartInventoryRun(zone.id, effectiveCountType)
       handleStart(zone)
     } catch (err) {
       if (err instanceof ApiError && err.message) {
@@ -172,15 +165,15 @@ export const InventoryLocationStep = () => {
 
   const renderStatus = (zone: Location) => {
     if (zone.isBusy) {
-      const durationLabel = computeDurationLabel(zone.startedAtUtc)
+      const durationLabel = computeDurationLabel(zone.activeStartedAtUtc ?? null)
       return (
         <div className="flex flex-col gap-1" aria-live="polite">
-          <span className="inline-flex min-h-[28px] items-center gap-2 rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:bg-amber-500/20 dark:text-amber-200">
+          <span className="inline-flex min-h-[28px] items-center gap-2 rounded-full bg-red-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-red-700 dark:bg-red-500/20 dark:text-red-200">
             <span aria-hidden>🔒</span>
             <span>Occupée</span>
           </span>
-          <span className="text-sm text-amber-700 dark:text-amber-200">
-            par {zone.inProgressBy ?? 'collaborateur inconnu'}
+          <span className="text-sm text-red-700 dark:text-red-200">
+            par {zone.busyBy ?? 'collaborateur inconnu'}
             {durationLabel ? ` • ${durationLabel}` : ''}
           </span>
         </div>
@@ -249,9 +242,6 @@ export const InventoryLocationStep = () => {
                         {zone.code}
                       </span>
                       <span className="text-lg font-semibold">{zone.label}</span>
-                      {zone.description && (
-                        <span className="text-sm text-slate-500 dark:text-slate-400">{zone.description}</span>
-                      )}
                     </div>
                     {renderStatus(zone)}
                   </div>
@@ -271,7 +261,7 @@ export const InventoryLocationStep = () => {
       <SlidingPanel
         open={actionSheetOpen}
         onClose={closeSheet}
-        title={actionLocation?.label ? `Actions pour ${actionLocation.label}` : 'Actions de zone'}
+        title={actionLocation?.label ? `Zone ${actionLocation.label}` : 'Actions de zone'}
       >
         {actionLocation?.isBusy ? (
           <div className="flex flex-col gap-4">
@@ -281,10 +271,12 @@ export const InventoryLocationStep = () => {
             <Button
               fullWidth
               className="py-3"
+              variant="secondary"
+              disabled={!actionLocation?.activeRunId}
               onClick={() => actionLocation && handleJoin(actionLocation)}
               data-testid="join-run"
             >
-              Rejoindre le comptage en cours
+              Reprendre le comptage en cours
             </Button>
             <Button
               fullWidth
@@ -301,6 +293,14 @@ export const InventoryLocationStep = () => {
                 {actionError}
               </p>
             )}
+            {!actionLocation?.activeRunId && (
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Aucun run actif détecté. Lancez un nouveau comptage si nécessaire.
+              </p>
+            )}
+            <Button fullWidth variant="ghost" className="py-3" onClick={closeSheet}>
+              Annuler
+            </Button>
           </div>
         ) : (
           <div className="flex flex-col gap-4">
