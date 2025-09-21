@@ -12,8 +12,8 @@ import { InventorySessionPage } from '../pages/inventory/InventorySessionPage'
 const { fetchLocationsMock, verifyInventoryMock, fetchProductMock } = vi.hoisted(() => ({
   fetchLocationsMock: vi.fn(() =>
     Promise.resolve([
-      { id: 'zone-1', name: 'Réserve', description: 'Arrière boutique' },
-      { id: 'zone-2', name: 'Salle 1' },
+      { id: 'zone-1', code: 'RES', label: 'Réserve', description: 'Arrière boutique' },
+      { id: 'zone-2', code: 'SAL1', label: 'Salle 1' },
     ]),
   ),
   verifyInventoryMock: vi.fn(() => Promise.resolve({ hasActive: false })),

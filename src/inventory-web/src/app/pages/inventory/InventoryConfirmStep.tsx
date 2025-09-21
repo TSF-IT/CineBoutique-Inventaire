@@ -53,8 +53,8 @@ export const InventoryConfirmStep = () => {
   return (
     <div className="flex flex-col gap-6">
       <Card className="flex flex-col gap-4">
-        <h2 className="text-2xl font-semibold text-white">Vérification de la zone</h2>
-        <p className="text-sm text-slate-400">
+        <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Vérification de la zone</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
           Nous vérifions si un comptage est déjà en cours pour ce type et cette zone afin d&apos;éviter les doublons.
         </p>
         {loading && <LoadingIndicator label="Vérification en cours" />}
@@ -72,9 +72,9 @@ export const InventoryConfirmStep = () => {
           />
         )}
         {!loading && !error && data?.hasActive && (
-          <Card className="bg-red-500/10">
-            <h3 className="text-lg font-semibold text-red-200">Comptage existant</h3>
-            <p className="text-sm text-red-100">
+          <Card className="bg-red-100 text-red-800 dark:bg-red-500/10 dark:text-red-100">
+            <h3 className="text-lg font-semibold">Comptage existant</h3>
+            <p className="text-sm text-red-700 dark:text-red-200">
               Un inventaire est déjà en cours sur cette zone par {data.owner ?? 'un collègue'}. Choisissez la marche à
               suivre.
             </p>
