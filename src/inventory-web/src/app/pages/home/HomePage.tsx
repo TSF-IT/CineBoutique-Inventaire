@@ -23,9 +23,11 @@ export const HomePage = () => {
   return (
     <Page>
       <header className="flex flex-col gap-4">
-        <p className="text-sm uppercase tracking-[0.3em] text-brand-200">CinéBoutique</p>
-        <h1 className="text-4xl font-black leading-tight text-white sm:text-5xl">Inventaire simplifié</h1>
-        <p className="max-w-xl text-base text-slate-300">
+        <p className="text-sm uppercase tracking-[0.3em] text-brand-600 dark:text-brand-200">CinéBoutique</p>
+        <h1 className="text-4xl font-black leading-tight text-slate-900 dark:text-white sm:text-5xl">
+          Inventaire simplifié
+        </h1>
+        <p className="max-w-xl text-base text-slate-600 dark:text-slate-300">
           Lancez un comptage en quelques gestes, scannez les produits depuis la caméra ou une douchette Bluetooth et
           assurez un suivi fiable de vos zones.
         </p>
@@ -39,13 +41,13 @@ export const HomePage = () => {
         )}
         {!loading && !error && data && hasContextInfos && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="rounded-2xl border border-brand-500/30 bg-brand-500/10 p-5">
-              <p className="text-sm uppercase text-brand-200">Comptages en cours</p>
-              <p className="mt-2 text-4xl font-bold text-white">{data.activeCounts}</p>
+            <div className="rounded-2xl border border-brand-300 bg-brand-100/70 p-5 dark:border-brand-500/30 dark:bg-brand-500/10">
+              <p className="text-sm uppercase text-brand-600 dark:text-brand-200">Comptages en cours</p>
+              <p className="mt-2 text-4xl font-bold text-brand-700 dark:text-white">{data.activeCounts}</p>
             </div>
-            <div className="rounded-2xl border border-red-500/40 bg-red-500/10 p-5">
-              <p className="text-sm uppercase text-red-200">Conflits détectés</p>
-              <p className="mt-2 text-4xl font-bold text-red-200">{data.conflicts}</p>
+            <div className="rounded-2xl border border-red-300 bg-red-100/70 p-5 dark:border-red-500/40 dark:bg-red-500/10">
+              <p className="text-sm uppercase text-red-600 dark:text-red-200">Conflits détectés</p>
+              <p className="mt-2 text-4xl font-bold text-red-700 dark:text-red-200">{data.conflicts}</p>
             </div>
           </div>
         )}
@@ -67,7 +69,7 @@ export const HomePage = () => {
         >
           Débuter un inventaire
         </Button>
-        <Link className="text-center text-sm text-slate-400 underline" to="/admin">
+        <Link className="text-center text-sm text-slate-600 underline dark:text-slate-400" to="/admin">
           Espace administrateur
         </Link>
       </div>

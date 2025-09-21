@@ -107,7 +107,7 @@ export const InventorySessionPage = () => {
         setManualOpen(false)
         setManualName('')
         setManualEan('')
-      } catch (error) {
+      } catch {
         setErrorMessage("Échec de la création du produit. Vérifiez l'EAN et réessayez.")
       } finally {
         setManualLoading(false)
@@ -131,11 +131,11 @@ export const InventorySessionPage = () => {
     <div className="flex flex-col gap-6">
       <Card className="space-y-4">
         <div className="flex flex-col gap-2">
-          <h2 className="text-2xl font-semibold text-white">Session de comptage</h2>
-          <p className="text-sm text-slate-400">
-            {location?.name} • {countType} comptage{countType && countType > 1 ? 's' : ''} • {selectedUser}
+          <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Session de comptage</h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            {location?.label} • {countType} comptage{countType && countType > 1 ? 's' : ''} • {selectedUser}
           </p>
-          {sessionId && <p className="text-xs text-slate-500">Session existante #{sessionId}</p>}
+          {sessionId && <p className="text-xs text-slate-500 dark:text-slate-400">Session existante #{sessionId}</p>}
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <Button variant="secondary" onClick={() => setUseCamera((prev) => !prev)}>
@@ -153,14 +153,14 @@ export const InventorySessionPage = () => {
           onKeyDown={handleInputKeyDown}
           autoFocus
         />
-        {status && <p className="text-sm text-brand-200">{status}</p>}
-        {errorMessage && <p className="text-sm text-red-300">{errorMessage}</p>}
+        {status && <p className="text-sm text-brand-600 dark:text-brand-200">{status}</p>}
+        {errorMessage && <p className="text-sm text-red-600 dark:text-red-300">{errorMessage}</p>}
       </Card>
 
       <Card className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-xl font-semibold text-white">Articles scannés</h3>
-          <span className="text-sm text-slate-400">{items.length} références</span>
+          <h3 className="text-xl font-semibold text-slate-900 dark:text-white">Articles scannés</h3>
+          <span className="text-sm text-slate-600 dark:text-slate-400">{items.length} références</span>
         </div>
         {sortedItems.length === 0 && (
           <EmptyState
@@ -170,25 +170,28 @@ export const InventorySessionPage = () => {
         )}
         <ul className="flex flex-col gap-3">
           {sortedItems.map((item) => (
-            <li key={item.product.ean} className="flex items-center justify-between rounded-2xl bg-slate-900/60 p-4">
+            <li
+              key={item.product.ean}
+              className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/60"
+            >
               <div>
-                <p className="text-lg font-semibold text-white">{item.product.name}</p>
-                <p className="text-xs text-slate-400">EAN {item.product.ean}</p>
-                {item.isManual && <p className="text-xs text-amber-300">Ajout manuel</p>}
+                <p className="text-lg font-semibold text-slate-900 dark:text-white">{item.product.name}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">EAN {item.product.ean}</p>
+                {item.isManual && <p className="text-xs text-amber-600 dark:text-amber-300">Ajout manuel</p>}
               </div>
               <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  className="h-10 w-10 rounded-full bg-slate-800 text-xl text-white"
+                  className="h-10 w-10 rounded-full border border-slate-300 bg-slate-100 text-xl text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
                   onClick={() => adjustQuantity(item.product.ean, -1)}
                   aria-label={`Retirer ${item.product.name}`}
                 >
                   –
                 </button>
-                <span className="text-2xl font-bold text-white">{item.quantity}</span>
+                <span className="text-2xl font-bold text-slate-900 dark:text-white">{item.quantity}</span>
                 <button
                   type="button"
-                  className="h-10 w-10 rounded-full bg-brand-600 text-xl text-white"
+                  className="h-10 w-10 rounded-full bg-brand-600 text-xl text-white dark:bg-brand-500"
                   onClick={() => adjustQuantity(item.product.ean, 1)}
                   aria-label={`Ajouter ${item.product.name}`}
                 >

@@ -4,7 +4,7 @@ import clsx from 'clsx'
 export const Page = ({ className, ...props }: HTMLAttributes<HTMLDivElement>) => (
   <div
     className={clsx(
-      'mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 px-4 py-8 text-slate-100',
+      'mx-auto flex min-h-screen w-full max-w-3xl flex-col gap-6 bg-slate-50 px-4 py-8 text-slate-900 dark:bg-gradient-to-b dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 dark:text-slate-100',
       className,
     )}
     {...props}

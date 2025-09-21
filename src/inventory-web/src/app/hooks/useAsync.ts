@@ -1,3 +1,6 @@
+/*
+  eslint-disable react-hooks/exhaustive-deps -- gestion personnalisée des dépendances pour autoriser un tableau dynamique
+*/
 import { useCallback, useEffect, useState } from 'react'
 
 interface UseAsyncOptions<T> {
