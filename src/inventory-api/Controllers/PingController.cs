@@ -1,21 +1,16 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
-namespace CineBoutique.Inventory.Api.Controllers;
-
-[ApiController]
-[Route("api/[controller]")]
-[Produces("application/json")]
-public class PingController : ControllerBase
+namespace CineBoutique.Inventory.Api.Controllers
 {
-    /// <summary>
-    /// Vérifie que l'API répond.
-    /// </summary>
-    /// <returns>"pong"</returns>
-    [HttpGet]
-    [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
-    public IActionResult Get()
+    [ApiController]
+    [Route("api/[controller]")]
+    [Produces("application/json")]
+    public class PingController : ControllerBase
     {
-        return Ok(new { message = "pong" });
+        /// <summary>Vérifie que l’API répond.</summary>
+        [HttpGet]
+        [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
+        public IActionResult Get() => Ok(new { message = "pong" });
     }
 }
