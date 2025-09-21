@@ -195,7 +195,17 @@ try
     app.MapGet("/locations", async (IDbConnection connection, CancellationToken cancellationToken) =>
     {
         await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
-        var locations = await connection.QueryAsync<LocationDto>(new CommandDefinition("SELECT \"Id\", \"Code\", \"Name\" FROM \"Location\" ORDER BY \"Code\"", cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        const string sql = """
+            SELECT ""Code"", ""Label""
+            FROM ""public"".""Location""
+            ORDER BY ""Code"";
+            """;
+
+        var locations = await connection
+            .QueryAsync<LocationDto>(new CommandDefinition(sql, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
         return Results.Ok(locations);
     });
 
