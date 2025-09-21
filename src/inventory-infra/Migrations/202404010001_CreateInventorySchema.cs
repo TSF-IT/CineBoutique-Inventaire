@@ -1,4 +1,3 @@
-using System.Linq;
 using FluentMigrator;
 
 namespace CineBoutique.Inventory.Infrastructure.Migrations;
@@ -32,24 +31,10 @@ public sealed class CreateInventorySchema : Migration
 
         Create.Table("Location")
             .WithColumn("Id").AsGuid().PrimaryKey().WithDefaultValue(SystemMethods.NewGuid)
-            .WithColumn("Code").AsString(32).NotNullable().Unique()
+            .WithColumn("Code").AsString(32).NotNullable()
             .WithColumn("Label").AsString(128).NotNullable();
 
-        if (!Schema.Table("Location").Index("IX_Location_Code").Exists())
-        {
-            Create.Index("IX_Location_Code").OnTable("Location").WithOptions().Unique()
-                .OnColumn("Code").Ascending();
-        }
-
-        var locationValues = string.Join(",\n", Enumerable.Range(1, 20).Select(i => $"('B{i}', 'Zone B{i}')")
-            .Concat(Enumerable.Range(1, 19).Select(i => $"('S{i}', 'Zone S{i}')")));
-
-        var locationSeedSql = $@"
-INSERT INTO ""Location"" (""Code"", ""Label"")
-VALUES {locationValues}
-ON CONFLICT (""Code"") DO UPDATE SET ""Label"" = EXCLUDED.""Label"";";
-
-        Execute.Sql(locationSeedSql);
+        Execute.Sql("CREATE UNIQUE INDEX IF NOT EXISTS \"IX_Location_Code\" ON \"public\".\"Location\" (\"Code\" ASC);");
 
         Create.Table("InventorySession")
             .WithColumn("Id").AsGuid().PrimaryKey().WithDefaultValue(SystemMethods.NewGuid)
