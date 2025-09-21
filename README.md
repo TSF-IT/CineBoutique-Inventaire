@@ -16,28 +16,34 @@ Chaque projet .NET cible .NET 8 et applique des analyzers configurés en avertis
 
 ## Démarrage rapide en local
 
-Une stack Docker Compose est fournie pour orchestrer l'API et PostgreSQL. La base de données utilisée est nommée `cineboutique`.
+Une stack Docker Compose est fournie pour orchestrer l'API ASP.NET Core, la base PostgreSQL et la PWA React servie par Nginx.
 
 ```bash
-docker compose build --no-cache
-docker compose up
+docker compose up --build -d
 ```
 
-Si un volume de données persiste d'une exécution précédente, créez manuellement la base :
+Une fois les conteneurs démarrés :
 
-```bash
-docker exec -it cineboutique-inventaire-db-1 psql -U postgres -d postgres -c "CREATE DATABASE cineboutique;"
-```
+- API : http://localhost:8080/swagger
+- Front PWA : http://localhost:3000
 
-Dans un second terminal, vérifiez la santé et la connectivité de l'API :
+Les migrations FluentMigrator et le seed de démonstration (zones `B1` à `B20`, `S1` à `S19` et 50 produits factices) sont exécutés automatiquement au démarrage lorsque `AppSettings:SeedOnStartup` vaut `true` (activé par défaut en environnement `Development`).
+
+> 💡 Si un volume de données persiste d'une exécution précédente, créez manuellement la base :
+>
+> ```bash
+> docker exec -it cineboutique-inventaire-db-1 psql -U postgres -d postgres -c "CREATE DATABASE cineboutique;"
+> ```
+
+Pour vérifier la santé et la connectivité de l'API :
 
 ```bash
 curl http://localhost:8080/health
 curl http://localhost:8080/ready
-curl http://localhost:8080/locations
+curl http://localhost:8080/api/locations
 ```
 
-Les migrations FluentMigrator et le seed de démonstration (zones `B1` à `B20`, `S1` à `S19` et 50 produits factices) sont exécutés automatiquement au démarrage lorsque `AppSettings:SeedOnStartup` vaut `true` (activé par défaut en environnement `Development`). Les utilisateurs de test sont définis dans `src/inventory-api/appsettings.Development.json` :
+Les utilisateurs de test sont définis dans `src/inventory-api/appsettings.Development.json` :
 
 - Alice — PIN `1111`
 - Bob — PIN `2222`
@@ -68,6 +74,36 @@ dotnet build
 ```
 
 Les migrations sont exécutées automatiquement au démarrage de l'API.
+
+### Client web (React + Vite + TailwindCSS)
+
+Installation des dépendances et exécution en mode développement :
+
+```bash
+cd src/inventory-web
+npm install
+npm run dev
+```
+
+Construction de la PWA et exécution de la suite de tests :
+
+```bash
+npm run build
+npm run test
+```
+
+Fonctionnalités principales :
+
+- PWA mobile-first avec manifest, service worker (vite-plugin-pwa) et icônes servies via CDN (personnalisables hors dépôt).
+- Workflow guidé pour lancer un inventaire (sélection utilisateur → type → zone → vérification des sessions actives).
+- Scan des codes-barres via caméra (getUserMedia + `@zxing/browser`) ou douchette Bluetooth simulée via champ de saisie.
+- Gestion des produits hors référentiel (ajout manuel avec panneau coulissant).
+- Espace administrateur protégé (login + CRUD des zones avec interactions swipe).
+- Couverture de tests Vitest + Testing Library sur l'accueil, le workflow et la saisie par douchette.
+
+### Ressources graphiques
+
+Les icônes et logos ne sont plus versionnés afin de permettre l'export GitHub sans binaires. Référez-vous à `src/inventory-web/assets/README.md` et `src/inventory-web/public/assets/README.md` pour connaître l'emplacement attendu des visuels locaux et la procédure de personnalisation via CDN.
 
 ### Vérifications PostgreSQL en ligne de commande
 
