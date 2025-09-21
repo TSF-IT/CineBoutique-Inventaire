@@ -14,6 +14,7 @@ using FluentMigrator.Runner.Processors;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
 using Serilog;
 using Serilog.Formatting.Compact;
 
@@ -88,6 +89,21 @@ try
 
     builder.Services.AddInventoryInfrastructure(builder.Configuration);
 
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen(c =>
+    {
+        c.SwaggerDoc("v1", new OpenApiInfo { Title = "CinéBoutique Inventory API", Version = "v1" });
+
+        var asmName = System.Reflection.Assembly.GetExecutingAssembly().GetName().Name;
+        var xmlPath = System.IO.Path.Combine(AppContext.BaseDirectory, $"{asmName}.xml");
+        if (System.IO.File.Exists(xmlPath))
+        {
+            c.IncludeXmlComments(xmlPath);
+        }
+    });
+
+    builder.Services.AddControllers();
+
     builder.Services.AddScoped<IDbConnection>(sp =>
     {
         var factory = sp.GetRequiredService<IDbConnectionFactory>();
@@ -153,12 +169,21 @@ try
         app.UseCors(DevCorsPolicyName);
     }
 
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "CinéBoutique Inventory API v1");
+        c.RoutePrefix = "swagger";
+    });
+
     app.UseSerilogRequestLogging();
 
     app.UseAuthentication();
     app.UseAuthorization();
 
-    app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+    app.MapGet("/health", () => Results.Json(new { status = "ok" }));
+
+    app.MapControllers();
 
     app.MapGet("/ready", async (IDbConnection connection, CancellationToken cancellationToken) =>
     {
