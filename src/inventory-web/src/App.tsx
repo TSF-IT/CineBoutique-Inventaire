@@ -13,20 +13,13 @@ import { AdminLocationsPage } from './app/pages/admin/AdminLocationsPage'
 import { useAuth } from './app/contexts/AuthContext'
 import { Card } from './app/components/Card'
 import { LoadingIndicator } from './app/components/LoadingIndicator'
+import { AppErrorBoundary } from './app/components/AppErrorBoundary'
 
 const RouterView = () => {
   const { isAuthenticated, initialising, user } = useAuth()
   const isAdmin = Boolean(user?.roles.includes('Admin'))
 
-  if (initialising) {
-    return (
-      <Card className="mx-auto mt-20 max-w-md">
-        <LoadingIndicator label="Initialisation de la session" />
-      </Card>
-    )
-  }
-
-  return useRoutes([
+  const routing = useRoutes([
     { path: '/', element: <HomePage /> },
     {
       path: '/inventory',
@@ -49,12 +42,25 @@ const RouterView = () => {
     },
     { path: '*', element: <Navigate to="/" replace /> },
   ])
+
+  if (initialising) {
+    return (
+      <Card className="mx-auto mt-20 max-w-md">
+        <LoadingIndicator label="Initialisation de la session" />
+      </Card>
+    )
+  }
+
+  return routing
 }
 
 export const App = () => (
   <AppProviders>
-    <BrowserRouter>
-      <RouterView />
-    </BrowserRouter>
+    <AppErrorBoundary>
+      {/* Migration React Router v6 → v7 : https://reactrouter.com/upgrading/v6 */}
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <RouterView />
+      </BrowserRouter>
+    </AppErrorBoundary>
   </AppProviders>
 )

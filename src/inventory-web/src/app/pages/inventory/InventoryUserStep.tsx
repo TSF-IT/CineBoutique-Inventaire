@@ -29,8 +29,10 @@ export const InventoryUserStep = () => {
   return (
     <div className="flex flex-col gap-6">
       <Card className="flex flex-col gap-4">
-        <h2 className="text-2xl font-semibold text-white">Qui réalise le comptage ?</h2>
-        <p className="text-sm text-slate-400">Sélectionnez votre profil pour assurer la traçabilité des comptages.</p>
+        <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Qui réalise le comptage ?</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Sélectionnez votre profil pour assurer la traçabilité des comptages.
+        </p>
         <TextField
           label="Rechercher"
           placeholder="Tapez un prénom"
@@ -47,8 +49,8 @@ export const InventoryUserStep = () => {
                 onClick={() => handleSelect(operator)}
                 className={`rounded-2xl border px-4 py-4 text-center text-sm font-semibold transition-all ${
                   isSelected
-                    ? 'border-brand-400 bg-brand-500/20 text-brand-100'
-                    : 'border-slate-700 bg-slate-900/40 text-slate-200 hover:border-brand-500/40'
+                    ? 'border-brand-400 bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-100'
+                    : 'border-slate-200 bg-white text-slate-700 hover:border-brand-400/40 hover:bg-brand-50 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200'
                 }`}
               >
                 {operator}

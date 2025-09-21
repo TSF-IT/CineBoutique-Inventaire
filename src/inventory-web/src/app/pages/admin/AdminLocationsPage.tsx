@@ -28,11 +28,11 @@ export const AdminLocationsPage = () => {
       setCreating(true)
       setFeedback(null)
       try {
-        const location = await createLocation({ name: newLocationName.trim() })
+        const location = await createLocation({ label: newLocationName.trim() })
         setData((prev) => ([...(prev ?? []), location]))
         setNewLocationName('')
         setFeedback('Zone créée avec succès.')
-      } catch (err) {
+      } catch {
         setFeedback('Impossible de créer la zone. Réessayez.')
       } finally {
         setCreating(false)
@@ -42,28 +42,28 @@ export const AdminLocationsPage = () => {
   )
 
   const handleRename = async (location: Location) => {
-    const nextName = window.prompt('Nouveau nom de zone', location.name)
-    if (!nextName || nextName.trim() === location.name) {
+    const nextName = window.prompt('Nouveau libellé de zone', location.label)
+    if (!nextName || nextName.trim() === location.label) {
       return
     }
     try {
-      const updated = await updateLocation(location.id, { name: nextName.trim() })
+      const updated = await updateLocation(location.id, { label: nextName.trim() })
       setData((prev) => prev?.map((item) => (item.id === updated.id ? updated : item)) ?? [])
       setFeedback('Zone renommée.')
-    } catch (err) {
+    } catch {
       setFeedback('Impossible de renommer cette zone.')
     }
   }
 
   const handleDelete = async (location: Location) => {
-    if (!window.confirm(`Supprimer la zone ${location.name} ?`)) {
+    if (!window.confirm(`Supprimer la zone ${location.label} ?`)) {
       return
     }
     try {
       await deleteLocation(location.id)
       setData((prev) => prev?.filter((item) => item.id !== location.id) ?? [])
       setFeedback('Zone supprimée.')
-    } catch (err) {
+    } catch {
       setFeedback('Suppression impossible. Retentez plus tard.')
     }
   }
@@ -75,7 +75,7 @@ export const AdminLocationsPage = () => {
   return (
     <div className="flex flex-col gap-6">
       <Card className="flex flex-col gap-4">
-        <h2 className="text-xl font-semibold text-white">Ajouter une zone</h2>
+        <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Ajouter une zone</h2>
         <form className="flex flex-col gap-4 sm:flex-row" onSubmit={handleCreate}>
           <TextField
             label="Libellé"
@@ -88,12 +88,12 @@ export const AdminLocationsPage = () => {
             {creating ? 'Création…' : 'Ajouter'}
           </Button>
         </form>
-        {feedback && <p className="text-sm text-slate-400">{feedback}</p>}
+        {feedback && <p className="text-sm text-slate-600 dark:text-slate-400">{feedback}</p>}
       </Card>
 
       <Card className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-white">Zones existantes</h2>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Zones existantes</h2>
           <Button variant="ghost" onClick={() => execute()}>
             Actualiser
           </Button>
@@ -109,8 +109,15 @@ export const AdminLocationsPage = () => {
                 onDelete={() => handleDelete(locationItem)}
               >
                 <div>
-                  <p className="text-lg font-semibold text-white">{locationItem.name}</p>
-                  {locationItem.description && <p className="text-sm text-slate-400">{locationItem.description}</p>}
+                  {locationItem.code && (
+                    <p className="text-sm font-semibold uppercase tracking-widest text-brand-500">
+                      {locationItem.code}
+                    </p>
+                  )}
+                  <p className="text-lg font-semibold text-slate-900 dark:text-white">{locationItem.label}</p>
+                  {locationItem.description && (
+                    <p className="text-sm text-slate-600 dark:text-slate-400">{locationItem.description}</p>
+                  )}
                 </div>
               </SwipeActionItem>
             ))}
