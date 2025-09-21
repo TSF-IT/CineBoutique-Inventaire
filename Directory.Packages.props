@@ -25,6 +25,9 @@
     <!-- Authentication -->
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
 
+    <!-- Documentation -->
+    <PackageVersion Include="Swashbuckle.AspNetCore" Version="6.5.0" />
+
     <!-- Analyzers -->
     <PackageVersion Include="Microsoft.CodeAnalysis.NetAnalyzers" Version="8.0.0" />
 
