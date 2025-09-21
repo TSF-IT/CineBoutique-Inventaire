@@ -12,6 +12,7 @@ using FluentMigrator.Runner;
 using FluentMigrator.Runner.Initialization;
 using FluentMigrator.Runner.Processors;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -192,21 +193,29 @@ try
         return Results.Ok(new { status = "ready" });
     });
 
-    app.MapGet("/locations", async (IDbConnection connection, CancellationToken cancellationToken) =>
+    app.MapGet("/api/locations", async (IDbConnection connection, CancellationToken cancellationToken) =>
     {
         await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-        const string sql = """
-            SELECT ""Code"", ""Label""
-            FROM ""public"".""Location""
-            ORDER BY ""Code"";
-            """;
+        const string sql = @"
+SELECT ""Code"", ""Label""
+FROM ""public"".""Location""
+ORDER BY ""Code"";";
 
         var locations = await connection
             .QueryAsync<LocationDto>(new CommandDefinition(sql, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
         return Results.Ok(locations);
+    })
+    .WithName("GetLocations")
+    .WithTags("Locations")
+    .Produces<IEnumerable<LocationDto>>(StatusCodes.Status200OK)
+    .WithOpenApi(op =>
+    {
+        op.Summary = "Liste les emplacements (locations)";
+        op.Description = "Retourne Code et Label pour toutes les locations, triées par Code.";
+        return op;
     });
 
     app.MapGet("/products/{code}", async (string code, IDbConnection connection, CancellationToken cancellationToken) =>
