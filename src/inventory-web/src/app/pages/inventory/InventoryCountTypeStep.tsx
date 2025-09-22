@@ -39,9 +39,7 @@ export const InventoryCountTypeStep = () => {
                     : 'border-slate-200 bg-white text-slate-800 hover:border-brand-400/40 hover:bg-brand-50 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200'
                 }`}
               >
-                <span className="text-4xl font-bold">
-                  {option} comptage{option > 1 ? 's' : ''}
-                </span>
+                <span className="text-4xl font-bold">Comptage n°{option}</span>
                 <span className="text-sm text-slate-500 dark:text-slate-400">
                   {option === 1
                     ? 'Rapide et efficace pour les zones à faible risque.'
