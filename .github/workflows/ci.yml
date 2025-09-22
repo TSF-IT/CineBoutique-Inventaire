@@ -14,13 +14,15 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+      - name: Ensure Docker is running
+        run: docker info
       - name: Restore
         run: dotnet restore CineBoutique.Inventory.sln
       - name: Build
         run: dotnet build CineBoutique.Inventory.sln --configuration Release --no-restore
-      - name: Test
+      - name: Test (API + Domain)
         env:
-          ASPNETCORE_ENVIRONMENT: CI
+          ASPNETCORE_ENVIRONMENT: "CI"
           DISABLE_SERILOG: "true"
           DISABLE_MIGRATIONS: "true"
         run: dotnet test CineBoutique.Inventory.sln --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
