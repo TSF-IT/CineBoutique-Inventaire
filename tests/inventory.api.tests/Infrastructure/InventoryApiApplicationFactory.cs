@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 
 namespace CineBoutique.Inventory.Api.Tests.Infrastructure;
@@ -25,6 +26,9 @@ public sealed class InventoryApiApplicationFactory : WebApplicationFactory<Progr
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.UseSetting("ASPNETCORE_ENVIRONMENT", "Testing");
+        builder.ConfigureLogging(logging => logging.ClearProviders());
+
         builder.ConfigureAppConfiguration((_, configurationBuilder) =>
         {
             var overrides = new Dictionary<string, string?>
