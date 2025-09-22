@@ -42,6 +42,8 @@ builder.Configuration
 bool disableSerilog = builder.Configuration["DISABLE_SERILOG"]?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;
 bool disableMigrations = builder.Configuration["DISABLE_MIGRATIONS"]?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;
 
+var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+
 var useSerilog = !disableSerilog;
 
 if (useSerilog)
@@ -153,15 +155,24 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
-const string DevCorsPolicyName = "DevelopmentCorsPolicy";
+const string PublicApiCorsPolicy = "PublicApi";
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy(DevCorsPolicyName, policyBuilder =>
+    options.AddPolicy(PublicApiCorsPolicy, policyBuilder =>
     {
+        if (allowedOrigins.Length > 0)
+        {
+            policyBuilder.WithOrigins(allowedOrigins);
+        }
+        else
+        {
+            policyBuilder.SetIsOriginAllowed(_ => true);
+        }
+
         policyBuilder
-            .AllowAnyOrigin()
+            .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
             .AllowAnyHeader()
-            .AllowAnyMethod();
+            .SetPreflightMaxAge(TimeSpan.FromHours(1));
     });
 });
 
@@ -209,9 +220,10 @@ if (runMigrations)
     }
 }
 
+app.UseCors(PublicApiCorsPolicy);
+
 if (app.Environment.IsDevelopment())
 {
-    app.UseCors(DevCorsPolicyName);
     app.UseSwagger();
     app.UseSwaggerUI(c =>
     {
@@ -225,19 +237,19 @@ if (useSerilog)
     app.UseSerilogRequestLogging();
 }
 
-    app.UseAuthentication();
-    app.UseAuthorization();
+app.UseAuthentication();
+app.UseAuthorization();
 
-    app.MapGet("/health", () => Results.Json(new { status = "ok" }));
+app.MapGet("/health", () => Results.Json(new { status = "ok" }));
 
-    app.MapControllers();
+app.MapControllers();
 
-    app.MapGet("/ready", async (IDbConnection connection, CancellationToken cancellationToken) =>
-    {
-        await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
-        _ = await connection.ExecuteScalarAsync<int>(new CommandDefinition("SELECT 1", cancellationToken: cancellationToken)).ConfigureAwait(false);
-        return Results.Ok(new { status = "ready" });
-    });
+app.MapGet("/ready", async (IDbConnection connection, CancellationToken cancellationToken) =>
+{
+    await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+    _ = await connection.ExecuteScalarAsync<int>(new CommandDefinition("SELECT 1", cancellationToken: cancellationToken)).ConfigureAwait(false);
+    return Results.Ok(new { status = "ready" });
+});
 
     app.MapGet("/api/inventories/summary", async (IDbConnection connection, CancellationToken cancellationToken) =>
     {

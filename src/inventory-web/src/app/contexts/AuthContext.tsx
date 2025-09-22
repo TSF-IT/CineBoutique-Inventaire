@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { login as loginRequest } from '../api/authApi'
-import { onUnauthorized, setAuthToken } from '../api/client'
+import { onUnauthorized, setAuthToken } from '../../lib/api/http'
 import type { AuthUser } from '../types/auth'
 
 interface AuthContextValue {

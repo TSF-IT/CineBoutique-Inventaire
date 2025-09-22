@@ -1,5 +1,5 @@
 import type { Location } from '../types/inventory'
-import { apiClient } from './client'
+import { http } from '../../lib/api/http'
 
 interface LocationPayload {
   label: string
@@ -7,19 +7,22 @@ interface LocationPayload {
   description?: string
 }
 
-export const createLocation = async (payload: LocationPayload): Promise<Location> => {
-  const { data } = await apiClient.post<Location>('/locations', payload)
-  return data
-}
+export const createLocation = async (payload: LocationPayload): Promise<Location> =>
+  http<Location>('/locations', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
 
 export const updateLocation = async (
   id: string,
   payload: Partial<LocationPayload>,
-): Promise<Location> => {
-  const { data } = await apiClient.put<Location>(`/locations/${id}`, payload)
-  return data
-}
+): Promise<Location> =>
+  http<Location>(`/locations/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  })
 
-export const deleteLocation = async (id: string): Promise<void> => {
-  await apiClient.delete(`/locations/${id}`)
-}
+export const deleteLocation = async (id: string): Promise<void> =>
+  http<void>(`/locations/${id}`, {
+    method: 'DELETE',
+  })

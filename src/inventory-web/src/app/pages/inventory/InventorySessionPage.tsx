@@ -1,4 +1,3 @@
-import { isAxiosError } from 'axios'
 import type { FormEvent, KeyboardEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -10,6 +9,18 @@ import { EmptyState } from '../../components/EmptyState'
 import { SlidingPanel } from '../../components/SlidingPanel'
 import { TextField } from '../../components/TextField'
 import { useInventory } from '../../contexts/InventoryContext'
+import { HttpError } from '../../../lib/api/http'
+
+const buildHttpMessage = (prefix: string, error: HttpError) => {
+  const diagnostics: string[] = []
+  if (typeof error.status === 'number') {
+    diagnostics.push(`HTTP ${error.status}`)
+  }
+  if (error.url) {
+    diagnostics.push(`URL: ${error.url}`)
+  }
+  return diagnostics.length > 0 ? `${prefix} | ${diagnostics.join(' | ')}` : prefix
+}
 
 export const InventorySessionPage = () => {
   const navigate = useNavigate()
@@ -66,12 +77,16 @@ export const InventorySessionPage = () => {
         addOrIncrementItem(product)
         setStatus(`${product.name} ajouté`)
       } catch (error) {
-        if (isAxiosError(error) && error.response?.status === 404) {
+        if (error instanceof HttpError && error.status === 404) {
           setStatus(null)
           setManualEan(value)
           setManualOpen(true)
         } else {
-          setErrorMessage('Impossible de récupérer le produit. Réessayez ou ajoutez-le manuellement.')
+          if (error instanceof HttpError) {
+            setErrorMessage(buildHttpMessage('Erreur réseau', error))
+          } else {
+            setErrorMessage('Impossible de récupérer le produit. Réessayez ou ajoutez-le manuellement.')
+          }
         }
       }
     },
@@ -107,8 +122,12 @@ export const InventorySessionPage = () => {
         setManualOpen(false)
         setManualName('')
         setManualEan('')
-      } catch {
-        setErrorMessage("Échec de la création du produit. Vérifiez l'EAN et réessayez.")
+      } catch (error) {
+        if (error instanceof HttpError) {
+          setErrorMessage(buildHttpMessage('Création impossible', error))
+        } else {
+          setErrorMessage("Échec de la création du produit. Vérifiez l'EAN et réessayez.")
+        }
       } finally {
         setManualLoading(false)
       }
