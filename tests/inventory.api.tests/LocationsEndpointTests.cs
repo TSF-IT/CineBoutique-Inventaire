@@ -11,39 +11,38 @@ using System.Data;
 using System.Data.Common;
 using System.Net;
 using System.Net.Http.Json;
+using System.Linq;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
-using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
 
-public sealed class LocationsEndpointTests : IClassFixture<TestDatabaseFixture>, IAsyncLifetime
+[Collection("ApiTestsCollection")]
+public sealed class LocationsEndpointTests : IAsyncLifetime
 {
-    private readonly TestDatabaseFixture _databaseFixture;
+    private readonly TestPostgresFixture _postgresFixture;
     private InventoryApiApplicationFactory? _factory;
     private HttpClient? _client;
+    private ConnectionCounter? _connectionCounter;
 
-    public LocationsEndpointTests(TestDatabaseFixture databaseFixture)
+    public LocationsEndpointTests(TestPostgresFixture postgresFixture)
     {
-        _databaseFixture = databaseFixture;
+        _postgresFixture = postgresFixture;
     }
 
     private InventoryApiApplicationFactory Factory => _factory ?? throw new InvalidOperationException("Factory not initialised");
 
     private HttpClient Client => _client ?? throw new InvalidOperationException("Client not initialised");
+    private ConnectionCounter ConnectionCounter => _connectionCounter ?? throw new InvalidOperationException("Connection counter not initialised");
 
     public Task InitializeAsync()
     {
-        if (!_databaseFixture.IsDockerAvailable)
-        {
-            return Task.CompletedTask;
-        }
-
-        _factory = new InventoryApiApplicationFactory(_databaseFixture.ConnectionString);
-        _client = _factory.CreateClient();
+        _factory = new InventoryApiApplicationFactory(_postgresFixture.ConnectionString);
+        _client = Factory.CreateClient();
+        _connectionCounter = Factory.Services.GetRequiredService<ConnectionCounter>();
         return ResetDatabaseAsync();
     }
 
@@ -63,15 +62,10 @@ public sealed class LocationsEndpointTests : IClassFixture<TestDatabaseFixture>,
     [Fact]
     public async Task GetLocations_ReturnsBusyStatus_ForRequestedCountType()
     {
-        if (SkipIfDockerUnavailable())
-        {
-            return;
-        }
-
         await ResetDatabaseAsync();
         var seed = await SeedDataAsync(countType: 1);
 
-        Factory.ConnectionCounter.Reset();
+        ConnectionCounter.Reset();
 
         var response = await Client.GetAsync("/api/locations?countType=1");
 
@@ -92,21 +86,16 @@ public sealed class LocationsEndpointTests : IClassFixture<TestDatabaseFixture>,
         Assert.False(free.IsBusy);
         Assert.Null(free.ActiveRunId);
 
-        Assert.Equal(1, Factory.ConnectionCounter.CommandCount);
+        Assert.Equal(1, ConnectionCounter.CommandCount);
     }
 
     [Fact]
     public async Task GetLocations_WithMismatchedCountType_ReturnsFreeState()
     {
-        if (SkipIfDockerUnavailable())
-        {
-            return;
-        }
-
         await ResetDatabaseAsync();
         await SeedDataAsync(countType: 2);
 
-        Factory.ConnectionCounter.Reset();
+        ConnectionCounter.Reset();
 
         var response = await Client.GetAsync("/api/locations?countType=1");
         response.EnsureSuccessStatusCode();
@@ -116,18 +105,13 @@ public sealed class LocationsEndpointTests : IClassFixture<TestDatabaseFixture>,
         var busy = payload.Single(item => item.Code == "S1");
         Assert.False(busy.IsBusy);
         Assert.Null(busy.ActiveRunId);
-        Assert.Equal(1, Factory.ConnectionCounter.CommandCount);
+        Assert.Equal(1, ConnectionCounter.CommandCount);
     }
 
     [Fact]
     public async Task GetLocations_WithInvalidCountType_ReturnsBadRequest()
     {
-        if (SkipIfDockerUnavailable())
-        {
-            return;
-        }
-
-        Factory.ConnectionCounter.Reset();
+        ConnectionCounter.Reset();
         var response = await Client.GetAsync("/api/locations?countType=5");
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -135,11 +119,6 @@ public sealed class LocationsEndpointTests : IClassFixture<TestDatabaseFixture>,
     [Fact]
     public async Task RestartInventoryForLocation_ClosesExistingRuns()
     {
-        if (SkipIfDockerUnavailable())
-        {
-            return;
-        }
-
         await ResetDatabaseAsync();
         var seed = await SeedDataAsync(countType: 1);
 
@@ -159,11 +138,6 @@ public sealed class LocationsEndpointTests : IClassFixture<TestDatabaseFixture>,
     [Fact]
     public async Task RestartInventoryForLocation_WithNoActiveRun_IsNoOp()
     {
-        if (SkipIfDockerUnavailable())
-        {
-            return;
-        }
-
         await ResetDatabaseAsync();
         var locationId = Guid.NewGuid();
 
@@ -171,21 +145,6 @@ public sealed class LocationsEndpointTests : IClassFixture<TestDatabaseFixture>,
 
         var response = await Client.PostAsync($"/api/inventories/{locationId}/restart?countType=1", null);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
-    }
-
-    [Fact]
-    public void RestartInventoryEndpoint_IsSkippedWhenDockerUnavailable()
-    {
-        var skipped = SkipIfDockerUnavailable();
-
-        if (_databaseFixture.IsDockerAvailable)
-        {
-            Assert.False(skipped);
-        }
-        else
-        {
-            Assert.True(skipped);
-        }
     }
 
     private async Task ResetDatabaseAsync()
@@ -203,18 +162,7 @@ TRUNCATE TABLE ""Location"" RESTART IDENTITY CASCADE;";
 
         await connection.ExecuteAsync(cleanupSql);
 
-        Factory.ConnectionCounter.Reset();
-    }
-
-    private bool SkipIfDockerUnavailable()
-    {
-        if (_databaseFixture.IsDockerAvailable)
-        {
-            return false;
-        }
-
-        Assert.True(true, "Docker est requis pour exécuter les tests d'intégration API.");
-        return true;
+        ConnectionCounter.Reset();
     }
 
     private async Task SeedLocationAsync(Guid id, string code, string label)
@@ -264,7 +212,7 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType, @Operator);";
                 Operator = "alice.durand"
             });
 
-        Factory.ConnectionCounter.Reset();
+        ConnectionCounter.Reset();
 
         return (busyLocationId, runId);
     }
