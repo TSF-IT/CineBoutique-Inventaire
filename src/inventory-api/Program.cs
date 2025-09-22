@@ -20,16 +20,35 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Formatting.Compact;
 
-Log.Logger = new LoggerConfiguration()
-    .WriteTo.Console(new RenderedCompactJsonFormatter())
-    .CreateBootstrapLogger();
+var isCi = Environment.GetEnvironmentVariable("CI") == "true";
+var isTestingEnv = string.Equals(
+    Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
+    "Testing",
+    StringComparison.OrdinalIgnoreCase
+);
+var disableSerilog = isCi || isTestingEnv ||
+    string.Equals(Environment.GetEnvironmentVariable("DISABLE_SERILOG"), "true", StringComparison.OrdinalIgnoreCase);
+
+if (!disableSerilog)
+{
+    Log.Logger = new LoggerConfiguration()
+        .WriteTo.Console(new RenderedCompactJsonFormatter())
+        .CreateBootstrapLogger();
+}
 
 try
 {
     var builder = WebApplication.CreateBuilder(args);
+
+    if (disableSerilog)
+    {
+        builder.Logging.ClearProviders();
+        builder.Logging.AddConsole();
+    }
 
     builder.Host.UseDefaultServiceProvider(options =>
     {
@@ -37,11 +56,19 @@ try
         options.ValidateScopes = false;
     });
 
-    builder.Host.UseSerilog((context, services, configuration) => configuration
-        .ReadFrom.Configuration(context.Configuration)
-        .ReadFrom.Services(services)
-        .Enrich.FromLogContext()
-        .WriteTo.Console(new RenderedCompactJsonFormatter()));
+    if (!disableSerilog)
+    {
+        builder.Host.UseSerilog((context, services, configuration) => configuration
+            .ReadFrom.Configuration(context.Configuration)
+            .ReadFrom.Services(services)
+            .Enrich.FromLogContext()
+            .WriteTo.Console(new RenderedCompactJsonFormatter()));
+    }
+
+    builder.Configuration
+        .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+        .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
+        .AddEnvironmentVariables();
 
     builder.Services.Configure<AppSettingsOptions>(builder.Configuration.GetSection("AppSettings"));
 
@@ -180,7 +207,10 @@ try
         });
     }
 
-    app.UseSerilogRequestLogging();
+    if (!disableSerilog)
+    {
+        app.UseSerilogRequestLogging();
+    }
 
     app.UseAuthentication();
     app.UseAuthorization();
@@ -372,12 +402,18 @@ WHERE ""LocationId"" = @LocationId
 }
 catch (Exception ex)
 {
-    Log.Fatal(ex, "Échec critique du démarrage de l'API.");
+    if (!disableSerilog)
+    {
+        Log.Fatal(ex, "Échec critique du démarrage de l'API.");
+    }
     throw;
 }
 finally
 {
-    Log.CloseAndFlush();
+    if (!disableSerilog)
+    {
+        Log.CloseAndFlush();
+    }
 }
 
 static async Task EnsureConnectionOpenAsync(IDbConnection connection, CancellationToken cancellationToken)
