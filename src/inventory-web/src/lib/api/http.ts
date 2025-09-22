@@ -6,14 +6,16 @@ let authToken: string | null = null
 let unauthorizedCallback: (() => void) | undefined
 
 export class HttpError extends Error {
-  constructor(
-    message: string,
-    public status?: number,
-    public bodyText?: string,
-    public url?: string,
-  ) {
+  status?: number
+  bodyText?: string
+  url?: string
+
+  constructor(message: string, status?: number, bodyText?: string, url?: string) {
     super(message)
     this.name = 'HttpError'
+    this.status = status
+    this.bodyText = bodyText
+    this.url = url
   }
 }
 
