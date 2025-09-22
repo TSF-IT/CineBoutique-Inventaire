@@ -1,6 +1,7 @@
 import { LocationsSchema } from '../types/inventory'
 import type { CountType, InventorySummary, Location, ManualProductInput, Product } from '../types/inventory'
-import { ApiError, apiClient } from './client'
+import { http, HttpError } from '../../lib/api/http'
+import { API_BASE } from '../../lib/api/config'
 
 const normaliseLocationsPayload = (payload: unknown): unknown => {
   if (Array.isArray(payload)) {
@@ -18,45 +19,53 @@ const normaliseLocationsPayload = (payload: unknown): unknown => {
   return payload
 }
 
-export const fetchInventorySummary = async (): Promise<InventorySummary> => {
-  const { data } = await apiClient.get<InventorySummary>('/inventories/summary')
-  return data
-}
+export const fetchInventorySummary = (): Promise<InventorySummary> =>
+  http<InventorySummary>('/inventories/summary')
 
 export const fetchLocations = async (options?: { countType?: CountType }): Promise<Location[]> => {
+  let endpoint = '/locations'
   try {
-    const params = options?.countType !== undefined ? { countType: options.countType } : undefined
-    const { data } = await apiClient.get('/locations', { params })
+    const searchParams = new URLSearchParams()
+    if (options?.countType !== undefined) {
+      searchParams.set('countType', String(options.countType))
+    }
+    const query = searchParams.toString()
+    endpoint = `/locations${query ? `?${query}` : ''}`
+    const data = await http<unknown>(endpoint)
     const normalised = normaliseLocationsPayload(data)
     const parsed = LocationsSchema.safeParse(normalised)
     if (!parsed.success) {
       if (import.meta.env.DEV) {
         console.error('Réponse /locations invalide', parsed.error.flatten())
       }
-      throw new ApiError('Les données de zones sont invalides.', { data, cause: parsed.error })
+      throw new Error('Les données de zones sont invalides.')
     }
     return parsed.data
   } catch (error) {
-    if (error instanceof ApiError) {
+    if (error instanceof HttpError) {
       throw error
     }
     if (import.meta.env.DEV) {
       console.error('Échec de récupération des zones', error)
     }
-    throw new ApiError('Impossible de récupérer les zones.', { cause: error })
+    throw new HttpError('Impossible de récupérer les zones.', undefined, undefined, `${API_BASE}${endpoint}`)
   }
 }
 
 export const fetchProductByEan = async (ean: string): Promise<Product> => {
-  const { data } = await apiClient.get<Product>(`/products/${ean}`)
-  return data
+  return http<Product>(`/products/${encodeURIComponent(ean)}`)
 }
 
 export const createManualProduct = async (payload: ManualProductInput): Promise<Product> => {
-  const { data } = await apiClient.post<Product>('/products', payload)
-  return data
+  return http<Product>('/products', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
 }
 
 export const restartInventoryRun = async (locationId: string, countType: CountType): Promise<void> => {
-  await apiClient.post(`/inventories/${locationId}/restart`, undefined, { params: { countType } })
+  const searchParams = new URLSearchParams({ countType: String(countType) })
+  await http<void>(`/inventories/${locationId}/restart?${searchParams.toString()}`, {
+    method: 'POST',
+  })
 }
