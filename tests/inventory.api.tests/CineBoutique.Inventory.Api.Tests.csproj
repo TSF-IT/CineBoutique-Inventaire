@@ -8,7 +8,12 @@
     <NoWarn>$(NoWarn);NU1602;NU1603;NU1604;NU1701;NU1903</NoWarn>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
   <ItemGroup>
+    <PackageReference Include="Azure.Core" Version="1.38.0" />
     <PackageReference Include="xunit" Version="2.9.0" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="8.0.8" />
