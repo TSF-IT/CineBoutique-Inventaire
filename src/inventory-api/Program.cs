@@ -22,28 +22,21 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Logging;
 using Serilog;
-using Serilog.Formatting.Compact;
 
-var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-var disableSerilogExplicitly =
-    string.Equals(Environment.GetEnvironmentVariable("DISABLE_SERILOG"), "true", StringComparison.OrdinalIgnoreCase);
-var isCiEnvironment = string.Equals(environmentName, "CI", StringComparison.OrdinalIgnoreCase);
-var isTestingEnvironment = string.Equals(environmentName, "Testing", StringComparison.OrdinalIgnoreCase);
-var isCi = string.Equals(Environment.GetEnvironmentVariable("CI"), "true", StringComparison.OrdinalIgnoreCase);
-var disableSerilog = disableSerilogExplicitly || isCiEnvironment || isTestingEnvironment || isCi;
-
-if (!disableSerilog)
-{
-    Log.Logger = new LoggerConfiguration()
-        .WriteTo.Console(new RenderedCompactJsonFormatter())
-        .CreateBootstrapLogger();
-}
+var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
+var disableSerilog = (Environment.GetEnvironmentVariable("DISABLE_SERILOG") ?? "false")
+    .Equals("true", StringComparison.OrdinalIgnoreCase);
+var disableMigrations = (Environment.GetEnvironmentVariable("DISABLE_MIGRATIONS") ?? "false")
+    .Equals("true", StringComparison.OrdinalIgnoreCase);
+var isCiOrTest = string.Equals(environmentName, "CI", StringComparison.OrdinalIgnoreCase)
+    || string.Equals(environmentName, "Test", StringComparison.OrdinalIgnoreCase);
+var serilogEnabled = !disableSerilog && !isCiOrTest;
 
 try
 {
     var builder = WebApplication.CreateBuilder(args);
 
-    if (disableSerilog)
+    if (!serilogEnabled)
     {
         builder.Logging.ClearProviders();
         builder.Logging.AddConsole();
@@ -55,13 +48,11 @@ try
         options.ValidateScopes = false;
     });
 
-    if (!disableSerilog)
+    if (serilogEnabled)
     {
         builder.Host.UseSerilog((context, services, configuration) => configuration
             .ReadFrom.Configuration(context.Configuration)
-            .ReadFrom.Services(services)
-            .Enrich.FromLogContext()
-            .WriteTo.Console(new RenderedCompactJsonFormatter()));
+            .ReadFrom.Services(services));
     }
 
     builder.Configuration
@@ -180,17 +171,34 @@ try
 
     var app = builder.Build();
 
-    using (var scope = app.Services.CreateScope())
+    if (!disableMigrations && !isCiOrTest)
     {
-        var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
-        runner.MigrateUp();
+        const int maxAttempts = 10;
+        var attempt = 0;
 
-        if (app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup"))
+        while (true)
         {
-            var seeder = scope.ServiceProvider.GetService<CineBoutique.Inventory.Infrastructure.Seeding.InventoryDataSeeder>();
-            if (seeder is not null)
+            try
             {
-                await seeder.SeedAsync().ConfigureAwait(false);
+                attempt++;
+                await using var scope = app.Services.CreateAsyncScope();
+                var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+                runner.MigrateUp();
+
+                if (app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup"))
+                {
+                    var seeder = scope.ServiceProvider.GetService<CineBoutique.Inventory.Infrastructure.Seeding.InventoryDataSeeder>();
+                    if (seeder is not null)
+                    {
+                        await seeder.SeedAsync().ConfigureAwait(false);
+                    }
+                }
+
+                break;
+            }
+            catch (Exception) when (attempt < maxAttempts)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
             }
         }
     }
@@ -206,7 +214,7 @@ try
         });
     }
 
-    if (!disableSerilog)
+    if (serilogEnabled)
     {
         app.UseSerilogRequestLogging();
     }
@@ -401,7 +409,7 @@ WHERE ""LocationId"" = @LocationId
 }
 catch (Exception ex)
 {
-    if (!disableSerilog)
+    if (serilogEnabled)
     {
         Log.Fatal(ex, "Échec critique du démarrage de l'API.");
     }
@@ -409,7 +417,7 @@ catch (Exception ex)
 }
 finally
 {
-    if (!disableSerilog)
+    if (serilogEnabled)
     {
         Log.CloseAndFlush();
     }
