@@ -1,6 +1,5 @@
 #pragma warning disable CA1001
 #pragma warning disable CA1707
-#pragma warning disable CA1812
 #pragma warning disable CA2007
 #pragma warning disable CA2234
 #pragma warning disable CA1859
@@ -17,7 +16,6 @@ using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
@@ -27,7 +25,6 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
 {
     private readonly InventoryApiApplicationFactory _factory;
     private HttpClient _client = default!;
-    private IHost _host = default!;
 
     public InventorySummaryEndpointTests(PostgresTestContainerFixture fixture)
     {
@@ -37,10 +34,8 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _client = _factory.CreateClient();
-        _host = (IHost?)_factory.Services.GetService(typeof(IHost))
-            ?? throw new InvalidOperationException("Le host de tests n'est pas initialisé.");
 
-        DbMigrator.MigrateUp(_host);
+        DbMigrator.MigrateUp(_factory.Services);
         await ResetDatabaseAsync();
     }
 
@@ -61,7 +56,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
 
         var payload = await response.Content.ReadFromJsonAsync<InventorySummaryDto>();
         Assert.NotNull(payload);
-        Assert.Equal(0, payload.ActiveSessions);
+        Assert.Equal(0, payload!.ActiveSessions);
         Assert.Equal(0, payload.OpenRuns);
         Assert.Null(payload.LastActivityUtc);
     }
@@ -71,7 +66,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
     {
         await ResetDatabaseAsync();
 
-        using var scope = _host.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
@@ -107,7 +102,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
 
         var payload = await response.Content.ReadFromJsonAsync<InventorySummaryDto>();
         Assert.NotNull(payload);
-        Assert.Equal(1, payload.ActiveSessions);
+        Assert.Equal(1, payload!.ActiveSessions);
         Assert.Equal(1, payload.OpenRuns);
         Assert.NotNull(payload.LastActivityUtc);
         Assert.True(payload.LastActivityUtc >= countedAt.AddMinutes(-1));
@@ -115,7 +110,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
 
     private async Task ResetDatabaseAsync()
     {
-        using var scope = _host.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);

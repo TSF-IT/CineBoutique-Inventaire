@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests.Infrastructure;
@@ -18,28 +17,32 @@ public class InventoryApiApplicationFactory : WebApplicationFactory<Program>
         _fixture = fixture;
     }
 
-    protected override IHost CreateHost(IHostBuilder builder)
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        builder.ConfigureAppConfiguration((_, config) =>
+        builder.UseEnvironment("CI");
+
+        builder.ConfigureAppConfiguration((ctx, cfg) =>
         {
             var dict = new Dictionary<string, string?>
             {
-                ["ASPNETCORE_ENVIRONMENT"] = "CI",
                 ["DISABLE_SERILOG"] = "true",
                 ["DISABLE_MIGRATIONS"] = "true",
                 ["ConnectionStrings:Default"] = _fixture.ConnectionString
             };
-            config.AddInMemoryCollection(dict!);
+            cfg.AddInMemoryCollection(dict);
         });
 
-        var cs = _fixture.ConnectionString;
-        if (string.IsNullOrWhiteSpace(cs) || cs.Contains("127.0.0.1", StringComparison.Ordinal) || cs.Contains("localhost:5432", StringComparison.OrdinalIgnoreCase))
+        builder.ConfigureAppConfiguration((ctx, cfg) =>
         {
-            throw new InvalidOperationException("Invalid test connection string; Testcontainers PG must be used.");
-        }
-
-        return base.CreateHost(builder);
+            var cs = _fixture.ConnectionString ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(cs) ||
+                cs.Contains("127.0.0.1:5432", StringComparison.OrdinalIgnoreCase) ||
+                cs.Contains("localhost:5432", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Invalid test connection string; Testcontainers PG must be used.");
+            }
+        });
     }
 }
