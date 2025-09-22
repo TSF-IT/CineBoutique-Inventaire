@@ -19,6 +19,9 @@
     <PackageVersion Include="FluentMigrator.Runner" Version="5.2.0" />
     <PackageVersion Include="FluentMigrator.Runner.Postgres" Version="5.2.0" />
 
+    <!-- Resilience -->
+    <PackageVersion Include="Polly" Version="8.4.3" />
+
     <!-- Authentication -->
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
 

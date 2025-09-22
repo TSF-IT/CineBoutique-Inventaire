@@ -45,7 +45,8 @@ jobs:
         env:
           ASPNETCORE_ENVIRONMENT: CI
           DISABLE_SERILOG: "true"
-          ConnectionStrings__Default: "Host=127.0.0.1;Port=5432;Database=cineboutique_ci;Username=postgres;Password=postgres;Pooling=false"
+          DISABLE_MIGRATIONS: "false"
+          ConnectionStrings__Default: "Host=127.0.0.1;Port=5432;Database=cineboutique_ci;Username=postgres;Password=postgres;Pooling=false;Timeout=15;CommandTimeout=30"
         run: dotnet test CineBoutique.Inventory.sln --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
 
   frontend:

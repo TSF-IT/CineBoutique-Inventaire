@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
 using CineBoutique.Inventory.Infrastructure.Database;
+using FluentMigrator.Runner;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -9,6 +10,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Hosting;
 using Npgsql;
 
 namespace CineBoutique.Inventory.Api.Tests.Infrastructure;
@@ -20,13 +22,16 @@ public sealed class InventoryApiApplicationFactory : WebApplicationFactory<Progr
     public InventoryApiApplicationFactory(string connectionString)
     {
         _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
+        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "CI");
+        Environment.SetEnvironmentVariable("DISABLE_SERILOG", "true");
+        Environment.SetEnvironmentVariable("DISABLE_MIGRATIONS", "true");
     }
 
     public ConnectionCounter ConnectionCounter => Services.GetRequiredService<ConnectionCounter>();
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseSetting("ASPNETCORE_ENVIRONMENT", "Testing");
+        builder.UseEnvironment("CI");
         builder.ConfigureLogging(logging => logging.ClearProviders());
 
         builder.ConfigureAppConfiguration((_, configurationBuilder) =>
@@ -59,5 +64,16 @@ public sealed class InventoryApiApplicationFactory : WebApplicationFactory<Progr
                 return connection is DbConnection dbConnection ? new CountingDbConnection(dbConnection, counter) : connection;
             });
         });
+    }
+
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        var host = base.CreateHost(builder);
+
+        using var scope = host.Services.CreateScope();
+        var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+        runner.MigrateUp();
+
+        return host;
     }
 }
