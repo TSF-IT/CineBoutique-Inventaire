@@ -18,207 +18,216 @@ using FluentMigrator.Runner.Processors;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.OpenApi;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Npgsql;
 using Serilog;
 
-var serilogEnabled = false;
+var builder = WebApplication.CreateBuilder(args);
 
-try
+builder.Host.UseDefaultServiceProvider(options =>
 {
-    var builder = WebApplication.CreateBuilder(args);
+    options.ValidateOnBuild = false;
+    options.ValidateScopes = false;
+});
 
-    builder.Host.UseDefaultServiceProvider(options =>
+builder.Configuration
+    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+    .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
+    .AddEnvironmentVariables();
+
+bool isCiOrTest =
+    builder.Environment.IsEnvironment("CI") ||
+    builder.Environment.IsEnvironment("Test");
+
+bool disableSerilog = string.Equals(builder.Configuration["DISABLE_SERILOG"], "true", StringComparison.OrdinalIgnoreCase);
+bool disableMigrations = string.Equals(builder.Configuration["DISABLE_MIGRATIONS"], "true", StringComparison.OrdinalIgnoreCase);
+
+var useSerilog = !isCiOrTest && !disableSerilog;
+
+if (useSerilog)
+{
+    builder.Host.UseSerilog((context, services, configuration) => configuration
+        .ReadFrom.Configuration(context.Configuration)
+        .ReadFrom.Services(services));
+}
+else
+{
+    builder.Logging.ClearProviders();
+    builder.Logging.AddConsole();
+}
+
+builder.Services.Configure<AppSettingsOptions>(builder.Configuration.GetSection("AppSettings"));
+
+var connectionString = builder.Configuration.GetConnectionString("Default");
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException("La chaîne de connexion 'Default' doit être configurée.");
+}
+
+builder.Services
+    .AddFluentMigratorCore()
+    .ConfigureRunner(rb => rb
+        .AddPostgres()
+        .WithGlobalConnectionString(connectionString)
+        .ScanIn(typeof(CreateInventorySchema).Assembly)
+        .For.Migrations())
+    .AddLogging(lb => lb.AddFluentMigratorConsole());
+
+builder.Services.Configure<SelectingProcessorAccessorOptions>(options =>
+{
+    options.ProcessorId = "Postgres";
+});
+
+builder.Services
+    .AddOptions<ProcessorOptions>()
+    .Configure(options =>
     {
-        options.ValidateOnBuild = false;
-        options.ValidateScopes = false;
+        options.Timeout = TimeSpan.FromSeconds(90);
+        options.ProviderSwitches = string.Empty;
+        options.PreviewOnly = false;
     });
 
-    builder.Configuration
-        .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
-        .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
-        .AddEnvironmentVariables();
+builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<ProcessorOptions>>().Value);
 
-    var isCiOrTest = builder.Environment.IsEnvironment("CI") || builder.Environment.IsEnvironment("Test");
-    var disableSerilog = string.Equals(builder.Configuration["DISABLE_SERILOG"], "true", StringComparison.OrdinalIgnoreCase);
-    var disableMigrations = string.Equals(builder.Configuration["DISABLE_MIGRATIONS"], "true", StringComparison.OrdinalIgnoreCase);
+var authenticationSection = builder.Configuration.GetSection("Authentication");
+var authenticationOptions = authenticationSection.Get<AuthenticationOptions>()
+    ?? throw new InvalidOperationException("La section de configuration 'Authentication' est manquante.");
 
-    serilogEnabled = !disableSerilog && !isCiOrTest;
+if (string.IsNullOrWhiteSpace(authenticationOptions.Secret))
+{
+    throw new InvalidOperationException("Le secret d'authentification JWT doit être configuré.");
+}
 
-    if (serilogEnabled)
+if (authenticationOptions.TokenLifetimeMinutes <= 0)
+{
+    throw new InvalidOperationException("La durée de vie du token JWT doit être supérieure à zéro.");
+}
+
+builder.Services.Configure<AuthenticationOptions>(authenticationSection);
+
+builder.Services.AddInventoryInfrastructure(builder.Configuration);
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SwaggerDoc("v1", new() { Title = "CinéBoutique Inventory API", Version = "v1" });
+
+    var asmName = System.Reflection.Assembly.GetExecutingAssembly().GetName().Name;
+    var xmlPath = System.IO.Path.Combine(AppContext.BaseDirectory, $"{asmName}.xml");
+    if (System.IO.File.Exists(xmlPath))
     {
-        builder.Host.UseSerilog((context, services, configuration) => configuration
-            .ReadFrom.Configuration(context.Configuration)
-            .ReadFrom.Services(services));
+        c.IncludeXmlComments(xmlPath);
     }
-    else
+});
+
+builder.Services.AddControllers();
+
+builder.Services.AddScoped<IDbConnection>(sp =>
+{
+    var factory = sp.GetRequiredService<IDbConnectionFactory>();
+    return factory.CreateConnection();
+});
+
+builder.Services.AddSingleton<ITokenService, JwtTokenService>();
+
+builder.Services
+    .AddAuthentication(options =>
     {
-        builder.Logging.ClearProviders();
-        builder.Logging.AddConsole();
-    }
-
-    builder.Services.Configure<AppSettingsOptions>(builder.Configuration.GetSection("AppSettings"));
-
-    var connectionString = builder.Configuration.GetConnectionString("Default");
-    if (string.IsNullOrWhiteSpace(connectionString))
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(options =>
     {
-        throw new InvalidOperationException("La chaîne de connexion 'Default' doit être configurée.");
-    }
-
-    builder.Services
-        .AddFluentMigratorCore()
-        .ConfigureRunner(rb => rb
-            .AddPostgres()
-            .WithGlobalConnectionString(connectionString)
-            .ScanIn(typeof(CreateInventorySchema).Assembly)
-            .For.Migrations())
-        .AddLogging(lb => lb.AddFluentMigratorConsole());
-
-    builder.Services.Configure<SelectingProcessorAccessorOptions>(options =>
-    {
-        options.ProcessorId = "Postgres";
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = authenticationOptions.Issuer,
+            ValidateAudience = true,
+            ValidAudience = authenticationOptions.Audience,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.Zero,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(authenticationOptions.Secret))
+        };
     });
 
-    builder.Services
-        .AddOptions<ProcessorOptions>()
-        .Configure(options =>
-        {
-            options.Timeout = TimeSpan.FromSeconds(90);
-            options.ProviderSwitches = string.Empty;
-            options.PreviewOnly = false;
-        });
+builder.Services.AddAuthorization();
 
-    builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<ProcessorOptions>>().Value);
-
-    var authenticationSection = builder.Configuration.GetSection("Authentication");
-    var authenticationOptions = authenticationSection.Get<AuthenticationOptions>()
-        ?? throw new InvalidOperationException("La section de configuration 'Authentication' est manquante.");
-
-    if (string.IsNullOrWhiteSpace(authenticationOptions.Secret))
+const string DevCorsPolicyName = "DevelopmentCorsPolicy";
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(DevCorsPolicyName, policyBuilder =>
     {
-        throw new InvalidOperationException("Le secret d'authentification JWT doit être configuré.");
-    }
-
-    if (authenticationOptions.TokenLifetimeMinutes <= 0)
-    {
-        throw new InvalidOperationException("La durée de vie du token JWT doit être supérieure à zéro.");
-    }
-
-    builder.Services.Configure<AuthenticationOptions>(authenticationSection);
-
-    builder.Services.AddInventoryInfrastructure(builder.Configuration);
-
-    builder.Services.AddEndpointsApiExplorer();
-    builder.Services.AddSwaggerGen(c =>
-    {
-        c.SwaggerDoc("v1", new() { Title = "CinéBoutique Inventory API", Version = "v1" });
-
-        var asmName = System.Reflection.Assembly.GetExecutingAssembly().GetName().Name;
-        var xmlPath = System.IO.Path.Combine(AppContext.BaseDirectory, $"{asmName}.xml");
-        if (System.IO.File.Exists(xmlPath))
-        {
-            c.IncludeXmlComments(xmlPath);
-        }
+        policyBuilder
+            .AllowAnyOrigin()
+            .AllowAnyHeader()
+            .AllowAnyMethod();
     });
+});
 
-    builder.Services.AddControllers();
+var app = builder.Build();
 
-    builder.Services.AddScoped<IDbConnection>(sp =>
+var runMigrations = !disableMigrations && !isCiOrTest;
+
+if (runMigrations)
+{
+    const int maxAttempts = 10;
+    var attempt = 0;
+
+    while (true)
     {
-        var factory = sp.GetRequiredService<IDbConnectionFactory>();
-        return factory.CreateConnection();
-    });
-
-    builder.Services.AddSingleton<ITokenService, JwtTokenService>();
-
-    builder.Services
-        .AddAuthentication(options =>
+        try
         {
-            options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-            options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-        })
-        .AddJwtBearer(options =>
-        {
-            options.TokenValidationParameters = new TokenValidationParameters
+            attempt++;
+            using var scope = app.Services.CreateScope();
+            var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+            runner.MigrateUp();
+
+            if (app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup"))
             {
-                ValidateIssuer = true,
-                ValidIssuer = authenticationOptions.Issuer,
-                ValidateAudience = true,
-                ValidAudience = authenticationOptions.Audience,
-                ValidateLifetime = true,
-                ClockSkew = TimeSpan.Zero,
-                ValidateIssuerSigningKey = true,
-                IssuerSigningKey = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(authenticationOptions.Secret))
-            };
-        });
-
-    builder.Services.AddAuthorization();
-
-    const string DevCorsPolicyName = "DevelopmentCorsPolicy";
-    builder.Services.AddCors(options =>
-    {
-        options.AddPolicy(DevCorsPolicyName, policyBuilder =>
-        {
-            policyBuilder
-                .AllowAnyOrigin()
-                .AllowAnyHeader()
-                .AllowAnyMethod();
-        });
-    });
-
-    var app = builder.Build();
-
-    var runMigrations = !disableMigrations && !isCiOrTest;
-
-    if (runMigrations)
-    {
-        const int maxAttempts = 10;
-        var attempt = 0;
-
-        while (true)
-        {
-            try
-            {
-                attempt++;
-                await using var scope = app.Services.CreateAsyncScope();
-                var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
-                runner.MigrateUp();
-
-                if (app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup"))
+                var seeder = scope.ServiceProvider.GetService<InventoryDataSeeder>();
+                if (seeder is not null)
                 {
-                    var seeder = scope.ServiceProvider.GetService<InventoryDataSeeder>();
-                    if (seeder is not null)
-                    {
-                        await seeder.SeedAsync().ConfigureAwait(false);
-                    }
+                    await seeder.SeedAsync().ConfigureAwait(false);
                 }
+            }
 
-                break;
-            }
-            catch (Exception) when (attempt < maxAttempts)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
-            }
+            break;
+        }
+        catch (NpgsqlException) when (attempt < maxAttempts)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+        }
+        catch (TimeoutException) when (attempt < maxAttempts)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException) when (attempt < maxAttempts)
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
         }
     }
+}
 
-    if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment())
+{
+    app.UseCors(DevCorsPolicyName);
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
     {
-        app.UseCors(DevCorsPolicyName);
-        app.UseSwagger();
-        app.UseSwaggerUI(c =>
-        {
-            c.SwaggerEndpoint("/swagger/v1/swagger.json", "CinéBoutique Inventory API v1");
-            c.RoutePrefix = "swagger";
-        });
-    }
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "CinéBoutique Inventory API v1");
+        c.RoutePrefix = "swagger";
+    });
+}
 
-    if (serilogEnabled)
-    {
-        app.UseSerilogRequestLogging();
-    }
+if (useSerilog)
+{
+    app.UseSerilogRequestLogging();
+}
 
     app.UseAuthentication();
     app.UseAuthorization();
@@ -406,23 +415,7 @@ WHERE ""LocationId"" = @LocationId
         return Results.Ok(response);
     });
 
-    app.Run();
-}
-catch (Exception ex)
-{
-    if (serilogEnabled)
-    {
-        Log.Fatal(ex, "Échec critique du démarrage de l'API.");
-    }
-    throw;
-}
-finally
-{
-    if (serilogEnabled)
-    {
-        Log.CloseAndFlush();
-    }
-}
+await app.RunAsync().ConfigureAwait(false);
 
 static async Task EnsureConnectionOpenAsync(IDbConnection connection, CancellationToken cancellationToken)
 {

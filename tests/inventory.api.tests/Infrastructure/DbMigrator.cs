@@ -1,17 +1,14 @@
 using System;
 using FluentMigrator.Runner;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 
 namespace CineBoutique.Inventory.Api.Tests.Infrastructure;
 
 public static class DbMigrator
 {
-    public static void MigrateUp(IHost host)
+    public static void MigrateUp(IServiceProvider services)
     {
-        ArgumentNullException.ThrowIfNull(host);
-
-        using var scope = host.Services.CreateScope();
+        using var scope = services.CreateScope();
         var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
         runner.MigrateUp();
     }
