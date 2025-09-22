@@ -20,7 +20,7 @@ using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
 
-[Collection(nameof(PostgresCollection))]
+[Collection(TestCollections.Postgres)]
 public class InventorySummaryEndpointTests : IAsyncLifetime
 {
     private readonly PostgresTestContainerFixture _pg;

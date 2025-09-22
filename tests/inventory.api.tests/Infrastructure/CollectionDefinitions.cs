@@ -2,11 +2,14 @@ using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests.Infrastructure;
 
-[CollectionDefinition(nameof(PostgresCollection))]
-public class PostgresCollection : ICollectionFixture<PostgresTestContainerFixture> { }
-
-public static class TestEnvironments
+// Nom logique de la collection partagé par les tests
+public static class TestCollections
 {
-    public const string Ci = "CI";
-    public const string Test = "Test";
+    public const string Postgres = "PostgresDb";
+}
+
+// xUnit: définition de collection (le TYPE ne doit pas finir par "Collection")
+[CollectionDefinition(TestCollections.Postgres)]
+public sealed class PostgresDbFixtureCollectionDefinition : ICollectionFixture<PostgresTestContainerFixture>
+{
 }
