@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { vi } from 'vitest'
+import { ThemeProvider } from '../../theme/ThemeProvider'
 import { HomePage } from '../pages/home/HomePage'
 
 vi.mock('../api/inventoryApi', () => ({
@@ -12,9 +13,11 @@ vi.mock('../api/inventoryApi', () => ({
 describe('HomePage', () => {
   it("affiche les indicateurs et le bouton d'accès", async () => {
     render(
-      <MemoryRouter>
-        <HomePage />
-      </MemoryRouter>,
+      <ThemeProvider>
+        <MemoryRouter>
+          <HomePage />
+        </MemoryRouter>
+      </ThemeProvider>,
     )
 
     await waitFor(() => {

@@ -79,7 +79,7 @@ describe('Workflow d\'inventaire', () => {
 
     await waitFor(() => expect(screen.getByText('Quel type de comptage ?')).toBeInTheDocument())
 
-    fireEvent.click(screen.getByRole('button', { name: /1 comptage/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Comptage n°1/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Sélectionner la zone' }))
 
     await waitFor(() => expect(fetchLocationsMock).toHaveBeenCalledWith({ countType: 1 }))
@@ -104,7 +104,7 @@ describe('Workflow d\'inventaire', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Amélie' }))
     await waitFor(() => expect(screen.getByText('Quel type de comptage ?')).toBeInTheDocument())
 
-    fireEvent.click(screen.getByRole('button', { name: /1 comptage/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Comptage n°1/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Sélectionner la zone' }))
     await waitFor(() => expect(fetchLocationsMock).toHaveBeenCalledWith({ countType: 1 }))
     fireEvent.click(screen.getByRole('button', { name: /Zone Réserve libre/ }))
@@ -125,7 +125,7 @@ describe('Workflow d\'inventaire', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Amélie' }))
     await waitFor(() => expect(screen.getByText('Quel type de comptage ?')).toBeInTheDocument())
 
-    fireEvent.click(screen.getByRole('button', { name: /1 comptage/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Comptage n°1/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Sélectionner la zone' }))
 
     await waitFor(() => expect(fetchLocationsMock).toHaveBeenCalledWith({ countType: 1 }))
