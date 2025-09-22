@@ -24,14 +24,13 @@ using Microsoft.Extensions.Logging;
 using Serilog;
 using Serilog.Formatting.Compact;
 
-var isCi = Environment.GetEnvironmentVariable("CI") == "true";
-var isTestingEnv = string.Equals(
-    Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
-    "Testing",
-    StringComparison.OrdinalIgnoreCase
-);
-var disableSerilog = isCi || isTestingEnv ||
+var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+var disableSerilogExplicitly =
     string.Equals(Environment.GetEnvironmentVariable("DISABLE_SERILOG"), "true", StringComparison.OrdinalIgnoreCase);
+var isCiEnvironment = string.Equals(environmentName, "CI", StringComparison.OrdinalIgnoreCase);
+var isTestingEnvironment = string.Equals(environmentName, "Testing", StringComparison.OrdinalIgnoreCase);
+var isCi = string.Equals(Environment.GetEnvironmentVariable("CI"), "true", StringComparison.OrdinalIgnoreCase);
+var disableSerilog = disableSerilogExplicitly || isCiEnvironment || isTestingEnvironment || isCi;
 
 if (!disableSerilog)
 {
