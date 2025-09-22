@@ -14,6 +14,13 @@ public class TestPostgresFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        var overrideConnectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Default");
+        if (!string.IsNullOrWhiteSpace(overrideConnectionString))
+        {
+            ConnectionString = overrideConnectionString;
+            return;
+        }
+
         var pg = new ContainerBuilder()
             .WithImage("postgres:16-alpine")
             .WithName($"cb-inventory-test-pg-{Guid.NewGuid():N}")
