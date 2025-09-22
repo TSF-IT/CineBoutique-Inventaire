@@ -19,15 +19,16 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace CineBoutique.Inventory.Api.Tests;
 
-public sealed class InventorySummaryEndpointTests : IClassFixture<TestDatabaseFixture>, IAsyncLifetime
+[Collection("ApiTestsCollection")]
+public sealed class InventorySummaryEndpointTests : IAsyncLifetime
 {
-    private readonly TestDatabaseFixture _databaseFixture;
+    private readonly TestPostgresFixture _postgresFixture;
     private InventoryApiApplicationFactory? _factory;
     private HttpClient? _client;
 
-    public InventorySummaryEndpointTests(TestDatabaseFixture databaseFixture)
+    public InventorySummaryEndpointTests(TestPostgresFixture postgresFixture)
     {
-        _databaseFixture = databaseFixture;
+        _postgresFixture = postgresFixture;
     }
 
     private InventoryApiApplicationFactory Factory => _factory ?? throw new InvalidOperationException("Factory not initialised");
@@ -36,13 +37,8 @@ public sealed class InventorySummaryEndpointTests : IClassFixture<TestDatabaseFi
 
     public Task InitializeAsync()
     {
-        if (!_databaseFixture.IsDockerAvailable)
-        {
-            return Task.CompletedTask;
-        }
-
-        _factory = new InventoryApiApplicationFactory(_databaseFixture.ConnectionString);
-        _client = _factory.CreateClient();
+        _factory = new InventoryApiApplicationFactory(_postgresFixture.ConnectionString);
+        _client = Factory.CreateClient();
         return Task.CompletedTask;
     }
 
@@ -62,11 +58,6 @@ public sealed class InventorySummaryEndpointTests : IClassFixture<TestDatabaseFi
     [Fact]
     public async Task GetInventorySummary_ReturnsZeroWhenNoData()
     {
-        if (SkipIfDockerUnavailable())
-        {
-            return;
-        }
-
         await ResetDatabaseAsync();
 
         var response = await Client.GetAsync("/api/inventories/summary");
@@ -82,11 +73,6 @@ public sealed class InventorySummaryEndpointTests : IClassFixture<TestDatabaseFi
     [Fact]
     public async Task GetInventorySummary_ComputesLatestActivity()
     {
-        if (SkipIfDockerUnavailable())
-        {
-            return;
-        }
-
         await ResetDatabaseAsync();
 
         using var scope = Factory.Services.CreateScope();
@@ -129,17 +115,6 @@ public sealed class InventorySummaryEndpointTests : IClassFixture<TestDatabaseFi
         Assert.Equal(1, payload.OpenRuns);
         Assert.NotNull(payload.LastActivityUtc);
         Assert.True(payload.LastActivityUtc >= countedAt.AddMinutes(-1));
-    }
-
-    private bool SkipIfDockerUnavailable()
-    {
-        if (_databaseFixture.IsDockerAvailable)
-        {
-            return false;
-        }
-
-        Assert.True(true, "Docker est requis pour exécuter les tests d'intégration API.");
-        return true;
     }
 
     private async Task ResetDatabaseAsync()
