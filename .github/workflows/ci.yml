@@ -8,35 +8,12 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: cineboutique_ci
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U postgres -d cineboutique_ci"
-          --health-interval=5s
-          --health-timeout=5s
-          --health-retries=20
     steps:
       - uses: actions/checkout@v4
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Wait for Postgres
-        run: |
-          for i in {1..40}; do
-            if pg_isready -h 127.0.0.1 -p 5432 -U postgres; then
-              echo "Postgres is ready"
-              break
-            fi
-            echo "Waiting Postgres ($i/40)..." && sleep 3
-          done
       - name: Restore
         run: dotnet restore CineBoutique.Inventory.sln
       - name: Build
@@ -45,8 +22,7 @@ jobs:
         env:
           ASPNETCORE_ENVIRONMENT: CI
           DISABLE_SERILOG: "true"
-          DISABLE_MIGRATIONS: "false"
-          ConnectionStrings__Default: "Host=127.0.0.1;Port=5432;Database=cineboutique_ci;Username=postgres;Password=postgres;Pooling=false;Timeout=15;CommandTimeout=30"
+          DISABLE_MIGRATIONS: "true"
         run: dotnet test CineBoutique.Inventory.sln --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
 
   frontend:
