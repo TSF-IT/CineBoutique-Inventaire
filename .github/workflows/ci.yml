@@ -20,7 +20,7 @@ jobs:
         run: dotnet restore CineBoutique.Inventory.sln
       - name: Build
         run: dotnet build CineBoutique.Inventory.sln --configuration Release --no-restore
-      - name: Test (API + Domain) with Testcontainers
+      - name: Test
         env:
           ASPNETCORE_ENVIRONMENT: "CI"
           DISABLE_SERILOG: "true"

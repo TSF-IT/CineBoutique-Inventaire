@@ -20,22 +20,26 @@ using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
 
-[Collection("ApiTestCollection")]
+[Collection(nameof(PostgresCollection))]
 public class InventorySummaryEndpointTests : IAsyncLifetime
 {
-    private readonly InventoryApiApplicationFactory _factory;
+    private readonly PostgresTestContainerFixture _pg;
+    private InventoryApiApplicationFactory _factory = default!;
     private HttpClient _client = default!;
 
-    public InventorySummaryEndpointTests(PostgresTestContainerFixture fixture)
+    public InventorySummaryEndpointTests(PostgresTestContainerFixture pg)
     {
-        _factory = new InventoryApiApplicationFactory(fixture);
+        _pg = pg;
     }
 
     public async Task InitializeAsync()
     {
+        _factory = new InventoryApiApplicationFactory(_pg.ConnectionString);
         _client = _factory.CreateClient();
 
-        DbMigrator.MigrateUp(_factory.Services);
+        using var scope = _factory.Services.CreateScope();
+        DbMigrator.MigrateUp(scope.ServiceProvider);
+
         await ResetDatabaseAsync();
     }
 
