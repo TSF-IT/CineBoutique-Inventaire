@@ -1,47 +1,47 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
-using Xunit;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace CineBoutique.Inventory.Api.Tests.Infrastructure;
 
-[Collection("ApiTestCollection")]
 public class InventoryApiApplicationFactory : WebApplicationFactory<Program>
 {
-    private readonly PostgresTestContainerFixture _fixture;
+    private readonly string _connectionString;
 
-    public InventoryApiApplicationFactory(PostgresTestContainerFixture fixture)
+    public InventoryApiApplicationFactory(string connectionString)
     {
-        _fixture = fixture;
+        _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        ArgumentNullException.ThrowIfNull(builder);
-
-        builder.UseEnvironment("CI");
+        builder.UseEnvironment(TestEnvironments.Ci);
 
         builder.ConfigureAppConfiguration((ctx, cfg) =>
         {
-            var dict = new Dictionary<string, string?>
+            var overrides = new Dictionary<string, string?>
             {
+                ["ConnectionStrings:Default"] = _connectionString,
                 ["DISABLE_SERILOG"] = "true",
-                ["DISABLE_MIGRATIONS"] = "true",
-                ["ConnectionStrings:Default"] = _fixture.ConnectionString
+                ["DISABLE_MIGRATIONS"] = "true"
             };
-            cfg.AddInMemoryCollection(dict);
+
+            cfg.AddInMemoryCollection(overrides!);
         });
 
-        builder.ConfigureAppConfiguration((ctx, cfg) =>
+        builder.ConfigureServices(services =>
         {
-            var cs = _fixture.ConnectionString ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(cs) ||
-                cs.Contains("127.0.0.1:5432", StringComparison.OrdinalIgnoreCase) ||
-                cs.Contains("localhost:5432", StringComparison.OrdinalIgnoreCase))
+            var toRemove = services
+                .Where(d => d.ServiceType.FullName?.Contains("HostedService", StringComparison.OrdinalIgnoreCase) == true)
+                .ToList();
+
+            foreach (var d in toRemove)
             {
-                throw new InvalidOperationException("Invalid test connection string; Testcontainers PG must be used.");
+                services.Remove(d);
             }
         });
     }

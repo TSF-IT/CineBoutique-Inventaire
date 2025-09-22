@@ -1,26 +1,29 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests.Infrastructure;
 
-public class PostgresTestContainerFixture : IAsyncLifetime
+public sealed class PostgresTestContainerFixture : IAsyncLifetime
 {
-    public PostgreSqlContainer Container { get; } = new PostgreSqlBuilder()
-        .WithImage("postgres:16-alpine")
-        .WithDatabase("cineboutique_test")
-        .WithUsername("postgres")
-        .WithPassword("postgres")
-        .Build();
-
+    public PostgreSqlContainer Container { get; private set; } = default!;
     public string ConnectionString => Container.GetConnectionString();
 
-    public async Task InitializeAsync() => await Container.StartAsync().ConfigureAwait(false);
+    public async Task InitializeAsync()
+    {
+        Container = new PostgreSqlBuilder()
+            .WithImage("postgres:16-alpine")
+            .WithDatabase("inventory_tests")
+            .WithUsername("postgres")
+            .WithPassword("postgres")
+            .WithCleanUp(true)
+            .Build();
 
-    public async Task DisposeAsync() => await Container.DisposeAsync().ConfigureAwait(false);
+        await Container.StartAsync();
+    }
+
+    public async Task DisposeAsync()
+    {
+        await Container.DisposeAsync().AsTask();
+    }
 }
-
-[CollectionDefinition("ApiTestCollection")]
-[SuppressMessage("Naming", "CA1711:Identifiers should not have incorrect suffix", Justification = "xUnit collection pattern.")]
-public class ApiTestCollection : ICollectionFixture<PostgresTestContainerFixture> { }

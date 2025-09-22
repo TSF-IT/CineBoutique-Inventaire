@@ -39,14 +39,10 @@ builder.Configuration
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
     .AddEnvironmentVariables();
 
-bool isCiOrTest =
-    builder.Environment.IsEnvironment("CI") ||
-    builder.Environment.IsEnvironment("Test");
+bool disableSerilog = builder.Configuration["DISABLE_SERILOG"]?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;
+bool disableMigrations = builder.Configuration["DISABLE_MIGRATIONS"]?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;
 
-bool disableSerilog = string.Equals(builder.Configuration["DISABLE_SERILOG"], "true", StringComparison.OrdinalIgnoreCase);
-bool disableMigrations = string.Equals(builder.Configuration["DISABLE_MIGRATIONS"], "true", StringComparison.OrdinalIgnoreCase);
-
-var useSerilog = !isCiOrTest && !disableSerilog;
+var useSerilog = !disableSerilog;
 
 if (useSerilog)
 {
@@ -171,7 +167,7 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-var runMigrations = !disableMigrations && !isCiOrTest;
+var runMigrations = !disableMigrations;
 
 if (runMigrations)
 {

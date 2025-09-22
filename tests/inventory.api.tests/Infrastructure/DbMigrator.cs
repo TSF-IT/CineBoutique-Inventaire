@@ -8,8 +8,7 @@ public static class DbMigrator
 {
     public static void MigrateUp(IServiceProvider services)
     {
-        using var scope = services.CreateScope();
-        var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+        var runner = services.GetRequiredService<IMigrationRunner>();
         runner.MigrateUp();
     }
 }
