@@ -7,7 +7,7 @@ import { InventoryUserStep } from '../pages/inventory/InventoryUserStep'
 import { InventoryCountTypeStep } from '../pages/inventory/InventoryCountTypeStep'
 import { InventoryLocationStep } from '../pages/inventory/InventoryLocationStep'
 import { InventorySessionPage } from '../pages/inventory/InventorySessionPage'
-import { ApiError } from '../api/client'
+import { HttpError } from '../../lib/api/http'
 
 const { fetchLocationsMock, fetchProductMock, restartInventoryRunMock } = vi.hoisted(() => ({
   fetchLocationsMock: vi.fn(() =>
@@ -118,7 +118,7 @@ describe('Workflow d\'inventaire', () => {
   })
 
   it("affiche la feuille d'actions et gère un redémarrage en erreur", async () => {
-    restartInventoryRunMock.mockRejectedValueOnce(new ApiError('Redémarrage impossible'))
+    restartInventoryRunMock.mockRejectedValueOnce(new HttpError('HTTP 500', 500, 'Erreur serveur', 'http://localhost/api'))
 
     renderInventoryRoutes('/inventory/start')
 
