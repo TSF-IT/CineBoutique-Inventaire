@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using DotNet.Testcontainers.Builders;
+using DotNet.Testcontainers.Configurations;
 using DotNet.Testcontainers.Containers;
 using Xunit;
 
@@ -10,7 +11,7 @@ public class ApiTestsCollection : ICollectionFixture<TestPostgresFixture> { }
 public class TestPostgresFixture : IAsyncLifetime
 {
     public string ConnectionString { get; private set; } = default!;
-    private IContainer _pg = default!;
+    private PostgreSqlTestcontainer _pg = default!;
 
     public async Task InitializeAsync()
     {
@@ -21,12 +22,15 @@ public class TestPostgresFixture : IAsyncLifetime
             return;
         }
 
-        var pg = new ContainerBuilder()
+        var pg = new TestcontainersBuilder<PostgreSqlTestcontainer>()
+            .WithDatabase(new PostgreSqlTestcontainerConfiguration
+            {
+                Database = "cineboutique_test",
+                Username = "postgres",
+                Password = "postgres"
+            })
             .WithImage("postgres:16-alpine")
             .WithName($"cb-inventory-test-pg-{Guid.NewGuid():N}")
-            .WithEnvironment("POSTGRES_PASSWORD", "postgres")
-            .WithEnvironment("POSTGRES_USER", "postgres")
-            .WithEnvironment("POSTGRES_DB", "cineboutique_test")
             .WithPortBinding(0, 5432)
             .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(5432))
             .Build();
