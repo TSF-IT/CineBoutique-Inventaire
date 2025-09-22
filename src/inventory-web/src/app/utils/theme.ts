@@ -1,6 +1,6 @@
 export type Theme = 'light' | 'dark'
 
-const THEME_STORAGE_KEY = 'theme'
+const THEME_STORAGE_KEY = 'cb_theme'
 
 const isBrowser = () => typeof window !== 'undefined'
 

@@ -30,15 +30,12 @@ export const HomePage = () => {
     initialValue: null,
   })
 
-  const hasContextInfos = useMemo(
-    () => {
-      if (!data) {
-        return false
-      }
-      return (data.activeSessions ?? 0) > 0 || (data.openRuns ?? 0) > 0 || Boolean(data.lastActivityUtc)
-    },
-    [data?.activeSessions, data?.lastActivityUtc, data?.openRuns],
-  )
+  const hasContextInfos = useMemo(() => {
+    if (!data) {
+      return false
+    }
+    return (data.activeSessions ?? 0) > 0 || (data.openRuns ?? 0) > 0 || Boolean(data.lastActivityUtc)
+  }, [data])
 
   const displaySummary: InventorySummary | null = data ?? null
 

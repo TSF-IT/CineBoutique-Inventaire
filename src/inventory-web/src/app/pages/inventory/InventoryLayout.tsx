@@ -1,7 +1,6 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Stepper } from '../../components/Stepper'
 import { Page } from '../../components/Page'
-import { ThemeToggle } from '../../components/ThemeToggle'
 import { useInventory } from '../../contexts/InventoryContext'
 
 const STEPS = ['Utilisateur', 'Type de comptage', 'Zone', 'Scan']
@@ -35,10 +34,9 @@ export const InventoryLayout = () => {
           <div className="flex flex-col items-end gap-3 sm:flex-row sm:items-center">
             <div className="hidden text-right text-xs text-slate-500 dark:text-slate-400 sm:block">
               <p>Utilisateur : {selectedUser ?? '–'}</p>
-              <p>Type : {countType ?? '–'}</p>
+              <p>Comptage : {countType ?? '–'}</p>
               <p>Zone : {selectedLocation?.label ?? '–'}</p>
             </div>
-            <ThemeToggle />
           </div>
         </div>
         <Stepper steps={STEPS} activeIndex={activeIndex} />
