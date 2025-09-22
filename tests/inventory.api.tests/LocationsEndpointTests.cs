@@ -1,9 +1,9 @@
 #pragma warning disable CA1001
 #pragma warning disable CA1707
-#pragma warning disable CA1812
 #pragma warning disable CA2007
 #pragma warning disable CA2234
 #pragma warning disable CA1859
+#pragma warning disable CA1812
 
 using System;
 using System.Collections.Generic;
@@ -18,7 +18,6 @@ using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
@@ -28,7 +27,6 @@ public class LocationsEndpointTests : IAsyncLifetime
 {
     private readonly InventoryApiApplicationFactory _factory;
     private HttpClient _client = default!;
-    private IHost _host = default!;
 
     public LocationsEndpointTests(PostgresTestContainerFixture fixture)
     {
@@ -38,10 +36,8 @@ public class LocationsEndpointTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _client = _factory.CreateClient();
-        _host = (IHost?)_factory.Services.GetService(typeof(IHost))
-            ?? throw new InvalidOperationException("Le host de tests n'est pas initialisé.");
 
-        DbMigrator.MigrateUp(_host);
+        DbMigrator.MigrateUp(_factory.Services);
         await ResetDatabaseAsync();
     }
 
@@ -64,7 +60,7 @@ public class LocationsEndpointTests : IAsyncLifetime
 
         var payload = await response.Content.ReadFromJsonAsync<List<LocationResponse>>();
         Assert.NotNull(payload);
-        Assert.Equal(2, payload.Count);
+        Assert.Equal(2, payload!.Count);
 
         var busy = payload.Single(item => item.Code == "S1");
         Assert.True(busy.IsBusy);
@@ -89,7 +85,7 @@ public class LocationsEndpointTests : IAsyncLifetime
 
         var payload = await response.Content.ReadFromJsonAsync<List<LocationResponse>>();
         Assert.NotNull(payload);
-        var busy = payload.Single(item => item.Code == "S1");
+        var busy = payload!.Single(item => item.Code == "S1");
         Assert.False(busy.IsBusy);
         Assert.Null(busy.ActiveRunId);
     }
@@ -110,7 +106,7 @@ public class LocationsEndpointTests : IAsyncLifetime
         var response = await _client.PostAsync($"/api/inventories/{seed.LocationId}/restart?countType=1", null);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
-        using var scope = _host.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
@@ -134,7 +130,7 @@ public class LocationsEndpointTests : IAsyncLifetime
 
     private async Task ResetDatabaseAsync()
     {
-        using var scope = _host.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
@@ -150,7 +146,7 @@ TRUNCATE TABLE ""Location"" RESTART IDENTITY CASCADE;";
 
     private async Task SeedLocationAsync(Guid id, string code, string label)
     {
-        using var scope = _host.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
@@ -161,7 +157,7 @@ TRUNCATE TABLE ""Location"" RESTART IDENTITY CASCADE;";
 
     private async Task<(Guid LocationId, Guid RunId)> SeedDataAsync(int countType)
     {
-        using var scope = _host.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
@@ -211,13 +207,22 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType, @Operator);";
         }
     }
 
-    private sealed record LocationResponse(
-        Guid Id,
-        string Code,
-        string Label,
-        bool IsBusy,
-        string? BusyBy,
-        Guid? ActiveRunId,
-        short? ActiveCountType,
-        DateTimeOffset? ActiveStartedAtUtc);
+    private sealed record LocationResponse
+    {
+        public Guid Id { get; init; }
+
+        public string Code { get; init; } = string.Empty;
+
+        public string Label { get; init; } = string.Empty;
+
+        public bool IsBusy { get; init; }
+
+        public string? BusyBy { get; init; }
+
+        public Guid? ActiveRunId { get; init; }
+
+        public short? ActiveCountType { get; init; }
+
+        public DateTimeOffset? ActiveStartedAtUtc { get; init; }
+    }
 }
