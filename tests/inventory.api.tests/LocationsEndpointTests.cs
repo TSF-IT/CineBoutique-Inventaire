@@ -23,40 +23,29 @@ namespace CineBoutique.Inventory.Api.Tests;
 [Collection("ApiTestsCollection")]
 public sealed class LocationsEndpointTests : IAsyncLifetime
 {
-    private readonly TestPostgresFixture _postgresFixture;
-    private InventoryApiApplicationFactory? _factory;
+    private readonly InventoryApiApplicationFactory _factory;
     private HttpClient? _client;
     private ConnectionCounter? _connectionCounter;
 
-    public LocationsEndpointTests(TestPostgresFixture postgresFixture)
+    public LocationsEndpointTests(InventoryApiApplicationFactory factory)
     {
-        _postgresFixture = postgresFixture;
+        _factory = factory ?? throw new ArgumentNullException(nameof(factory));
     }
-
-    private InventoryApiApplicationFactory Factory => _factory ?? throw new InvalidOperationException("Factory not initialised");
 
     private HttpClient Client => _client ?? throw new InvalidOperationException("Client not initialised");
     private ConnectionCounter ConnectionCounter => _connectionCounter ?? throw new InvalidOperationException("Connection counter not initialised");
 
-    public Task InitializeAsync()
+    public async Task InitializeAsync()
     {
-        _factory = new InventoryApiApplicationFactory(_postgresFixture.ConnectionString);
-        _client = Factory.CreateClient();
-        _connectionCounter = Factory.Services.GetRequiredService<ConnectionCounter>();
-        return ResetDatabaseAsync();
+        _client = _factory.CreateClient();
+        _connectionCounter = _factory.ConnectionCounter;
+        await ResetDatabaseAsync().ConfigureAwait(false);
     }
 
-    public async Task DisposeAsync()
+    public Task DisposeAsync()
     {
-        if (_client is not null)
-        {
-            _client.Dispose();
-        }
-
-        if (_factory is not null)
-        {
-            await _factory.DisposeAsync();
-        }
+        _client?.Dispose();
+        return Task.CompletedTask;
     }
 
     [Fact]
@@ -125,7 +114,7 @@ public sealed class LocationsEndpointTests : IAsyncLifetime
         var response = await Client.PostAsync($"/api/inventories/{seed.LocationId}/restart?countType=1", null);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
-        using var scope = Factory.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
@@ -149,7 +138,7 @@ public sealed class LocationsEndpointTests : IAsyncLifetime
 
     private async Task ResetDatabaseAsync()
     {
-        using var scope = Factory.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
@@ -167,7 +156,7 @@ TRUNCATE TABLE ""Location"" RESTART IDENTITY CASCADE;";
 
     private async Task SeedLocationAsync(Guid id, string code, string label)
     {
-        using var scope = Factory.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
@@ -178,7 +167,7 @@ TRUNCATE TABLE ""Location"" RESTART IDENTITY CASCADE;";
 
     private async Task<(Guid LocationId, Guid RunId)> SeedDataAsync(int countType)
     {
-        using var scope = Factory.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);

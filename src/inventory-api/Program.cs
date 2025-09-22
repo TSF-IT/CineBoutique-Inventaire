@@ -21,14 +21,16 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Microsoft.Extensions.Logging;
-using Polly;
-using Polly.Retry;
 using Serilog;
 
-var envName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
+var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
 var disableSerilog = (Environment.GetEnvironmentVariable("DISABLE_SERILOG") ?? "false")
     .Equals("true", StringComparison.OrdinalIgnoreCase);
-var serilogEnabled = !disableSerilog && !string.Equals(envName, "CI", StringComparison.OrdinalIgnoreCase);
+var disableMigrations = (Environment.GetEnvironmentVariable("DISABLE_MIGRATIONS") ?? "false")
+    .Equals("true", StringComparison.OrdinalIgnoreCase);
+var isCiOrTest = string.Equals(environmentName, "CI", StringComparison.OrdinalIgnoreCase)
+    || string.Equals(environmentName, "Test", StringComparison.OrdinalIgnoreCase);
+var serilogEnabled = !disableSerilog && !isCiOrTest;
 
 try
 {
@@ -169,31 +171,36 @@ try
 
     var app = builder.Build();
 
-    var disableMigrations = (Environment.GetEnvironmentVariable("DISABLE_MIGRATIONS") ?? "false")
-            .Equals("true", StringComparison.OrdinalIgnoreCase)
-        || string.Equals(envName, "CI", StringComparison.OrdinalIgnoreCase);
-
-    if (!disableMigrations)
+    if (!disableMigrations && !isCiOrTest)
     {
-        AsyncRetryPolicy retry = Policy
-            .Handle<Exception>()
-            .WaitAndRetryAsync(6, attempt => TimeSpan.FromSeconds(Math.Pow(2, attempt)));
+        const int maxAttempts = 10;
+        var attempt = 0;
 
-        await retry.ExecuteAsync(async () =>
+        while (true)
         {
-            await using var scope = app.Services.CreateAsyncScope();
-            var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
-            runner.MigrateUp();
-
-            if (app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup"))
+            try
             {
-                var seeder = scope.ServiceProvider.GetService<CineBoutique.Inventory.Infrastructure.Seeding.InventoryDataSeeder>();
-                if (seeder is not null)
+                attempt++;
+                await using var scope = app.Services.CreateAsyncScope();
+                var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+                runner.MigrateUp();
+
+                if (app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup"))
                 {
-                    await seeder.SeedAsync().ConfigureAwait(false);
+                    var seeder = scope.ServiceProvider.GetService<CineBoutique.Inventory.Infrastructure.Seeding.InventoryDataSeeder>();
+                    if (seeder is not null)
+                    {
+                        await seeder.SeedAsync().ConfigureAwait(false);
+                    }
                 }
+
+                break;
             }
-        }).ConfigureAwait(false);
+            catch (Exception) when (attempt < maxAttempts)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+            }
+        }
     }
 
     if (app.Environment.IsDevelopment())

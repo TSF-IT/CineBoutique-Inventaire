@@ -14,11 +14,16 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" />
-    <PackageReference Include="DotNet.Testcontainers" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DotNet.Testcontainers" VersionOverride="4.5.0" />
+    <PackageReference Include="Npgsql" VersionOverride="8.0.3" />
+    <PackageReference Include="FluentMigrator.Runner.Postgres" VersionOverride="5.3.2" />
   </ItemGroup>
 
   <ItemGroup>
