@@ -3,9 +3,6 @@ using System.Data;
 using System.Data.Common;
 using CineBoutique.Inventory.Infrastructure.Database;
 using CineBoutique.Inventory.Infrastructure.Migrations;
-using DotNet.Testcontainers.Builders;
-using DotNet.Testcontainers.Configurations;
-using DotNet.Testcontainers.Containers;
 using FluentMigrator.Runner;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -14,13 +11,19 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests.Infrastructure;
 
 public sealed class InventoryApiApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-    private PostgreSqlTestcontainer? _postgres;
+    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
+        .WithImage("postgres:16-alpine")
+        .WithDatabase("cineboutique_test")
+        .WithUsername("postgres")
+        .WithPassword("postgres")
+        .Build();
     private string? _connectionString;
 
     public string ConnectionString => _connectionString ?? throw new InvalidOperationException("La connexion Postgres de test n'est pas initialisée.");
@@ -29,19 +32,8 @@ public sealed class InventoryApiApplicationFactory : WebApplicationFactory<Progr
 
     public async Task InitializeAsync()
     {
-        _postgres = new TestcontainersBuilder<PostgreSqlTestcontainer>()
-            .WithImage("postgres:16-alpine")
-            .WithDatabase(new PostgreSqlTestcontainerConfiguration
-            {
-                Database = "cineboutique_test",
-                Username = "postgres",
-                Password = "postgres"
-            })
-            .WithCleanUp(true)
-            .Build();
-
         await _postgres.StartAsync().ConfigureAwait(false);
-        _connectionString = _postgres.ConnectionString;
+        _connectionString = _postgres.GetConnectionString();
 
         Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "CI");
         Environment.SetEnvironmentVariable("DISABLE_SERILOG", "true");
@@ -59,6 +51,9 @@ public sealed class InventoryApiApplicationFactory : WebApplicationFactory<Progr
         {
             var overrides = new Dictionary<string, string?>
             {
+                ["ASPNETCORE_ENVIRONMENT"] = "CI",
+                ["DISABLE_SERILOG"] = "true",
+                ["DISABLE_MIGRATIONS"] = "true",
                 ["ConnectionStrings:Default"] = ConnectionString,
                 ["AppSettings:SeedOnStartup"] = "false"
             };
@@ -91,10 +86,7 @@ public sealed class InventoryApiApplicationFactory : WebApplicationFactory<Progr
     {
         Dispose();
 
-        if (_postgres is not null)
-        {
-            await _postgres.DisposeAsync().ConfigureAwait(false);
-        }
+        await _postgres.DisposeAsync().ConfigureAwait(false);
     }
 
     private static Task RunMigrationsAsync(string connectionString)
