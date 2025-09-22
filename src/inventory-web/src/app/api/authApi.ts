@@ -1,12 +1,13 @@
 import type { AuthResponse } from '../types/auth'
-import { apiClient } from './client'
+import { http } from '../../lib/api/http'
 
 interface Credentials {
   username: string
   password: string
 }
 
-export const login = async (credentials: Credentials): Promise<AuthResponse> => {
-  const { data } = await apiClient.post<AuthResponse>('/auth/login', credentials)
-  return data
-}
+export const login = async (credentials: Credentials): Promise<AuthResponse> =>
+  http<AuthResponse>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(credentials),
+  })

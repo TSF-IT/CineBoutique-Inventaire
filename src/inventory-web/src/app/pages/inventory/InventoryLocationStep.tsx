@@ -9,7 +9,24 @@ import { SlidingPanel } from '../../components/SlidingPanel'
 import { TextField } from '../../components/TextField'
 import { useInventory } from '../../contexts/InventoryContext'
 import type { Location } from '../../types/inventory'
-import { ApiError } from '../../api/client'
+import { HttpError } from '../../../lib/api/http'
+
+const truncate = (value: string, maxLength = 180) =>
+  value.length <= maxLength ? value : `${value.slice(0, maxLength)}…`
+
+const formatHttpError = (error: HttpError, prefix = 'Erreur réseau') => {
+  const parts = [prefix]
+  if (error.status) {
+    parts.push(`HTTP ${error.status}`)
+  }
+  if (error.url) {
+    parts.push(`URL: ${error.url}`)
+  }
+  if (error.bodyText) {
+    parts.push(`Détail: ${truncate(error.bodyText)}`)
+  }
+  return parts.join(' | ')
+}
 
 export const InventoryLocationStep = () => {
   const navigate = useNavigate()
@@ -37,7 +54,9 @@ export const InventoryLocationStep = () => {
       } catch (err) {
         if (!isCancelled()) {
           setLocations([])
-          if (err instanceof ApiError) {
+          if (err instanceof HttpError) {
+            setError(formatHttpError(err))
+          } else if (err instanceof Error && err.message) {
             setError(err.message)
           } else {
             setError('Impossible de charger les zones pour le moment.')
@@ -143,7 +162,9 @@ export const InventoryLocationStep = () => {
       await restartInventoryRun(zone.id, effectiveCountType)
       handleStart(zone)
     } catch (err) {
-      if (err instanceof ApiError && err.message) {
+      if (err instanceof HttpError) {
+        setActionError(formatHttpError(err, 'Redémarrage impossible'))
+      } else if (err instanceof Error && err.message) {
         setActionError(err.message)
       } else {
         setActionError("Impossible de redémarrer cette zone pour le moment. Vérifiez votre connexion et réessayez.")
