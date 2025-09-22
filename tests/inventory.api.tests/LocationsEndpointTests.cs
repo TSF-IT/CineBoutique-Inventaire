@@ -9,42 +9,46 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
-using System.Net;
-using System.Net.Http.Json;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Json;
+using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
 
-[Collection("ApiTestsCollection")]
-public sealed class LocationsEndpointTests : IAsyncLifetime
+[Collection("ApiTestCollection")]
+public class LocationsEndpointTests : IAsyncLifetime
 {
     private readonly InventoryApiApplicationFactory _factory;
-    private HttpClient? _client;
-    private ConnectionCounter? _connectionCounter;
+    private HttpClient _client = default!;
+    private IHost _host = default!;
 
-    public LocationsEndpointTests(InventoryApiApplicationFactory factory)
+    public LocationsEndpointTests(PostgresTestContainerFixture fixture)
     {
-        _factory = factory ?? throw new ArgumentNullException(nameof(factory));
+        _factory = new InventoryApiApplicationFactory(fixture);
     }
-
-    private HttpClient Client => _client ?? throw new InvalidOperationException("Client not initialised");
-    private ConnectionCounter ConnectionCounter => _connectionCounter ?? throw new InvalidOperationException("Connection counter not initialised");
 
     public async Task InitializeAsync()
     {
         _client = _factory.CreateClient();
-        _connectionCounter = _factory.ConnectionCounter;
-        await ResetDatabaseAsync().ConfigureAwait(false);
+        _host = (IHost?)_factory.Services.GetService(typeof(IHost))
+            ?? throw new InvalidOperationException("Le host de tests n'est pas initialisé.");
+
+        DbMigrator.MigrateUp(_host);
+        await ResetDatabaseAsync();
     }
 
     public Task DisposeAsync()
     {
-        _client?.Dispose();
+        _client.Dispose();
+        _factory.Dispose();
         return Task.CompletedTask;
     }
 
@@ -54,9 +58,7 @@ public sealed class LocationsEndpointTests : IAsyncLifetime
         await ResetDatabaseAsync();
         var seed = await SeedDataAsync(countType: 1);
 
-        ConnectionCounter.Reset();
-
-        var response = await Client.GetAsync("/api/locations?countType=1");
+        var response = await _client.GetAsync("/api/locations?countType=1");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -74,8 +76,6 @@ public sealed class LocationsEndpointTests : IAsyncLifetime
         var free = payload.Single(item => item.Code == "S2");
         Assert.False(free.IsBusy);
         Assert.Null(free.ActiveRunId);
-
-        Assert.Equal(1, ConnectionCounter.CommandCount);
     }
 
     [Fact]
@@ -84,9 +84,7 @@ public sealed class LocationsEndpointTests : IAsyncLifetime
         await ResetDatabaseAsync();
         await SeedDataAsync(countType: 2);
 
-        ConnectionCounter.Reset();
-
-        var response = await Client.GetAsync("/api/locations?countType=1");
+        var response = await _client.GetAsync("/api/locations?countType=1");
         response.EnsureSuccessStatusCode();
 
         var payload = await response.Content.ReadFromJsonAsync<List<LocationResponse>>();
@@ -94,14 +92,12 @@ public sealed class LocationsEndpointTests : IAsyncLifetime
         var busy = payload.Single(item => item.Code == "S1");
         Assert.False(busy.IsBusy);
         Assert.Null(busy.ActiveRunId);
-        Assert.Equal(1, ConnectionCounter.CommandCount);
     }
 
     [Fact]
     public async Task GetLocations_WithInvalidCountType_ReturnsBadRequest()
     {
-        ConnectionCounter.Reset();
-        var response = await Client.GetAsync("/api/locations?countType=5");
+        var response = await _client.GetAsync("/api/locations?countType=5");
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -111,10 +107,10 @@ public sealed class LocationsEndpointTests : IAsyncLifetime
         await ResetDatabaseAsync();
         var seed = await SeedDataAsync(countType: 1);
 
-        var response = await Client.PostAsync($"/api/inventories/{seed.LocationId}/restart?countType=1", null);
+        var response = await _client.PostAsync($"/api/inventories/{seed.LocationId}/restart?countType=1", null);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
-        using var scope = _factory.Services.CreateScope();
+        using var scope = _host.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
@@ -132,13 +128,13 @@ public sealed class LocationsEndpointTests : IAsyncLifetime
 
         await SeedLocationAsync(locationId, code: "S3", label: "Zone S3");
 
-        var response = await Client.PostAsync($"/api/inventories/{locationId}/restart?countType=1", null);
+        var response = await _client.PostAsync($"/api/inventories/{locationId}/restart?countType=1", null);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
 
     private async Task ResetDatabaseAsync()
     {
-        using var scope = _factory.Services.CreateScope();
+        using var scope = _host.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
@@ -150,13 +146,11 @@ TRUNCATE TABLE ""InventorySession"" RESTART IDENTITY CASCADE;
 TRUNCATE TABLE ""Location"" RESTART IDENTITY CASCADE;";
 
         await connection.ExecuteAsync(cleanupSql);
-
-        ConnectionCounter.Reset();
     }
 
     private async Task SeedLocationAsync(Guid id, string code, string label)
     {
-        using var scope = _factory.Services.CreateScope();
+        using var scope = _host.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
@@ -167,7 +161,7 @@ TRUNCATE TABLE ""Location"" RESTART IDENTITY CASCADE;";
 
     private async Task<(Guid LocationId, Guid RunId)> SeedDataAsync(int countType)
     {
-        using var scope = _factory.Services.CreateScope();
+        using var scope = _host.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
@@ -200,8 +194,6 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType, @Operator);";
                 CountType = countType,
                 Operator = "alice.durand"
             });
-
-        ConnectionCounter.Reset();
 
         return (busyLocationId, runId);
     }

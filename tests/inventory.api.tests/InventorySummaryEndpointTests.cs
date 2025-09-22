@@ -9,6 +9,7 @@ using System;
 using System.Data;
 using System.Data.Common;
 using System.Net;
+using System.Net.Http;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models;
@@ -16,31 +17,37 @@ using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
 
-[Collection("ApiTestsCollection")]
-public sealed class InventorySummaryEndpointTests : IAsyncLifetime
+[Collection("ApiTestCollection")]
+public class InventorySummaryEndpointTests : IAsyncLifetime
 {
     private readonly InventoryApiApplicationFactory _factory;
-    private HttpClient? _client;
+    private HttpClient _client = default!;
+    private IHost _host = default!;
 
-    public InventorySummaryEndpointTests(InventoryApiApplicationFactory factory)
+    public InventorySummaryEndpointTests(PostgresTestContainerFixture fixture)
     {
-        _factory = factory ?? throw new ArgumentNullException(nameof(factory));
+        _factory = new InventoryApiApplicationFactory(fixture);
     }
 
-    private HttpClient Client => _client ?? throw new InvalidOperationException("Client not initialised");
-
-    public Task InitializeAsync()
+    public async Task InitializeAsync()
     {
         _client = _factory.CreateClient();
-        return Task.CompletedTask;
+        _host = (IHost?)_factory.Services.GetService(typeof(IHost))
+            ?? throw new InvalidOperationException("Le host de tests n'est pas initialisé.");
+
+        DbMigrator.MigrateUp(_host);
+        await ResetDatabaseAsync();
     }
 
     public Task DisposeAsync()
     {
-        _client?.Dispose();
+        _client.Dispose();
+        _factory.Dispose();
         return Task.CompletedTask;
     }
 
@@ -49,7 +56,7 @@ public sealed class InventorySummaryEndpointTests : IAsyncLifetime
     {
         await ResetDatabaseAsync();
 
-        var response = await Client.GetAsync("/api/inventories/summary");
+        var response = await _client.GetAsync("/api/inventories/summary");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var payload = await response.Content.ReadFromJsonAsync<InventorySummaryDto>();
@@ -64,7 +71,7 @@ public sealed class InventorySummaryEndpointTests : IAsyncLifetime
     {
         await ResetDatabaseAsync();
 
-        using var scope = _factory.Services.CreateScope();
+        using var scope = _host.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
@@ -95,7 +102,7 @@ public sealed class InventorySummaryEndpointTests : IAsyncLifetime
             "VALUES (@Id, @RunId, @ProductId, 1, @CountedAt);";
         await connection.ExecuteAsync(insertCountLine, new { Id = Guid.NewGuid(), RunId = runId, ProductId = productId, CountedAt = countedAt });
 
-        var response = await Client.GetAsync("/api/inventories/summary");
+        var response = await _client.GetAsync("/api/inventories/summary");
         response.EnsureSuccessStatusCode();
 
         var payload = await response.Content.ReadFromJsonAsync<InventorySummaryDto>();
@@ -108,7 +115,7 @@ public sealed class InventorySummaryEndpointTests : IAsyncLifetime
 
     private async Task ResetDatabaseAsync()
     {
-        using var scope = _factory.Services.CreateScope();
+        using var scope = _host.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);

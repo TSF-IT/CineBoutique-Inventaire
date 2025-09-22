@@ -1,108 +1,45 @@
+using System;
 using System.Collections.Generic;
-using System.Data;
-using System.Data.Common;
-using CineBoutique.Inventory.Infrastructure.Database;
-using CineBoutique.Inventory.Infrastructure.Migrations;
-using FluentMigrator.Runner;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Logging;
-using Npgsql;
-using Testcontainers.PostgreSql;
+using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests.Infrastructure;
 
-public sealed class InventoryApiApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
+[Collection("ApiTestCollection")]
+public class InventoryApiApplicationFactory : WebApplicationFactory<Program>
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
-        .WithImage("postgres:16-alpine")
-        .WithDatabase("cineboutique_test")
-        .WithUsername("postgres")
-        .WithPassword("postgres")
-        .Build();
-    private string? _connectionString;
+    private readonly PostgresTestContainerFixture _fixture;
 
-    public string ConnectionString => _connectionString ?? throw new InvalidOperationException("La connexion Postgres de test n'est pas initialisée.");
-
-    public ConnectionCounter ConnectionCounter => Services.GetRequiredService<ConnectionCounter>();
-
-    public async Task InitializeAsync()
+    public InventoryApiApplicationFactory(PostgresTestContainerFixture fixture)
     {
-        await _postgres.StartAsync().ConfigureAwait(false);
-        _connectionString = _postgres.GetConnectionString();
-
-        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "CI");
-        Environment.SetEnvironmentVariable("DISABLE_SERILOG", "true");
-        Environment.SetEnvironmentVariable("DISABLE_MIGRATIONS", "true");
-
-        await RunMigrationsAsync(ConnectionString).ConfigureAwait(false);
+        _fixture = fixture;
     }
 
-    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    protected override IHost CreateHost(IHostBuilder builder)
     {
-        builder.UseEnvironment("CI");
-        builder.ConfigureLogging(logging => logging.ClearProviders());
+        ArgumentNullException.ThrowIfNull(builder);
 
-        builder.ConfigureAppConfiguration((_, configurationBuilder) =>
+        builder.ConfigureAppConfiguration((_, config) =>
         {
-            var overrides = new Dictionary<string, string?>
+            var dict = new Dictionary<string, string?>
             {
                 ["ASPNETCORE_ENVIRONMENT"] = "CI",
                 ["DISABLE_SERILOG"] = "true",
                 ["DISABLE_MIGRATIONS"] = "true",
-                ["ConnectionStrings:Default"] = ConnectionString,
-                ["AppSettings:SeedOnStartup"] = "false"
+                ["ConnectionStrings:Default"] = _fixture.ConnectionString
             };
-
-            configurationBuilder.AddInMemoryCollection(overrides!);
+            config.AddInMemoryCollection(dict!);
         });
 
-        builder.ConfigureTestServices(services =>
+        var cs = _fixture.ConnectionString;
+        if (string.IsNullOrWhiteSpace(cs) || cs.Contains("127.0.0.1", StringComparison.Ordinal) || cs.Contains("localhost:5432", StringComparison.OrdinalIgnoreCase))
         {
-            services.RemoveAll<IDbConnectionFactory>();
-            services.AddSingleton<IDbConnectionFactory>(_ =>
-            {
-                var options = new DatabaseOptions(ConnectionString);
-                return new NpgsqlConnectionFactory(options);
-            });
+            throw new InvalidOperationException("Invalid test connection string; Testcontainers PG must be used.");
+        }
 
-            services.AddSingleton<ConnectionCounter>();
-            services.RemoveAll<IDbConnection>();
-            services.AddScoped<IDbConnection>(sp =>
-            {
-                var factory = sp.GetRequiredService<IDbConnectionFactory>();
-                var connection = factory.CreateConnection();
-                var counter = sp.GetRequiredService<ConnectionCounter>();
-                return connection is DbConnection dbConnection ? new CountingDbConnection(dbConnection, counter) : connection;
-            });
-        });
-    }
-
-    public async Task DisposeAsync()
-    {
-        Dispose();
-
-        await _postgres.DisposeAsync().ConfigureAwait(false);
-    }
-
-    private static Task RunMigrationsAsync(string connectionString)
-    {
-        var services = new ServiceCollection()
-            .AddLogging(lb => lb.AddFluentMigratorConsole())
-            .AddFluentMigratorCore()
-            .ConfigureRunner(rb => rb
-                .AddPostgres()
-                .WithGlobalConnectionString(connectionString)
-                .ScanIn(typeof(CreateInventorySchema).Assembly).For.Migrations())
-            .BuildServiceProvider();
-
-        using var scope = services.CreateScope();
-        var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
-        runner.MigrateUp();
-        return Task.CompletedTask;
+        return base.CreateHost(builder);
     }
 }
