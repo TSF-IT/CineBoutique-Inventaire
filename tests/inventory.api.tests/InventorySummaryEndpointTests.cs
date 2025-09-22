@@ -22,37 +22,26 @@ namespace CineBoutique.Inventory.Api.Tests;
 [Collection("ApiTestsCollection")]
 public sealed class InventorySummaryEndpointTests : IAsyncLifetime
 {
-    private readonly TestPostgresFixture _postgresFixture;
-    private InventoryApiApplicationFactory? _factory;
+    private readonly InventoryApiApplicationFactory _factory;
     private HttpClient? _client;
 
-    public InventorySummaryEndpointTests(TestPostgresFixture postgresFixture)
+    public InventorySummaryEndpointTests(InventoryApiApplicationFactory factory)
     {
-        _postgresFixture = postgresFixture;
+        _factory = factory ?? throw new ArgumentNullException(nameof(factory));
     }
-
-    private InventoryApiApplicationFactory Factory => _factory ?? throw new InvalidOperationException("Factory not initialised");
 
     private HttpClient Client => _client ?? throw new InvalidOperationException("Client not initialised");
 
     public Task InitializeAsync()
     {
-        _factory = new InventoryApiApplicationFactory(_postgresFixture.ConnectionString);
-        _client = Factory.CreateClient();
+        _client = _factory.CreateClient();
         return Task.CompletedTask;
     }
 
-    public async Task DisposeAsync()
+    public Task DisposeAsync()
     {
-        if (_client is not null)
-        {
-            _client.Dispose();
-        }
-
-        if (_factory is not null)
-        {
-            await _factory.DisposeAsync();
-        }
+        _client?.Dispose();
+        return Task.CompletedTask;
     }
 
     [Fact]
@@ -75,7 +64,7 @@ public sealed class InventorySummaryEndpointTests : IAsyncLifetime
     {
         await ResetDatabaseAsync();
 
-        using var scope = Factory.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
@@ -119,7 +108,7 @@ public sealed class InventorySummaryEndpointTests : IAsyncLifetime
 
     private async Task ResetDatabaseAsync()
     {
-        using var scope = Factory.Services.CreateScope();
+        using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
