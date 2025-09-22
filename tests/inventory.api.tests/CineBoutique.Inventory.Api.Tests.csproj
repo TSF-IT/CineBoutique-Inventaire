@@ -17,14 +17,14 @@
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
-    <PackageReference Include="xunit.runner.visualstudio" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Testcontainers" VersionOverride="3.8.0" />
-    <PackageReference Include="Testcontainers.PostgreSql" VersionOverride="3.8.0" />
-    <PackageReference Include="Npgsql" VersionOverride="8.0.3" />
-    <PackageReference Include="FluentMigrator.Runner.Postgres" VersionOverride="5.3.2" />
+    <PackageReference Include="xunit.runner.visualstudio">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Testcontainers" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Npgsql" />
+    <PackageReference Include="FluentMigrator.Runner.Postgres" />
   </ItemGroup>
 
   <ItemGroup>

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
 using System.Linq;
+using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Auth;
 using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Models;
@@ -15,32 +16,19 @@ using FluentMigrator.Runner;
 using FluentMigrator.Runner.Initialization;
 using FluentMigrator.Runner.Processors;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.OpenApi;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.OpenApi;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using Microsoft.Extensions.Logging;
 using Serilog;
 
-var environmentName = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production";
-var disableSerilog = (Environment.GetEnvironmentVariable("DISABLE_SERILOG") ?? "false")
-    .Equals("true", StringComparison.OrdinalIgnoreCase);
-var disableMigrations = (Environment.GetEnvironmentVariable("DISABLE_MIGRATIONS") ?? "false")
-    .Equals("true", StringComparison.OrdinalIgnoreCase);
-var isCiOrTest = string.Equals(environmentName, "CI", StringComparison.OrdinalIgnoreCase)
-    || string.Equals(environmentName, "Test", StringComparison.OrdinalIgnoreCase);
-var serilogEnabled = !disableSerilog && !isCiOrTest;
+var serilogEnabled = false;
 
 try
 {
     var builder = WebApplication.CreateBuilder(args);
-
-    if (!serilogEnabled)
-    {
-        builder.Logging.ClearProviders();
-        builder.Logging.AddConsole();
-    }
 
     builder.Host.UseDefaultServiceProvider(options =>
     {
@@ -48,17 +36,28 @@ try
         options.ValidateScopes = false;
     });
 
+    builder.Configuration
+        .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+        .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
+        .AddEnvironmentVariables();
+
+    var isCiOrTest = builder.Environment.IsEnvironment("CI") || builder.Environment.IsEnvironment("Test");
+    var disableSerilog = string.Equals(builder.Configuration["DISABLE_SERILOG"], "true", StringComparison.OrdinalIgnoreCase);
+    var disableMigrations = string.Equals(builder.Configuration["DISABLE_MIGRATIONS"], "true", StringComparison.OrdinalIgnoreCase);
+
+    serilogEnabled = !disableSerilog && !isCiOrTest;
+
     if (serilogEnabled)
     {
         builder.Host.UseSerilog((context, services, configuration) => configuration
             .ReadFrom.Configuration(context.Configuration)
             .ReadFrom.Services(services));
     }
-
-    builder.Configuration
-        .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
-        .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
-        .AddEnvironmentVariables();
+    else
+    {
+        builder.Logging.ClearProviders();
+        builder.Logging.AddConsole();
+    }
 
     builder.Services.Configure<AppSettingsOptions>(builder.Configuration.GetSection("AppSettings"));
 
@@ -171,7 +170,9 @@ try
 
     var app = builder.Build();
 
-    if (!disableMigrations && !isCiOrTest)
+    var runMigrations = !disableMigrations && !isCiOrTest;
+
+    if (runMigrations)
     {
         const int maxAttempts = 10;
         var attempt = 0;
@@ -187,7 +188,7 @@ try
 
                 if (app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup"))
                 {
-                    var seeder = scope.ServiceProvider.GetService<CineBoutique.Inventory.Infrastructure.Seeding.InventoryDataSeeder>();
+                    var seeder = scope.ServiceProvider.GetService<InventoryDataSeeder>();
                     if (seeder is not null)
                     {
                         await seeder.SeedAsync().ConfigureAwait(false);
