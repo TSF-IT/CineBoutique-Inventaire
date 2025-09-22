@@ -19,7 +19,9 @@ public class InventoryApiApplicationFactory : WebApplicationFactory<Program>
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseEnvironment(TestEnvironments.Ci);
+        if (builder is null) throw new ArgumentNullException(nameof(builder));
+
+        builder.UseEnvironment("CI");
 
         builder.ConfigureAppConfiguration((ctx, cfg) =>
         {

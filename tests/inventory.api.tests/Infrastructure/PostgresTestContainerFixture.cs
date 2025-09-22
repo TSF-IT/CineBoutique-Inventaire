@@ -19,11 +19,11 @@ public sealed class PostgresTestContainerFixture : IAsyncLifetime
             .WithCleanUp(true)
             .Build();
 
-        await Container.StartAsync();
+        await Container.StartAsync().ConfigureAwait(false);
     }
 
     public async Task DisposeAsync()
     {
-        await Container.DisposeAsync().AsTask();
+        await Container.DisposeAsync().AsTask().ConfigureAwait(false);
     }
 }
