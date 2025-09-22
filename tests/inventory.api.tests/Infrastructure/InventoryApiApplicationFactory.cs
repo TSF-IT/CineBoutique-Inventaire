@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
 namespace CineBoutique.Inventory.Api.Tests.Infrastructure;
 
@@ -17,11 +18,33 @@ public class InventoryApiApplicationFactory : WebApplicationFactory<Program>
         _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
     }
 
+    protected override IHost CreateHost(IHostBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        Environment.SetEnvironmentVariable("ConnectionStrings__Default", _connectionString);
+
+        builder.ConfigureAppConfiguration((ctx, cfg) =>
+        {
+            var overrides = new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:Default"] = _connectionString,
+                ["DISABLE_SERILOG"] = "true",
+                ["DISABLE_MIGRATIONS"] = "true",
+                ["ASPNETCORE_ENVIRONMENT"] = TestEnvironments.Ci
+            };
+
+            cfg.AddInMemoryCollection(overrides!);
+        });
+
+        return base.CreateHost(builder);
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        builder.UseEnvironment("CI");
+        builder.UseEnvironment(TestEnvironments.Ci);
 
         builder.ConfigureAppConfiguration((ctx, cfg) =>
         {
