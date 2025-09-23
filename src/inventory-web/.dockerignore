@@ -1,0 +1,25 @@
+# VCS & IDE
+.git
+.gitignore
+.vscode
+.idea
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Build outputs
+dist/
+coverage/
+.vite/
+.cache/
+.parcel-cache/
+.turbo/
+
+# Dépendances locales
+node_modules/
+
+# Logs & artefacts
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
