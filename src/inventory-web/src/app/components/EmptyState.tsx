@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import clsx from 'clsx'
-import { Button } from './Button'
+import { Button } from './ui/Button'
 
 interface EmptyStateProps {
   icon?: ReactNode

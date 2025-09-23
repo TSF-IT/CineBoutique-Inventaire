@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button } from '../../components/Button'
+import { Button } from '../../components/ui/Button'
+import { Input } from '../../components/ui/Input'
 import { Card } from '../../components/Card'
-import { TextField } from '../../components/TextField'
 import { useInventory } from '../../contexts/InventoryContext'
 import { INVENTORY_OPERATORS } from '../../utils/users'
 
@@ -33,8 +33,9 @@ export const InventoryUserStep = () => {
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Sélectionnez votre profil pour assurer la traçabilité des comptages.
         </p>
-        <TextField
+        <Input
           label="Rechercher"
+          name="operatorQuery"
           placeholder="Tapez un prénom"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
