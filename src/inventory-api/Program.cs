@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
+using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -16,11 +17,10 @@ using Dapper;
 using FluentMigrator.Runner;
 using FluentMigrator.Runner.Initialization;
 using FluentMigrator.Runner.Processors;
-using HealthChecks.NpgSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
-using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -44,7 +44,6 @@ builder.Configuration
     .AddEnvironmentVariables();
 
 bool disableSerilog = builder.Configuration["DISABLE_SERILOG"]?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;
-bool disableMigrations = builder.Configuration["DISABLE_MIGRATIONS"]?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;
 
 var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
 if (allowedOrigins.Length == 0)
@@ -76,14 +75,6 @@ var connectionString = builder.Configuration.GetConnectionString("Default");
 if (string.IsNullOrWhiteSpace(connectionString))
 {
     throw new InvalidOperationException("La chaîne de connexion 'Default' doit être configurée.");
-}
-
-var connStr = connectionString;
-if (!string.IsNullOrWhiteSpace(connStr))
-{
-    builder.Services
-        .AddHealthChecks()
-        .AddNpgSql(connStr, name: "postgres");
 }
 
 builder.Services
@@ -128,19 +119,6 @@ if (authenticationOptions.TokenLifetimeMinutes <= 0)
 builder.Services.Configure<AuthenticationOptions>(authenticationSection);
 
 builder.Services.AddInventoryInfrastructure(builder.Configuration);
-
-builder.Services.AddProblemDetails(options =>
-{
-    options.CustomizeProblemDetails = ctx =>
-    {
-        ctx.ProblemDetails.Instance = ctx.HttpContext.Request.Path;
-        ctx.ProblemDetails.Extensions["traceId"] = ctx.HttpContext.TraceIdentifier;
-        if (builder.Environment.IsDevelopment() && ctx.Exception is Exception ex)
-        {
-            ctx.ProblemDetails.Extensions["detail"] = ex.ToString();
-        }
-    };
-});
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -189,8 +167,17 @@ builder.Services
 builder.Services.AddAuthorization();
 
 const string PublicApiCorsPolicy = "PublicApi";
+const string DevCorsPolicy = "AllowDev";
 builder.Services.AddCors(options =>
 {
+    options.AddPolicy(DevCorsPolicy, policyBuilder =>
+    {
+        policyBuilder
+            .WithOrigins("http://localhost:5173")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+
     options.AddPolicy(PublicApiCorsPolicy, policyBuilder =>
     {
         if (allowedOrigins.Length > 0)
@@ -212,11 +199,37 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-app.UseExceptionHandler();
+if (app.Environment.IsDevelopment())
+{
+    app.UseDeveloperExceptionPage();
+}
+else
+{
+    app.UseExceptionHandler(errorApp =>
+    {
+        errorApp.Run(async context =>
+        {
+            var feature = context.Features.Get<IExceptionHandlerFeature>();
+            var problem = new ProblemDetails
+            {
+                Title = "An error occurred while processing your request.",
+                Status = StatusCodes.Status500InternalServerError,
+                Detail = app.Environment.IsDevelopment() ? feature?.Error.ToString() : null
+            };
 
-var runMigrations = !disableMigrations;
+            context.Response.StatusCode = problem.Status ?? StatusCodes.Status500InternalServerError;
+            context.Response.ContentType = "application/problem+json";
+            await context.Response.WriteAsJsonAsync(problem).ConfigureAwait(false);
+        });
+    });
+}
 
-if (runMigrations)
+app.UseStatusCodePages();
+
+var applyMigrations = app.Configuration.GetValue<bool>("APPLY_MIGRATIONS");
+app.Logger.LogInformation("APPLY_MIGRATIONS={Apply}", applyMigrations);
+
+if (applyMigrations)
 {
     const int maxAttempts = 10;
     var attempt = 0;
@@ -241,22 +254,22 @@ if (runMigrations)
 
             break;
         }
-        catch (NpgsqlException) when (attempt < maxAttempts)
+        catch (Exception ex) when (attempt < maxAttempts && ex is NpgsqlException or TimeoutException or InvalidOperationException)
         {
-            await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
-        }
-        catch (TimeoutException) when (attempt < maxAttempts)
-        {
-            await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
-        }
-        catch (InvalidOperationException) when (attempt < maxAttempts)
-        {
+            app.Logger.LogWarning(ex, "Échec de l'application des migrations (tentative {Attempt}/{Max}). Nouvel essai imminent.", attempt, maxAttempts);
             await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
         }
     }
 }
 
-app.UseCors(PublicApiCorsPolicy);
+if (app.Environment.IsDevelopment())
+{
+    app.UseCors(DevCorsPolicy);
+}
+else
+{
+    app.UseCors(PublicApiCorsPolicy);
+}
 
 if (app.Environment.IsDevelopment())
 {
@@ -276,27 +289,7 @@ if (useSerilog)
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapHealthChecks("/healthz", new HealthCheckOptions
-{
-    ResponseWriter = async (context, report) =>
-    {
-        context.Response.ContentType = "application/json";
-        var payload = new
-        {
-            status = report.Status.ToString(),
-            checks = report.Entries.Select(kv => new
-            {
-                name = kv.Key,
-                status = kv.Value.Status.ToString(),
-                error = kv.Value.Exception?.Message
-            }),
-            traceId = context.TraceIdentifier
-        };
-        await context.Response.WriteAsJsonAsync(payload).ConfigureAwait(false);
-    }
-});
-
-app.MapGet("/health", () => Results.Json(new { status = "ok" }));
+app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
 
 app.MapControllers();
 
@@ -306,9 +299,9 @@ diag.MapGet("/info", (IConfiguration cfg, IWebHostEnvironment env) =>
 {
     static string Mask(string value)
     {
-        if (string.IsNullOrEmpty(value))
+        if (string.IsNullOrWhiteSpace(value))
         {
-            return value ?? string.Empty;
+            return string.Empty;
         }
 
         var masked = Regex.Replace(value, @"(Username|User Id|User|UID)\s*=\s*[^;]+", "$1=***", RegexOptions.IgnoreCase);
@@ -316,15 +309,16 @@ diag.MapGet("/info", (IConfiguration cfg, IWebHostEnvironment env) =>
         return masked;
     }
 
+    var assembly = typeof(Program).Assembly.GetName();
+    var connectionString = cfg.GetConnectionString("Default") ?? string.Empty;
+
     return Results.Ok(new
     {
         env = env.EnvironmentName,
-        flags = new
-        {
-            disableSerilog = cfg["DISABLE_SERILOG"],
-            disableMigrations = cfg["DISABLE_MIGRATIONS"]
-        },
-        connectionString = Mask(cfg.GetConnectionString("Default") ?? string.Empty)
+        version = assembly.Version?.ToString(),
+        assembly = assembly.Name,
+        dbProvider = "Npgsql",
+        connectionStringMasked = Mask(connectionString)
     });
 }).WithName("DiagInfo");
 
@@ -333,23 +327,29 @@ diag.MapGet("/ping-db", async (IConfiguration cfg) =>
     var cs = cfg.GetConnectionString("Default");
     if (string.IsNullOrWhiteSpace(cs))
     {
-        return Results.Problem("Missing ConnectionStrings:Default", statusCode: StatusCodes.Status500InternalServerError);
+        return Results.Problem("ConnectionStrings:Default is missing.", statusCode: StatusCodes.Status500InternalServerError);
     }
 
+    var stopwatch = Stopwatch.StartNew();
     try
     {
         await using var conn = new NpgsqlConnection(cs);
         await conn.OpenAsync().ConfigureAwait(false);
-        await using var cmd = new NpgsqlCommand("select 1", conn);
+        await using var cmd = new NpgsqlCommand("SELECT 1", conn);
         var result = await cmd.ExecuteScalarAsync().ConfigureAwait(false);
-        return Results.Ok(new { ok = true, result });
+        stopwatch.Stop();
+        return Results.Ok(new { ok = true, result, elapsedMs = stopwatch.ElapsedMilliseconds });
     }
     catch (Exception ex)
     {
-        return Results.Problem(ex.Message, statusCode: StatusCodes.Status500InternalServerError, extensions: new Dictionary<string, object?>
-        {
-            ["type"] = ex.GetType().FullName
-        });
+        stopwatch.Stop();
+        return Results.Problem(
+            $"DB ping failed: {ex.Message}",
+            statusCode: StatusCodes.Status500InternalServerError,
+            extensions: new Dictionary<string, object?>
+            {
+                ["elapsedMs"] = stopwatch.ElapsedMilliseconds
+            });
     }
 }).WithName("DiagPingDb");
 
@@ -360,11 +360,11 @@ app.MapGet("/ready", async (IDbConnection connection, CancellationToken cancella
     return Results.Ok(new { status = "ready" });
 });
 
-    app.MapGet("/api/inventories/summary", async (IDbConnection connection, CancellationToken cancellationToken) =>
-    {
-        await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+app.MapGet("/api/inventories/summary", async (IDbConnection connection, CancellationToken cancellationToken) =>
+{
+    await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-        const string summarySql = @"SELECT
+    const string summarySql = @"SELECT
     (SELECT COUNT(*)::int FROM ""InventorySession"" WHERE ""CompletedAtUtc"" IS NULL) AS ""ActiveSessions"",
     (SELECT COUNT(*)::int FROM ""CountingRun"" WHERE ""CompletedAtUtc"" IS NULL) AS ""OpenRuns"",
     (
@@ -379,32 +379,32 @@ app.MapGet("/ready", async (IDbConnection connection, CancellationToken cancella
         ) AS activity
     ) AS ""LastActivityUtc"";";
 
-        var summary = await connection
-            .QuerySingleAsync<InventorySummaryDto>(new CommandDefinition(summarySql, cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
+    var summary = await connection
+        .QuerySingleAsync<InventorySummaryDto>(new CommandDefinition(summarySql, cancellationToken: cancellationToken))
+        .ConfigureAwait(false);
 
-        return Results.Ok(summary);
-    })
-    .WithName("GetInventorySummary")
-    .WithTags("Inventories")
-    .Produces<InventorySummaryDto>(StatusCodes.Status200OK)
-    .WithOpenApi(op =>
+    return Results.Ok(summary);
+})
+.WithName("GetInventorySummary")
+.WithTags("Inventories")
+.Produces<InventorySummaryDto>(StatusCodes.Status200OK)
+.WithOpenApi(op =>
+{
+    op.Summary = "Récupère un résumé des inventaires en cours.";
+    op.Description = "Fournit un aperçu synthétique incluant les sessions actives, les runs ouverts et la dernière activité.";
+    return op;
+});
+
+app.MapGet("/api/locations", async (int? countType, IDbConnection connection, CancellationToken cancellationToken) =>
+{
+    if (countType.HasValue && countType is not (1 or 2 or 3))
     {
-        op.Summary = "Récupère un résumé des inventaires en cours.";
-        op.Description = "Fournit un aperçu synthétique incluant les sessions actives, les runs ouverts et la dernière activité.";
-        return op;
-    });
+        return Results.BadRequest(new { message = "Le paramètre countType doit valoir 1, 2 ou 3." });
+    }
 
-    app.MapGet("/api/locations", async (int? countType, IDbConnection connection, CancellationToken cancellationToken) =>
-    {
-        if (countType.HasValue && countType is not (1 or 2 or 3))
-        {
-            return Results.BadRequest(new { message = "Le paramètre countType doit valoir 1, 2 ou 3." });
-        }
+    await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-        await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
-
-        const string sql = @"WITH active_runs AS (
+    const string sql = @"WITH active_runs AS (
     SELECT DISTINCT ON (cr.""LocationId"")
         cr.""LocationId"",
         cr.""Id"" AS ""ActiveRunId"",
@@ -429,108 +429,108 @@ FROM ""Location"" l
 LEFT JOIN active_runs ar ON l.""Id"" = ar.""LocationId""
 ORDER BY l.""Code"" ASC;";
 
-        var locations = await connection
-            .QueryAsync<LocationListItemDto>(new CommandDefinition(sql, new { CountType = countType }, cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
+    var locations = await connection
+        .QueryAsync<LocationListItemDto>(new CommandDefinition(sql, new { CountType = countType }, cancellationToken: cancellationToken))
+        .ConfigureAwait(false);
 
-        return Results.Ok(locations);
-    })
-    .WithName("GetLocations")
-    .WithTags("Locations")
-    .Produces<IEnumerable<LocationListItemDto>>(StatusCodes.Status200OK)
-    .WithOpenApi(op =>
+    return Results.Ok(locations);
+})
+.WithName("GetLocations")
+.WithTags("Locations")
+.Produces<IEnumerable<LocationListItemDto>>(StatusCodes.Status200OK)
+.WithOpenApi(op =>
+{
+    op.Summary = "Liste les emplacements (locations)";
+    op.Description = "Retourne les métadonnées et l'état d'occupation des locations, filtré par type de comptage optionnel.";
+    op.Parameters ??= new List<OpenApiParameter>();
+    if (!op.Parameters.Any(parameter => string.Equals(parameter.Name, "countType", StringComparison.OrdinalIgnoreCase)))
     {
-        op.Summary = "Liste les emplacements (locations)";
-        op.Description = "Retourne les métadonnées et l'état d'occupation des locations, filtré par type de comptage optionnel.";
-        op.Parameters ??= new List<OpenApiParameter>();
-        if (!op.Parameters.Any(parameter => string.Equals(parameter.Name, "countType", StringComparison.OrdinalIgnoreCase)))
+        op.Parameters.Add(new OpenApiParameter
         {
-            op.Parameters.Add(new OpenApiParameter
-            {
-                Name = "countType",
-                In = ParameterLocation.Query,
-                Required = false,
-                Description = "Type de comptage ciblé (1 pour premier passage, 2 pour second, 3 pour contrôle).",
-                Schema = new OpenApiSchema { Type = "integer", Minimum = 1, Maximum = 3 }
-            });
-        }
-        return op;
-    });
+            Name = "countType",
+            In = ParameterLocation.Query,
+            Required = false,
+            Description = "Type de comptage ciblé (1 pour premier passage, 2 pour second, 3 pour contrôle).",
+            Schema = new OpenApiSchema { Type = "integer", Minimum = 1, Maximum = 3 }
+        });
+    }
+    return op;
+});
 
-    app.MapPost("/api/inventories/{locationId:guid}/restart", async (Guid locationId, int countType, IDbConnection connection, CancellationToken cancellationToken) =>
+app.MapPost("/api/inventories/{locationId:guid}/restart", async (Guid locationId, int countType, IDbConnection connection, CancellationToken cancellationToken) =>
+{
+    if (countType is not (1 or 2 or 3))
     {
-        if (countType is not (1 or 2 or 3))
-        {
-            return Results.BadRequest(new { message = "Le paramètre countType doit valoir 1, 2 ou 3." });
-        }
+        return Results.BadRequest(new { message = "Le paramètre countType doit valoir 1, 2 ou 3." });
+    }
 
-        await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+    await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-        const string sql = @"UPDATE ""CountingRun""
+    const string sql = @"UPDATE ""CountingRun""
 SET ""CompletedAtUtc"" = @NowUtc
 WHERE ""LocationId"" = @LocationId
   AND ""CompletedAtUtc"" IS NULL
   AND ""CountType"" = @CountType;";
 
-        var now = DateTimeOffset.UtcNow;
-        await connection.ExecuteAsync(new CommandDefinition(sql, new { LocationId = locationId, CountType = countType, NowUtc = now }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+    var now = DateTimeOffset.UtcNow;
+    await connection.ExecuteAsync(new CommandDefinition(sql, new { LocationId = locationId, CountType = countType, NowUtc = now }, cancellationToken: cancellationToken)).ConfigureAwait(false);
 
-        return Results.NoContent();
-    })
-    .WithName("RestartInventoryForLocation")
-    .WithTags("Inventories")
-    .Produces(StatusCodes.Status204NoContent)
-    .Produces(StatusCodes.Status400BadRequest)
-    .WithOpenApi(op =>
+    return Results.NoContent();
+})
+.WithName("RestartInventoryForLocation")
+.WithTags("Inventories")
+.Produces(StatusCodes.Status204NoContent)
+.Produces(StatusCodes.Status400BadRequest)
+.WithOpenApi(op =>
+{
+    op.Summary = "Force la clôture des comptages actifs pour une zone et un type donnés.";
+    op.Description = "Permet de terminer les runs ouverts sur une zone pour relancer un nouveau comptage.";
+    return op;
+});
+
+app.MapGet("/products/{code}", async (string code, IDbConnection connection, CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(code))
     {
-        op.Summary = "Force la clôture des comptages actifs pour une zone et un type donnés.";
-        op.Description = "Permet de terminer les runs ouverts sur une zone pour relancer un nouveau comptage.";
-        return op;
-    });
+        return Results.BadRequest(new { message = "Le code produit est requis." });
+    }
 
-    app.MapGet("/products/{code}", async (string code, IDbConnection connection, CancellationToken cancellationToken) =>
+    await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+    var sanitizedCode = code.Trim();
+    var isPotentialEan = sanitizedCode.All(char.IsDigit) && (sanitizedCode.Length == 8 || sanitizedCode.Length == 13);
+
+    ProductDto? product = null;
+    if (isPotentialEan)
     {
-        if (string.IsNullOrWhiteSpace(code))
-        {
-            return Results.BadRequest(new { message = "Le code produit est requis." });
-        }
+        product = await connection.QuerySingleOrDefaultAsync<ProductDto>(new CommandDefinition("SELECT \"Id\", \"Sku\", \"Name\", \"Ean\" FROM \"Product\" WHERE \"Ean\" = @Code LIMIT 1", new { Code = sanitizedCode }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+    }
 
-        await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
-
-        var sanitizedCode = code.Trim();
-        var isPotentialEan = sanitizedCode.All(char.IsDigit) && (sanitizedCode.Length == 8 || sanitizedCode.Length == 13);
-
-        ProductDto? product = null;
-        if (isPotentialEan)
-        {
-            product = await connection.QuerySingleOrDefaultAsync<ProductDto>(new CommandDefinition("SELECT \"Id\", \"Sku\", \"Name\", \"Ean\" FROM \"Product\" WHERE \"Ean\" = @Code LIMIT 1", new { Code = sanitizedCode }, cancellationToken: cancellationToken)).ConfigureAwait(false);
-        }
-
-        if (product is null)
-        {
-            product = await connection.QuerySingleOrDefaultAsync<ProductDto>(new CommandDefinition("SELECT \"Id\", \"Sku\", \"Name\", \"Ean\" FROM \"Product\" WHERE LOWER(\"Sku\") = LOWER(@Code) LIMIT 1", new { Code = sanitizedCode }, cancellationToken: cancellationToken)).ConfigureAwait(false);
-        }
-
-        return product is not null ? Results.Ok(product) : Results.NotFound();
-    });
-
-    app.MapPost("/auth/pin", (PinAuthenticationRequest request, ITokenService tokenService, IOptions<AuthenticationOptions> options) =>
+    if (product is null)
     {
-        if (request is null || string.IsNullOrWhiteSpace(request.Pin))
-        {
-            return Results.BadRequest(new { message = "Le code PIN est requis." });
-        }
+        product = await connection.QuerySingleOrDefaultAsync<ProductDto>(new CommandDefinition("SELECT \"Id\", \"Sku\", \"Name\", \"Ean\" FROM \"Product\" WHERE LOWER(\"Sku\") = LOWER(@Code) LIMIT 1", new { Code = sanitizedCode }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+    }
 
-        var user = options.Value.Users.FirstOrDefault(u => string.Equals(u.Pin, request.Pin, StringComparison.Ordinal));
-        if (user is null)
-        {
-            return Results.Unauthorized();
-        }
+    return product is not null ? Results.Ok(product) : Results.NotFound();
+});
 
-        var tokenResult = tokenService.GenerateToken(user.Name);
-        var response = new PinAuthenticationResponse(user.Name, tokenResult.AccessToken, tokenResult.ExpiresAtUtc);
-        return Results.Ok(response);
-    });
+app.MapPost("/auth/pin", (PinAuthenticationRequest request, ITokenService tokenService, IOptions<AuthenticationOptions> options) =>
+{
+    if (request is null || string.IsNullOrWhiteSpace(request.Pin))
+    {
+        return Results.BadRequest(new { message = "Le code PIN est requis." });
+    }
+
+    var user = options.Value.Users.FirstOrDefault(u => string.Equals(u.Pin, request.Pin, StringComparison.Ordinal));
+    if (user is null)
+    {
+        return Results.Unauthorized();
+    }
+
+    var tokenResult = tokenService.GenerateToken(user.Name);
+    var response = new PinAuthenticationResponse(user.Name, tokenResult.AccessToken, tokenResult.ExpiresAtUtc);
+    return Results.Ok(response);
+});
 
 await app.RunAsync().ConfigureAwait(false);
 

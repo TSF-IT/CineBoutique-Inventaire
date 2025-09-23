@@ -9,7 +9,7 @@ import { EmptyState } from '../../components/EmptyState'
 import { SlidingPanel } from '../../components/SlidingPanel'
 import { TextField } from '../../components/TextField'
 import { useInventory } from '../../contexts/InventoryContext'
-import { DEV_API_UNREACHABLE_HINT, HttpError } from '../../../lib/api/http'
+import { DEV_API_UNREACHABLE_HINT, HttpError } from '@/lib/api/http'
 
 const buildHttpMessage = (prefix: string, error: HttpError) => {
   if (import.meta.env.DEV && error.status === 404) {
@@ -17,8 +17,9 @@ const buildHttpMessage = (prefix: string, error: HttpError) => {
     if (error.url) {
       diagnostics.push(`URL: ${error.url}`)
     }
-    if (error.bodyText) {
-      diagnostics.push(`Détail: ${error.bodyText}`)
+    const detail = error.problem?.detail || error.problem?.title || error.body
+    if (detail) {
+      diagnostics.push(`Détail: ${detail}`)
     }
     return diagnostics.join(' | ')
   }
@@ -29,6 +30,10 @@ const buildHttpMessage = (prefix: string, error: HttpError) => {
   }
   if (error.url) {
     diagnostics.push(`URL: ${error.url}`)
+  }
+  const detail = error.problem?.detail || error.problem?.title || error.body
+  if (detail) {
+    diagnostics.push(`Détail: ${detail}`)
   }
   return diagnostics.length > 0 ? `${prefix} | ${diagnostics.join(' | ')}` : prefix
 }
