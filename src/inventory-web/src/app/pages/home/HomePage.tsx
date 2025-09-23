@@ -1,14 +1,16 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { fetchInventorySummary } from '../../api/inventoryApi'
 import { Button } from '../../components/Button'
 import { Card } from '../../components/Card'
+import { ErrorPanel } from '../../components/ErrorPanel'
 import { EmptyState } from '../../components/EmptyState'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { Page } from '../../components/Page'
 import { SectionTitle } from '../../components/SectionTitle'
 import { useAsync } from '../../hooks/useAsync'
 import type { InventorySummary } from '../../types/inventory'
+import { HttpError } from '@/lib/api/http'
 
 const formatLastActivity = (value: string | null) => {
   if (!value) {
@@ -24,11 +26,45 @@ const formatLastActivity = (value: string | null) => {
   }).format(date)
 }
 
+const describeError = (error: unknown): { title: string; details?: string } | null => {
+  if (!error) {
+    return null
+  }
+  if (error instanceof HttpError) {
+    const detail =
+      error.problem?.detail ||
+      error.problem?.title ||
+      error.body ||
+      (typeof error.status === 'number' ? `HTTP ${error.status}` : undefined)
+    const enrichedDetail =
+      import.meta.env.DEV && error.status === 404 && detail
+        ? `${detail}\nVérifie que l'API répond sur ${error.url ?? 'http://localhost:8080/api'}.`
+        : detail
+    return {
+      title: 'Erreur API',
+      details: enrichedDetail ?? 'Impossible de joindre le backend.',
+    }
+  }
+  if (error instanceof Error) {
+    return { title: 'Erreur', details: error.message }
+  }
+  if (typeof error === 'string') {
+    return { title: 'Erreur', details: error }
+  }
+  return { title: 'Erreur', details: 'Une erreur inattendue est survenue.' }
+}
+
 export const HomePage = () => {
   const navigate = useNavigate()
-  const { data, loading, error } = useAsync(fetchInventorySummary, [], {
+  const { data, loading, error, execute } = useAsync(fetchInventorySummary, [], {
     initialValue: null,
   })
+
+  const handleRetry = useCallback(() => {
+    void execute()
+  }, [execute])
+
+  const errorDetails = useMemo(() => describeError(error), [error])
 
   const hasContextInfos = useMemo(() => {
     if (!data) {
@@ -55,7 +91,10 @@ export const HomePage = () => {
       <Card className="flex flex-col gap-4">
         <SectionTitle>État des inventaires</SectionTitle>
         {loading && <LoadingIndicator label="Chargement des indicateurs" />}
-        {!loading && hasContextInfos && displaySummary && (
+        {!loading && errorDetails && (
+          <ErrorPanel title={errorDetails.title} details={errorDetails.details} actionLabel="Réessayer" onAction={handleRetry} />
+        )}
+        {!loading && !errorDetails && hasContextInfos && displaySummary && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="rounded-2xl border border-brand-300 bg-brand-100/70 p-5 dark:border-brand-500/30 dark:bg-brand-500/10">
               <p className="text-sm uppercase text-brand-600 dark:text-brand-200">Sessions actives</p>
@@ -73,7 +112,7 @@ export const HomePage = () => {
             </div>
           </div>
         )}
-        {!loading && (!displaySummary || !hasContextInfos || Boolean(error)) && (
+        {!loading && !errorDetails && (!displaySummary || !hasContextInfos) && (
           <EmptyState
             title="Pas encore de données"
             description="Le résumé d'inventaire n'est pas disponible pour le moment. Vous pourrez le consulter dès qu'un comptage aura débuté."

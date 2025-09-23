@@ -48,7 +48,10 @@ export const fetchLocations = async (options?: { countType?: CountType }): Promi
     if (import.meta.env.DEV) {
       console.error('Échec de récupération des zones', error)
     }
-    throw new HttpError('Impossible de récupérer les zones.', undefined, undefined, `${API_BASE}${endpoint}`)
+    throw new HttpError({
+      message: 'Impossible de récupérer les zones.',
+      url: `${API_BASE}${endpoint}`,
+    })
   }
 }
 
