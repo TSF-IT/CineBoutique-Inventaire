@@ -22,6 +22,12 @@ Une stack Docker Compose est fournie pour orchestrer l'API ASP.NET Core, la base
 docker compose up --build -d
 ```
 
+Avant de lancer la stack, tu peux valider la configuration Compose pour détecter toute erreur d'indentation ou de syntaxe :
+
+```bash
+docker compose config -q
+```
+
 Une fois les conteneurs démarrés :
 
 - API : http://localhost:8080/swagger

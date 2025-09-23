@@ -1,45 +1,53 @@
+version: "3.9"
+
 services:
   db:
-    image: postgres:16
+    image: postgres:16-alpine
+    container_name: cineboutique-inventaire-db-1
     restart: unless-stopped
-    ports:
-      - "5432:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: inventory
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d inventory"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     volumes:
       - inventory-data:/var/lib/postgresql/data
-      healthcheck:
-        test: ["CMD-SHELL", "pg_isready -U postgres -d inventory"]
-      interval: 10s
-      timeout: 3s
-      retries: 10
+    ports:
+      - "5432:5432"
 
   api:
     build:
       context: .
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    ports:
-      - "8080:8080"
-    environment:
-      - ConnectionStrings__Default=Host=db;Port=5432;Database=inventory;Username=postgres;Password=postgres
-      - ASPNETCORE_URLS=http://0.0.0.0:8080
-      - ASPNETCORE_ENVIRONMENT=Development
-      - APPLY_MIGRATIONS=true
+      dockerfile: src/inventory-api/Dockerfile
+      target: final
+    container_name: cineboutique-inventaire-api-1
     depends_on:
       db:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/healthz || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+    environment:
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Default: Host=db;Port=5432;Database=inventory;Username=postgres;Password=postgres
+      APPLY_MIGRATIONS: "true"
+    ports:
+      - "8080:8080"
 
   web:
-    restart: unless-stopped
+    build:
+      context: src/inventory-web
+      dockerfile: Dockerfile
+      target: stage-1
+    container_name: cineboutique-inventaire-web-1
+    depends_on:
+      - api
+    ports:
+      - "5173:80"
+    # Nginx sert le build Vite. Pour le dev local avec Vite en mode dev,
+    # tu lances hors-docker `npm run dev` si besoin.
 
 volumes:
   inventory-data:
