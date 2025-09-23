@@ -19,4 +19,11 @@ export default defineConfig({
       '@': '/src',
     },
   },
+  // durcit le build pour éviter l’explosion mémoire en CI/Docker
+  build: {
+    sourcemap: false, // désactivé en prod
+    reportCompressedSize: false, // évite le calcul gzip (gourmand)
+    chunkSizeWarningLimit: 1500, // évite les warnings inutiles
+    // si tu utilises des images énormes, on pourra ajouter rollupOptions plus tard
+  },
 })
