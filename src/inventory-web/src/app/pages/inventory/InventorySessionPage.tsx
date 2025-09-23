@@ -9,9 +9,20 @@ import { EmptyState } from '../../components/EmptyState'
 import { SlidingPanel } from '../../components/SlidingPanel'
 import { TextField } from '../../components/TextField'
 import { useInventory } from '../../contexts/InventoryContext'
-import { HttpError } from '../../../lib/api/http'
+import { DEV_API_UNREACHABLE_HINT, HttpError } from '../../../lib/api/http'
 
 const buildHttpMessage = (prefix: string, error: HttpError) => {
+  if (import.meta.env.DEV && error.status === 404) {
+    const diagnostics = [DEV_API_UNREACHABLE_HINT]
+    if (error.url) {
+      diagnostics.push(`URL: ${error.url}`)
+    }
+    if (error.bodyText) {
+      diagnostics.push(`Détail: ${error.bodyText}`)
+    }
+    return diagnostics.join(' | ')
+  }
+
   const diagnostics: string[] = []
   if (typeof error.status === 'number') {
     diagnostics.push(`HTTP ${error.status}`)

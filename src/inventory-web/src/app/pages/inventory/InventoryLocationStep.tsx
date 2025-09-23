@@ -9,12 +9,23 @@ import { SlidingPanel } from '../../components/SlidingPanel'
 import { TextField } from '../../components/TextField'
 import { useInventory } from '../../contexts/InventoryContext'
 import type { Location } from '../../types/inventory'
-import { HttpError } from '../../../lib/api/http'
+import { DEV_API_UNREACHABLE_HINT, HttpError } from '../../../lib/api/http'
 
 const truncate = (value: string, maxLength = 180) =>
   value.length <= maxLength ? value : `${value.slice(0, maxLength)}…`
 
 const formatHttpError = (error: HttpError, prefix = 'Erreur réseau') => {
+  if (import.meta.env.DEV && error.status === 404) {
+    const diagnostics = [DEV_API_UNREACHABLE_HINT]
+    if (error.url) {
+      diagnostics.push(`URL: ${error.url}`)
+    }
+    if (error.bodyText) {
+      diagnostics.push(`Détail: ${truncate(error.bodyText)}`)
+    }
+    return diagnostics.join(' | ')
+  }
+
   const parts = [prefix]
   if (error.status) {
     parts.push(`HTTP ${error.status}`)
