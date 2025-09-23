@@ -116,7 +116,20 @@ public class LocationsEndpointTests : IAsyncLifetime
         await EnsureConnectionOpenAsync(connection);
 
         const string query = "SELECT \"CompletedAtUtc\" FROM \"CountingRun\" WHERE \"Id\" = @RunId";
-        var completedAt = await connection.ExecuteScalarAsync<DateTimeOffset?>(query, new { seed.RunId });
+        var completedAtDt = await connection.ExecuteScalarAsync<DateTime?>(query, new { seed.RunId });
+
+        DateTimeOffset? completedAt = null;
+        if (completedAtDt is not null)
+        {
+            var completedAtDtValue = completedAtDt.Value;
+            if (completedAtDtValue.Kind == DateTimeKind.Unspecified)
+            {
+                completedAtDtValue = DateTime.SpecifyKind(completedAtDtValue, DateTimeKind.Utc);
+            }
+
+            completedAt = new DateTimeOffset(completedAtDtValue, TimeSpan.Zero);
+        }
+
         Assert.NotNull(completedAt);
     }
 
