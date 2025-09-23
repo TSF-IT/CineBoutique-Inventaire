@@ -9,7 +9,16 @@ import { EmptyState } from '../../components/EmptyState'
 import { SlidingPanel } from '../../components/SlidingPanel'
 import { TextField } from '../../components/TextField'
 import { useInventory } from '../../contexts/InventoryContext'
-import { DEV_API_UNREACHABLE_HINT, HttpError } from '@/lib/api/http'
+import type { HttpError } from '@/lib/api/http'
+
+const DEV_API_UNREACHABLE_HINT =
+  "Impossible de joindre l’API : vérifie que le backend tourne (curl http://localhost:8080/healthz) ou que le proxy Vite est actif."
+
+const isHttpError = (value: unknown): value is HttpError =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof (value as { status?: unknown }).status === 'number' &&
+  typeof (value as { url?: unknown }).url === 'string'
 
 const buildHttpMessage = (prefix: string, error: HttpError) => {
   if (import.meta.env.DEV && error.status === 404) {
@@ -17,7 +26,10 @@ const buildHttpMessage = (prefix: string, error: HttpError) => {
     if (error.url) {
       diagnostics.push(`URL: ${error.url}`)
     }
-    const detail = error.problem?.detail || error.problem?.title || error.body
+    const detail =
+      (error.problem as { detail?: string; title?: string } | undefined)?.detail ||
+      (error.problem as { title?: string } | undefined)?.title ||
+      error.body
     if (detail) {
       diagnostics.push(`Détail: ${detail}`)
     }
@@ -31,7 +43,10 @@ const buildHttpMessage = (prefix: string, error: HttpError) => {
   if (error.url) {
     diagnostics.push(`URL: ${error.url}`)
   }
-  const detail = error.problem?.detail || error.problem?.title || error.body
+  const detail =
+    (error.problem as { detail?: string; title?: string } | undefined)?.detail ||
+    (error.problem as { title?: string } | undefined)?.title ||
+    error.body
   if (detail) {
     diagnostics.push(`Détail: ${detail}`)
   }
@@ -93,13 +108,14 @@ export const InventorySessionPage = () => {
         addOrIncrementItem(product)
         setStatus(`${product.name} ajouté`)
       } catch (error) {
-        if (error instanceof HttpError && error.status === 404) {
+        const err = error as HttpError
+        if (isHttpError(err) && err.status === 404) {
           setStatus(null)
           setManualEan(value)
           setManualOpen(true)
         } else {
-          if (error instanceof HttpError) {
-            setErrorMessage(buildHttpMessage('Erreur réseau', error))
+          if (isHttpError(err)) {
+            setErrorMessage(buildHttpMessage('Erreur réseau', err))
           } else {
             setErrorMessage('Impossible de récupérer le produit. Réessayez ou ajoutez-le manuellement.')
           }
@@ -139,8 +155,9 @@ export const InventorySessionPage = () => {
         setManualName('')
         setManualEan('')
       } catch (error) {
-        if (error instanceof HttpError) {
-          setErrorMessage(buildHttpMessage('Création impossible', error))
+        const err = error as HttpError
+        if (isHttpError(err)) {
+          setErrorMessage(buildHttpMessage('Création impossible', err))
         } else {
           setErrorMessage("Échec de la création du produit. Vérifiez l'EAN et réessayez.")
         }
