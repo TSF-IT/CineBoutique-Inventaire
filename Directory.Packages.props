@@ -15,6 +15,7 @@
     <PackageVersion Include="Serilog.Settings.Configuration" Version="8.0.0" />
 
     <!-- Data -->
+    <PackageVersion Include="AspNetCore.HealthChecks.NpgSql" Version="8.0.2" />
     <PackageVersion Include="Dapper" Version="2.1.35" />
     <PackageVersion Include="Npgsql" Version="8.0.3" />
 
