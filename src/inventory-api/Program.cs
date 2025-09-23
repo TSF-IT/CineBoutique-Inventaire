@@ -137,6 +137,8 @@ builder.Services.AddSwaggerGen(c =>
 
 builder.Services.AddControllers();
 
+builder.Services.AddHealthChecks();
+
 builder.Services.AddScoped<IDbConnection>(sp =>
 {
     var factory = sp.GetRequiredService<IDbConnectionFactory>();
@@ -308,10 +310,7 @@ if (useSerilog)
 app.UseAuthentication();
 app.UseAuthorization();
 
-app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
-
-// --- HEALTHCHECK minimaliste (en plus des health checks .NET si utilisés) ---
-app.MapGet("/api/healthz", () => Results.Ok(new { ok = true }));
+app.MapHealthChecks("/healthz");
 
 app.MapControllers();
 
