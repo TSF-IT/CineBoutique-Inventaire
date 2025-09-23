@@ -1,5 +1,5 @@
 import { Outlet } from 'react-router-dom'
-import { Button } from '../../components/Button'
+import { Button } from '../../components/ui/Button'
 import { Page } from '../../components/Page'
 import { ThemeToggle } from '../../components/ThemeToggle'
 import { useAuth } from '../../contexts/AuthContext'

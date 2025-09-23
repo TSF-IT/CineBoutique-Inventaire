@@ -1,12 +1,12 @@
 import { useCallback, useState } from 'react'
 import { createLocation, deleteLocation, updateLocation } from '../../api/adminApi'
 import { fetchLocations } from '../../api/inventoryApi'
-import { Button } from '../../components/Button'
+import { Button } from '../../components/ui/Button'
+import { Input } from '../../components/ui/Input'
 import { Card } from '../../components/Card'
 import { EmptyState } from '../../components/EmptyState'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { SwipeActionItem } from '../../components/SwipeActionItem'
-import { TextField } from '../../components/TextField'
 import { useAuth } from '../../contexts/AuthContext'
 import { useAsync } from '../../hooks/useAsync'
 import type { Location } from '../../types/inventory'
@@ -77,12 +77,13 @@ export const AdminLocationsPage = () => {
       <Card className="flex flex-col gap-4">
         <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Ajouter une zone</h2>
         <form className="flex flex-col gap-4 sm:flex-row" onSubmit={handleCreate}>
-          <TextField
+          <Input
             label="Libellé"
+            name="newLocationLabel"
             placeholder="Ex. Réserve, Comptoir"
             value={newLocationName}
             onChange={(event) => setNewLocationName(event.target.value)}
-            className="flex-1"
+            containerClassName="flex-1"
           />
           <Button type="submit" disabled={creating} className="py-3">
             {creating ? 'Création…' : 'Ajouter'}

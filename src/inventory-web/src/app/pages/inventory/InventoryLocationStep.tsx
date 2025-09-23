@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchLocations, restartInventoryRun } from '../../api/inventoryApi'
-import { Button } from '../../components/Button'
+import { Button } from '../../components/ui/Button'
+import { Input } from '../../components/ui/Input'
 import { Card } from '../../components/Card'
 import { EmptyState } from '../../components/EmptyState'
 import { ErrorPanel } from '../../components/ErrorPanel'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { SlidingPanel } from '../../components/SlidingPanel'
-import { TextField } from '../../components/TextField'
 import { useInventory } from '../../contexts/InventoryContext'
 import type { Location } from '../../types/inventory'
 import type { HttpError } from '@/lib/api/http'
@@ -284,8 +284,9 @@ export const InventoryLocationStep = () => {
             Actualiser
           </Button>
         </div>
-        <TextField
+        <Input
           label="Rechercher"
+          name="locationQuery"
           placeholder="Ex. Réserve, Salle 2…"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
