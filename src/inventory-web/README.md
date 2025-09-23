@@ -6,8 +6,10 @@ Application React 18 + Vite + TypeScript pour piloter les inventaires CinéBouti
 
 ```bash
 npm install
-npm run dev
+DEV_BACKEND_ORIGIN=http://localhost:8080 npm run dev
 ```
+
+Sans variable, le proxy Vite utilise automatiquement `http://localhost:8080` comme origine backend.
 
 La variable `VITE_API_BASE` contrôle l'URL de l'API :
 

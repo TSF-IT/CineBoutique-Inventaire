@@ -7,11 +7,11 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: cineboutique
+      POSTGRES_DB: inventory
     volumes:
       - inventory-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d cineboutique"]
+      healthcheck:
+        test: ["CMD-SHELL", "pg_isready -U postgres -d inventory"]
       interval: 10s
       timeout: 3s
       retries: 10
@@ -24,14 +24,15 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - ConnectionStrings__Default=Host=db;Port=5432;Database=cineboutique;Username=postgres;Password=postgres
-      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__Default=Host=db;Port=5432;Database=inventory;Username=postgres;Password=postgres
+      - ASPNETCORE_URLS=http://0.0.0.0:8080
       - ASPNETCORE_ENVIRONMENT=Development
+      - APPLY_MIGRATIONS=true
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/healthz || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3
