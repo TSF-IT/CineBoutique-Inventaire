@@ -3,11 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { createManualProduct, fetchProductByEan } from '../../api/inventoryApi'
 import { BarcodeScanner } from '../../components/BarcodeScanner'
-import { Button } from '../../components/Button'
+import { Button } from '../../components/ui/Button'
+import { Input } from '../../components/ui/Input'
 import { Card } from '../../components/Card'
 import { EmptyState } from '../../components/EmptyState'
 import { SlidingPanel } from '../../components/SlidingPanel'
-import { TextField } from '../../components/TextField'
 import { useInventory } from '../../contexts/InventoryContext'
 import type { HttpError } from '@/lib/api/http'
 
@@ -198,8 +198,9 @@ export const InventorySessionPage = () => {
           </Button>
         </div>
         <BarcodeScanner active={useCamera} onDetected={handleDetected} />
-        <TextField
+        <Input
           ref={inputRef}
+          name="scanInput"
           label="Scanner (douchette ou saisie)"
           placeholder="Scannez un EAN et validez avec Entrée"
           onKeyDown={handleInputKeyDown}
@@ -257,8 +258,18 @@ export const InventorySessionPage = () => {
 
       <SlidingPanel open={manualOpen} title="Ajouter un produit" onClose={() => setManualOpen(false)}>
         <form className="space-y-4" onSubmit={handleManualSubmit}>
-          <TextField label="EAN" value={manualEan} onChange={(event) => setManualEan(event.target.value)} />
-          <TextField label="Libellé" value={manualName} onChange={(event) => setManualName(event.target.value)} />
+          <Input
+            label="EAN"
+            name="manualEan"
+            value={manualEan}
+            onChange={(event) => setManualEan(event.target.value)}
+          />
+          <Input
+            label="Libellé"
+            name="manualLabel"
+            value={manualName}
+            onChange={(event) => setManualName(event.target.value)}
+          />
           <Button type="submit" fullWidth disabled={manualLoading} className="py-4">
             {manualLoading ? 'Création…' : 'Ajouter à la session'}
           </Button>

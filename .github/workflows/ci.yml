@@ -40,6 +40,7 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'src/inventory-web/package-lock.json'
       - run: npm ci
+      - run: npm run lint --if-present -- --fix
       - run: npm run lint --if-present
       - run: npm run build
 

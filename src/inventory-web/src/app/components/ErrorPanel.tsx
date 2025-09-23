@@ -1,4 +1,4 @@
-import { Button } from './Button'
+import { Button } from './ui/Button'
 
 interface ErrorPanelProps {
   title: string

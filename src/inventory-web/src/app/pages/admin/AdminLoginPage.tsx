@@ -1,8 +1,8 @@
 import type { FormEvent } from 'react'
 import { useState } from 'react'
-import { Button } from '../../components/Button'
+import { Button } from '../../components/ui/Button'
+import { Input } from '../../components/ui/Input'
 import { Card } from '../../components/Card'
-import { TextField } from '../../components/TextField'
 import { useAuth } from '../../contexts/AuthContext'
 
 export const AdminLoginPage = () => {
@@ -26,11 +26,19 @@ export const AdminLoginPage = () => {
       <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Connexion</h2>
       <p className="text-sm text-slate-600 dark:text-slate-400">Accès réservé aux administrateurs de CinéBoutique.</p>
       <form className="mt-6 flex flex-col gap-4" onSubmit={handleSubmit}>
-        <TextField label="Identifiant" value={username} onChange={(event) => setUsername(event.target.value)} />
-        <TextField
+        <Input
+          label="Identifiant"
+          name="username"
+          value={username}
+          autoComplete="username"
+          onChange={(event) => setUsername(event.target.value)}
+        />
+        <Input
           label="Mot de passe"
+          name="password"
           type="password"
           value={password}
+          autoComplete="current-password"
           onChange={(event) => setPassword(event.target.value)}
         />
         {error && <p className="text-sm text-red-600 dark:text-red-300">{error}</p>}

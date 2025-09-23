@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { fetchInventorySummary } from '../../api/inventoryApi'
-import { Button } from '../../components/Button'
+import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/Card'
 import { ErrorPanel } from '../../components/ErrorPanel'
 import { EmptyState } from '../../components/EmptyState'
