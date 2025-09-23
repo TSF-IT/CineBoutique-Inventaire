@@ -4,24 +4,29 @@ import { fetchLocations, restartInventoryRun } from '../../api/inventoryApi'
 import { Button } from '../../components/Button'
 import { Card } from '../../components/Card'
 import { EmptyState } from '../../components/EmptyState'
+import { ErrorPanel } from '../../components/ErrorPanel'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { SlidingPanel } from '../../components/SlidingPanel'
 import { TextField } from '../../components/TextField'
 import { useInventory } from '../../contexts/InventoryContext'
 import type { Location } from '../../types/inventory'
-import { DEV_API_UNREACHABLE_HINT, HttpError } from '../../../lib/api/http'
+import { DEV_API_UNREACHABLE_HINT, HttpError } from '@/lib/api/http'
 
 const truncate = (value: string, maxLength = 180) =>
   value.length <= maxLength ? value : `${value.slice(0, maxLength)}…`
 
+const extractHttpDetail = (error: HttpError): string | undefined =>
+  error.problem?.detail || error.problem?.title || error.body || undefined
+
 const formatHttpError = (error: HttpError, prefix = 'Erreur réseau') => {
+  const detail = extractHttpDetail(error)
   if (import.meta.env.DEV && error.status === 404) {
     const diagnostics = [DEV_API_UNREACHABLE_HINT]
     if (error.url) {
       diagnostics.push(`URL: ${error.url}`)
     }
-    if (error.bodyText) {
-      diagnostics.push(`Détail: ${truncate(error.bodyText)}`)
+    if (detail) {
+      diagnostics.push(`Détail: ${truncate(detail)}`)
     }
     return diagnostics.join(' | ')
   }
@@ -33,10 +38,42 @@ const formatHttpError = (error: HttpError, prefix = 'Erreur réseau') => {
   if (error.url) {
     parts.push(`URL: ${error.url}`)
   }
-  if (error.bodyText) {
-    parts.push(`Détail: ${truncate(error.bodyText)}`)
+  if (detail) {
+    parts.push(`Détail: ${truncate(detail)}`)
   }
   return parts.join(' | ')
+}
+
+const resolveErrorPanel = (
+  error: HttpError | Error | string | null,
+): { title: string; details: string } | null => {
+  if (!error) {
+    return null
+  }
+  if (error instanceof HttpError) {
+    const detail = extractHttpDetail(error)
+    if (import.meta.env.DEV && error.status === 404) {
+      const diagnostics = [DEV_API_UNREACHABLE_HINT]
+      if (error.url) {
+        diagnostics.push(`URL: ${error.url}`)
+      }
+      if (detail) {
+        diagnostics.push(detail)
+      }
+      return { title: 'Erreur API', details: diagnostics.join('\n') }
+    }
+    return {
+      title: 'Erreur API',
+      details: detail ?? (typeof error.status === 'number' ? `HTTP ${error.status}` : 'Impossible de joindre l’API.'),
+    }
+  }
+  if (error instanceof Error) {
+    return { title: 'Erreur', details: error.message }
+  }
+  if (typeof error === 'string') {
+    return { title: 'Erreur', details: error }
+  }
+  return { title: 'Erreur', details: 'Une erreur inattendue est survenue.' }
 }
 
 export const InventoryLocationStep = () => {
@@ -45,7 +82,7 @@ export const InventoryLocationStep = () => {
   const [search, setSearch] = useState('')
   const [locations, setLocations] = useState<Location[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<HttpError | Error | string | null>(null)
   const [actionLocation, setActionLocation] = useState<Location | null>(null)
   const [actionSheetOpen, setActionSheetOpen] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
@@ -66,9 +103,9 @@ export const InventoryLocationStep = () => {
         if (!isCancelled()) {
           setLocations([])
           if (err instanceof HttpError) {
-            setError(formatHttpError(err))
-          } else if (err instanceof Error && err.message) {
-            setError(err.message)
+            setError(err)
+          } else if (err instanceof Error) {
+            setError(err)
           } else {
             setError('Impossible de charger les zones pour le moment.')
           }
@@ -219,6 +256,8 @@ export const InventoryLocationStep = () => {
     )
   }
 
+  const errorPanel = useMemo(() => resolveErrorPanel(error), [error])
+
   return (
     <div className="flex flex-col gap-6">
       <Card className="flex flex-col gap-4">
@@ -240,15 +279,15 @@ export const InventoryLocationStep = () => {
           onChange={(event) => setSearch(event.target.value)}
         />
         {loading && <LoadingIndicator label="Chargement des zones" />}
-        {Boolean(error) && !loading && (
-          <EmptyState
-            title="Impossible de charger les zones"
-            description={error ?? 'Vérifiez votre connexion ou réessayez plus tard.'}
+        {!loading && errorPanel && (
+          <ErrorPanel
+            title={errorPanel.title}
+            details={errorPanel.details}
             actionLabel="Réessayer"
             onAction={handleRetry}
           />
         )}
-        {!loading && !error && (
+        {!loading && !errorPanel && (
           <div className="flex flex-col gap-3">
             {(Array.isArray(filteredLocations) ? filteredLocations : []).map((zone) => {
               const isSelected = location?.id === zone.id || actionLocation?.id === zone.id

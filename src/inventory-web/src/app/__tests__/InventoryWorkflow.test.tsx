@@ -118,7 +118,14 @@ describe('Workflow d\'inventaire', () => {
   })
 
   it("affiche la feuille d'actions et gère un redémarrage en erreur", async () => {
-    restartInventoryRunMock.mockRejectedValueOnce(new HttpError('HTTP 500', 500, 'Erreur serveur', 'http://localhost/api'))
+    restartInventoryRunMock.mockRejectedValueOnce(
+      new HttpError({
+        message: 'HTTP 500',
+        status: 500,
+        body: 'Erreur serveur',
+        url: 'http://localhost/api',
+      }),
+    )
 
     renderInventoryRoutes('/inventory/start')
 
