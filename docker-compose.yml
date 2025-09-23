@@ -29,6 +29,9 @@ services:
     environment:
       ASPNETCORE_URLS: "http://+:8080"
       ASPNETCORE_ENVIRONMENT: "Docker"
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"
+      Logging__LogLevel__Default: "Information"
+      Logging__LogLevel__Microsoft: "Information"
       ConnectionStrings__Default: Host=db;Port=5432;Database=inventory;Username=postgres;Password=postgres
       APPLY_MIGRATIONS: "true"
     ports:

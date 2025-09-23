@@ -20,6 +20,7 @@ using FluentMigrator.Runner.Processors;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.Extensions.DependencyInjection;
@@ -199,6 +200,12 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// --- FORWARDED HEADERS pour proxy (Nginx) ---
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
+
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
@@ -290,6 +297,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
+
+// --- HEALTHCHECK minimaliste (en plus des health checks .NET si utilisés) ---
 app.MapGet("/api/healthz", () => Results.Ok(new { ok = true }));
 
 app.MapControllers();
