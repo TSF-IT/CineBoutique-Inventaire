@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react'
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { login as loginRequest } from '../api/authApi'
-import { onUnauthorized, setAuthToken } from '../../lib/api/http'
 import type { AuthUser } from '../types/auth'
 
 interface AuthContextValue {
@@ -31,7 +30,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const parsed = JSON.parse(stored) as { token: string; user: AuthUser }
         setUser(parsed.user)
         setToken(parsed.token)
-        setAuthToken(parsed.token)
       } catch (error) {
         console.error('Impossible de restaurer la session', error)
         localStorage.removeItem(STORAGE_KEY)
@@ -40,22 +38,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setInitialising(false)
   }, [])
 
-  useEffect(() => {
-    onUnauthorized(() => {
-      localStorage.removeItem(STORAGE_KEY)
-      setUser(null)
-      setToken(null)
-      setAuthToken(null)
-    })
-  }, [])
-
   const login = useCallback(async (username: string, password: string) => {
     setLoading(true)
     try {
       const { token: receivedToken, user: receivedUser } = await loginRequest({ username, password })
       setUser(receivedUser)
       setToken(receivedToken)
-      setAuthToken(receivedToken)
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ token: receivedToken, user: receivedUser }))
     } finally {
       setLoading(false)
@@ -66,7 +54,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem(STORAGE_KEY)
     setUser(null)
     setToken(null)
-    setAuthToken(null)
   }, [])
 
   const value = useMemo<AuthContextValue>(
