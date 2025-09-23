@@ -27,6 +27,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.Net.Http.Headers;
 using Microsoft.OpenApi.Models;
 using Npgsql;
 using Serilog;
@@ -225,13 +226,24 @@ else
             };
 
             context.Response.StatusCode = problem.Status ?? StatusCodes.Status500InternalServerError;
-            context.Response.ContentType = "application/problem+json";
+            context.Response.ContentType = "application/problem+json; charset=utf-8";
             await context.Response.WriteAsJsonAsync(problem).ConfigureAwait(false);
         });
     });
 }
 
 app.UseStatusCodePages();
+
+app.Use(async (context, next) =>
+{
+    context.Response.OnStarting(() =>
+    {
+        context.Response.Headers[HeaderNames.XContentTypeOptions] = "nosniff";
+        return Task.CompletedTask;
+    });
+
+    await next().ConfigureAwait(false);
+});
 
 var applyMigrations = app.Configuration.GetValue<bool>("APPLY_MIGRATIONS");
 app.Logger.LogInformation("APPLY_MIGRATIONS={Apply}", applyMigrations);
