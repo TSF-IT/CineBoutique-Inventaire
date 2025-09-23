@@ -16,13 +16,13 @@ using Dapper;
 using FluentMigrator.Runner;
 using FluentMigrator.Runner.Initialization;
 using FluentMigrator.Runner.Processors;
+using HealthChecks.NpgSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -78,8 +78,13 @@ if (string.IsNullOrWhiteSpace(connectionString))
     throw new InvalidOperationException("La chaîne de connexion 'Default' doit être configurée.");
 }
 
-builder.Services.AddHealthChecks()
-    .AddNpgSql(connectionString, name: "postgres", failureStatus: HealthStatus.Unhealthy);
+var connStr = connectionString;
+if (!string.IsNullOrWhiteSpace(connStr))
+{
+    builder.Services
+        .AddHealthChecks()
+        .AddNpgSql(connStr, name: "postgres");
+}
 
 builder.Services
     .AddFluentMigratorCore()
@@ -124,7 +129,6 @@ builder.Services.Configure<AuthenticationOptions>(authenticationSection);
 
 builder.Services.AddInventoryInfrastructure(builder.Configuration);
 
-builder.Services.AddExceptionHandler<ProblemDetailsExceptionHandler>();
 builder.Services.AddProblemDetails(options =>
 {
     options.CustomizeProblemDetails = ctx =>
@@ -208,6 +212,8 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+app.UseExceptionHandler();
+
 var runMigrations = !disableMigrations;
 
 if (runMigrations)
@@ -249,8 +255,6 @@ if (runMigrations)
         }
     }
 }
-
-app.UseExceptionHandler();
 
 app.UseCors(PublicApiCorsPolicy);
 
