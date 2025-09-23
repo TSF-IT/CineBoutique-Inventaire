@@ -43,6 +43,14 @@ bool disableSerilog = builder.Configuration["DISABLE_SERILOG"]?.Equals("true", S
 bool disableMigrations = builder.Configuration["DISABLE_MIGRATIONS"]?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;
 
 var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
+if (allowedOrigins.Length == 0)
+{
+    allowedOrigins = new[]
+    {
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    };
+}
 
 var useSerilog = !disableSerilog;
 
@@ -162,7 +170,8 @@ builder.Services.AddCors(options =>
     {
         if (allowedOrigins.Length > 0)
         {
-            policyBuilder.WithOrigins(allowedOrigins);
+            // Pense à ajouter l'IP LAN du poste (ex: http://192.168.1.42:5173) dans AllowedOrigins pour tester depuis l'iPhone.
+            policyBuilder.WithOrigins(allowedOrigins).AllowCredentials();
         }
         else
         {
