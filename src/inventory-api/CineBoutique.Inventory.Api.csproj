@@ -35,9 +35,9 @@
 
   <!-- fiabilise la copie des appsettings* lors du build/publish -->
   <ItemGroup>
-    <Content Include="appsettings*.json">
+    <Content Update="appsettings*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>Always</CopyToPublishDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </Content>
   </ItemGroup>
 </Project>
