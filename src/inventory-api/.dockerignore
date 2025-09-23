@@ -1,9 +1,49 @@
+# VCS & IDE
+.git
+.gitignore
+.vscode
+.idea
+*.user
+*.suo
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Build outputs
 bin/
 obj/
-**/*.user
-**/*.csproj.user
-**/*.suo
-.vs/
-.git/
-.gitignore
-Dockerfile
+**/bin/
+**/obj/
+
+# Frontend artefacts
+../inventory-web/node_modules/
+../inventory-web/dist/
+../inventory-web/.cache/
+../inventory-web/.vite/
+../inventory-web/coverage/
+
+# Paquets & locks
+**/node_modules/
+**/.pnpm-store/
+**/.yarn-cache/
+**/.yarn/
+**/.turbo/
+**/.parcel-cache/
+**/.cache/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Assets lourds
+**/*.psd
+**/*.ai
+**/*.sketch
+**/*.zip
+**/*.7z
+**/*.rar
+
+# Tests
+../tests/
+**/*.TestResults/
+../coverage/
