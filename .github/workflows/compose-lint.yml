@@ -1,0 +1,18 @@
+name: Compose Lint
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  lint_compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install docker compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose-plugin
+      - name: Validate docker-compose.yml
+        run: docker compose config -q
