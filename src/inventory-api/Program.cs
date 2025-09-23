@@ -290,6 +290,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapGet("/healthz", () => Results.Ok(new { status = "ok" }));
+app.MapGet("/api/healthz", () => Results.Ok(new { ok = true }));
 
 app.MapControllers();
 
