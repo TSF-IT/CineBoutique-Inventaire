@@ -1,7 +1,49 @@
-**/bin/
-**/obj/
-**/.vs/
+# VCS & IDE
 .git
 .gitignore
-README.md
-build/
+.vscode
+.idea
+*.user
+*.suo
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Build outputs
+bin/
+obj/
+**/bin/
+**/obj/
+
+# Frontend artefacts (évite d’envoyer le web au build de l’API)
+src/inventory-web/node_modules/
+src/inventory-web/dist/
+src/inventory-web/.cache/
+src/inventory-web/.vite/
+src/inventory-web/coverage/
+
+# Paquets & locks volumineux pas utiles au build .NET
+**/node_modules/
+**/.pnpm-store/
+**/.yarn-cache/
+**/.yarn/
+**/.turbo/
+**/.parcel-cache/
+**/.cache/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Assets lourds non utilisés côté API
+**/*.psd
+**/*.ai
+**/*.sketch
+**/*.zip
+**/*.7z
+**/*.rar
+
+# Tests (si non requis au publish)
+tests/
+**/*.TestResults/
+coverage/
