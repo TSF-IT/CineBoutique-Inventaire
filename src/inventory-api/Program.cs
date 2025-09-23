@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Auth;
 using CineBoutique.Inventory.Api.Configuration;
@@ -16,9 +17,12 @@ using FluentMigrator.Runner;
 using FluentMigrator.Runner.Initialization;
 using FluentMigrator.Runner.Processors;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -74,6 +78,9 @@ if (string.IsNullOrWhiteSpace(connectionString))
     throw new InvalidOperationException("La chaîne de connexion 'Default' doit être configurée.");
 }
 
+builder.Services.AddHealthChecks()
+    .AddNpgSql(connectionString, name: "postgres", failureStatus: HealthStatus.Unhealthy);
+
 builder.Services
     .AddFluentMigratorCore()
     .ConfigureRunner(rb => rb
@@ -116,6 +123,20 @@ if (authenticationOptions.TokenLifetimeMinutes <= 0)
 builder.Services.Configure<AuthenticationOptions>(authenticationSection);
 
 builder.Services.AddInventoryInfrastructure(builder.Configuration);
+
+builder.Services.AddExceptionHandler<ProblemDetailsExceptionHandler>();
+builder.Services.AddProblemDetails(options =>
+{
+    options.CustomizeProblemDetails = ctx =>
+    {
+        ctx.ProblemDetails.Instance = ctx.HttpContext.Request.Path;
+        ctx.ProblemDetails.Extensions["traceId"] = ctx.HttpContext.TraceIdentifier;
+        if (builder.Environment.IsDevelopment() && ctx.Exception is Exception ex)
+        {
+            ctx.ProblemDetails.Extensions["detail"] = ex.ToString();
+        }
+    };
+});
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -229,6 +250,8 @@ if (runMigrations)
     }
 }
 
+app.UseExceptionHandler();
+
 app.UseCors(PublicApiCorsPolicy);
 
 if (app.Environment.IsDevelopment())
@@ -249,9 +272,82 @@ if (useSerilog)
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapHealthChecks("/healthz", new HealthCheckOptions
+{
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        var payload = new
+        {
+            status = report.Status.ToString(),
+            checks = report.Entries.Select(kv => new
+            {
+                name = kv.Key,
+                status = kv.Value.Status.ToString(),
+                error = kv.Value.Exception?.Message
+            }),
+            traceId = context.TraceIdentifier
+        };
+        await context.Response.WriteAsJsonAsync(payload).ConfigureAwait(false);
+    }
+});
+
 app.MapGet("/health", () => Results.Json(new { status = "ok" }));
 
 app.MapControllers();
+
+var diag = app.MapGroup("/api/_diag").WithTags("_diag");
+
+diag.MapGet("/info", (IConfiguration cfg, IWebHostEnvironment env) =>
+{
+    static string Mask(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return value ?? string.Empty;
+        }
+
+        var masked = Regex.Replace(value, @"(Username|User Id|User|UID)\s*=\s*[^;]+", "$1=***", RegexOptions.IgnoreCase);
+        masked = Regex.Replace(masked, @"(Password|PWD)\s*=\s*[^;]+", "$1=***", RegexOptions.IgnoreCase);
+        return masked;
+    }
+
+    return Results.Ok(new
+    {
+        env = env.EnvironmentName,
+        flags = new
+        {
+            disableSerilog = cfg["DISABLE_SERILOG"],
+            disableMigrations = cfg["DISABLE_MIGRATIONS"]
+        },
+        connectionString = Mask(cfg.GetConnectionString("Default") ?? string.Empty)
+    });
+}).WithName("DiagInfo");
+
+diag.MapGet("/ping-db", async (IConfiguration cfg) =>
+{
+    var cs = cfg.GetConnectionString("Default");
+    if (string.IsNullOrWhiteSpace(cs))
+    {
+        return Results.Problem("Missing ConnectionStrings:Default", statusCode: StatusCodes.Status500InternalServerError);
+    }
+
+    try
+    {
+        await using var conn = new NpgsqlConnection(cs);
+        await conn.OpenAsync().ConfigureAwait(false);
+        await using var cmd = new NpgsqlCommand("select 1", conn);
+        var result = await cmd.ExecuteScalarAsync().ConfigureAwait(false);
+        return Results.Ok(new { ok = true, result });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(ex.Message, statusCode: StatusCodes.Status500InternalServerError, extensions: new Dictionary<string, object?>
+        {
+            ["type"] = ex.GetType().FullName
+        });
+    }
+}).WithName("DiagPingDb");
 
 app.MapGet("/ready", async (IDbConnection connection, CancellationToken cancellationToken) =>
 {
