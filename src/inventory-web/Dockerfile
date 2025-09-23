@@ -1,4 +1,4 @@
-# Stage de build
+# ---------- build ----------
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package*.json ./
@@ -6,9 +6,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-# Stage de runtime
-FROM nginx:1.27-alpine
+# ---------- stage-1 (nginx) ----------
+FROM nginx:1.27-alpine AS stage-1
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY ./nginx.conf /etc/nginx/conf.d/default.conf
-EXPOSE 3000
-CMD ["nginx", "-g", "daemon off;"]

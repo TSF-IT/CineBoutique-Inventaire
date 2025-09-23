@@ -10,7 +10,13 @@ import { Page } from '../../components/Page'
 import { SectionTitle } from '../../components/SectionTitle'
 import { useAsync } from '../../hooks/useAsync'
 import type { InventorySummary } from '../../types/inventory'
-import { HttpError } from '@/lib/api/http'
+import type { HttpError } from '@/lib/api/http'
+
+const isHttpError = (value: unknown): value is HttpError =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof (value as { status?: unknown }).status === 'number' &&
+  typeof (value as { url?: unknown }).url === 'string'
 
 const formatLastActivity = (value: string | null) => {
   if (!value) {
@@ -30,10 +36,10 @@ const describeError = (error: unknown): { title: string; details?: string } | nu
   if (!error) {
     return null
   }
-  if (error instanceof HttpError) {
+  if (isHttpError(error)) {
     const detail =
-      error.problem?.detail ||
-      error.problem?.title ||
+      (error.problem as { detail?: string; title?: string } | undefined)?.detail ||
+      (error.problem as { title?: string } | undefined)?.title ||
       error.body ||
       (typeof error.status === 'number' ? `HTTP ${error.status}` : undefined)
     const enrichedDetail =
@@ -56,8 +62,14 @@ const describeError = (error: unknown): { title: string; details?: string } | nu
 
 export const HomePage = () => {
   const navigate = useNavigate()
+  const onError = useCallback((e: unknown) => {
+    const err = e as HttpError
+    console.error('[home] http error', err)
+  }, [])
+
   const { data, loading, error, execute } = useAsync(fetchInventorySummary, [], {
     initialValue: null,
+    onError,
   })
 
   const handleRetry = useCallback(() => {

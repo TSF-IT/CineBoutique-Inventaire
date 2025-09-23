@@ -1,13 +1,21 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppProviders } from '../providers/AppProviders'
 import { InventoryLayout } from '../pages/inventory/InventoryLayout'
 import { InventoryUserStep } from '../pages/inventory/InventoryUserStep'
 import { InventoryCountTypeStep } from '../pages/inventory/InventoryCountTypeStep'
 import { InventoryLocationStep } from '../pages/inventory/InventoryLocationStep'
 import { InventorySessionPage } from '../pages/inventory/InventorySessionPage'
-import { HttpError } from '../../lib/api/http'
+import type { HttpError } from '@/lib/api/http'
+
+const createHttpError = (overrides?: Partial<HttpError>) =>
+  Object.assign(new Error(overrides?.message ?? 'HTTP 500'), {
+    status: overrides?.status ?? 500,
+    url: overrides?.url ?? 'http://localhost:8080/api',
+    body: overrides?.body,
+    problem: overrides?.problem,
+  })
 
 const { fetchLocationsMock, fetchProductMock, restartInventoryRunMock } = vi.hoisted(() => ({
   fetchLocationsMock: vi.fn(() =>
@@ -119,12 +127,7 @@ describe('Workflow d\'inventaire', () => {
 
   it("affiche la feuille d'actions et gère un redémarrage en erreur", async () => {
     restartInventoryRunMock.mockRejectedValueOnce(
-      new HttpError({
-        message: 'HTTP 500',
-        status: 500,
-        body: 'Erreur serveur',
-        url: 'http://localhost/api',
-      }),
+      createHttpError({ message: 'HTTP 500', status: 500, body: 'Erreur serveur', url: 'http://localhost:8080/api' }),
     )
 
     renderInventoryRoutes('/inventory/start')

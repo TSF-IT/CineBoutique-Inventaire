@@ -1,7 +1,20 @@
 import { LocationsSchema } from '../types/inventory'
 import type { CountType, InventorySummary, Location, ManualProductInput, Product } from '../types/inventory'
-import { http, HttpError } from '../../lib/api/http'
-import { API_BASE } from '../../lib/api/config'
+import http, { HttpError } from '@/lib/api/http'
+import { API_BASE } from '@/lib/api/config'
+
+const isHttpError = (value: unknown): value is HttpError =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof (value as { status?: unknown }).status === 'number' &&
+  typeof (value as { url?: unknown }).url === 'string'
+
+const toHttpError = (message: string, url: string, problem?: unknown): HttpError =>
+  Object.assign(new Error(message), {
+    status: 0,
+    url,
+    problem,
+  })
 
 const normaliseLocationsPayload = (payload: unknown): unknown => {
   if (Array.isArray(payload)) {
@@ -19,8 +32,10 @@ const normaliseLocationsPayload = (payload: unknown): unknown => {
   return payload
 }
 
-export const fetchInventorySummary = (): Promise<InventorySummary> =>
-  http<InventorySummary>('/inventories/summary')
+export const fetchInventorySummary = async (): Promise<InventorySummary> => {
+  const data = await http(`${API_BASE}/inventories/summary`)
+  return data as InventorySummary
+}
 
 export const fetchLocations = async (options?: { countType?: CountType }): Promise<Location[]> => {
   let endpoint = '/locations'
@@ -31,7 +46,7 @@ export const fetchLocations = async (options?: { countType?: CountType }): Promi
     }
     const query = searchParams.toString()
     endpoint = `/locations${query ? `?${query}` : ''}`
-    const data = await http<unknown>(endpoint)
+    const data = await http(`${API_BASE}${endpoint}`)
     const normalised = normaliseLocationsPayload(data)
     const parsed = LocationsSchema.safeParse(normalised)
     if (!parsed.success) {
@@ -42,33 +57,32 @@ export const fetchLocations = async (options?: { countType?: CountType }): Promi
     }
     return parsed.data
   } catch (error) {
-    if (error instanceof HttpError) {
+    if (isHttpError(error)) {
       throw error
     }
     if (import.meta.env.DEV) {
       console.error('Échec de récupération des zones', error)
     }
-    throw new HttpError({
-      message: 'Impossible de récupérer les zones.',
-      url: `${API_BASE}${endpoint}`,
-    })
+    throw toHttpError('Impossible de récupérer les zones.', `${API_BASE}${endpoint}`, error)
   }
 }
 
 export const fetchProductByEan = async (ean: string): Promise<Product> => {
-  return http<Product>(`/products/${encodeURIComponent(ean)}`)
+  const data = await http(`${API_BASE}/products/${encodeURIComponent(ean)}`)
+  return data as Product
 }
 
 export const createManualProduct = async (payload: ManualProductInput): Promise<Product> => {
-  return http<Product>('/products', {
+  const data = await http(`${API_BASE}/products`, {
     method: 'POST',
     body: JSON.stringify(payload),
   })
+  return data as Product
 }
 
 export const restartInventoryRun = async (locationId: string, countType: CountType): Promise<void> => {
   const searchParams = new URLSearchParams({ countType: String(countType) })
-  await http<void>(`/inventories/${locationId}/restart?${searchParams.toString()}`, {
+  await http(`${API_BASE}/inventories/${locationId}/restart?${searchParams.toString()}`, {
     method: 'POST',
   })
 }

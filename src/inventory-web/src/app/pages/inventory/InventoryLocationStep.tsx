@@ -10,13 +10,25 @@ import { SlidingPanel } from '../../components/SlidingPanel'
 import { TextField } from '../../components/TextField'
 import { useInventory } from '../../contexts/InventoryContext'
 import type { Location } from '../../types/inventory'
-import { DEV_API_UNREACHABLE_HINT, HttpError } from '@/lib/api/http'
+import type { HttpError } from '@/lib/api/http'
+
+const DEV_API_UNREACHABLE_HINT =
+  "Impossible de joindre l’API : vérifie que le backend tourne (curl http://localhost:8080/healthz) ou que le proxy Vite est actif."
+
+const isHttpError = (value: unknown): value is HttpError =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof (value as { status?: unknown }).status === 'number' &&
+  typeof (value as { url?: unknown }).url === 'string'
 
 const truncate = (value: string, maxLength = 180) =>
   value.length <= maxLength ? value : `${value.slice(0, maxLength)}…`
 
 const extractHttpDetail = (error: HttpError): string | undefined =>
-  error.problem?.detail || error.problem?.title || error.body || undefined
+  (error.problem as { detail?: string; title?: string } | undefined)?.detail ||
+  (error.problem as { title?: string } | undefined)?.title ||
+  error.body ||
+  undefined
 
 const formatHttpError = (error: HttpError, prefix = 'Erreur réseau') => {
   const detail = extractHttpDetail(error)
@@ -50,7 +62,7 @@ const resolveErrorPanel = (
   if (!error) {
     return null
   }
-  if (error instanceof HttpError) {
+  if (isHttpError(error)) {
     const detail = extractHttpDetail(error)
     if (import.meta.env.DEV && error.status === 404) {
       const diagnostics = [DEV_API_UNREACHABLE_HINT]
@@ -102,7 +114,7 @@ export const InventoryLocationStep = () => {
       } catch (err) {
         if (!isCancelled()) {
           setLocations([])
-          if (err instanceof HttpError) {
+          if (isHttpError(err)) {
             setError(err)
           } else if (err instanceof Error) {
             setError(err)
@@ -210,7 +222,7 @@ export const InventoryLocationStep = () => {
       await restartInventoryRun(zone.id, effectiveCountType)
       handleStart(zone)
     } catch (err) {
-      if (err instanceof HttpError) {
+      if (isHttpError(err)) {
         setActionError(formatHttpError(err, 'Redémarrage impossible'))
       } else if (err instanceof Error && err.message) {
         setActionError(err.message)
