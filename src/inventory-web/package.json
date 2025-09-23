@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "check:health": "node -e \"fetch('http://localhost:5173/api/healthz').then(r=>r.text()).then(console.log).catch(e=>{console.error(e);process.exit(1)})\"",
     "test": "vitest run",
     "test:watch": "vitest"
   },
