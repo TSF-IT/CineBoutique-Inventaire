@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using CineBoutique.Inventory.Domain.Admin;
+using CineBoutique.Inventory.Infrastructure.Admin;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
 using Microsoft.Extensions.Logging;
@@ -124,10 +125,10 @@ namespace CineBoutique.Inventory.Infrastructure.Admin
 
                 return Map(row);
             }
-            catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+            catch (PostgresException pgx) when (pgx.SqlState == PostgresErrorCodes.UniqueViolation)
             {
-                _logger.LogWarning(ex, "Impossible de créer l'utilisateur admin {Email} : doublon.", normalizedEmail);
-                throw new DuplicateUserException($"L'adresse e-mail '{normalizedEmail}' est déjà utilisée.", ex);
+                _logger.LogWarning(pgx, "Impossible de créer l'utilisateur admin {Email} : doublon.", normalizedEmail);
+                throw new DuplicateUserException("An admin user with the same unique field already exists.", pgx);
             }
         }
 
@@ -162,10 +163,10 @@ namespace CineBoutique.Inventory.Infrastructure.Admin
 
                 return row is null ? null : Map(row);
             }
-            catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+            catch (PostgresException pgx) when (pgx.SqlState == PostgresErrorCodes.UniqueViolation)
             {
-                _logger.LogWarning(ex, "Impossible de modifier l'utilisateur admin {Email} : doublon.", email);
-                throw new InvalidOperationException($"L'adresse e-mail '{email}' est déjà utilisée.", ex);
+                _logger.LogWarning(pgx, "Impossible de modifier l'utilisateur admin {Email} : doublon.", email);
+                throw new DuplicateUserException("An admin user with the same unique field already exists.", pgx);
             }
         }
 
@@ -198,11 +199,4 @@ namespace CineBoutique.Inventory.Infrastructure.Admin
         private sealed record AdminUserRow(Guid Id, string Email, string DisplayName, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc);
     }
 
-    public sealed class DuplicateUserException : Exception
-    {
-        public DuplicateUserException(string message, Exception? innerException = null)
-            : base(message, innerException)
-        {
-        }
-    }
 }
