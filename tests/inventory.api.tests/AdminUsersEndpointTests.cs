@@ -76,10 +76,14 @@ public class AdminUsersEndpointTests : IAsyncLifetime
 
         var ct = CancellationToken.None;
 
+        var unique = Guid.NewGuid().ToString("N")[..8];
+        var email = $"admin{unique}@example.com";
+        var displayName = $"Admin {unique}";
+
         var createResponse = await _client.PostAsJsonAsync("/api/admin/users", new AdminUserCreateRequest
         {
-            Email = "admin1@example.com",
-            DisplayName = "Admin One"
+            Email = email,
+            DisplayName = displayName
         }, ct);
 
         if (createResponse.StatusCode != HttpStatusCode.Created)
@@ -103,11 +107,25 @@ public class AdminUsersEndpointTests : IAsyncLifetime
         getResponse.EnsureSuccessStatusCode();
         var fetched = await getResponse.Content.ReadFromJsonAsync<AdminUserDto>();
         Assert.NotNull(fetched);
-        Assert.Equal("admin1@example.com", fetched!.Email);
+        Assert.Equal(email, fetched!.Email);
+
+        var duplicateResponse = await _client.PostAsJsonAsync("/api/admin/users", new AdminUserCreateRequest
+        {
+            Email = email,
+            DisplayName = $"Duplicate {displayName}"
+        }, ct);
+
+        if (duplicateResponse.StatusCode != HttpStatusCode.Conflict)
+        {
+            var duplicateBody = await duplicateResponse.Content.ReadAsStringAsync(ct);
+            _output.WriteLine($"Duplicate CreateAdminUser failed: {(int)duplicateResponse.StatusCode} {duplicateResponse.StatusCode} - {duplicateBody}");
+        }
+
+        Assert.Equal(HttpStatusCode.Conflict, duplicateResponse.StatusCode);
 
         var updateResponse = await _client.PutAsJsonAsync($"/api/admin/users/{created.Id}", new AdminUserUpdateRequest
         {
-            Email = "admin1@example.com",
+            Email = email,
             DisplayName = "Admin Updated"
         });
 
