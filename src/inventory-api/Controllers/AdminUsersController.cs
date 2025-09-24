@@ -118,12 +118,12 @@ public sealed class AdminUsersController : ControllerBase
         catch (DuplicateUserException ex)
         {
             _logger.LogWarning(ex, "Duplicate admin user.");
-            return Conflict(new { error = "Duplicate user", message = ex.Message });
+            return Conflict(new { message = ex.Message });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected error creating admin user for {Email}", email);
-            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Unexpected error while creating admin user." });
+            return Problem(title: "Unexpected error", statusCode: StatusCodes.Status500InternalServerError);
         }
     }
 
