@@ -120,6 +120,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         await EnsureConnectionOpenAsync(connection);
 
         const string cleanupSql =
+            "TRUNCATE TABLE \"AdminUser\" RESTART IDENTITY CASCADE;\n" +
             "TRUNCATE TABLE \"CountLine\" RESTART IDENTITY CASCADE;\n" +
             "TRUNCATE TABLE \"CountingRun\" RESTART IDENTITY CASCADE;\n" +
             "TRUNCATE TABLE \"InventorySession\" RESTART IDENTITY CASCADE;\n" +

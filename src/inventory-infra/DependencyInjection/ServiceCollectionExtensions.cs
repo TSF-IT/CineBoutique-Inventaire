@@ -1,3 +1,7 @@
+using CineBoutique.Inventory.Domain.Admin;
+using CineBoutique.Inventory.Domain.Auditing;
+using CineBoutique.Inventory.Infrastructure.Admin;
+using CineBoutique.Inventory.Infrastructure.Auditing;
 using CineBoutique.Inventory.Infrastructure.Database;
 using CineBoutique.Inventory.Infrastructure.Seeding;
 using FluentMigrator.Runner;
@@ -33,6 +37,8 @@ public static class ServiceCollectionExtensions
             .AddLogging(lb => lb.AddFluentMigratorConsole());
 
         services.AddScoped<InventoryDataSeeder>();
+        services.AddScoped<IAdminUserRepository, DapperAdminUserRepository>();
+        services.AddScoped<IAuditLogger, DapperAuditLogger>();
 
         return services;
     }
