@@ -3,9 +3,9 @@ using System.Linq;
 using CineBoutique.Inventory.Api.Models.Admin;
 using CineBoutique.Inventory.Domain.Admin;
 using CineBoutique.Inventory.Domain.Auditing;
+using CineBoutique.Inventory.Infrastructure.Admin;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Npgsql;
 
 namespace CineBoutique.Inventory.Api.Controllers;
 
@@ -117,13 +117,8 @@ public sealed class AdminUsersController : ControllerBase
         }
         catch (DuplicateUserException ex)
         {
-            _logger.LogWarning(ex, "Création d'utilisateur admin en conflit pour {Email}", email);
-            return Conflict(new { message = ex.Message });
-        }
-        catch (PostgresException ex)
-        {
-            _logger.LogWarning(ex, "Erreur SQL lors de la création de l'utilisateur admin {Email}", email);
-            return BadRequest(new { message = $"Database error while creating admin user: {ex.MessageText}" });
+            _logger.LogWarning(ex, "Duplicate admin user.");
+            return Conflict(new { error = "Duplicate user", message = ex.Message });
         }
         catch (Exception ex)
         {
