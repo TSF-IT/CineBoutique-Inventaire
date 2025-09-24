@@ -68,8 +68,13 @@ public sealed class AdminUsersController : ControllerBase
     [ProducesResponseType(typeof(AdminUserDto), StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    public async Task<ActionResult<AdminUserDto>> CreateAsync([FromBody] AdminUserCreateRequest request, CancellationToken cancellationToken)
+    public async Task<ActionResult<AdminUserDto>> CreateAsync([FromBody] AdminUserCreateRequest? request, CancellationToken cancellationToken)
     {
+        if (request is null)
+        {
+            return BadRequest();
+        }
+
         if (!ModelState.IsValid)
         {
             return ValidationProblem(ModelState);
@@ -77,7 +82,10 @@ public sealed class AdminUsersController : ControllerBase
 
         try
         {
-            var created = await _repository.CreateAsync(request.Email.Trim(), request.DisplayName.Trim(), cancellationToken).ConfigureAwait(false);
+            var email = request.Email.Trim();
+            var displayName = request.DisplayName.Trim();
+
+            var created = await _repository.CreateAsync(email, displayName, cancellationToken).ConfigureAwait(false);
 
             await _auditLogger.LogAsync(
                 new AuditEntry("AdminUser", created.Id.ToString(), "Create", new { created.Email, created.DisplayName }, DateTimeOffset.UtcNow),
@@ -91,7 +99,17 @@ public sealed class AdminUsersController : ControllerBase
             await _auditLogger.LogAsync(
                 new AuditEntry("AdminUser", "CREATE", "Conflict", new { request.Email }, DateTimeOffset.UtcNow),
                 cancellationToken).ConfigureAwait(false);
-            return Conflict(new { message = ex.Message });
+            return Conflict("Email already exists");
+        }
+        catch (ArgumentException ex)
+        {
+            _logger.LogWarning(ex, "Validation failed creating admin user");
+            return BadRequest(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating admin user");
+            return StatusCode(StatusCodes.Status500InternalServerError, "Unexpected error");
         }
     }
 
