@@ -125,6 +125,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
             "TRUNCATE TABLE \"InventorySession\" RESTART IDENTITY CASCADE;\n" +
             "TRUNCATE TABLE \"Location\" RESTART IDENTITY CASCADE;\n" +
             "TRUNCATE TABLE \"Product\" RESTART IDENTITY CASCADE;\n" +
+            "TRUNCATE TABLE \"audit_logs\" RESTART IDENTITY CASCADE;\n" +
             "TRUNCATE TABLE \"Audit\" RESTART IDENTITY CASCADE;\n" +
             "TRUNCATE TABLE \"Conflict\" RESTART IDENTITY CASCADE;";
 
