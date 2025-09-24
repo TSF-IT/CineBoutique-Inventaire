@@ -101,8 +101,7 @@ builder.Services
     .ConfigureRunner(rb => rb
         .AddPostgres()
         .WithGlobalConnectionString(connectionString)
-        .ScanIn(typeof(CreateInventorySchema).Assembly)
-        .For.Migrations())
+        .ScanIn(typeof(MigrationsAssemblyMarker).Assembly).For.Migrations())
     .AddLogging(lb => lb.AddFluentMigratorConsole());
 
 builder.Services.Configure<SelectingProcessorAccessorOptions>(options =>
