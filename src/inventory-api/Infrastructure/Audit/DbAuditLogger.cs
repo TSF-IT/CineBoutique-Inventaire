@@ -21,13 +21,17 @@ public sealed class DbAuditLogger : IAuditLogger
 
     public async Task LogAsync(string? user, string message, string? action = null)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(message);
-
-        var trimmedUser = string.IsNullOrWhiteSpace(user) ? null : user.Trim();
-        var trimmedAction = string.IsNullOrWhiteSpace(action) ? null : action.Trim();
-
         try
         {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                _logger.LogWarning("Message d'audit vide, rien à enregistrer.");
+                return;
+            }
+
+            var trimmedUser = string.IsNullOrWhiteSpace(user) ? null : user.Trim();
+            var trimmedAction = string.IsNullOrWhiteSpace(action) ? null : action.Trim();
+
             await using var connection = _connectionFactory.CreateConnection();
             await EnsureConnectionOpenAsync(connection).ConfigureAwait(false);
 
