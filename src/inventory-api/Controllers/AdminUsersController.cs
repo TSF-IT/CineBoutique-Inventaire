@@ -157,7 +157,7 @@ public sealed class AdminUsersController : ControllerBase
 
             return Ok(Map(updated));
         }
-        catch (InvalidOperationException ex)
+        catch (DuplicateUserException ex)
         {
             _logger.LogWarning(ex, "Mise à jour d'utilisateur admin en conflit pour {Email}", request.Email);
             await _auditLogger.LogAsync(
