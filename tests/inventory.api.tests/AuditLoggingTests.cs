@@ -85,9 +85,10 @@ public sealed class AuditLoggingTests : IAsyncLifetime
             const string insertSessionSql = "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc);";
             await connection.ExecuteAsync(insertSessionSql, new { Id = sessionId, Name = "Session principale", StartedAtUtc = startedAt }).ConfigureAwait(false);
 
-            const string insertRunSql = @"
-INSERT INTO \"CountingRun\" (\"Id\", \"InventorySessionId\", \"LocationId\", \"StartedAtUtc\", \"CountType\")
-VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);";
+            const string insertRunSql = """
+INSERT INTO "CountingRun" ("Id", "InventorySessionId", "LocationId", "StartedAtUtc", "CountType")
+VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
+""";
             await connection.ExecuteAsync(insertRunSql, new { Id = runId, SessionId = sessionId, LocationId = locationId, StartedAtUtc = startedAt, CountType = 1 }).ConfigureAwait(false);
         }
 
