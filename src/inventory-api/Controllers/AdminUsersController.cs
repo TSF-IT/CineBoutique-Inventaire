@@ -5,6 +5,7 @@ using CineBoutique.Inventory.Domain.Admin;
 using CineBoutique.Inventory.Domain.Auditing;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Npgsql;
 
 namespace CineBoutique.Inventory.Api.Controllers;
 
@@ -87,11 +88,21 @@ public sealed class AdminUsersController : ControllerBase
 
             var created = await _repository.CreateAsync(email, displayName, cancellationToken).ConfigureAwait(false);
 
+            var dto = Map(created);
+
             await _auditLogger.LogAsync(
-                new AuditEntry("AdminUser", created.Id.ToString(), "Create", new { created.Email, created.DisplayName }, DateTimeOffset.UtcNow),
+                new AuditEntry("AdminUser", created.Id.ToString(), "Create", new { dto.Email, dto.DisplayName }, DateTimeOffset.UtcNow),
                 cancellationToken).ConfigureAwait(false);
 
-            return CreatedAtAction(nameof(GetByIdAsync), new { id = created.Id }, Map(created));
+            return CreatedAtAction(nameof(GetByIdAsync), new { id = dto.Id }, dto);
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+        {
+            _logger.LogWarning(ex, "Création d'utilisateur admin en conflit pour {Email}", request.Email);
+            await _auditLogger.LogAsync(
+                new AuditEntry("AdminUser", "CREATE", "Conflict", new { request.Email }, DateTimeOffset.UtcNow),
+                cancellationToken).ConfigureAwait(false);
+            return Conflict("Email already exists");
         }
         catch (InvalidOperationException ex)
         {
