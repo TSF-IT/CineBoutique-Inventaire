@@ -1,25 +1,32 @@
-using System.Data;
-using System.Data.Common;
-using CineBoutique.Inventory.Infrastructure.Database;
+using System;
+using System.Threading;
 using Dapper;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace CineBoutique.Inventory.Api.Infrastructure.Audit;
 
 public sealed class DbAuditLogger : IAuditLogger
 {
-    private const string InsertSql = "INSERT INTO \"audit_logs\" (\"id\", \"ts\", \"user\", \"action\", \"details\") VALUES (@Id, @Timestamp, @User, @Action, @Details);";
-
-    private readonly IDbConnectionFactory _connectionFactory;
+    private readonly string _connectionString;
     private readonly ILogger<DbAuditLogger> _logger;
 
-    public DbAuditLogger(IDbConnectionFactory connectionFactory, ILogger<DbAuditLogger> logger)
+    public DbAuditLogger(IConfiguration configuration, ILogger<DbAuditLogger> logger)
     {
-        _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+        ArgumentNullException.ThrowIfNull(configuration);
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+
+        var connectionString = configuration.GetConnectionString("Default");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException("La chaîne de connexion 'Default' est absente ou vide.");
+        }
+
+        _connectionString = connectionString;
     }
 
-    public async Task LogAsync(string? user, string message, string? action = null)
+    public async Task LogAsync(string message, string? actor = null, string? category = null, CancellationToken cancellationToken = default)
     {
         try
         {
@@ -29,39 +36,22 @@ public sealed class DbAuditLogger : IAuditLogger
                 return;
             }
 
-            var trimmedUser = string.IsNullOrWhiteSpace(user) ? null : user.Trim();
-            var trimmedAction = string.IsNullOrWhiteSpace(action) ? null : action.Trim();
+            var trimmedActor = string.IsNullOrWhiteSpace(actor) ? null : actor.Trim();
+            var trimmedCategory = string.IsNullOrWhiteSpace(category) ? null : category.Trim();
 
-            await using var connection = _connectionFactory.CreateConnection();
-            await EnsureConnectionOpenAsync(connection).ConfigureAwait(false);
+            await using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-            var parameters = new
-            {
-                Id = Guid.NewGuid(),
-                Timestamp = DateTimeOffset.UtcNow,
-                User = trimmedUser,
-                Action = trimmedAction,
-                Details = message
-            };
-
-            await connection.ExecuteAsync(new CommandDefinition(InsertSql, parameters)).ConfigureAwait(false);
+            const string sql = "insert into audit_logs(message, actor, category) values (@m, @a, @c);";
+            await connection.ExecuteAsync(
+                new CommandDefinition(
+                    sql,
+                    new { m = message, a = trimmedActor, c = trimmedCategory },
+                    cancellationToken: cancellationToken)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Échec de l'enregistrement de l'audit: {Message}", message);
-        }
-    }
-
-    private static async Task EnsureConnectionOpenAsync(IDbConnection connection)
-    {
-        switch (connection)
-        {
-            case DbConnection dbConnection when dbConnection.State != ConnectionState.Open:
-                await dbConnection.OpenAsync().ConfigureAwait(false);
-                break;
-            case { State: ConnectionState.Closed }:
-                connection.Open();
-                break;
+            _logger.LogError(ex, "Audit logging failed (ignored)");
         }
     }
 }

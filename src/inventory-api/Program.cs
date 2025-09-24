@@ -266,9 +266,10 @@ app.Use(async (context, next) =>
 });
 
 var applyMigrations = app.Configuration.GetValue<bool>("APPLY_MIGRATIONS");
-app.Logger.LogInformation("APPLY_MIGRATIONS={Apply}", applyMigrations);
+var disableMigrations = app.Configuration.GetValue<bool>("DISABLE_MIGRATIONS");
+app.Logger.LogInformation("APPLY_MIGRATIONS={Apply} DISABLE_MIGRATIONS={Disable}", applyMigrations, disableMigrations);
 
-if (applyMigrations)
+if (applyMigrations && !disableMigrations)
 {
     const int maxAttempts = 10;
     var attempt = 0;
@@ -299,6 +300,10 @@ if (applyMigrations)
             await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
         }
     }
+}
+else if (applyMigrations)
+{
+    app.Logger.LogInformation("Migrations skipped because DISABLE_MIGRATIONS is true");
 }
 
 if (app.Environment.IsDevelopment())
@@ -541,7 +546,7 @@ WHERE ""LocationId"" = @LocationId
     var resultDetails = affected > 0 ? "et clôturé les comptages actifs" : "mais aucun comptage actif n'était ouvert";
     var message = $"{actor} a relancé {zoneDescription} pour un {countDescription} le {timestamp} UTC {resultDetails}.";
 
-    await auditLogger.LogAsync(userName, message, "inventories.restart").ConfigureAwait(false);
+    await auditLogger.LogAsync(message, userName, "inventories.restart").ConfigureAwait(false);
 
     return Results.NoContent();
 })
@@ -570,7 +575,7 @@ app.MapGet("/products/{code}", async (
         var invalidActor = FormatActorLabel(invalidUser);
         var invalidTimestamp = FormatTimestamp(nowInvalid);
         var invalidMessage = $"{invalidActor} a tenté de scanner un code produit vide le {invalidTimestamp} UTC.";
-        await auditLogger.LogAsync(invalidUser, invalidMessage, "products.scan.invalid").ConfigureAwait(false);
+        await auditLogger.LogAsync(invalidMessage, invalidUser, "products.scan.invalid").ConfigureAwait(false);
         return Results.BadRequest(new { message = "Le code produit est requis." });
     }
 
@@ -601,12 +606,12 @@ app.MapGet("/products/{code}", async (
         var skuLabel = string.IsNullOrWhiteSpace(product.Sku) ? "non renseigné" : product.Sku;
         var eanLabel = string.IsNullOrWhiteSpace(product.Ean) ? "non renseigné" : product.Ean;
         var successMessage = $"{actor} a scanné le code {sanitizedCode} et a identifié le produit \"{productLabel}\" (SKU {skuLabel}, EAN {eanLabel}) le {timestamp} UTC.";
-        await auditLogger.LogAsync(userName, successMessage, "products.scan.success").ConfigureAwait(false);
+        await auditLogger.LogAsync(successMessage, userName, "products.scan.success").ConfigureAwait(false);
         return Results.Ok(product);
     }
 
     var notFoundMessage = $"{actor} a scanné le code {sanitizedCode} sans correspondance produit le {timestamp} UTC.";
-    await auditLogger.LogAsync(userName, notFoundMessage, "products.scan.not_found").ConfigureAwait(false);
+    await auditLogger.LogAsync(notFoundMessage, userName, "products.scan.not_found").ConfigureAwait(false);
 
     return Results.NotFound();
 });
@@ -620,7 +625,7 @@ app.MapPost("/auth/pin", async (
     if (request is null || string.IsNullOrWhiteSpace(request.Pin))
     {
         var timestamp = FormatTimestamp(DateTimeOffset.UtcNow);
-        await auditLogger.LogAsync(null, $"Tentative de connexion admin rejetée : code PIN absent le {timestamp} UTC.", "auth.pin.failure").ConfigureAwait(false);
+        await auditLogger.LogAsync($"Tentative de connexion admin rejetée : code PIN absent le {timestamp} UTC.", null, "auth.pin.failure").ConfigureAwait(false);
         return Results.BadRequest(new { message = "Le code PIN est requis." });
     }
 
@@ -629,7 +634,7 @@ app.MapPost("/auth/pin", async (
     if (user is null)
     {
         var timestamp = FormatTimestamp(DateTimeOffset.UtcNow);
-        await auditLogger.LogAsync(null, $"Tentative de connexion admin refusée (PIN inconnu) le {timestamp} UTC.", "auth.pin.failure").ConfigureAwait(false);
+        await auditLogger.LogAsync($"Tentative de connexion admin refusée (PIN inconnu) le {timestamp} UTC.", null, "auth.pin.failure").ConfigureAwait(false);
         return Results.Unauthorized();
     }
 
@@ -638,7 +643,7 @@ app.MapPost("/auth/pin", async (
 
     var successTimestamp = FormatTimestamp(DateTimeOffset.UtcNow);
     var actor = FormatActorLabel(user.Name);
-    await auditLogger.LogAsync(user.Name, $"{actor} s'est connecté avec succès le {successTimestamp} UTC.", "auth.pin.success").ConfigureAwait(false);
+    await auditLogger.LogAsync($"{actor} s'est connecté avec succès le {successTimestamp} UTC.", user.Name, "auth.pin.success").ConfigureAwait(false);
 
     return Results.Ok(response);
 });
