@@ -68,3 +68,26 @@ systemctl --user list-timers | grep app-deploy
 
 Important : La VM suit uniquement la branche deploy.
 Le workflow GitHub met à jour deploy uniquement si la CI (backend & frontend) est verte sur main.
+
+## Proxy HTTPS (Caddy)
+
+Le service `proxy` (image Caddy) termine désormais TLS et route :
+
+- `/api` vers l’API .NET (service `api`)
+- toutes les autres routes vers le front nginx (service `web`)
+
+Deux modes sont possibles :
+
+1. **Domaine public** : définir les variables d’environnement `DOMAIN` (ex. `inventaire.mondomaine.fr`) et éventuellement `ACME_EMAIL` dans `docker-compose.yml` ou via `DOMAIN=... ACME_EMAIL=... docker compose up -d`. Caddy utilisera Let’s Encrypt automatiquement. Le port 80 redirige vers 443.
+2. **Certificat interne** : ne pas définir `DOMAIN` et déposer un couple `cert.pem` / `key.pem` dans `./certs`. Ils sont montés en lecture seule dans le conteneur. Caddy refusera de démarrer si les fichiers manquent.
+
+### Cas iPhone / iPad en réseau interne
+
+Les appareils iOS exigent un certificat approuvé pour exposer `navigator.mediaDevices`.
+
+1. Générez un certificat racine ou utilisez votre PKI interne pour créer `cert.pem` / `key.pem`.
+2. Copiez `cert.pem` sur l’iPhone (AirDrop, Mail…).
+3. Ouvrez le fichier sur iOS, installez le profil et activez-le dans **Réglages > Général > Informations > Réglages de confiance du certificat**.
+4. Ouvrez ensuite l’application via l’URL en `https://` pour débloquer la caméra.
+
+> Astuce : pour des tests rapides sans certificat, vous pouvez utiliser le fichier `src/inventory-web/.env.mobile` afin de pointer directement vers l’API en HTTP. Attention : le scan caméra ne fonctionnera pas, seul le fallback « import de photo » restera disponible.

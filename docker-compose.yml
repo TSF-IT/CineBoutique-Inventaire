@@ -62,5 +62,23 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  proxy:
+    image: caddy:2-alpine
+    container_name: cineboutique-inventaire-proxy-1
+    depends_on:
+      - web
+      - api
+    environment:
+      DOMAIN: ${DOMAIN:-}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./build/proxy/start.sh:/etc/caddy/start.sh:ro
+      - ./certs:/certs:ro
+    command: ["/bin/sh", "/etc/caddy/start.sh"]
+    restart: unless-stopped
+
 volumes:
   inventory-data:
