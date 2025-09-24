@@ -9,7 +9,8 @@
     "paths": {
       "@/*": ["*"]
     },
-    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom/vitest"]
+    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom/vitest"],
+    "noEmit": true
   },
   "include": ["src", "setupTests.ts"]
 }

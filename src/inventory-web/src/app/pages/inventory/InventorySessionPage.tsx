@@ -1,6 +1,7 @@
 import type { FormEvent, KeyboardEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { BrowserMultiFormatReader } from '@zxing/browser'
 import { createManualProduct, fetchProductByEan } from '../../api/inventoryApi'
 import { BarcodeScanner } from '../../components/BarcodeScanner'
 import { Button } from '../../components/ui/Button'
@@ -52,6 +53,11 @@ const buildHttpMessage = (prefix: string, error: HttpError) => {
   }
   return diagnostics.length > 0 ? `${prefix} | ${diagnostics.join(' | ')}` : prefix
 }
+
+const hasBarcodeDetector = (
+  candidate: Window & typeof globalThis,
+): candidate is Window & typeof globalThis & { BarcodeDetector: BarcodeDetectorConstructor } =>
+  'BarcodeDetector' in candidate && typeof candidate.BarcodeDetector === 'function'
 
 export const InventorySessionPage = () => {
   const navigate = useNavigate()
@@ -123,6 +129,68 @@ export const InventorySessionPage = () => {
       }
     },
     [addOrIncrementItem],
+  )
+
+  const handleImagePicked = useCallback(
+    async (file: File) => {
+      setStatus('Analyse de la photo en cours…')
+      setErrorMessage(null)
+
+      let decoded: string | null = null
+
+      try {
+        if (typeof window !== 'undefined' && hasBarcodeDetector(window)) {
+          try {
+            const detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'code_128', 'code_39'] })
+            if (typeof window.createImageBitmap === 'function') {
+              const bitmap = await window.createImageBitmap(file)
+              const results = await detector.detect(bitmap)
+              bitmap.close?.()
+              decoded = results.find((entry) => entry.rawValue)?.rawValue ?? null
+            }
+          } catch (error) {
+            if (import.meta.env.DEV) {
+              console.warn('[scanner] BarcodeDetector indisponible', error)
+            }
+          }
+        }
+
+        if (!decoded) {
+          const reader = new BrowserMultiFormatReader()
+          const objectUrl = URL.createObjectURL(file)
+          try {
+            const image = new Image()
+            image.src = objectUrl
+            await new Promise<void>((resolve, reject) => {
+              image.onload = () => resolve()
+              image.onerror = () => reject(new Error('Chargement de la photo impossible.'))
+            })
+            const result = await reader.decodeFromImageElement(image)
+            decoded = result.getText()
+          } catch (error) {
+            if (import.meta.env.DEV) {
+              console.warn('[scanner] Décodage ZXing impossible', error)
+            }
+          } finally {
+            URL.revokeObjectURL(objectUrl)
+          }
+        }
+
+        if (decoded) {
+          await handleDetected(decoded)
+        } else {
+          setStatus(null)
+          setErrorMessage('Impossible de lire ce code-barres sur la photo. Essayez une prise plus nette ou mieux éclairée.')
+        }
+      } catch (error) {
+        setStatus(null)
+        if (import.meta.env.DEV) {
+          console.error('[scanner] Analyse photo impossible', error)
+        }
+        setErrorMessage("Échec de l'analyse de la photo. Réessayez avec un autre cliché.")
+      }
+    },
+    [handleDetected],
   )
 
   const handleInputKeyDown = useCallback(
@@ -197,7 +265,7 @@ export const InventorySessionPage = () => {
             Ajouter manuellement
           </Button>
         </div>
-        <BarcodeScanner active={useCamera} onDetected={handleDetected} />
+        <BarcodeScanner active={useCamera} onDetected={handleDetected} onPickImage={(file) => void handleImagePicked(file)} />
         <Input
           ref={inputRef}
           name="scanInput"
