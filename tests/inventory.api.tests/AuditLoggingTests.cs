@@ -53,7 +53,7 @@ public sealed class AuditLoggingTests : IAsyncLifetime
         using var scope = _factory.Services.CreateScope();
         DbMigrator.MigrateUp(scope.ServiceProvider);
 
-        await ResetDatabaseAsync().ConfigureAwait(false);
+        await ResetDatabaseAsync();
     }
 
     public Task DisposeAsync()
@@ -66,7 +66,7 @@ public sealed class AuditLoggingTests : IAsyncLifetime
     [Fact]
     public async Task RestartInventory_WritesAuditLog()
     {
-        await ResetDatabaseAsync().ConfigureAwait(false);
+        await ResetDatabaseAsync();
 
         var locationId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
@@ -77,25 +77,25 @@ public sealed class AuditLoggingTests : IAsyncLifetime
         {
             var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
             await using var connection = connectionFactory.CreateConnection();
-            await EnsureConnectionOpenAsync(connection).ConfigureAwait(false);
+            await EnsureConnectionOpenAsync(connection);
 
             const string insertLocationSql = "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\") VALUES (@Id, @Code, @Label);";
-            await connection.ExecuteAsync(insertLocationSql, new { Id = locationId, Code = "S1", Label = "Zone S1" }).ConfigureAwait(false);
+            await connection.ExecuteAsync(insertLocationSql, new { Id = locationId, Code = "S1", Label = "Zone S1" });
 
             const string insertSessionSql = "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc);";
-            await connection.ExecuteAsync(insertSessionSql, new { Id = sessionId, Name = "Session principale", StartedAtUtc = startedAt }).ConfigureAwait(false);
+            await connection.ExecuteAsync(insertSessionSql, new { Id = sessionId, Name = "Session principale", StartedAtUtc = startedAt });
 
             const string insertRunSql = """
 INSERT INTO "CountingRun" ("Id", "InventorySessionId", "LocationId", "StartedAtUtc", "CountType")
 VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
 """;
-            await connection.ExecuteAsync(insertRunSql, new { Id = runId, SessionId = sessionId, LocationId = locationId, StartedAtUtc = startedAt, CountType = 1 }).ConfigureAwait(false);
+            await connection.ExecuteAsync(insertRunSql, new { Id = runId, SessionId = sessionId, LocationId = locationId, StartedAtUtc = startedAt, CountType = 1 });
         }
 
-        var response = await _client.PostAsync($"/api/inventories/{locationId}/restart?countType=1", null).ConfigureAwait(false);
+        var response = await _client.PostAsync($"/api/inventories/{locationId}/restart?countType=1", null);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
-        var auditLogs = await GetAuditLogsAsync().ConfigureAwait(false);
+        var auditLogs = await GetAuditLogsAsync();
         Assert.Single(auditLogs);
 
         var entry = auditLogs.Single();
@@ -108,7 +108,7 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
     [Fact]
     public async Task ScanProduct_Success_WritesAuditLog()
     {
-        await ResetDatabaseAsync().ConfigureAwait(false);
+        await ResetDatabaseAsync();
 
         var productId = Guid.NewGuid();
         var createdAt = DateTimeOffset.UtcNow.AddHours(-1);
@@ -117,16 +117,16 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
         {
             var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
             await using var connection = connectionFactory.CreateConnection();
-            await EnsureConnectionOpenAsync(connection).ConfigureAwait(false);
+            await EnsureConnectionOpenAsync(connection);
 
             const string insertProductSql = "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"Ean\", \"CreatedAtUtc\") VALUES (@Id, @Sku, @Name, @Ean, @CreatedAtUtc);";
-            await connection.ExecuteAsync(insertProductSql, new { Id = productId, Sku = "SKU-100", Name = "Produit test", Ean = "1234567890123", CreatedAtUtc = createdAt }).ConfigureAwait(false);
+            await connection.ExecuteAsync(insertProductSql, new { Id = productId, Sku = "SKU-100", Name = "Produit test", Ean = "1234567890123", CreatedAtUtc = createdAt });
         }
 
-        var response = await _client.GetAsync("/products/1234567890123").ConfigureAwait(false);
+        var response = await _client.GetAsync("/products/1234567890123");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var auditLogs = await GetAuditLogsAsync().ConfigureAwait(false);
+        var auditLogs = await GetAuditLogsAsync();
         Assert.Single(auditLogs);
 
         var entry = auditLogs.Single();
@@ -138,12 +138,12 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
     [Fact]
     public async Task ScanProduct_NotFound_WritesAuditLog()
     {
-        await ResetDatabaseAsync().ConfigureAwait(false);
+        await ResetDatabaseAsync();
 
-        var response = await _client.GetAsync("/products/00000000").ConfigureAwait(false);
+        var response = await _client.GetAsync("/products/00000000");
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
 
-        var auditLogs = await GetAuditLogsAsync().ConfigureAwait(false);
+        var auditLogs = await GetAuditLogsAsync();
         Assert.Single(auditLogs);
 
         var entry = auditLogs.Single();
@@ -154,12 +154,12 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
     [Fact]
     public async Task ScanProduct_InvalidInput_WritesAuditLog()
     {
-        await ResetDatabaseAsync().ConfigureAwait(false);
+        await ResetDatabaseAsync();
 
-        var response = await _client.GetAsync("/products/%20").ConfigureAwait(false);
+        var response = await _client.GetAsync("/products/%20");
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
-        var auditLogs = await GetAuditLogsAsync().ConfigureAwait(false);
+        var auditLogs = await GetAuditLogsAsync();
         Assert.Single(auditLogs);
 
         var entry = auditLogs.Single();
@@ -170,12 +170,12 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
     [Fact]
     public async Task PinLogin_Success_WritesAuditLog()
     {
-        await ResetDatabaseAsync().ConfigureAwait(false);
+        await ResetDatabaseAsync();
 
-        var response = await _client.PostAsJsonAsync("/auth/pin", new PinAuthenticationRequest { Pin = "1111" }).ConfigureAwait(false);
+        var response = await _client.PostAsJsonAsync("/auth/pin", new PinAuthenticationRequest { Pin = "1111" });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var auditLogs = await GetAuditLogsAsync().ConfigureAwait(false);
+        var auditLogs = await GetAuditLogsAsync();
         Assert.Single(auditLogs);
 
         var entry = auditLogs.Single();
@@ -187,12 +187,12 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
     [Fact]
     public async Task PinLogin_InvalidPin_WritesAuditLog()
     {
-        await ResetDatabaseAsync().ConfigureAwait(false);
+        await ResetDatabaseAsync();
 
-        var response = await _client.PostAsJsonAsync("/auth/pin", new PinAuthenticationRequest { Pin = "9999" }).ConfigureAwait(false);
+        var response = await _client.PostAsJsonAsync("/auth/pin", new PinAuthenticationRequest { Pin = "9999" });
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
 
-        var auditLogs = await GetAuditLogsAsync().ConfigureAwait(false);
+        var auditLogs = await GetAuditLogsAsync();
         Assert.Single(auditLogs);
 
         var entry = auditLogs.Single();
