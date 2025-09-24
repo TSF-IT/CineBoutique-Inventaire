@@ -100,10 +100,10 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
         Assert.Single(auditLogs);
 
         var entry = auditLogs.Single();
-        Assert.Equal("inventories.restart", entry.Action);
-        Assert.Null(entry.User);
-        Assert.Contains("Zone S1", entry.Details, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("premier passage", entry.Details, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("inventories.restart", entry.Category);
+        Assert.Null(entry.Actor);
+        Assert.Contains("Zone S1", entry.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("premier passage", entry.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -131,9 +131,9 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
         Assert.Single(auditLogs);
 
         var entry = auditLogs.Single();
-        Assert.Equal("products.scan.success", entry.Action);
-        Assert.Contains("1234567890123", entry.Details, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Produit test", entry.Details, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("products.scan.success", entry.Category);
+        Assert.Contains("1234567890123", entry.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Produit test", entry.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -148,8 +148,8 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
         Assert.Single(auditLogs);
 
         var entry = auditLogs.Single();
-        Assert.Equal("products.scan.not_found", entry.Action);
-        Assert.Contains("00000000", entry.Details, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("products.scan.not_found", entry.Category);
+        Assert.Contains("00000000", entry.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -164,8 +164,8 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
         Assert.Single(auditLogs);
 
         var entry = auditLogs.Single();
-        Assert.Equal("products.scan.invalid", entry.Action);
-        Assert.Contains("code produit vide", entry.Details, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("products.scan.invalid", entry.Category);
+        Assert.Contains("code produit vide", entry.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -180,9 +180,9 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
         Assert.Single(auditLogs);
 
         var entry = auditLogs.Single();
-        Assert.Equal("auth.pin.success", entry.Action);
-        Assert.Equal("Alice", entry.User);
-        Assert.Contains("s'est connecté", entry.Details, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("auth.pin.success", entry.Category);
+        Assert.Equal("Alice", entry.Actor);
+        Assert.Contains("s'est connecté", entry.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -197,9 +197,9 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
         Assert.Single(auditLogs);
 
         var entry = auditLogs.Single();
-        Assert.Equal("auth.pin.failure", entry.Action);
-        Assert.Null(entry.User);
-        Assert.Contains("refusée", entry.Details, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("auth.pin.failure", entry.Category);
+        Assert.Null(entry.Actor);
+        Assert.Contains("refusée", entry.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task ResetDatabaseAsync()
@@ -229,7 +229,7 @@ TRUNCATE TABLE ""Conflict"" RESTART IDENTITY CASCADE;";
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection).ConfigureAwait(false);
 
-        const string query = "SELECT \"id\" AS \"Id\", \"ts\" AS \"Ts\", \"user\" AS \"User\", \"action\" AS \"Action\", \"details\" AS \"Details\" FROM \"audit_logs\" ORDER BY \"ts\" ASC;";
+        const string query = "SELECT \"id\" AS \"Id\", \"at\" AS \"At\", \"actor\" AS \"Actor\", \"category\" AS \"Category\", \"message\" AS \"Message\" FROM \"audit_logs\" ORDER BY \"at\" ASC;";
         var rows = await connection.QueryAsync<AuditLogEntry>(query).ConfigureAwait(false);
         return rows.ToList();
     }
@@ -247,5 +247,5 @@ TRUNCATE TABLE ""Conflict"" RESTART IDENTITY CASCADE;";
         }
     }
 
-    private sealed record AuditLogEntry(Guid Id, DateTimeOffset Ts, string? User, string? Action, string Details);
+    private sealed record AuditLogEntry(long Id, DateTimeOffset At, string? Actor, string? Category, string Message);
 }
