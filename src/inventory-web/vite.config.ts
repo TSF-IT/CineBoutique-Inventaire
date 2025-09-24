@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { configDefaults } from 'vitest/config'
 
 export default defineConfig({
   plugins: [react()],
@@ -25,5 +26,10 @@ export default defineConfig({
     reportCompressedSize: false, // évite le calcul gzip (gourmand)
     chunkSizeWarningLimit: 1500, // évite les warnings inutiles
     // si tu utilises des images énormes, on pourra ajouter rollupOptions plus tard
+  },
+  test: {
+    environment: 'jsdom',
+    setupFiles: './setupTests.ts',
+    exclude: [...configDefaults.exclude, 'tests/e2e/**'],
   },
 })

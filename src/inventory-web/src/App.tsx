@@ -13,10 +13,12 @@ import { useAuth } from './app/contexts/AuthContext'
 import { Card } from './app/components/Card'
 import { LoadingIndicator } from './app/components/LoadingIndicator'
 import { AppErrorBoundary } from './app/components/AppErrorBoundary'
+import { ScanSimulationPage } from './app/pages/debug/ScanSimulationPage'
 
 const RouterView = () => {
   const { isAuthenticated, initialising, user } = useAuth()
   const isAdmin = Boolean(user?.roles.includes('Admin'))
+  const isScanSimMode = import.meta.env.MODE === 'scan-sim' || import.meta.env.VITE_SCAN_SIM === '1'
 
   const routing = useRoutes([
     { path: '/', element: <HomePage /> },
@@ -47,6 +49,10 @@ const RouterView = () => {
         <LoadingIndicator label="Initialisation de la session" />
       </Card>
     )
+  }
+
+  if (isScanSimMode) {
+    return <ScanSimulationPage />
   }
 
   return routing
