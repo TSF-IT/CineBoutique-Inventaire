@@ -5,29 +5,35 @@ namespace CineBoutique.Inventory.Infrastructure.Migrations;
 [Migration(202405060001)]
 public sealed class CreateAdminUserTable : Migration
 {
+    private const string TableName = "admin_users";
+    private const string EmailIndexName = "ix_admin_users_email";
+
     public override void Up()
     {
-        if (!Schema.Table("AdminUser").Exists())
+        if (!Schema.Table(TableName).Exists())
         {
-            Create.Table("AdminUser")
-                .WithColumn("Id").AsGuid().PrimaryKey().WithDefaultValue(SystemMethods.NewGuid)
-                .WithColumn("Email").AsString(256).NotNullable()
-                .WithColumn("DisplayName").AsString(128).NotNullable()
-                .WithColumn("CreatedAtUtc").AsDateTimeOffset().NotNullable()
-                .WithColumn("UpdatedAtUtc").AsDateTimeOffset().Nullable();
+            Create.Table(TableName)
+                .WithColumn("id").AsGuid().PrimaryKey().WithDefaultValue(SystemMethods.NewGuid)
+                .WithColumn("email").AsString(320).NotNullable()
+                .WithColumn("display_name").AsString(200).NotNullable()
+                .WithColumn("created_at").AsDateTimeOffset().NotNullable().WithDefaultValue(SystemMethods.CurrentUTCDateTime)
+                .WithColumn("updated_at").AsDateTimeOffset().Nullable();
         }
 
-        if (!Schema.Table("AdminUser").Index("IX_AdminUser_Email").Exists())
+        if (!Schema.Table(TableName).Index(EmailIndexName).Exists())
         {
-            Create.Index("IX_AdminUser_Email")
-                .OnTable("AdminUser")
+            Create.Index(EmailIndexName)
+                .OnTable(TableName)
                 .WithOptions().Unique()
-                .OnColumn("Email").Ascending();
+                .OnColumn("email").Ascending();
         }
     }
 
     public override void Down()
     {
-        Delete.Table("AdminUser").IfExists();
+        if (Schema.Table(TableName).Exists())
+        {
+            Delete.Table(TableName);
+        }
     }
 }

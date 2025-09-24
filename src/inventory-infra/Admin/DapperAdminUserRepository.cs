@@ -36,18 +36,18 @@ public sealed class DapperAdminUserRepository : IAdminUserRepository
 
         const string sql =
             """
-            SELECT ""Id"", ""Email"", ""DisplayName"", ""CreatedAtUtc"", ""UpdatedAtUtc""
-            FROM ""AdminUser""
+            SELECT id AS Id, email AS Email, display_name AS DisplayName, created_at AS CreatedAtUtc, updated_at AS UpdatedAtUtc
+            FROM admin_users
             WHERE (@Query IS NULL)
-                OR (""Email"" ILIKE '%' || @Query || '%' OR ""DisplayName"" ILIKE '%' || @Query || '%')
-            ORDER BY ""DisplayName"" ASC, ""Email"" ASC
+                OR (email ILIKE '%' || @Query || '%' OR display_name ILIKE '%' || @Query || '%')
+            ORDER BY display_name ASC, email ASC
             OFFSET @Offset
             LIMIT @Limit;
 
             SELECT COUNT(*)
-            FROM ""AdminUser""
+            FROM admin_users
             WHERE (@Query IS NULL)
-                OR (""Email"" ILIKE '%' || @Query || '%' OR ""DisplayName"" ILIKE '%' || @Query || '%');
+                OR (email ILIKE '%' || @Query || '%' OR display_name ILIKE '%' || @Query || '%');
             """;
 
         using var gridReader = await connection.QueryMultipleAsync(
@@ -68,9 +68,9 @@ public sealed class DapperAdminUserRepository : IAdminUserRepository
 
         const string sql =
             """
-            SELECT ""Id"", ""Email"", ""DisplayName"", ""CreatedAtUtc"", ""UpdatedAtUtc""
-            FROM ""AdminUser""
-            WHERE ""Id"" = @Id;
+            SELECT id AS Id, email AS Email, display_name AS DisplayName, created_at AS CreatedAtUtc, updated_at AS UpdatedAtUtc
+            FROM admin_users
+            WHERE id = @Id;
             """;
 
         var row = await connection.QueryFirstOrDefaultAsync<AdminUserRow>(
@@ -87,9 +87,9 @@ public sealed class DapperAdminUserRepository : IAdminUserRepository
 
         const string sql =
             """
-            INSERT INTO ""AdminUser"" (""Id"", ""Email"", ""DisplayName"", ""CreatedAtUtc"")
-            VALUES (@Id, @Email, @DisplayName, @CreatedAtUtc)
-            RETURNING ""Id"", ""Email"", ""DisplayName"", ""CreatedAtUtc"", ""UpdatedAtUtc"";
+            INSERT INTO admin_users (id, email, display_name, created_at, updated_at)
+            VALUES (@Id, @Email, @DisplayName, @CreatedAt, @UpdatedAt)
+            RETURNING id AS Id, email AS Email, display_name AS DisplayName, created_at AS CreatedAtUtc, updated_at AS UpdatedAtUtc;
             """;
 
         var id = Guid.NewGuid();
@@ -104,7 +104,8 @@ public sealed class DapperAdminUserRepository : IAdminUserRepository
                         Id = id,
                         Email = email,
                         DisplayName = displayName,
-                        CreatedAtUtc = now
+                        CreatedAt = now,
+                        UpdatedAt = (DateTimeOffset?)null
                     },
                     cancellationToken: cancellationToken)).ConfigureAwait(false);
 
@@ -124,12 +125,12 @@ public sealed class DapperAdminUserRepository : IAdminUserRepository
 
         const string sql =
             """
-            UPDATE ""AdminUser""
-            SET ""Email"" = @Email,
-                ""DisplayName"" = @DisplayName,
-                ""UpdatedAtUtc"" = @UpdatedAtUtc
-            WHERE ""Id"" = @Id
-            RETURNING ""Id"", ""Email"", ""DisplayName"", ""CreatedAtUtc"", ""UpdatedAtUtc"";
+            UPDATE admin_users
+            SET email = @Email,
+                display_name = @DisplayName,
+                updated_at = @UpdatedAt
+            WHERE id = @Id
+            RETURNING id AS Id, email AS Email, display_name AS DisplayName, created_at AS CreatedAtUtc, updated_at AS UpdatedAtUtc;
             """;
 
         try
@@ -142,7 +143,7 @@ public sealed class DapperAdminUserRepository : IAdminUserRepository
                         Id = id,
                         Email = email,
                         DisplayName = displayName,
-                        UpdatedAtUtc = now
+                        UpdatedAt = now
                     },
                     cancellationToken: cancellationToken)).ConfigureAwait(false);
 
@@ -161,8 +162,8 @@ public sealed class DapperAdminUserRepository : IAdminUserRepository
 
         const string sql =
             """
-            DELETE FROM ""AdminUser""
-            WHERE ""Id"" = @Id;
+            DELETE FROM admin_users
+            WHERE id = @Id;
             """;
 
         var affectedRows = await connection.ExecuteAsync(
