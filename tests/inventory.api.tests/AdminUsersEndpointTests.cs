@@ -10,6 +10,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models.Admin;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
@@ -18,6 +19,7 @@ using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace CineBoutique.Inventory.Api.Tests;
 
@@ -25,22 +27,25 @@ namespace CineBoutique.Inventory.Api.Tests;
 public class AdminUsersEndpointTests : IAsyncLifetime
 {
     private readonly PostgresTestContainerFixture _pg;
+    private readonly ITestOutputHelper _output;
     private InventoryApiApplicationFactory _factory = default!;
     private HttpClient _client = default!;
 
-    public AdminUsersEndpointTests(PostgresTestContainerFixture pg)
+    public AdminUsersEndpointTests(PostgresTestContainerFixture pg, ITestOutputHelper output)
     {
         _pg = pg;
+        _output = output ?? throw new ArgumentNullException(nameof(output));
     }
 
     public async Task InitializeAsync()
     {
         _factory = new InventoryApiApplicationFactory(_pg.ConnectionString);
-        _client = _factory.CreateClient();
-        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", EncodeCredentials("admin", "admin"));
 
         var host = _factory.Services.GetRequiredService<IHost>();
         DbMigrator.MigrateUp(host);
+
+        _client = _factory.CreateClient();
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", EncodeCredentials("admin", "admin"));
 
         await ResetDatabaseAsync();
     }
@@ -69,11 +74,19 @@ public class AdminUsersEndpointTests : IAsyncLifetime
     {
         await ResetDatabaseAsync();
 
+        var ct = CancellationToken.None;
+
         var createResponse = await _client.PostAsJsonAsync("/api/admin/users", new AdminUserCreateRequest
         {
             Email = "admin1@example.com",
             DisplayName = "Admin One"
-        });
+        }, ct);
+
+        if (createResponse.StatusCode != HttpStatusCode.Created)
+        {
+            var body = await createResponse.Content.ReadAsStringAsync(ct);
+            _output.WriteLine($"CreateAdminUser failed: {(int)createResponse.StatusCode} {createResponse.StatusCode} - {body}");
+        }
 
         Assert.Equal(HttpStatusCode.Created, createResponse.StatusCode);
         var created = await createResponse.Content.ReadFromJsonAsync<AdminUserDto>();
@@ -110,7 +123,7 @@ public class AdminUsersEndpointTests : IAsyncLifetime
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = await connectionFactory.CreateOpenConnectionAsync(default);
 
-        var adminCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM \"AdminUser\";");
+        var adminCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM admin_users;");
         Assert.Equal(0, adminCount);
 
         var auditCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM \"Audit\" WHERE \"EntityName\" = 'AdminUser';");
@@ -124,8 +137,9 @@ public class AdminUsersEndpointTests : IAsyncLifetime
         await using var connection = await connectionFactory.CreateOpenConnectionAsync(default);
 
         const string cleanupSql =
-            "TRUNCATE TABLE \"AdminUser\" RESTART IDENTITY CASCADE;\n" +
-            "TRUNCATE TABLE \"Audit\" RESTART IDENTITY CASCADE;";
+            "TRUNCATE TABLE admin_users RESTART IDENTITY CASCADE;\n" +
+            "TRUNCATE TABLE \"Audit\" RESTART IDENTITY CASCADE;\n" +
+            "TRUNCATE TABLE audit_logs RESTART IDENTITY CASCADE;";
 
         await connection.ExecuteAsync(cleanupSql);
     }
