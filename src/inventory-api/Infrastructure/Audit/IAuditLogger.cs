@@ -1,6 +1,8 @@
+using System.Threading;
+
 namespace CineBoutique.Inventory.Api.Infrastructure.Audit;
 
 public interface IAuditLogger
 {
-    Task LogAsync(string? user, string message, string? action = null);
+    Task LogAsync(string message, string? actor = null, string? category = null, CancellationToken cancellationToken = default);
 }

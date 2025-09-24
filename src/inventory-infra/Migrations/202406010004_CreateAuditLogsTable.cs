@@ -12,29 +12,11 @@ public sealed class CreateAuditLogsTable : Migration
         if (!Schema.Table(TableName).Exists())
         {
             Create.Table(TableName)
-                .WithColumn("id").AsGuid().PrimaryKey().WithDefaultValue(SystemMethods.NewGuid)
-                .WithColumn("ts").AsDateTimeOffset().NotNullable().WithDefaultValue(SystemMethods.CurrentUTCDateTime)
-                .WithColumn("user").AsString(256).Nullable()
-                .WithColumn("action").AsString(128).Nullable()
-                .WithColumn("details").AsCustom("text").NotNullable();
-        }
-
-        if (!Schema.Table(TableName).Index("ix_audit_logs_ts").Exists())
-        {
-            Create.Index("ix_audit_logs_ts").OnTable(TableName)
-                .OnColumn("ts").Descending();
-        }
-
-        if (!Schema.Table(TableName).Index("ix_audit_logs_user").Exists())
-        {
-            Create.Index("ix_audit_logs_user").OnTable(TableName)
-                .OnColumn("user").Ascending();
-        }
-
-        if (!Schema.Table(TableName).Index("ix_audit_logs_action").Exists())
-        {
-            Create.Index("ix_audit_logs_action").OnTable(TableName)
-                .OnColumn("action").Ascending();
+                .WithColumn("id").AsInt64().PrimaryKey().Identity()
+                .WithColumn("at").AsDateTimeOffset().NotNullable().WithDefaultValue(SystemMethods.CurrentUTCDateTime)
+                .WithColumn("actor").AsString(320).Nullable()
+                .WithColumn("message").AsCustom("text").NotNullable()
+                .WithColumn("category").AsString(200).Nullable();
         }
     }
 
