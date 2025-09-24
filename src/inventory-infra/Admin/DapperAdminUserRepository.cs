@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using CineBoutique.Inventory.Domain.Admin;
 using CineBoutique.Inventory.Infrastructure.Database;
@@ -81,6 +82,18 @@ public sealed class DapperAdminUserRepository : IAdminUserRepository
 
     public async Task<AdminUser> CreateAsync(string email, string displayName, CancellationToken cancellationToken)
     {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            throw new ArgumentException("Email is required.", nameof(email));
+        }
+
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            throw new ArgumentException("Display name is required.", nameof(displayName));
+        }
+
+        var normalizedEmail = email.Trim();
+        var normalizedDisplayName = displayName.Trim();
         var now = DateTimeOffset.UtcNow;
 
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken).ConfigureAwait(false);
@@ -102,8 +115,8 @@ public sealed class DapperAdminUserRepository : IAdminUserRepository
                     new
                     {
                         Id = id,
-                        Email = email,
-                        DisplayName = displayName,
+                        Email = normalizedEmail,
+                        DisplayName = normalizedDisplayName,
                         CreatedAt = now,
                         UpdatedAt = (DateTimeOffset?)null
                     },
@@ -113,8 +126,8 @@ public sealed class DapperAdminUserRepository : IAdminUserRepository
         }
         catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
         {
-            _logger.LogWarning(ex, "Impossible de créer l'utilisateur admin {Email} : doublon.", email);
-            throw new InvalidOperationException($"L'adresse e-mail '{email}' est déjà utilisée.", ex);
+            _logger.LogWarning(ex, "Impossible de créer l'utilisateur admin {Email} : doublon.", normalizedEmail);
+            throw new DuplicateUserException($"L'adresse e-mail '{normalizedEmail}' est déjà utilisée.", ex);
         }
     }
 
@@ -183,4 +196,14 @@ public sealed class DapperAdminUserRepository : IAdminUserRepository
     }
 
     private sealed record AdminUserRow(Guid Id, string Email, string DisplayName, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc);
+}
+
+namespace CineBoutique.Inventory.Domain.Admin;
+
+public sealed class DuplicateUserException : Exception
+{
+    public DuplicateUserException(string message, Exception? innerException = null)
+        : base(message, innerException)
+    {
+    }
 }

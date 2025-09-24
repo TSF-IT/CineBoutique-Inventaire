@@ -71,9 +71,11 @@ public sealed class AdminUsersController : ControllerBase
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<AdminUserDto>> CreateAsync([FromBody] AdminUserCreateRequest? request, CancellationToken cancellationToken)
     {
+        _logger.LogInformation("CreateAdminUser requested: {Email}", request?.Email);
+
         if (request is null)
         {
-            return BadRequest();
+            return BadRequest("Request body is required");
         }
 
         if (!ModelState.IsValid)
@@ -81,46 +83,52 @@ public sealed class AdminUsersController : ControllerBase
             return ValidationProblem(ModelState);
         }
 
+        if (string.IsNullOrWhiteSpace(request.Email))
+        {
+            return BadRequest("Email is required");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.DisplayName))
+        {
+            return BadRequest("Display name is required");
+        }
+
+        var email = request.Email.Trim();
+        var displayName = request.DisplayName.Trim();
+
         try
         {
-            var email = request.Email.Trim();
-            var displayName = request.DisplayName.Trim();
-
             var created = await _repository.CreateAsync(email, displayName, cancellationToken).ConfigureAwait(false);
 
             var dto = Map(created);
 
-            await _auditLogger.LogAsync(
-                new AuditEntry("AdminUser", created.Id.ToString(), "Create", new { dto.Email, dto.DisplayName }, DateTimeOffset.UtcNow),
-                cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await _auditLogger.LogAsync(
+                    new AuditEntry("AdminUser", created.Id.ToString(), "Create", new { dto.Email, dto.DisplayName }, DateTimeOffset.UtcNow),
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception auditEx)
+            {
+                _logger.LogWarning(auditEx, "Audit failed on CreateAdminUser");
+            }
 
             return CreatedAtAction(nameof(GetByIdAsync), new { id = dto.Id }, dto);
         }
-        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+        catch (DuplicateUserException ex)
         {
-            _logger.LogWarning(ex, "Création d'utilisateur admin en conflit pour {Email}", request.Email);
-            await _auditLogger.LogAsync(
-                new AuditEntry("AdminUser", "CREATE", "Conflict", new { request.Email }, DateTimeOffset.UtcNow),
-                cancellationToken).ConfigureAwait(false);
-            return Conflict("Email already exists");
+            _logger.LogWarning(ex, "Création d'utilisateur admin en conflit pour {Email}", email);
+            return Conflict(new { message = ex.Message });
         }
-        catch (InvalidOperationException ex)
+        catch (PostgresException ex)
         {
-            _logger.LogWarning(ex, "Création d'utilisateur admin en conflit pour {Email}", request.Email);
-            await _auditLogger.LogAsync(
-                new AuditEntry("AdminUser", "CREATE", "Conflict", new { request.Email }, DateTimeOffset.UtcNow),
-                cancellationToken).ConfigureAwait(false);
-            return Conflict("Email already exists");
-        }
-        catch (ArgumentException ex)
-        {
-            _logger.LogWarning(ex, "Validation failed creating admin user");
-            return BadRequest(ex.Message);
+            _logger.LogWarning(ex, "Erreur SQL lors de la création de l'utilisateur admin {Email}", email);
+            return BadRequest(new { message = $"Database error while creating admin user: {ex.MessageText}" });
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error creating admin user");
-            return StatusCode(StatusCodes.Status500InternalServerError, "Unexpected error");
+            _logger.LogError(ex, "Unexpected error creating admin user for {Email}", email);
+            return StatusCode(StatusCodes.Status500InternalServerError, new { message = "Unexpected error while creating admin user." });
         }
     }
 

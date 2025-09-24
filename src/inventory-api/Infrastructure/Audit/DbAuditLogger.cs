@@ -42,16 +42,26 @@ public sealed class DbAuditLogger : IAuditLogger
             await using var connection = new NpgsqlConnection(_connectionString);
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-            const string sql = "insert into audit_logs(message, actor, category) values (@m, @a, @c);";
+            const string sql =
+                """
+                INSERT INTO audit_logs (message, actor, category)
+                VALUES (@Message, @Actor, @Category);
+                """;
+
             await connection.ExecuteAsync(
                 new CommandDefinition(
                     sql,
-                    new { m = message, a = trimmedActor, c = trimmedCategory },
+                    new { Message = message, Actor = trimmedActor, Category = trimmedCategory },
                     cancellationToken: cancellationToken)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Audit logging failed (ignored)");
+            _logger.LogWarning(
+                ex,
+                "Audit log failed for category {Category} by {Actor} with message {Message}",
+                category ?? "(none)",
+                actor ?? "(unknown)",
+                string.IsNullOrWhiteSpace(message) ? "(empty)" : message);
         }
     }
 }
