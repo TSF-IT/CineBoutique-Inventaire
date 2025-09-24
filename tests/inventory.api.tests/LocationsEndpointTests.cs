@@ -156,7 +156,8 @@ public class LocationsEndpointTests : IAsyncLifetime
 TRUNCATE TABLE ""CountLine"" RESTART IDENTITY CASCADE;
 TRUNCATE TABLE ""CountingRun"" RESTART IDENTITY CASCADE;
 TRUNCATE TABLE ""InventorySession"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""Location"" RESTART IDENTITY CASCADE;";
+TRUNCATE TABLE ""Location"" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE ""audit_logs"" RESTART IDENTITY CASCADE;";
 
         await connection.ExecuteAsync(cleanupSql);
     }

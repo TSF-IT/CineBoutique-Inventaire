@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Auth;
 using CineBoutique.Inventory.Api.Configuration;
+using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Infrastructure.Database;
 using CineBoutique.Inventory.Infrastructure.DependencyInjection;
@@ -144,6 +146,8 @@ builder.Services.AddScoped<IDbConnection>(sp =>
     var factory = sp.GetRequiredService<IDbConnectionFactory>();
     return factory.CreateConnection();
 });
+
+builder.Services.AddScoped<IAuditLogger, DbAuditLogger>();
 
 builder.Services.AddSingleton<ITokenService, JwtTokenService>();
 
@@ -478,7 +482,13 @@ ORDER BY l.""Code"" ASC;";
     return op;
 });
 
-app.MapPost("/api/inventories/{locationId:guid}/restart", async (Guid locationId, int countType, IDbConnection connection, CancellationToken cancellationToken) =>
+app.MapPost("/api/inventories/{locationId:guid}/restart", async (
+    Guid locationId,
+    int countType,
+    IDbConnection connection,
+    IAuditLogger auditLogger,
+    HttpContext httpContext,
+    CancellationToken cancellationToken) =>
 {
     if (countType is not (1 or 2 or 3))
     {
@@ -494,7 +504,29 @@ WHERE ""LocationId"" = @LocationId
   AND ""CountType"" = @CountType;";
 
     var now = DateTimeOffset.UtcNow;
-    await connection.ExecuteAsync(new CommandDefinition(sql, new { LocationId = locationId, CountType = countType, NowUtc = now }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+    var affected = await connection
+        .ExecuteAsync(new CommandDefinition(sql, new { LocationId = locationId, CountType = countType, NowUtc = now }, cancellationToken: cancellationToken))
+        .ConfigureAwait(false);
+
+    var locationInfo = await connection
+        .QuerySingleOrDefaultAsync<LocationMetadata>(
+            new CommandDefinition(
+                "SELECT \"Code\" AS Code, \"Label\" AS Label FROM \"Location\" WHERE \"Id\" = @LocationId LIMIT 1",
+                new { LocationId = locationId },
+                cancellationToken: cancellationToken))
+        .ConfigureAwait(false);
+
+    var userName = GetAuthenticatedUserName(httpContext);
+    var actor = FormatActorLabel(userName);
+    var timestamp = FormatTimestamp(now);
+    var zoneDescription = locationInfo is not null
+        ? $"la zone {locationInfo.Code} – {locationInfo.Label}"
+        : $"la zone {locationId}";
+    var countDescription = DescribeCountType(countType);
+    var resultDetails = affected > 0 ? "et clôturé les comptages actifs" : "mais aucun comptage actif n'était ouvert";
+    var message = $"{actor} a relancé {zoneDescription} pour un {countDescription} le {timestamp} UTC {resultDetails}.";
+
+    await auditLogger.LogAsync(userName, message, "inventories.restart").ConfigureAwait(false);
 
     return Results.NoContent();
 })
@@ -509,10 +541,21 @@ WHERE ""LocationId"" = @LocationId
     return op;
 });
 
-app.MapGet("/products/{code}", async (string code, IDbConnection connection, CancellationToken cancellationToken) =>
+app.MapGet("/products/{code}", async (
+    string code,
+    IDbConnection connection,
+    IAuditLogger auditLogger,
+    HttpContext httpContext,
+    CancellationToken cancellationToken) =>
 {
     if (string.IsNullOrWhiteSpace(code))
     {
+        var nowInvalid = DateTimeOffset.UtcNow;
+        var invalidUser = GetAuthenticatedUserName(httpContext);
+        var invalidActor = FormatActorLabel(invalidUser);
+        var invalidTimestamp = FormatTimestamp(nowInvalid);
+        var invalidMessage = $"{invalidActor} a tenté de scanner un code produit vide le {invalidTimestamp} UTC.";
+        await auditLogger.LogAsync(invalidUser, invalidMessage, "products.scan.invalid").ConfigureAwait(false);
         return Results.BadRequest(new { message = "Le code produit est requis." });
     }
 
@@ -532,24 +575,56 @@ app.MapGet("/products/{code}", async (string code, IDbConnection connection, Can
         product = await connection.QuerySingleOrDefaultAsync<ProductDto>(new CommandDefinition("SELECT \"Id\", \"Sku\", \"Name\", \"Ean\" FROM \"Product\" WHERE LOWER(\"Sku\") = LOWER(@Code) LIMIT 1", new { Code = sanitizedCode }, cancellationToken: cancellationToken)).ConfigureAwait(false);
     }
 
-    return product is not null ? Results.Ok(product) : Results.NotFound();
+    var now = DateTimeOffset.UtcNow;
+    var userName = GetAuthenticatedUserName(httpContext);
+    var actor = FormatActorLabel(userName);
+    var timestamp = FormatTimestamp(now);
+
+    if (product is not null)
+    {
+        var productLabel = product.Name;
+        var skuLabel = string.IsNullOrWhiteSpace(product.Sku) ? "non renseigné" : product.Sku;
+        var eanLabel = string.IsNullOrWhiteSpace(product.Ean) ? "non renseigné" : product.Ean;
+        var successMessage = $"{actor} a scanné le code {sanitizedCode} et a identifié le produit \"{productLabel}\" (SKU {skuLabel}, EAN {eanLabel}) le {timestamp} UTC.";
+        await auditLogger.LogAsync(userName, successMessage, "products.scan.success").ConfigureAwait(false);
+        return Results.Ok(product);
+    }
+
+    var notFoundMessage = $"{actor} a scanné le code {sanitizedCode} sans correspondance produit le {timestamp} UTC.";
+    await auditLogger.LogAsync(userName, notFoundMessage, "products.scan.not_found").ConfigureAwait(false);
+
+    return Results.NotFound();
 });
 
-app.MapPost("/auth/pin", (PinAuthenticationRequest request, ITokenService tokenService, IOptions<AuthenticationOptions> options) =>
+app.MapPost("/auth/pin", async (
+    PinAuthenticationRequest request,
+    ITokenService tokenService,
+    IOptions<AuthenticationOptions> options,
+    IAuditLogger auditLogger) =>
 {
     if (request is null || string.IsNullOrWhiteSpace(request.Pin))
     {
+        var timestamp = FormatTimestamp(DateTimeOffset.UtcNow);
+        await auditLogger.LogAsync(null, $"Tentative de connexion admin rejetée : code PIN absent le {timestamp} UTC.", "auth.pin.failure").ConfigureAwait(false);
         return Results.BadRequest(new { message = "Le code PIN est requis." });
     }
 
-    var user = options.Value.Users.FirstOrDefault(u => string.Equals(u.Pin, request.Pin, StringComparison.Ordinal));
+    var providedPin = request.Pin.Trim();
+    var user = options.Value.Users.FirstOrDefault(u => string.Equals(u.Pin, providedPin, StringComparison.Ordinal));
     if (user is null)
     {
+        var timestamp = FormatTimestamp(DateTimeOffset.UtcNow);
+        await auditLogger.LogAsync(null, $"Tentative de connexion admin refusée (PIN inconnu) le {timestamp} UTC.", "auth.pin.failure").ConfigureAwait(false);
         return Results.Unauthorized();
     }
 
     var tokenResult = tokenService.GenerateToken(user.Name);
     var response = new PinAuthenticationResponse(user.Name, tokenResult.AccessToken, tokenResult.ExpiresAtUtc);
+
+    var successTimestamp = FormatTimestamp(DateTimeOffset.UtcNow);
+    var actor = FormatActorLabel(user.Name);
+    await auditLogger.LogAsync(user.Name, $"{actor} s'est connecté avec succès le {successTimestamp} UTC.", "auth.pin.success").ConfigureAwait(false);
+
     return Results.Ok(response);
 });
 
@@ -567,6 +642,42 @@ static async Task EnsureConnectionOpenAsync(IDbConnection connection, Cancellati
             break;
     }
 }
+
+static string? GetAuthenticatedUserName(HttpContext context)
+{
+    if (context?.User?.Identity is { IsAuthenticated: true, Name: { Length: > 0 } name })
+    {
+        return name.Trim();
+    }
+
+    var fallback = context?.User?.Identity?.Name;
+    return string.IsNullOrWhiteSpace(fallback) ? null : fallback.Trim();
+}
+
+static string FormatActorLabel(string? userName)
+{
+    return string.IsNullOrWhiteSpace(userName)
+        ? "Un utilisateur non authentifié"
+        : $"L'utilisateur {userName.Trim()}";
+}
+
+static string FormatTimestamp(DateTimeOffset timestamp)
+{
+    return timestamp.ToUniversalTime().ToString("dd/MM/yy HH:mm", CultureInfo.InvariantCulture);
+}
+
+static string DescribeCountType(int countType)
+{
+    return countType switch
+    {
+        1 => "premier passage",
+        2 => "second passage",
+        3 => "contrôle",
+        _ => $"type {countType}"
+    };
+}
+
+private sealed record LocationMetadata(string Code, string Label);
 
 public partial class Program
 {
