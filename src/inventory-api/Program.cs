@@ -693,8 +693,6 @@ static string DescribeCountType(int countType)
     };
 }
 
-private sealed record LocationMetadata(string Code, string Label);
-
 public partial class Program
 {
 }
