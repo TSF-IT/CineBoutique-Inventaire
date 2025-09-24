@@ -128,7 +128,7 @@ namespace CineBoutique.Inventory.Infrastructure.Admin
             catch (PostgresException pgx) when (pgx.SqlState == PostgresErrorCodes.UniqueViolation)
             {
                 _logger.LogWarning(pgx, "Impossible de créer l'utilisateur admin {Email} : doublon.", normalizedEmail);
-                throw new DuplicateUserException("An admin user with the same unique field already exists.", pgx);
+                throw new DuplicateUserException(GetDuplicateUserMessage(pgx), pgx);
             }
         }
 
@@ -166,7 +166,7 @@ namespace CineBoutique.Inventory.Infrastructure.Admin
             catch (PostgresException pgx) when (pgx.SqlState == PostgresErrorCodes.UniqueViolation)
             {
                 _logger.LogWarning(pgx, "Impossible de modifier l'utilisateur admin {Email} : doublon.", email);
-                throw new DuplicateUserException("An admin user with the same unique field already exists.", pgx);
+                throw new DuplicateUserException(GetDuplicateUserMessage(pgx), pgx);
             }
         }
 
@@ -194,6 +194,15 @@ namespace CineBoutique.Inventory.Infrastructure.Admin
         private static AdminUser Map(AdminUserRow row)
         {
             return new AdminUser(row.Id, row.Email, row.DisplayName, row.CreatedAtUtc, row.UpdatedAtUtc);
+        }
+
+        private static string GetDuplicateUserMessage(PostgresException exception)
+        {
+            return exception.ConstraintName switch
+            {
+                "ix_admin_users_email" or "admin_users_email_key" => "Email already exists.",
+                _ => "An admin user with the same unique field already exists."
+            };
         }
 
         private sealed record AdminUserRow(Guid Id, string Email, string DisplayName, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc);
