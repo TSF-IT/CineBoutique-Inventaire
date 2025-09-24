@@ -2,6 +2,7 @@ import type { FormEvent, KeyboardEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrowserMultiFormatReader } from '@zxing/browser'
+import { BarcodeFormat, DecodeHintType } from '@zxing/library'
 import { createManualProduct, fetchProductByEan } from '../../api/inventoryApi'
 import { BarcodeScanner } from '../../components/BarcodeScanner'
 import { Button } from '../../components/ui/Button'
@@ -59,6 +60,20 @@ const hasBarcodeDetector = (
 ): candidate is Window & typeof globalThis & { BarcodeDetector: BarcodeDetectorConstructor } =>
   'BarcodeDetector' in candidate && typeof candidate.BarcodeDetector === 'function'
 
+const ZXING_IMAGE_HINTS = (() => {
+  const hints = new Map()
+  hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+    BarcodeFormat.EAN_13,
+    BarcodeFormat.EAN_8,
+    BarcodeFormat.CODE_128,
+    BarcodeFormat.CODE_39,
+    BarcodeFormat.ITF,
+    BarcodeFormat.QR_CODE,
+  ])
+  hints.set(DecodeHintType.TRY_HARDER, true)
+  return hints
+})()
+
 export const InventorySessionPage = () => {
   const navigate = useNavigate()
   const {
@@ -79,6 +94,10 @@ export const InventorySessionPage = () => {
   const [manualName, setManualName] = useState('')
   const [manualLoading, setManualLoading] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const hidInputRef = useRef<HTMLInputElement | null>(null)
+  const hidBufferRef = useRef('')
+  const hidResetTimeoutRef = useRef<number | null>(null)
+  const [recentScans, setRecentScans] = useState<string[]>([])
 
   useEffect(() => {
     if (!selectedUser) {
@@ -96,6 +115,35 @@ export const InventorySessionPage = () => {
     }
   }, [manualOpen])
 
+  useEffect(() => {
+    const hiddenInput = hidInputRef.current
+    if (!hiddenInput) {
+      return
+    }
+    const focusTarget = () => {
+      if (document.activeElement !== hiddenInput && !manualOpen) {
+        hiddenInput.focus()
+      }
+    }
+    hiddenInput.focus()
+    const handleBlur = () => {
+      window.setTimeout(focusTarget, 50)
+    }
+    hiddenInput.addEventListener('blur', handleBlur)
+    const interval = window.setInterval(focusTarget, 4000)
+    return () => {
+      hiddenInput.removeEventListener('blur', handleBlur)
+      window.clearInterval(interval)
+    }
+  }, [manualOpen])
+
+  useEffect(() => () => {
+    if (hidResetTimeoutRef.current) {
+      window.clearTimeout(hidResetTimeoutRef.current)
+      hidResetTimeoutRef.current = null
+    }
+  }, [])
+
   const sortedItems = useMemo(
     () => [...items].sort((a, b) => b.lastScanAt.localeCompare(a.lastScanAt)),
     [items],
@@ -109,6 +157,13 @@ export const InventorySessionPage = () => {
       }
       setStatus(`Recherche du code ${value}`)
       setErrorMessage(null)
+      setRecentScans((previous) => {
+        if (!import.meta.env.DEV) {
+          return previous
+        }
+        const next = [value, ...previous.filter((item) => item !== value)]
+        return next.slice(0, 5)
+      })
       try {
         const product = await fetchProductByEan(value)
         addOrIncrementItem(product)
@@ -156,7 +211,7 @@ export const InventorySessionPage = () => {
         }
 
         if (!decoded) {
-          const reader = new BrowserMultiFormatReader()
+          const reader = new BrowserMultiFormatReader(ZXING_IMAGE_HINTS)
           const objectUrl = URL.createObjectURL(file)
           try {
             const image = new Image()
@@ -193,6 +248,18 @@ export const InventorySessionPage = () => {
     [handleDetected],
   )
 
+  const flushHidBuffer = useCallback(() => {
+    if (hidResetTimeoutRef.current) {
+      window.clearTimeout(hidResetTimeoutRef.current)
+      hidResetTimeoutRef.current = null
+    }
+    const value = hidBufferRef.current.trim()
+    hidBufferRef.current = ''
+    if (value) {
+      void handleDetected(value)
+    }
+  }, [handleDetected])
+
   const handleInputKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (event.key === 'Enter') {
@@ -204,6 +271,26 @@ export const InventorySessionPage = () => {
       }
     },
     [handleDetected],
+  )
+
+  const handleHidKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        flushHidBuffer()
+        return
+      }
+      if (event.key.length === 1) {
+        hidBufferRef.current = `${hidBufferRef.current}${event.key}`
+        if (hidResetTimeoutRef.current) {
+          window.clearTimeout(hidResetTimeoutRef.current)
+        }
+        hidResetTimeoutRef.current = window.setTimeout(() => {
+          hidBufferRef.current = ''
+        }, 120)
+      }
+    },
+    [flushHidBuffer],
   )
 
   const handleManualSubmit = useCallback(
@@ -265,7 +352,16 @@ export const InventorySessionPage = () => {
             Ajouter manuellement
           </Button>
         </div>
-        <BarcodeScanner active={useCamera} onDetected={handleDetected} onPickImage={(file) => void handleImagePicked(file)} />
+        <BarcodeScanner
+          active={useCamera}
+          onDetected={handleDetected}
+          onError={(message) => {
+            setStatus(null)
+            setErrorMessage(message)
+          }}
+          onPickImage={(file) => void handleImagePicked(file)}
+          preferredFormats={['EAN_13', 'EAN_8', 'CODE_128', 'CODE_39', 'ITF', 'QR_CODE']}
+        />
         <Input
           ref={inputRef}
           name="scanInput"
@@ -274,8 +370,27 @@ export const InventorySessionPage = () => {
           onKeyDown={handleInputKeyDown}
           autoFocus
         />
+        <input
+          ref={hidInputRef}
+          type="text"
+          aria-hidden
+          className="absolute left-[-9999px] top-auto h-0 w-0 opacity-0"
+          onKeyDown={handleHidKeyDown}
+        />
         {status && <p className="text-sm text-brand-600 dark:text-brand-200">{status}</p>}
         {errorMessage && <p className="text-sm text-red-600 dark:text-red-300">{errorMessage}</p>}
+        {import.meta.env.DEV && recentScans.length > 0 && (
+          <div className="rounded-2xl border border-slate-300 bg-slate-100 p-3 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300">
+            <p className="font-semibold">Derniers scans</p>
+            <ul className="mt-1 space-y-1">
+              {recentScans.map((value) => (
+                <li key={value} className="font-mono">
+                  {value}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </Card>
 
       <Card className="space-y-4">

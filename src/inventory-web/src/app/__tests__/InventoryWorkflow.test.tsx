@@ -117,7 +117,7 @@ describe('Workflow d\'inventaire', () => {
     await waitFor(() => expect(fetchLocationsMock).toHaveBeenCalledWith({ countType: 1 }))
     fireEvent.click(screen.getByRole('button', { name: /Zone Réserve libre/ }))
 
-    const input = await screen.findByLabelText('Scanner (douchette ou saisie)')
+    const [input] = await screen.findAllByLabelText('Scanner (douchette ou saisie)')
     fireEvent.change(input, { target: { value: '123' } })
     fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' })
 

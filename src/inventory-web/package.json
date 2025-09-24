@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:scan-sim": "vite --mode scan-sim",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
@@ -14,6 +15,7 @@
   },
   "dependencies": {
     "@zxing/browser": "^0.1.5",
+    "@zxing/library": "^0.21.3",
     "clsx": "^2.1.1",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
