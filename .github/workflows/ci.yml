@@ -43,6 +43,8 @@ jobs:
       - run: npm run lint --if-present -- --fix
       - run: npm run lint --if-present
       - run: npm run build
+      - run: npx playwright install --with-deps
+      - run: npx playwright test
 
   deploy:
     runs-on: ubuntu-latest
