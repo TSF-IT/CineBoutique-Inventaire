@@ -153,6 +153,8 @@ public class LocationsEndpointTests : IAsyncLifetime
         await EnsureConnectionOpenAsync(connection);
 
         const string cleanupSql = @"
+TRUNCATE TABLE ""AdminUser"" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE ""Audit"" RESTART IDENTITY CASCADE;
 TRUNCATE TABLE ""CountLine"" RESTART IDENTITY CASCADE;
 TRUNCATE TABLE ""CountingRun"" RESTART IDENTITY CASCADE;
 TRUNCATE TABLE ""InventorySession"" RESTART IDENTITY CASCADE;
