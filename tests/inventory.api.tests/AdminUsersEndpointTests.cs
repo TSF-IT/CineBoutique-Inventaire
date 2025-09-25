@@ -16,8 +16,9 @@ using CineBoutique.Inventory.Api.Models.Admin;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -35,14 +36,25 @@ public class AdminUsersEndpointTests : IAsyncLifetime
     {
         _pg = pg;
         _output = output ?? throw new ArgumentNullException(nameof(output));
+
+        var factory = new InventoryApiApplicationFactory(_pg.ConnectionString)
+            .WithWebHostBuilder(builder =>
+            {
+                builder.ConfigureLogging(loggingBuilder =>
+                {
+                    loggingBuilder.ClearProviders();
+                    loggingBuilder.AddProvider(new TestOutputLoggerProvider(_output));
+                    loggingBuilder.SetMinimumLevel(LogLevel.Debug);
+                });
+            });
+
+        _factory = factory as InventoryApiApplicationFactory
+            ?? throw new InvalidOperationException("InventoryApiApplicationFactory.WithWebHostBuilder must preserve the concrete type.");
     }
 
     public async Task InitializeAsync()
     {
-        _factory = new InventoryApiApplicationFactory(_pg.ConnectionString);
-
-        var host = _factory.Services.GetRequiredService<IHost>();
-        DbMigrator.MigrateUp(host);
+        await _factory.EnsureMigratedAsync().ConfigureAwait(false);
 
         _client = _factory.CreateClient();
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", EncodeCredentials("admin", "admin"));

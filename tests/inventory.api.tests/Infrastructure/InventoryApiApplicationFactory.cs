@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
+using FluentMigrator.Runner;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
@@ -87,5 +89,19 @@ public class InventoryApiApplicationFactory : WebApplicationFactory<Program>
                 services.Remove(d);
             }
         });
+    }
+
+    public Task EnsureMigratedAsync()
+    {
+        using var scope = Services.CreateScope();
+        var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+        runner.MigrateUp();
+        return Task.CompletedTask;
+    }
+
+    public new InventoryApiApplicationFactory WithWebHostBuilder(Action<IWebHostBuilder> configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        return (InventoryApiApplicationFactory)base.WithWebHostBuilder(configuration);
     }
 }
