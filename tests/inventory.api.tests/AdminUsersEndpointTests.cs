@@ -25,19 +25,19 @@ using Xunit.Abstractions;
 namespace CineBoutique.Inventory.Api.Tests;
 
 [Collection(TestCollections.Postgres)]
-public class AdminUsersEndpointTests : IAsyncLifetime
+public class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
 {
     private readonly PostgresTestContainerFixture _pg;
     private readonly ITestOutputHelper _output;
-    private InventoryApiApplicationFactory _factory = default!;
-    private HttpClient _client = default!;
+    private readonly InventoryApiApplicationFactory _factory;
+    private readonly HttpClient _client;
 
     public AdminUsersEndpointTests(PostgresTestContainerFixture pg, ITestOutputHelper output)
     {
         _pg = pg;
         _output = output ?? throw new ArgumentNullException(nameof(output));
 
-        var factory = new InventoryApiApplicationFactory(_pg.ConnectionString)
+        _factory = new InventoryApiApplicationFactory(_pg.ConnectionString)
             .WithWebHostBuilder(builder =>
             {
                 builder.ConfigureLogging(loggingBuilder =>
@@ -48,26 +48,19 @@ public class AdminUsersEndpointTests : IAsyncLifetime
                 });
             });
 
-        _factory = factory as InventoryApiApplicationFactory
-            ?? throw new InvalidOperationException("InventoryApiApplicationFactory.WithWebHostBuilder must preserve the concrete type.");
+        _client = _factory.CreateClient();
     }
 
     public async Task InitializeAsync()
     {
         await _factory.EnsureMigratedAsync().ConfigureAwait(false);
 
-        _client = _factory.CreateClient();
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", EncodeCredentials("admin", "admin"));
 
         await ResetDatabaseAsync();
     }
 
-    public Task DisposeAsync()
-    {
-        _client.Dispose();
-        _factory.Dispose();
-        return Task.CompletedTask;
-    }
+    public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
     public async Task GetUsers_WithoutAuth_ReturnsUnauthorized()
@@ -178,5 +171,11 @@ public class AdminUsersEndpointTests : IAsyncLifetime
     {
         var raw = Encoding.UTF8.GetBytes($"{user}:{password}");
         return Convert.ToBase64String(raw);
+    }
+
+    public void Dispose()
+    {
+        _client?.Dispose();
+        _factory?.Dispose();
     }
 }
