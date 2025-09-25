@@ -48,7 +48,7 @@ public sealed class AdminUsersController : ControllerBase
         return Ok(payload);
     }
 
-    [HttpGet("{id:guid}")]
+    [HttpGet("{id:guid}", Name = "GetAdminUserById")]
     [ProducesResponseType(typeof(AdminUserDto), StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<AdminUserDto>> GetByIdAsync(Guid id, CancellationToken cancellationToken)
@@ -125,7 +125,7 @@ public sealed class AdminUsersController : ControllerBase
                 new AuditEntry("AdminUser", created.Id.ToString(), "Create", new { dto.Email, dto.DisplayName }, DateTimeOffset.UtcNow),
                 cancellationToken).ConfigureAwait(false);
 
-            return CreatedAtAction(nameof(GetByIdAsync), new { id = dto.Id }, dto);
+            return CreatedAtRoute("GetAdminUserById", new { id = dto.Id }, dto);
         }
         catch (DuplicateUserException ex)
         {
