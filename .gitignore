@@ -44,10 +44,6 @@ coverage/
 *.coveragexml
 TestResults/
 
-# Env
-.env
-.env.*
-
 # Misc
 .DS_Store
 Thumbs.db
