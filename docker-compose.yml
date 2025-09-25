@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   db:
     image: postgres:16-alpine
@@ -18,26 +16,22 @@ services:
 
   api:
     build:
-      context: ./src/inventory-api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./src/inventory-api/Dockerfile
     container_name: inventory-api
     depends_on:
       db:
         condition: service_healthy
     environment:
       ASPNETCORE_ENVIRONMENT: "Production"
-      # Connexion à Postgres (service "db")
       ConnectionStrings__Default: "Host=db;Port=5432;Database=inventory;Username=postgres;Password=postgres"
-      # Active les migrations auto au démarrage
       APPLY_MIGRATIONS: "true"
       DISABLE_MIGRATIONS: "false"
-      # Origines autorisées (proxy termine en HTTPS et renvoie sur le même host)
-      AllowedOrigins__0: "https://$PUBLIC_HOST"
-      AllowedOrigins__1: "https://$DOMAIN"
-      # Pour de rares appels directs en local éventuels
+      AllowedOrigins__0: "https://${PUBLIC_HOST}"
+      AllowedOrigins__1: "https://${DOMAIN}"
       AllowedOrigins__2: "http://localhost:5173"
     expose:
-      - "8080" # interne; pas mappé sur l'hôte (on passe par le proxy)
+      - "8080"
 
   web:
     build:
@@ -47,7 +41,7 @@ services:
     depends_on:
       - api
     expose:
-      - "80"   # Nginx interne; pas mappé sur l'hôte (on passe par le proxy)
+      - "80"
 
   proxy:
     image: caddy:2.8.4-alpine
@@ -59,9 +53,6 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      # Voir .env ci-dessous — choisissez l’un:
-      # - soit DOMAIN (FQDN) + ACME_EMAIL pour Let's Encrypt
-      # - soit PUBLIC_HOST (IP privée ou nom local) pour un certificat interne
       DOMAIN: "${DOMAIN}"
       PUBLIC_HOST: "${PUBLIC_HOST}"
       ACME_EMAIL: "${ACME_EMAIL}"
