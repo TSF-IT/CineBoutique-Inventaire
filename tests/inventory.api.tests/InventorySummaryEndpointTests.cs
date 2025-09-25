@@ -16,7 +16,6 @@ using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
@@ -36,10 +35,10 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _factory = new InventoryApiApplicationFactory(_pg.ConnectionString);
-        _client = _factory.CreateClient();
 
-        var host = _factory.Services.GetRequiredService<IHost>();
-        DbMigrator.MigrateUp(host);
+        await _factory.EnsureMigratedAsync().ConfigureAwait(false);
+
+        _client = _factory.CreateClient();
 
         await ResetDatabaseAsync();
     }
