@@ -1,25 +1,33 @@
-# syntax=docker/dockerfile:1.6
-# ---- Web (build) ----
-FROM node:20-bullseye-slim AS build
+# ---------- BUILD ----------
+FROM node:18-alpine AS build
 WORKDIR /app
 
-# 1) Dépendances
-COPY package*.json ./
-RUN --mount=type=cache,id=npm-cache,target=/root/.npm \
-    npm ci --no-audit --no-fund
+# Dépendances
+COPY src/inventory-web/package*.json ./
+RUN npm ci --no-audit --no-fund
 
-# 2) Code
-COPY . .
+# Sources
+COPY src/inventory-web/ ./
+# Build Vite/SPA
+RUN npm run build
 
-# 3) Sanity: versions visibles dans les logs
-RUN node -v && npm -v
+# ---------- RUNTIME ----------
+FROM nginx:1.27-alpine
 
-# 4) Build **sans** wrapper || (...) qui force des faux exit 1
-#    Si le build échoue, le RUN échoue tout seul avec le bon code.
-RUN --mount=type=cache,id=npm-cache,target=/root/.npm \
-    npm run build -- --logLevel info
+# OpenSSL pour générer le certificat au démarrage
+RUN apk add --no-cache openssl
 
-# ---- Runtime: Nginx Alpine ----
-FROM nginx:1.27-alpine AS stage-1
+# Contenu statique construit
 COPY --from=build /app/dist /usr/share/nginx/html
-COPY ./nginx.conf /etc/nginx/conf.d/default.conf
+
+# Conf nginx (HTTPS + proxy /api)
+COPY src/inventory-web/nginx.conf /etc/nginx/conf.d/default.conf
+
+# Script de génération auto du cert
+COPY src/inventory-web/docker-entrypoint.d/50-ssl-selfsigned.sh /docker-entrypoint.d/50-ssl-selfsigned.sh
+RUN chmod +x /docker-entrypoint.d/50-ssl-selfsigned.sh && mkdir -p /etc/nginx/certs
+
+EXPOSE 80 443
+
+# Petit healthcheck HTTP (via le port 80 redirigé en 301)
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD wget -qO- http://localhost/health || exit 1
