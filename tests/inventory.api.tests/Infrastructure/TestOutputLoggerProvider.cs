@@ -4,7 +4,7 @@ using Xunit.Abstractions;
 
 namespace CineBoutique.Inventory.Api.Tests.Infrastructure
 {
-    public sealed class TestOutputLoggerProvider : ILoggerProvider
+    public sealed class TestOutputLoggerProvider : ILoggerProvider, ISUPPORTExternalScope
     {
         private readonly ITestOutputHelper _output;
         private IExternalScopeProvider? _scopeProvider;
@@ -37,19 +37,20 @@ namespace CineBoutique.Inventory.Api.Tests.Infrastructure
                 _scopeProvider = scopeProvider;
             }
 
-            // Pas de contrainte where TState : notnull ici
-            public IDisposable BeginScope<TState>(TState state)
+            // EXPLICITE: contrainte héritée, on ne la redéclare pas.
+            IDisposable ILogger.BeginScope<TState>(TState state)
             {
                 return _scopeProvider?.Push(state!) ?? NullScope.Instance;
             }
 
             public bool IsEnabled(LogLevel logLevel) => true;
 
-            // Pas de contrainte where TState : notnull ici non plus
-            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            // EXPLICITE aussi, pour éviter les divergences de nullability.
+            void ILogger.Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
             {
                 if (!IsEnabled(logLevel)) return;
-                if (formatter is null) throw new ArgumentNullException(nameof(formatter));
+
+                ArgumentNullException.ThrowIfNull(formatter);
 
                 var message = formatter(state, exception);
                 if (string.IsNullOrEmpty(message) && exception is null) return;
@@ -60,10 +61,9 @@ namespace CineBoutique.Inventory.Api.Tests.Infrastructure
                     _output.WriteLine(line);
                     if (exception is not null) _output.WriteLine(exception.ToString());
                 }
-                catch
-                {
-                    // xUnit peut râler si la sortie est utilisée après la fin du test
-                }
+                // ITestOutputHelper pète souvent après fin de test; on limite le catch au concret.
+                catch (InvalidOperationException) { }
+                catch (ObjectDisposedException) { }
             }
 
             private sealed class NullScope : IDisposable
