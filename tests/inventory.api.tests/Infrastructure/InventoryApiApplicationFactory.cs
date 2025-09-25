@@ -99,9 +99,6 @@ public class InventoryApiApplicationFactory : WebApplicationFactory<Program>
         return Task.CompletedTask;
     }
 
-    public new InventoryApiApplicationFactory WithWebHostBuilder(Action<IWebHostBuilder> configuration)
-    {
-        ArgumentNullException.ThrowIfNull(configuration);
-        return (InventoryApiApplicationFactory)base.WithWebHostBuilder(configuration);
-    }
+    public new WebApplicationFactory<Program> WithWebHostBuilder(Action<IWebHostBuilder> configuration)
+        => base.WithWebHostBuilder(configuration);
 }
