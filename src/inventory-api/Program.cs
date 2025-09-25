@@ -397,6 +397,15 @@ app.MapHealthChecks("/healthz", new HealthCheckOptions
     ResponseWriter = WriteHealthJson
 }).AllowAnonymous();
 
+// ===== ALIAS D'AUTH PIN (pour CI ET proxy) =====
+app.MapPost("/auth/pin", HandlePinLoginAsync)
+   .WithName("PinLogin")
+   .AllowAnonymous();
+
+app.MapPost("/api/auth/pin", HandlePinLoginAsync)
+   .WithName("ApiPinLogin")
+   .AllowAnonymous();
+
 app.MapControllers();
 
 var diag = app.MapGroup("/api/_diag").WithTags("_diag");
@@ -674,6 +683,41 @@ app.MapGet("/products/{code}", async (
 });
 
 await app.RunAsync().ConfigureAwait(false);
+
+// =================== Handlers & helpers ===================
+
+// Handler partagé pour /auth/pin et /api/auth/pin
+static async Task<IResult> HandlePinLoginAsync(
+    PinAuthenticationRequest request,
+    ITokenService tokenService,
+    IOptions<AuthenticationOptions> options,
+    IAuditLogger auditLogger)
+{
+    if (request is null || string.IsNullOrWhiteSpace(request.Pin))
+    {
+        var timestamp = FormatTimestamp(DateTimeOffset.UtcNow);
+        await auditLogger.LogAsync($"Tentative de connexion admin rejetée : code PIN absent le {timestamp} UTC.", null, "auth.pin.failure").ConfigureAwait(false);
+        return Results.BadRequest(new { message = "Le code PIN est requis." });
+    }
+
+    var providedPin = request.Pin.Trim();
+    var user = options.Value.Users.FirstOrDefault(u => string.Equals(u.Pin, providedPin, StringComparison.Ordinal));
+    if (user is null)
+    {
+        var timestamp = FormatTimestamp(DateTimeOffset.UtcNow);
+        await auditLogger.LogAsync($"Tentative de connexion admin refusée (PIN inconnu) le {timestamp} UTC.", null, "auth.pin.failure").ConfigureAwait(false);
+        return Results.Unauthorized();
+    }
+
+    var tokenResult = tokenService.GenerateToken(user.Name);
+    var response = new PinAuthenticationResponse(user.Name, tokenResult.AccessToken, tokenResult.ExpiresAtUtc);
+
+    var successTimestamp = FormatTimestamp(DateTimeOffset.UtcNow);
+    var actor = FormatActorLabel(user.Name);
+    await auditLogger.LogAsync($"{actor} s'est connecté avec succès le {successTimestamp} UTC.", user.Name, "auth.pin.success").ConfigureAwait(false);
+
+    return Results.Ok(response);
+}
 
 static async Task EnsureConnectionOpenAsync(IDbConnection connection, CancellationToken cancellationToken)
 {
