@@ -7,7 +7,6 @@ using CineBoutique.Inventory.Domain.Auditing;
 using CineBoutique.Inventory.Infrastructure.Admin;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Npgsql;
 
 namespace CineBoutique.Inventory.Api.Controllers;
 
@@ -122,38 +121,16 @@ public sealed class AdminUsersController : ControllerBase
             var actor = User?.Identity?.Name;
             _logger.LogInformation("Admin user {Email} created by {Actor}", dto.Email, string.IsNullOrWhiteSpace(actor) ? "system" : actor);
 
-            try
-            {
-                await _auditLogger.LogAsync(
-                    new AuditEntry("AdminUser", created.Id.ToString(), "Create", new { dto.Email, dto.DisplayName }, DateTimeOffset.UtcNow),
-                    cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception auditEx)
-            {
-                _logger.LogWarning(auditEx, "Audit failed on CreateAdminUser");
-            }
+            await _auditLogger.LogAsync(
+                new AuditEntry("AdminUser", created.Id.ToString(), "Create", new { dto.Email, dto.DisplayName }, DateTimeOffset.UtcNow),
+                cancellationToken).ConfigureAwait(false);
 
             return CreatedAtAction(nameof(GetByIdAsync), new { id = dto.Id }, dto);
         }
         catch (DuplicateUserException ex)
         {
             _logger.LogWarning(ex, "Duplicate admin user detected for {Email}", email);
-            return Conflict(new ProblemDetails
-            {
-                Title = "Duplicate admin user",
-                Detail = ex.Message,
-                Status = StatusCodes.Status409Conflict
-            });
-        }
-        catch (PostgresException postgresEx) when (postgresEx.SqlState == PostgresErrorCodes.UniqueViolation)
-        {
-            _logger.LogWarning(postgresEx, "Unique constraint violation while creating admin user {Email}", email);
-            return Conflict(new ProblemDetails
-            {
-                Title = "Duplicate admin user",
-                Detail = "Email already exists.",
-                Status = StatusCodes.Status409Conflict
-            });
+            return Conflict(new { message = "Admin user already exists." });
         }
         catch (ArgumentException ex)
         {
