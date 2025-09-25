@@ -4,7 +4,7 @@ using System.Runtime.Serialization;
 namespace CineBoutique.Inventory.Infrastructure.Admin;
 
 [Serializable]
-public class DuplicateUserException : Exception
+public sealed class DuplicateUserException : Exception
 {
     public DuplicateUserException() { }
     public DuplicateUserException(string message) : base(message) { }
