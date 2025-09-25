@@ -62,8 +62,8 @@ namespace CineBoutique.Inventory.Api.Tests.Infrastructure
                     if (exception is not null) _output.WriteLine(exception.ToString());
                 }
                 // ITestOutputHelper pète souvent après fin de test; on limite le catch au concret.
-                catch (InvalidOperationException) { }
                 catch (ObjectDisposedException) { }
+                catch (InvalidOperationException) { }
             }
 
             private sealed class NullScope : IDisposable
