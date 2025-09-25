@@ -1,59 +1,94 @@
-#!/bin/sh
-set -eu
+#!/usr/bin/env sh
+set -e
 
-CADDYFILE="/tmp/Caddyfile"
-DOMAIN="${DOMAIN:-}"
-EMAIL="${ACME_EMAIL:-}"
+# Env attendues :
+# - DOMAIN="inventaire.ton-domaine.tld"  ET  ACME_EMAIL="ops@ton-domaine.tld"  (Let's Encrypt)
+#        OU
+# - PUBLIC_HOST="192.168.1.50" (ou "inventaire.lan") pour un cert interne (à faire approuver sur les devices)
 
-write_common_server_block() {
-  cat <<'CONF' >>"$CADDYFILE"
-    encode zstd gzip
-    handle_path /api/* {
-        reverse_proxy api:8080
-    }
-    handle {
-        reverse_proxy web:80
-    }
-CONF
+: "${API_UPSTREAM:=http://api:8080}"
+: "${WEB_UPSTREAM:=http://web:80}"
+: "${ACME_STAGING:=0}"
+
+cat > /etc/caddy/Caddyfile <<'EOF'
+# Ce bloc est réécrit plus bas par ce script.
+EOF
+
+mk_caddy_for_domain() {
+  local domain="$1" email="$2" staging="$3"
+
+  cat > /etc/caddy/Caddyfile <<EOF
+{
+  email ${email}
+  $( [ "$staging" = "1" ] && echo 'acme_ca https://acme-staging-v02.api.letsencrypt.org/directory' )
 }
 
-: >"$CADDYFILE"
+# HTTP -> HTTPS
+:80 {
+  redir https://{host}{uri}
+}
 
-if [ -n "$DOMAIN" ]; then
-  cat <<CONF >"$CADDYFILE"
-$DOMAIN {
-CONF
-  if [ -n "$EMAIL" ]; then
-    cat <<CONF >>"$CADDYFILE"
-    tls $EMAIL
-CONF
-  fi
-  write_common_server_block
-  cat <<CONF >>"$CADDYFILE"
+${domain} {
+  encode zstd gzip
+  @api path /api* /swagger* /health
+  handle @api {
+    reverse_proxy ${API_UPSTREAM}
+  }
+  handle {
+    reverse_proxy ${WEB_UPSTREAM}
+  }
+  log {
+    output stdout
+    format console
+  }
 }
-CONF
-  cat <<CONF >>"$CADDYFILE"
-http://:80 {
-    redir https://$DOMAIN{uri} permanent
+EOF
 }
-CONF
+
+mk_caddy_for_internal() {
+  local host="$1"
+  cat > /etc/caddy/Caddyfile <<EOF
+# Certificat interne (CA interne de Caddy) — le device client doit approuver ce CA pour éviter l'alerte
+{
+  local_certs
+}
+
+# HTTP -> HTTPS
+:80 {
+  redir https://{host}{uri}
+}
+
+https://${host} {
+  tls internal
+
+  encode zstd gzip
+
+  @api path /api* /swagger* /health
+  handle @api {
+    reverse_proxy ${API_UPSTREAM}
+  }
+  handle {
+    reverse_proxy ${WEB_UPSTREAM}
+  }
+
+  log {
+    output stdout
+    format console
+  }
+}
+EOF
+}
+
+if [ -n "${DOMAIN}" ] && [ -n "${ACME_EMAIL}" ]; then
+  echo "[proxy] Mode domaine public avec Let's Encrypt pour ${DOMAIN}"
+  mk_caddy_for_domain "${DOMAIN}" "${ACME_EMAIL}" "${ACME_STAGING}"
+elif [ -n "${PUBLIC_HOST}" ]; then
+  echo "[proxy] Mode interne (certificat Caddy interne) pour ${PUBLIC_HOST}"
+  mk_caddy_for_internal "${PUBLIC_HOST}"
 else
-  if [ ! -f /certs/cert.pem ] || [ ! -f /certs/key.pem ]; then
-    echo "Certificats manquants dans ./certs (cert.pem et key.pem)" >&2
-    exit 1
-  fi
-  cat <<CONF >>"$CADDYFILE"
-:443 {
-    tls /certs/cert.pem /certs/key.pem
-CONF
-  write_common_server_block
-  cat <<'CONF' >>"$CADDYFILE"
-}
-
-http://:80 {
-    redir https://{host}{uri} permanent
-}
-CONF
+  echo >&2 "[proxy] ERREUR: vous devez définir DOMAIN+ACME_EMAIL (Let's Encrypt) ou PUBLIC_HOST (IP/hostname interne)."
+  exit 1
 fi
 
-exec caddy run --config "$CADDYFILE" --adapter caddyfile
+# Lancement de Caddy
+exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile
