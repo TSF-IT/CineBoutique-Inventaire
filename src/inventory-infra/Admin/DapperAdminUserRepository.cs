@@ -198,11 +198,8 @@ namespace CineBoutique.Inventory.Infrastructure.Admin
 
         private static string GetDuplicateUserMessage(PostgresException exception)
         {
-            return exception.ConstraintName switch
-            {
-                "ix_admin_users_email" or "admin_users_email_key" => "Email already exists.",
-                _ => "An admin user with the same unique field already exists."
-            };
+            _ = exception;
+            return "Admin user already exists.";
         }
 
         private sealed record AdminUserRow(Guid Id, string Email, string DisplayName, DateTimeOffset CreatedAtUtc, DateTimeOffset? UpdatedAtUtc);
