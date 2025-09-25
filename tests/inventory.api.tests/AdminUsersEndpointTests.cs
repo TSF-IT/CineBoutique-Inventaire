@@ -25,19 +25,20 @@ using Xunit.Abstractions;
 namespace CineBoutique.Inventory.Api.Tests;
 
 [Collection(TestCollections.Postgres)]
-public class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
+public sealed class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
 {
     private readonly PostgresTestContainerFixture _pg;
     private readonly ITestOutputHelper _output;
-    private readonly InventoryApiApplicationFactory _factory;
+    private readonly InventoryApiApplicationFactory _app;
     private readonly HttpClient _client;
+    private bool _disposed;
 
     public AdminUsersEndpointTests(PostgresTestContainerFixture pg, ITestOutputHelper output)
     {
         _pg = pg;
         _output = output ?? throw new ArgumentNullException(nameof(output));
 
-        _factory = new InventoryApiApplicationFactory(_pg.ConnectionString)
+        _app = new InventoryApiApplicationFactory(_pg.ConnectionString)
             .WithWebHostBuilder(builder =>
             {
                 builder.ConfigureLogging(loggingBuilder =>
@@ -48,12 +49,12 @@ public class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
                 });
             });
 
-        _client = _factory.CreateClient();
+        _client = _app.CreateClient();
     }
 
     public async Task InitializeAsync()
     {
-        await _factory.EnsureMigratedAsync().ConfigureAwait(false);
+        await _app.EnsureMigratedAsync().ConfigureAwait(false);
 
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", EncodeCredentials("admin", "admin"));
 
@@ -67,7 +68,7 @@ public class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
     {
         await ResetDatabaseAsync();
 
-        using var client = _factory.CreateClient();
+        using var client = _app.CreateClient();
         var response = await client.GetAsync("/api/admin/users");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
@@ -142,7 +143,7 @@ public class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
         var deleteResponse = await _client.DeleteAsync($"/api/admin/users/{created.Id}");
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
 
-        using var scope = _factory.Services.CreateScope();
+        using var scope = _app.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = await connectionFactory.CreateOpenConnectionAsync(default);
 
@@ -155,7 +156,7 @@ public class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
 
     private async Task ResetDatabaseAsync()
     {
-        using var scope = _factory.Services.CreateScope();
+        using var scope = _app.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = await connectionFactory.CreateOpenConnectionAsync(default);
 
@@ -175,7 +176,23 @@ public class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
 
     public void Dispose()
     {
-        _client?.Dispose();
-        _factory?.Dispose();
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+    private void Dispose(bool disposing)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (disposing)
+        {
+            _client?.Dispose();
+            _app?.Dispose();
+        }
+
+        _disposed = true;
     }
 }
