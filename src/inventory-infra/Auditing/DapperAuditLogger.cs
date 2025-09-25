@@ -4,6 +4,7 @@ using CineBoutique.Inventory.Domain.Auditing;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace CineBoutique.Inventory.Infrastructure.Auditing;
 
@@ -13,11 +14,16 @@ public sealed class DapperAuditLogger : IAuditLogger
 
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<DapperAuditLogger> _logger;
+    private readonly DapperAuditLoggerOptions? _options;
 
-    public DapperAuditLogger(IDbConnectionFactory connectionFactory, ILogger<DapperAuditLogger> logger)
+    public DapperAuditLogger(
+        IDbConnectionFactory connectionFactory,
+        ILogger<DapperAuditLogger> logger,
+        IOptions<DapperAuditLoggerOptions>? options = null)
     {
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _options = options?.Value;
     }
 
     public async Task LogAsync(AuditEntry entry, CancellationToken cancellationToken)
@@ -26,27 +32,37 @@ public sealed class DapperAuditLogger : IAuditLogger
 
         try
         {
+            var schema = _options?.Schema;
+            var configuredTableName = _options?.Table;
+            var tableName = string.IsNullOrWhiteSpace(configuredTableName) ? "Audit" : configuredTableName;
+
+            var qualifiedTable = string.IsNullOrWhiteSpace(schema)
+                ? $"\"{tableName}\""
+                : $"\"{schema}\".\"{tableName}\"";
+
+            const string columns = "\"EntityName\", \"EntityId\", \"Event\", \"Actor\", \"OccurredAt\", \"Data\"";
+
+            var sql = $@"
+INSERT INTO {qualifiedTable} ({columns})
+VALUES (@EntityName, @EntityId, @Event, @Actor, @OccurredAt, @Data);";
+
+            var payloadJson = entry.Payload is null
+                ? "{}"
+                : JsonSerializer.Serialize(entry.Payload, SerializerOptions);
+
             await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-
-            const string sql =
-                """
-                INSERT INTO ""Audit"" (""Id"", ""EntityName"", ""EntityId"", ""EventType"", ""Payload"", ""CreatedAtUtc"")
-                VALUES (@Id, @EntityName, @EntityId, @EventType, CAST(@Payload AS jsonb), @CreatedAtUtc);
-                """;
-
-            var payloadJson = entry.Payload is null ? null : JsonSerializer.Serialize(entry.Payload, SerializerOptions);
 
             await connection.ExecuteAsync(
                 new CommandDefinition(
                     sql,
                     new
                     {
-                        Id = Guid.NewGuid(),
-                        entry.EntityName,
-                        entry.EntityId,
-                        entry.EventType,
-                        Payload = payloadJson,
-                        entry.CreatedAtUtc
+                        EntityName = entry.EntityName ?? string.Empty,
+                        EntityId = entry.EntityId ?? string.Empty,
+                        Event = entry.EventType ?? string.Empty,
+                        Actor = "system",
+                        OccurredAt = entry.CreatedAtUtc,
+                        Data = payloadJson
                     },
                     cancellationToken: cancellationToken)).ConfigureAwait(false);
         }
@@ -60,4 +76,11 @@ public sealed class DapperAuditLogger : IAuditLogger
                 entry.EventType);
         }
     }
+}
+
+public sealed class DapperAuditLoggerOptions
+{
+    public string? Schema { get; init; }
+
+    public string? Table { get; init; }
 }
