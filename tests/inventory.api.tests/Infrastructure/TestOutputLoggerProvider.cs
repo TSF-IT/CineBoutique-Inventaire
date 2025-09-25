@@ -4,7 +4,7 @@ using Xunit.Abstractions;
 
 namespace CineBoutique.Inventory.Api.Tests.Infrastructure
 {
-    public sealed class TestOutputLoggerProvider : ILoggerProvider, ISUPPORTExternalScope
+    public sealed class TestOutputLoggerProvider : ILoggerProvider, ISupportExternalScope
     {
         private readonly ITestOutputHelper _output;
         private IExternalScopeProvider? _scopeProvider;
