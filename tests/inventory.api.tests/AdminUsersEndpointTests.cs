@@ -29,46 +29,57 @@ public sealed class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
 {
     private readonly PostgresTestContainerFixture _pg;
     private readonly ITestOutputHelper _output;
-    private readonly InventoryApiApplicationFactory _app;
-    private readonly HttpClient _client;
+    private InventoryApiApplicationFactory? _app;
+    private HttpClient? _client;
     private bool _disposed;
+
+    private InventoryApiApplicationFactory App =>
+        _app ?? throw new ObjectDisposedException(nameof(InventoryApiApplicationFactory));
+
+    private HttpClient Client =>
+        _client ?? throw new ObjectDisposedException(nameof(HttpClient));
 
     public AdminUsersEndpointTests(PostgresTestContainerFixture pg, ITestOutputHelper output)
     {
         _pg = pg;
         _output = output ?? throw new ArgumentNullException(nameof(output));
 
-        _app = new InventoryApiApplicationFactory(_pg.ConnectionString)
-            .WithWebHostBuilder(builder =>
-            {
-                builder.ConfigureLogging(loggingBuilder =>
-                {
-                    loggingBuilder.ClearProviders();
-                    loggingBuilder.AddProvider(new TestOutputLoggerProvider(_output));
-                    loggingBuilder.SetMinimumLevel(LogLevel.Debug);
-                });
-            });
+        using var baseFactory = new InventoryApiApplicationFactory(_pg.ConnectionString);
 
-        _client = _app.CreateClient();
+        _app = baseFactory.WithWebHostBuilder(builder =>
+        {
+            builder.ConfigureLogging(loggingBuilder =>
+            {
+                loggingBuilder.ClearProviders();
+                loggingBuilder.AddProvider(new TestOutputLoggerProvider(_output));
+                loggingBuilder.SetMinimumLevel(LogLevel.Debug);
+            });
+        });
+
+        _client = App.CreateClient();
     }
 
     public async Task InitializeAsync()
     {
-        await _app.EnsureMigratedAsync().ConfigureAwait(false);
+        await App.EnsureMigratedAsync().ConfigureAwait(false);
 
-        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", EncodeCredentials("admin", "admin"));
+        Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", EncodeCredentials("admin", "admin"));
 
         await ResetDatabaseAsync();
     }
 
-    public Task DisposeAsync() => Task.CompletedTask;
+    public Task DisposeAsync()
+    {
+        Dispose();
+        return Task.CompletedTask;
+    }
 
     [Fact]
     public async Task GetUsers_WithoutAuth_ReturnsUnauthorized()
     {
         await ResetDatabaseAsync();
 
-        using var client = _app.CreateClient();
+        using var client = App.CreateClient();
         var response = await client.GetAsync("/api/admin/users");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
@@ -86,7 +97,7 @@ public sealed class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
         var email = $"admin{unique}@example.com";
         var displayName = $"Admin {unique}";
 
-        var createResponse = await _client.PostAsJsonAsync("/api/admin/users", new AdminUserCreateRequest
+        var createResponse = await Client.PostAsJsonAsync("/api/admin/users", new AdminUserCreateRequest
         {
             Email = email,
             DisplayName = displayName
@@ -102,20 +113,20 @@ public sealed class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
         var created = await createResponse.Content.ReadFromJsonAsync<AdminUserDto>();
         Assert.NotNull(created);
 
-        var listResponse = await _client.GetAsync("/api/admin/users");
+        var listResponse = await Client.GetAsync("/api/admin/users");
         listResponse.EnsureSuccessStatusCode();
         var list = await listResponse.Content.ReadFromJsonAsync<AdminUserListResponse>();
         Assert.NotNull(list);
         Assert.Single(list!.Items);
         Assert.Equal(created!.Id, list.Items[0].Id);
 
-        var getResponse = await _client.GetAsync($"/api/admin/users/{created.Id}");
+        var getResponse = await Client.GetAsync($"/api/admin/users/{created.Id}");
         getResponse.EnsureSuccessStatusCode();
         var fetched = await getResponse.Content.ReadFromJsonAsync<AdminUserDto>();
         Assert.NotNull(fetched);
         Assert.Equal(email, fetched!.Email);
 
-        var duplicateResponse = await _client.PostAsJsonAsync("/api/admin/users", new AdminUserCreateRequest
+        var duplicateResponse = await Client.PostAsJsonAsync("/api/admin/users", new AdminUserCreateRequest
         {
             Email = email,
             DisplayName = $"Duplicate {displayName}"
@@ -129,7 +140,7 @@ public sealed class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
 
         Assert.Equal(HttpStatusCode.Conflict, duplicateResponse.StatusCode);
 
-        var updateResponse = await _client.PutAsJsonAsync($"/api/admin/users/{created.Id}", new AdminUserUpdateRequest
+        var updateResponse = await Client.PutAsJsonAsync($"/api/admin/users/{created.Id}", new AdminUserUpdateRequest
         {
             Email = email,
             DisplayName = "Admin Updated"
@@ -140,10 +151,10 @@ public sealed class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
         Assert.NotNull(updated);
         Assert.Equal("Admin Updated", updated!.DisplayName);
 
-        var deleteResponse = await _client.DeleteAsync($"/api/admin/users/{created.Id}");
+        var deleteResponse = await Client.DeleteAsync($"/api/admin/users/{created.Id}");
         Assert.Equal(HttpStatusCode.NoContent, deleteResponse.StatusCode);
 
-        using var scope = _app.Services.CreateScope();
+        using var scope = App.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = await connectionFactory.CreateOpenConnectionAsync(default);
 
@@ -156,7 +167,7 @@ public sealed class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
 
     private async Task ResetDatabaseAsync()
     {
-        using var scope = _app.Services.CreateScope();
+        using var scope = App.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = await connectionFactory.CreateOpenConnectionAsync(default);
 
@@ -190,7 +201,10 @@ public sealed class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
         if (disposing)
         {
             _client?.Dispose();
+            _client = null;
+
             _app?.Dispose();
+            _app = null;
         }
 
         _disposed = true;
