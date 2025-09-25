@@ -2,65 +2,54 @@ using System;
 using Microsoft.Extensions.Logging;
 using Xunit.Abstractions;
 
-namespace CineBoutique.Inventory.Api.Tests.Infrastructure;
-
-public sealed class TestOutputLoggerProvider : ILoggerProvider
+namespace CineBoutique.Inventory.Api.Tests.Infrastructure
 {
-    private readonly ITestOutputHelper _output;
-
-    public TestOutputLoggerProvider(ITestOutputHelper output)
-    {
-        _output = output ?? throw new ArgumentNullException(nameof(output));
-    }
-
-    public ILogger CreateLogger(string categoryName)
-    {
-        return new TestOutputLogger(_output, categoryName);
-    }
-
-    public void Dispose()
-    {
-    }
-
-    private sealed class TestOutputLogger : ILogger
+    public sealed class TestOutputLoggerProvider : ILoggerProvider
     {
         private readonly ITestOutputHelper _output;
-        private readonly string _category;
 
-        public TestOutputLogger(ITestOutputHelper output, string category)
+        public TestOutputLoggerProvider(ITestOutputHelper output)
         {
-            _output = output ?? throw new ArgumentNullException(nameof(output));
-            _category = category ?? throw new ArgumentNullException(nameof(category));
+            ArgumentNullException.ThrowIfNull(output);
+            _output = output;
         }
 
-        public IDisposable BeginScope<TState>(TState state)
-        {
-            return NullScope.Instance;
-        }
+        public ILogger CreateLogger(string categoryName) => new TestOutputLogger(_output, categoryName);
 
-        public bool IsEnabled(LogLevel logLevel)
-        {
-            return true;
-        }
+        public void Dispose() { }
 
-        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        private sealed class TestOutputLogger : ILogger
         {
-            if (formatter is null)
+            private readonly ITestOutputHelper _output;
+            private readonly string _category;
+
+            public TestOutputLogger(ITestOutputHelper output, string category)
             {
-                throw new ArgumentNullException(nameof(formatter));
+                _output = output;
+                _category = category;
             }
 
-            var message = formatter(state, exception);
-            var exceptionSuffix = exception is null ? string.Empty : $" | EX: {exception}";
-            _output.WriteLine($"[{logLevel}] {_category}: {message}{exceptionSuffix}");
-        }
+            // Implémentation explicite + contrainte notnull (corrige CS8633)
+            IDisposable ILogger.BeginScope<TState>(TState state) where TState : notnull
+                => NullScope.Instance;
 
-        private sealed class NullScope : IDisposable
-        {
-            public static readonly NullScope Instance = new();
+            bool ILogger.IsEnabled(LogLevel logLevel) => true;
 
-            public void Dispose()
+            void ILogger.Log<TState>(
+                LogLevel logLevel,
+                EventId eventId,
+                TState state,
+                Exception? exception,
+                Func<TState, Exception?, string> formatter)
             {
+                var msg = formatter(state, exception);
+                _output.WriteLine($"[{logLevel}] {_category}: {msg}{(exception is null ? "" : $" | EX: {exception}")}");
+            }
+
+            private sealed class NullScope : IDisposable
+            {
+                public static readonly NullScope Instance = new();
+                public void Dispose() { }
             }
         }
     }
