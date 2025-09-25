@@ -3,12 +3,11 @@ FROM node:18-alpine AS build
 WORKDIR /app
 
 # Dépendances
-COPY src/inventory-web/package*.json ./
+COPY package*.json ./
 RUN npm ci --no-audit --no-fund
 
 # Sources
-COPY src/inventory-web/ ./
-# Build Vite/SPA
+COPY . .
 RUN npm run build
 
 # ---------- RUNTIME ----------
@@ -21,13 +20,13 @@ RUN apk add --no-cache openssl
 COPY --from=build /app/dist /usr/share/nginx/html
 
 # Conf nginx (HTTPS + proxy /api)
-COPY src/inventory-web/nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Script de génération auto du cert
-COPY src/inventory-web/docker-entrypoint.d/50-ssl-selfsigned.sh /docker-entrypoint.d/50-ssl-selfsigned.sh
+COPY docker-entrypoint.d/50-ssl-selfsigned.sh /docker-entrypoint.d/50-ssl-selfsigned.sh
 RUN chmod +x /docker-entrypoint.d/50-ssl-selfsigned.sh && mkdir -p /etc/nginx/certs
 
 EXPOSE 80 443
 
-# Petit healthcheck HTTP (via le port 80 redirigé en 301)
-HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD wget -qO- http://localhost/health || exit 1
+# Healthcheck simple : passe si Nginx répond (redirection 301 ok)
+HEALTHCHECK --interval=30s --timeout=3s --retries=3 CMD wget -qO- http://localhost/ || exit 1

@@ -23,22 +23,19 @@ services:
       db:
         condition: service_healthy
     environment:
-      # L'API écoute en HTTP interne, Nginx fait le TLS devant
       ASPNETCORE_URLS: http://+:8080
-      # Connexion DB (si tu n'as rien d'autre dans ton appsettings.json)
       ConnectionStrings__Default: Host=db;Port=5432;Database=inventory;Username=postgres;Password=postgres
     expose:
       - "8080"
 
   web:
     build:
-      context: .
-      dockerfile: src/inventory-web/Dockerfile
+      context: ./src/inventory-web        # <<< ICI : context pointant sur le dossier web
+      dockerfile: Dockerfile              # <<< Dockerfile à la racine de ce dossier
     container_name: inventory-web
     depends_on:
       - api
     environment:
-      # IMPORTANT : mets l’IP privée de ton serveur ici, c'est ce qui finira dans le certificat
       PUBLIC_HOST: ${PUBLIC_HOST}
     ports:
       - "80:80"
