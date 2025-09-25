@@ -30,13 +30,16 @@ public sealed class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
 {
     private readonly PostgresTestContainerFixture _pg;
     private readonly ITestOutputHelper _output;
+    private InventoryApiApplicationFactory? _rootFactory;
     private WebApplicationFactory<Program>? _app;
     private HttpClient? _client;
     private bool _disposed;
 
-    private InventoryApiApplicationFactory App =>
-        _app as InventoryApiApplicationFactory
-        ?? throw new ObjectDisposedException(nameof(InventoryApiApplicationFactory));
+    private InventoryApiApplicationFactory Root =>
+    _rootFactory ?? throw new ObjectDisposedException(nameof(InventoryApiApplicationFactory));
+
+    private WebApplicationFactory<Program> App =>
+        _app ?? throw new ObjectDisposedException(nameof(WebApplicationFactory<Program>));
 
     private HttpClient Client =>
         _client ?? throw new ObjectDisposedException(nameof(HttpClient));
@@ -45,8 +48,9 @@ public sealed class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
     {
         _pg = pg;
         _output = output ?? throw new ArgumentNullException(nameof(output));
+        _rootFactory = new InventoryApiApplicationFactory(_pg.ConnectionString);
 
-        _app = new InventoryApiApplicationFactory(_pg.ConnectionString).WithWebHostBuilder(builder =>
+        _app = _rootFactory.WithWebHostBuilder(builder =>
         {
             builder.ConfigureLogging(loggingBuilder =>
             {
@@ -61,7 +65,7 @@ public sealed class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
 
     public async Task InitializeAsync()
     {
-        await App.EnsureMigratedAsync().ConfigureAwait(false);
+        await Root.EnsureMigratedAsync().ConfigureAwait(false);
 
         Client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", EncodeCredentials("admin", "admin"));
 
@@ -205,6 +209,9 @@ public sealed class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
 
             _app?.Dispose();
             _app = null;
+
+            _rootFactory?.Dispose();
+            _rootFactory = null;  
         }
 
         _disposed = true;
