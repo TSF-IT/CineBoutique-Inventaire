@@ -9,7 +9,7 @@ services:
     volumes:
       - dbdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d inventory"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d inventory || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -17,55 +17,32 @@ services:
   api:
     build:
       context: .
-      dockerfile: ./src/inventory-api/Dockerfile
+      dockerfile: src/inventory-api/Dockerfile
     container_name: inventory-api
     depends_on:
       db:
         condition: service_healthy
     environment:
-      ASPNETCORE_ENVIRONMENT: "Production"
-      ConnectionStrings__Default: "Host=db;Port=5432;Database=inventory;Username=postgres;Password=postgres"
-      APPLY_MIGRATIONS: "true"
-      DISABLE_MIGRATIONS: "false"
-      AllowedOrigins__0: "https://${PUBLIC_HOST}"
-      AllowedOrigins__1: "https://${DOMAIN}"
-      AllowedOrigins__2: "http://localhost:5173"
+      # L'API écoute en HTTP interne, Nginx fait le TLS devant
+      ASPNETCORE_URLS: http://+:8080
+      # Connexion DB (si tu n'as rien d'autre dans ton appsettings.json)
+      ConnectionStrings__Default: Host=db;Port=5432;Database=inventory;Username=postgres;Password=postgres
     expose:
       - "8080"
 
   web:
     build:
-      context: ./src/inventory-web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: src/inventory-web/Dockerfile
     container_name: inventory-web
     depends_on:
       - api
-    expose:
-      - "80"
-
-  proxy:
-    image: caddy:2.8.4-alpine
-    container_name: inventory-proxy
-    depends_on:
-      - api
-      - web
+    environment:
+      # IMPORTANT : mets l’IP privée de ton serveur ici, c'est ce qui finira dans le certificat
+      PUBLIC_HOST: ${PUBLIC_HOST}
     ports:
       - "80:80"
       - "443:443"
-    environment:
-      DOMAIN: "${DOMAIN}"
-      PUBLIC_HOST: "${PUBLIC_HOST}"
-      ACME_EMAIL: "${ACME_EMAIL}"
-      ACME_STAGING: "${ACME_STAGING:-0}"
-      API_UPSTREAM: "http://api:8080"
-      WEB_UPSTREAM: "http://web:80"
-    volumes:
-      - ./build/proxy/start.sh:/start.sh:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    command: ["/bin/sh", "/start.sh"]
 
 volumes:
   dbdata:
-  caddy_data:
-  caddy_config:
