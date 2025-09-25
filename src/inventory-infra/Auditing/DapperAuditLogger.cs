@@ -1,5 +1,7 @@
 using System;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using CineBoutique.Inventory.Domain.Auditing;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
@@ -10,77 +12,68 @@ namespace CineBoutique.Inventory.Infrastructure.Auditing;
 
 public sealed class DapperAuditLogger : IAuditLogger
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
-
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<DapperAuditLogger> _logger;
-    private readonly DapperAuditLoggerOptions? _options;
+    private readonly AuditOptions? _options;
+
+    public sealed class AuditOptions
+    {
+        public string? Schema { get; init; }
+        public string? Table  { get; init; }
+    }
 
     public DapperAuditLogger(
         IDbConnectionFactory connectionFactory,
-        ILogger<DapperAuditLogger> logger,
-        IOptions<DapperAuditLoggerOptions>? options = null)
+        IOptions<AuditOptions>? options,
+        ILogger<DapperAuditLogger> logger)
     {
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _options = options?.Value;
     }
 
-    public async Task LogAsync(AuditEntry entry, CancellationToken cancellationToken)
+    private string GetQualifiedTable()
     {
-        ArgumentNullException.ThrowIfNull(entry);
+        var table = string.IsNullOrWhiteSpace(_options?.Table) ? "Audit" : _options!.Table!;
+        var schema = _options?.Schema;
 
+        return string.IsNullOrWhiteSpace(schema)
+            ? $"\"{table}\""
+            : $"\"{schema}\".\"{table}\"";
+    }
+
+    public async Task LogAsync(AuditEntry entry, CancellationToken cancellationToken = default)
+    {
         try
         {
-            var schema = _options?.Schema;
-            var configuredTableName = _options?.Table;
-            var tableName = string.IsNullOrWhiteSpace(configuredTableName) ? "Audit" : configuredTableName;
-
-            var qualifiedTable = string.IsNullOrWhiteSpace(schema)
-                ? $"\"{tableName}\""
-                : $"\"{schema}\".\"{tableName}\"";
-
-            const string columns = "\"EntityName\", \"EntityId\", \"Event\", \"Actor\", \"OccurredAt\", \"Data\"";
+            var qualifiedTable = GetQualifiedTable();
 
             var sql = $@"
-INSERT INTO {qualifiedTable} ({columns})
-VALUES (@EntityName, @EntityId, @Event, @Actor, @OccurredAt, @Data);";
+INSERT INTO {qualifiedTable}
+    (""EntityName"", ""EntityId"", ""EventType"", ""Payload"", ""CreatedAtUtc"")
+VALUES
+    (@EntityName, @EntityId, @EventType, @Payload, @CreatedAtUtc);";
 
-            var payloadJson = entry.Payload is null
-                ? "{}"
-                : JsonSerializer.Serialize(entry.Payload, SerializerOptions);
+            var payloadJson = entry.Payload is null ? null : JsonSerializer.Serialize(entry.Payload);
+
+            var parameters = new
+            {
+                entry.EntityName,
+                entry.EntityId,
+                entry.EventType,
+                Payload = payloadJson,
+                entry.CreatedAtUtc
+            };
 
             await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-
-            await connection.ExecuteAsync(
-                new CommandDefinition(
-                    sql,
-                    new
-                    {
-                        EntityName = entry.EntityName ?? string.Empty,
-                        EntityId = entry.EntityId ?? string.Empty,
-                        Event = entry.EventType ?? string.Empty,
-                        Actor = "system",
-                        OccurredAt = entry.CreatedAtUtc,
-                        Data = payloadJson
-                    },
-                    cancellationToken: cancellationToken)).ConfigureAwait(false);
+            var cmd = new CommandDefinition(sql, parameters, cancellationToken: cancellationToken);
+            await connection.ExecuteAsync(cmd).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(
-                ex,
-                "Audit logging failed for entity {Entity} with id {Id} and event {Event}",
-                entry.EntityName,
-                entry.EntityId,
-                entry.EventType);
+            _logger.LogWarning(ex,
+                "Audit logging failed for entity {EntityName} with id {EntityId} and event {EventType}",
+                entry.EntityName, entry.EntityId, entry.EventType);
         }
     }
-}
-
-public sealed class DapperAuditLoggerOptions
-{
-    public string? Schema { get; init; }
-
-    public string? Table { get; init; }
 }
