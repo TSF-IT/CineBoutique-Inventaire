@@ -165,7 +165,7 @@ public sealed class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
         var adminCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM admin_users;");
         Assert.Equal(0, adminCount);
 
-        var auditCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM \"Audit\" WHERE \"EntityName\" = 'AdminUser';");
+        var auditCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM audit_logs WHERE category = 'AdminUser';");
         Assert.True(auditCount >= 5);
     }
 
