@@ -17,6 +17,7 @@ using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Xunit;
@@ -29,12 +30,13 @@ public sealed class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
 {
     private readonly PostgresTestContainerFixture _pg;
     private readonly ITestOutputHelper _output;
-    private InventoryApiApplicationFactory? _app;
+    private WebApplicationFactory<Program>? _app;
     private HttpClient? _client;
     private bool _disposed;
 
     private InventoryApiApplicationFactory App =>
-        _app ?? throw new ObjectDisposedException(nameof(InventoryApiApplicationFactory));
+        _app as InventoryApiApplicationFactory
+        ?? throw new ObjectDisposedException(nameof(InventoryApiApplicationFactory));
 
     private HttpClient Client =>
         _client ?? throw new ObjectDisposedException(nameof(HttpClient));
@@ -44,9 +46,7 @@ public sealed class AdminUsersEndpointTests : IAsyncLifetime, IDisposable
         _pg = pg;
         _output = output ?? throw new ArgumentNullException(nameof(output));
 
-        using var baseFactory = new InventoryApiApplicationFactory(_pg.ConnectionString);
-
-        _app = baseFactory.WithWebHostBuilder(builder =>
+        _app = new InventoryApiApplicationFactory(_pg.ConnectionString).WithWebHostBuilder(builder =>
         {
             builder.ConfigureLogging(loggingBuilder =>
             {
