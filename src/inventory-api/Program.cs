@@ -161,7 +161,12 @@ builder.Services.AddScoped<IDbConnection>(sp =>
     return factory.CreateConnection();
 });
 
+// IAuditLogger (API) -> DbAuditLogger écrit déjà dans audit_logs
 builder.Services.AddScoped<IAuditLogger, DbAuditLogger>();
+
+// BRIDGE : remplace l'impl par défaut du Domain (DapperAuditLogger) par le pont vers DbAuditLogger
+builder.Services.AddScoped<CineBoutique.Inventory.Domain.Auditing.IAuditLogger,
+    DomainAuditBridgeLogger>();
 
 builder.Services.AddSingleton<ITokenService, JwtTokenService>();
 
