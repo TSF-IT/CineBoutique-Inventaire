@@ -5,6 +5,7 @@ using System.Data.Common;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.Text.Json; // + JSON writer pour health
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Auth;
@@ -21,11 +22,13 @@ using FluentMigrator.Runner.Initialization;
 using FluentMigrator.Runner.Processors;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks; // + HealthChecks mapping
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Diagnostics.HealthChecks; // + HealthChecks types
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -33,6 +36,9 @@ using Microsoft.Net.Http.Headers;
 using Microsoft.OpenApi.Models;
 using Npgsql;
 using Serilog;
+
+// + HealthCheck DB (tu crées le fichier DatabaseHealthCheck.cs)
+using CineBoutique.Inventory.Api.Infrastructure.Health;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -153,7 +159,11 @@ builder.Services.AddSwaggerGen(c =>
 
 builder.Services.AddControllers();
 
-builder.Services.AddHealthChecks();
+// --- Health checks (liveness + readiness) ---
+builder.Services
+    .AddHealthChecks()
+    .AddCheck("self", () => HealthCheckResult.Healthy()) // liveness
+    .AddCheck<DatabaseHealthCheck>("db", tags: new[] { "ready" }); // readiness DB
 
 builder.Services.AddScoped<IDbConnection>(sp =>
 {
@@ -339,7 +349,53 @@ app.UseAuthentication();
 app.UseMiddleware<AdminBasicAuthenticationMiddleware>();
 app.UseAuthorization();
 
-app.MapHealthChecks("/healthz");
+// -------- Health endpoints (JSON propre) --------
+static Task WriteHealthJson(HttpContext ctx, HealthReport report)
+{
+    ctx.Response.ContentType = "application/json; charset=utf-8";
+
+    var payload = new
+    {
+        status = report.Status.ToString(),
+        results = report.Entries.ToDictionary(
+            kvp => kvp.Key,
+            kvp => new
+            {
+                status = kvp.Value.Status.ToString(),
+                durationMs = kvp.Value.Duration.TotalMilliseconds,
+                error = kvp.Value.Exception?.Message
+            })
+    };
+
+    return ctx.Response.WriteAsync(JsonSerializer.Serialize(payload));
+}
+
+// Liveness (ne charge aucun check → 200 si le process répond)
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    Predicate = _ => false,
+    ResponseWriter = WriteHealthJson
+}).AllowAnonymous();
+
+// Readiness (DB taggée "ready")
+app.MapHealthChecks("/ready", new HealthCheckOptions
+{
+    Predicate = r => r.Tags.Contains("ready"),
+    ResultStatusCodes =
+    {
+        [HealthStatus.Healthy] = StatusCodes.Status200OK,
+        [HealthStatus.Degraded] = StatusCodes.Status503ServiceUnavailable,
+        [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable
+    },
+    ResponseWriter = WriteHealthJson
+}).AllowAnonymous();
+
+// Option: compat hérité si tu avais /healthz auparavant (liveness)
+app.MapHealthChecks("/healthz", new HealthCheckOptions
+{
+    Predicate = _ => false,
+    ResponseWriter = WriteHealthJson
+}).AllowAnonymous();
 
 app.MapControllers();
 
@@ -403,12 +459,8 @@ diag.MapGet("/ping-db", async (IConfiguration cfg) =>
     }
 }).WithName("DiagPingDb");
 
-app.MapGet("/ready", async (IDbConnection connection, CancellationToken cancellationToken) =>
-{
-    await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
-    _ = await connection.ExecuteScalarAsync<int>(new CommandDefinition("SELECT 1", cancellationToken: cancellationToken)).ConfigureAwait(false);
-    return Results.Ok(new { status = "ready" });
-});
+// --- SUPPRESSION de l'ancien MapGet("/ready", ...) custom ---
+// (remplacé par HealthChecks ci-dessus)
 
 app.MapGet("/api/inventories/summary", async (IDbConnection connection, CancellationToken cancellationToken) =>
 {
@@ -619,38 +671,6 @@ app.MapGet("/products/{code}", async (
     await auditLogger.LogAsync(notFoundMessage, userName, "products.scan.not_found").ConfigureAwait(false);
 
     return Results.NotFound();
-});
-
-app.MapPost("/auth/pin", async (
-    PinAuthenticationRequest request,
-    ITokenService tokenService,
-    IOptions<AuthenticationOptions> options,
-    IAuditLogger auditLogger) =>
-{
-    if (request is null || string.IsNullOrWhiteSpace(request.Pin))
-    {
-        var timestamp = FormatTimestamp(DateTimeOffset.UtcNow);
-        await auditLogger.LogAsync($"Tentative de connexion admin rejetée : code PIN absent le {timestamp} UTC.", null, "auth.pin.failure").ConfigureAwait(false);
-        return Results.BadRequest(new { message = "Le code PIN est requis." });
-    }
-
-    var providedPin = request.Pin.Trim();
-    var user = options.Value.Users.FirstOrDefault(u => string.Equals(u.Pin, providedPin, StringComparison.Ordinal));
-    if (user is null)
-    {
-        var timestamp = FormatTimestamp(DateTimeOffset.UtcNow);
-        await auditLogger.LogAsync($"Tentative de connexion admin refusée (PIN inconnu) le {timestamp} UTC.", null, "auth.pin.failure").ConfigureAwait(false);
-        return Results.Unauthorized();
-    }
-
-    var tokenResult = tokenService.GenerateToken(user.Name);
-    var response = new PinAuthenticationResponse(user.Name, tokenResult.AccessToken, tokenResult.ExpiresAtUtc);
-
-    var successTimestamp = FormatTimestamp(DateTimeOffset.UtcNow);
-    var actor = FormatActorLabel(user.Name);
-    await auditLogger.LogAsync($"{actor} s'est connecté avec succès le {successTimestamp} UTC.", user.Name, "auth.pin.success").ConfigureAwait(false);
-
-    return Results.Ok(response);
 });
 
 await app.RunAsync().ConfigureAwait(false);
