@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Data;
 using CineBoutique.Inventory.Infrastructure.Database;
@@ -8,6 +9,13 @@ namespace CineBoutique.Inventory.Infrastructure.Seeding;
 
 public sealed class InventoryDataSeeder
 {
+    private static readonly ProductSeed[] DemoProducts =
+    {
+        new(Guid.Parse("00000000-0000-0000-0000-000000000001"), "0000000000001", "DEMO-0001", "Produit démo EAN 0001"),
+        new(Guid.Parse("00000000-0000-0000-0000-000000000002"), "0000000000002", "DEMO-0002", "Produit démo EAN 0002"),
+        new(Guid.Parse("00000000-0000-0000-0000-000000000003"), "0000000000003", "DEMO-0003", "Produit démo EAN 0003")
+    };
+
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<InventoryDataSeeder> _logger;
 
@@ -25,141 +33,508 @@ public sealed class InventoryDataSeeder
 
         try
         {
-            await ClearExistingDataAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+            var operatorInfo = await GetFirstOperatorAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+            if (operatorInfo is null)
+            {
+                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                _logger.LogWarning("Aucun utilisateur existant n'a été trouvé pour le seed démo B1..B4.");
+                return;
+            }
 
-            var products = await SeedProductsAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
-            var locationId = await EnsureLocationAsync(connection, transaction, "B1", "Zone B1", cancellationToken)
-                .ConfigureAwait(false);
+            var resolvedOperator = operatorInfo;
 
-            await SeedInventoryRunsAsync(connection, transaction, locationId, products, cancellationToken)
-                .ConfigureAwait(false);
+            _logger.LogDebug(
+                "Utilisation de l'utilisateur {UserId} ({DisplayName}) pour les runs de démonstration.",
+                resolvedOperator.Id,
+                resolvedOperator.DisplayName);
+
+            var productIds = await EnsureDemoProductsAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+
+            var now = DateTimeOffset.UtcNow;
+            var locationCodes = new[] { "B1", "B2", "B3", "B4" };
+
+            foreach (var code in locationCodes)
+            {
+                var locationId = await FindLocationIdAsync(connection, transaction, code, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (!locationId.HasValue)
+                {
+                    _logger.LogWarning(
+                        "La zone {LocationCode} est introuvable, le seed démo est ignoré pour cette zone.",
+                        code);
+                    continue;
+                }
+
+                var locationSeed = BuildLocationSeed(code, locationId.Value, productIds, resolvedOperator, now);
+
+                await EnsureInventorySessionAsync(connection, transaction, locationSeed.Session, cancellationToken)
+                    .ConfigureAwait(false);
+
+                foreach (var run in locationSeed.Runs)
+                {
+                    var created = await EnsureCountingRunAsync(connection, transaction, run, cancellationToken)
+                        .ConfigureAwait(false);
+
+                    foreach (var line in run.Lines)
+                    {
+                        await EnsureCountLineAsync(connection, transaction, run.Id, line, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
+                    if (created)
+                    {
+                        _logger.LogDebug(
+                            "Run {RunId} ({CountType}) seedé pour la zone {LocationCode}.",
+                            run.Id,
+                            run.CountType,
+                            code);
+                    }
+                }
+            }
 
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+            _logger.LogInformation(
+                "Demo seed (B1..B4) applied: B1 CT1 in-progress; B2 CT1 completed + CT2 in-progress; B3 two completed same; B4 two completed different.");
         }
         catch (Exception ex)
         {
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-            _logger.LogError(ex, "Échec de l'initialisation des données de démonstration.");
+            _logger.LogError(ex, "Échec de l'initialisation des données de démonstration B1..B4.");
             throw;
         }
     }
 
-    private static async Task<IDictionary<string, Guid>> SeedProductsAsync(
+    private async Task<OperatorInfo?> GetFirstOperatorAsync(
         IDbConnection connection,
         IDbTransaction transaction,
         CancellationToken cancellationToken)
     {
-        const string insertSql = @"
-INSERT INTO ""Product"" (""Id"", ""Sku"", ""Name"", ""Ean"", ""CreatedAtUtc"")
-VALUES (@Id, @Sku, @Name, @Ean, @CreatedAtUtc)
-ON CONFLICT (""Ean"") DO UPDATE SET
-    ""Sku"" = EXCLUDED.""Sku"",
-    ""Name"" = EXCLUDED.""Name"",
-    ""CreatedAtUtc"" = EXCLUDED.""CreatedAtUtc""
-RETURNING ""Id"", ""Ean"";";
+        const string sql = @"
+SELECT id AS Id, display_name AS DisplayName
+FROM admin_users
+ORDER BY created_at ASC
+LIMIT 1;";
 
-        var utcNow = DateTimeOffset.UtcNow;
+        var row = await connection.QuerySingleOrDefaultAsync<OperatorInfo>(
+            new CommandDefinition(sql, transaction: transaction, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
 
-        var productDefinitions = new[]
-        {
-            new ProductSeed("3057065988108", "LPV-FR-001", "Liquide pour vape aux fruits rouges"),
-            new ProductSeed("9798347622207", "BK-BACKLOT-PARIS", "Livre Backlot Rues de Paris"),
-            new ProductSeed("3524891908353", "DAC-SERV-001", "Dacomex, serviettes nettoyantes")
-        };
+        return row == default ? null : row;
+    }
 
+    private async Task<IDictionary<string, Guid>> EnsureDemoProductsAsync(
+        IDbConnection connection,
+        IDbTransaction transaction,
+        CancellationToken cancellationToken)
+    {
         var products = new Dictionary<string, Guid>(StringComparer.Ordinal);
 
-        foreach (var definition in productDefinitions)
-        {
-            var productId = await connection.QuerySingleAsync<Guid>(
-                new CommandDefinition(
-                    insertSql,
-                    new
-                    {
-                        Id = Guid.NewGuid(),
-                        definition.Sku,
-                        definition.Name,
-                        definition.Ean,
-                        CreatedAtUtc = utcNow
-                    },
-                    transaction,
-                    cancellationToken: cancellationToken)).ConfigureAwait(false);
+        const string selectSql = "SELECT \"Id\" FROM \"Product\" WHERE \"Ean\" = @Ean LIMIT 1;";
+        const string insertSql = @"
+INSERT INTO ""Product"" (""Id"", ""Sku"", ""Name"", ""Ean"", ""CreatedAtUtc"")
+VALUES (@Id, @Sku, @Name, @Ean, @CreatedAtUtc);";
 
-            products[definition.Ean] = productId;
+        foreach (var definition in DemoProducts)
+        {
+            var existing = await connection.QuerySingleOrDefaultAsync<Guid?>(
+                new CommandDefinition(selectSql, new { definition.Ean }, transaction, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (existing.HasValue)
+            {
+                products[definition.Ean] = existing.Value;
+                continue;
+            }
+
+            await connection.ExecuteAsync(
+                    new CommandDefinition(
+                        insertSql,
+                        new
+                        {
+                            definition.Id,
+                            definition.Sku,
+                            definition.Name,
+                            definition.Ean,
+                            CreatedAtUtc = DateTimeOffset.UtcNow
+                        },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            products[definition.Ean] = definition.Id;
         }
 
         return products;
     }
 
-    private static async Task<Guid> EnsureLocationAsync(
+    private static async Task<Guid?> FindLocationIdAsync(
         IDbConnection connection,
         IDbTransaction transaction,
-        string code,
-        string label,
+        string locationCode,
         CancellationToken cancellationToken)
     {
-        const string selectSql = "SELECT \"Id\" FROM \"Location\" WHERE \"Code\" = @Code LIMIT 1;";
-        var existing = await connection.QuerySingleOrDefaultAsync<Guid?>(
-            new CommandDefinition(selectSql, new { Code = code }, transaction, cancellationToken: cancellationToken))
+        const string sql = @"
+SELECT ""Id""
+FROM ""Location""
+WHERE ""Code"" ILIKE @CodePattern OR ""Label"" ILIKE @LabelPattern
+ORDER BY ""Code"" ASC
+LIMIT 1;";
+
+        return await connection.QuerySingleOrDefaultAsync<Guid?>(
+                new CommandDefinition(
+                    sql,
+                    new
+                    {
+                        CodePattern = locationCode,
+                        LabelPattern = "%" + locationCode + "%"
+                    },
+                    transaction,
+                    cancellationToken: cancellationToken))
             .ConfigureAwait(false);
-
-        if (existing.HasValue)
-        {
-            return existing.Value;
-        }
-
-        const string insertSql = "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\") VALUES (@Id, @Code, @Label);";
-        var locationId = Guid.NewGuid();
-
-        await connection.ExecuteAsync(
-            new CommandDefinition(
-                insertSql,
-                new { Id = locationId, Code = code, Label = label },
-                transaction,
-                cancellationToken: cancellationToken)).ConfigureAwait(false);
-
-        return locationId;
     }
 
-    private static async Task SeedInventoryRunsAsync(
+    private static LocationSeed BuildLocationSeed(
+        string code,
+        Guid locationId,
+        IReadOnlyDictionary<string, Guid> products,
+        OperatorInfo operatorInfo,
+        DateTimeOffset now)
+    {
+        return code switch
+        {
+            "B1" => BuildB1Seed(locationId, products, operatorInfo, now),
+            "B2" => BuildB2Seed(locationId, products, operatorInfo, now),
+            "B3" => BuildB3Seed(locationId, products, operatorInfo, now),
+            "B4" => BuildB4Seed(locationId, products, operatorInfo, now),
+            _ => throw new InvalidOperationException($"La zone {code} n'est pas prise en charge pour le seed démo.")
+        };
+    }
+
+    private static LocationSeed BuildB1Seed(
+        Guid locationId,
+        IReadOnlyDictionary<string, Guid> products,
+        OperatorInfo operatorInfo,
+        DateTimeOffset now)
+    {
+        var runStart = now.AddMinutes(-15);
+
+        var session = new InventorySessionSeed(
+            Guid.Parse("20000000-0000-0000-0000-00000000B101"),
+            "Inventaire démo B1",
+            runStart,
+            null);
+
+        var run = new CountingRunSeed(
+            Guid.Parse("10000000-0000-0000-0000-00000000B101"),
+            session.Id,
+            locationId,
+            1,
+            runStart,
+            null,
+            operatorInfo.DisplayName,
+            new[]
+            {
+                CreateCountLine(
+                    Guid.Parse("30000000-0000-0000-0000-00000000B101"),
+                    products,
+                    "0000000000001",
+                    5m,
+                    runStart.AddMinutes(5)),
+                CreateCountLine(
+                    Guid.Parse("30000000-0000-0000-0000-00000000B102"),
+                    products,
+                    "0000000000002",
+                    2m,
+                    runStart.AddMinutes(7))
+            });
+
+        return new LocationSeed(session, new[] { run });
+    }
+
+    private static LocationSeed BuildB2Seed(
+        Guid locationId,
+        IReadOnlyDictionary<string, Guid> products,
+        OperatorInfo operatorInfo,
+        DateTimeOffset now)
+    {
+        var ct1Start = now.AddMinutes(-50);
+        var ct1End = now.AddMinutes(-40);
+        var ct2Start = now.AddMinutes(-10);
+
+        var session = new InventorySessionSeed(
+            Guid.Parse("20000000-0000-0000-0000-00000000B201"),
+            "Inventaire démo B2",
+            ct1Start,
+            null);
+
+        var ct1Run = new CountingRunSeed(
+            Guid.Parse("10000000-0000-0000-0000-00000000B201"),
+            session.Id,
+            locationId,
+            1,
+            ct1Start,
+            ct1End,
+            operatorInfo.DisplayName,
+            new[]
+            {
+                CreateCountLine(
+                    Guid.Parse("30000000-0000-0000-0000-00000000B201"),
+                    products,
+                    "0000000000001",
+                    3m,
+                    ct1Start.AddMinutes(6)),
+                CreateCountLine(
+                    Guid.Parse("30000000-0000-0000-0000-00000000B202"),
+                    products,
+                    "0000000000003",
+                    1m,
+                    ct1Start.AddMinutes(12))
+            });
+
+        var ct2Run = new CountingRunSeed(
+            Guid.Parse("10000000-0000-0000-0000-00000000B202"),
+            session.Id,
+            locationId,
+            2,
+            ct2Start,
+            null,
+            operatorInfo.DisplayName,
+            new[]
+            {
+                CreateCountLine(
+                    Guid.Parse("30000000-0000-0000-0000-00000000B221"),
+                    products,
+                    "0000000000001",
+                    4m,
+                    ct2Start.AddMinutes(4))
+            });
+
+        return new LocationSeed(session, new[] { ct1Run, ct2Run });
+    }
+
+    private static LocationSeed BuildB3Seed(
+        Guid locationId,
+        IReadOnlyDictionary<string, Guid> products,
+        OperatorInfo operatorInfo,
+        DateTimeOffset now)
+    {
+        var ct1Start = now.AddHours(-2);
+        var ct1End = ct1Start.AddMinutes(10);
+        var ct2Start = now.AddMinutes(-100);
+        var ct2End = ct2Start.AddMinutes(10);
+
+        var session = new InventorySessionSeed(
+            Guid.Parse("20000000-0000-0000-0000-00000000B301"),
+            "Inventaire démo B3",
+            ct1Start,
+            ct2End);
+
+        var ct1Run = new CountingRunSeed(
+            Guid.Parse("10000000-0000-0000-0000-00000000B301"),
+            session.Id,
+            locationId,
+            1,
+            ct1Start,
+            ct1End,
+            operatorInfo.DisplayName,
+            new[]
+            {
+                CreateCountLine(
+                    Guid.Parse("30000000-0000-0000-0000-00000000B301"),
+                    products,
+                    "0000000000001",
+                    5m,
+                    ct1Start.AddMinutes(4)),
+                CreateCountLine(
+                    Guid.Parse("30000000-0000-0000-0000-00000000B302"),
+                    products,
+                    "0000000000002",
+                    2m,
+                    ct1Start.AddMinutes(6)),
+                CreateCountLine(
+                    Guid.Parse("30000000-0000-0000-0000-00000000B303"),
+                    products,
+                    "0000000000003",
+                    1m,
+                    ct1Start.AddMinutes(8))
+            });
+
+        var ct2Run = new CountingRunSeed(
+            Guid.Parse("10000000-0000-0000-0000-00000000B302"),
+            session.Id,
+            locationId,
+            2,
+            ct2Start,
+            ct2End,
+            operatorInfo.DisplayName,
+            new[]
+            {
+                CreateCountLine(
+                    Guid.Parse("30000000-0000-0000-0000-00000000B321"),
+                    products,
+                    "0000000000001",
+                    5m,
+                    ct2Start.AddMinutes(4)),
+                CreateCountLine(
+                    Guid.Parse("30000000-0000-0000-0000-00000000B322"),
+                    products,
+                    "0000000000002",
+                    2m,
+                    ct2Start.AddMinutes(6)),
+                CreateCountLine(
+                    Guid.Parse("30000000-0000-0000-0000-00000000B323"),
+                    products,
+                    "0000000000003",
+                    1m,
+                    ct2Start.AddMinutes(8))
+            });
+
+        return new LocationSeed(session, new[] { ct1Run, ct2Run });
+    }
+
+    private static LocationSeed BuildB4Seed(
+        Guid locationId,
+        IReadOnlyDictionary<string, Guid> products,
+        OperatorInfo operatorInfo,
+        DateTimeOffset now)
+    {
+        var ct1Start = now.AddMinutes(-140);
+        var ct1End = ct1Start.AddMinutes(10);
+        var ct2Start = now.AddMinutes(-120);
+        var ct2End = ct2Start.AddMinutes(10);
+
+        var session = new InventorySessionSeed(
+            Guid.Parse("20000000-0000-0000-0000-00000000B401"),
+            "Inventaire démo B4",
+            ct1Start,
+            ct2End);
+
+        var ct1Run = new CountingRunSeed(
+            Guid.Parse("10000000-0000-0000-0000-00000000B401"),
+            session.Id,
+            locationId,
+            1,
+            ct1Start,
+            ct1End,
+            operatorInfo.DisplayName,
+            new[]
+            {
+                CreateCountLine(
+                    Guid.Parse("30000000-0000-0000-0000-00000000B401"),
+                    products,
+                    "0000000000001",
+                    5m,
+                    ct1Start.AddMinutes(4)),
+                CreateCountLine(
+                    Guid.Parse("30000000-0000-0000-0000-00000000B402"),
+                    products,
+                    "0000000000002",
+                    2m,
+                    ct1Start.AddMinutes(6))
+            });
+
+        var ct2Run = new CountingRunSeed(
+            Guid.Parse("10000000-0000-0000-0000-00000000B402"),
+            session.Id,
+            locationId,
+            2,
+            ct2Start,
+            ct2End,
+            operatorInfo.DisplayName,
+            new[]
+            {
+                CreateCountLine(
+                    Guid.Parse("30000000-0000-0000-0000-00000000B421"),
+                    products,
+                    "0000000000001",
+                    7m,
+                    ct2Start.AddMinutes(4)),
+                CreateCountLine(
+                    Guid.Parse("30000000-0000-0000-0000-00000000B422"),
+                    products,
+                    "0000000000002",
+                    2m,
+                    ct2Start.AddMinutes(6))
+            });
+
+        return new LocationSeed(session, new[] { ct1Run, ct2Run });
+    }
+
+    private static CountLineSeed CreateCountLine(
+        Guid lineId,
+        IReadOnlyDictionary<string, Guid> products,
+        string ean,
+        decimal quantity,
+        DateTimeOffset countedAtUtc)
+    {
+        if (!products.TryGetValue(ean, out var productId))
+        {
+            throw new InvalidOperationException($"Produit démo manquant pour l'EAN {ean}.");
+        }
+
+        return new CountLineSeed(lineId, productId, quantity, countedAtUtc);
+    }
+
+    private static async Task EnsureInventorySessionAsync(
         IDbConnection connection,
         IDbTransaction transaction,
-        Guid locationId,
-        IDictionary<string, Guid> products,
+        InventorySessionSeed session,
         CancellationToken cancellationToken)
     {
-        var sessionId = Guid.NewGuid();
-        var reference = DateTimeOffset.UtcNow;
+        const string selectSql = "SELECT 1 FROM \"InventorySession\" WHERE \"Id\" = @Id LIMIT 1;";
+        var exists = await connection.ExecuteScalarAsync<int?>(
+                new CommandDefinition(selectSql, new { session.Id }, transaction, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
 
-        const string insertSessionSql = "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\", \"CompletedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc, @CompletedAtUtc);";
+        if (exists.HasValue)
+        {
+            return;
+        }
+
+        const string insertSql = @"
+INSERT INTO ""InventorySession"" (""Id"", ""Name"", ""StartedAtUtc"", ""CompletedAtUtc"")
+VALUES (@Id, @Name, @StartedAtUtc, @CompletedAtUtc);";
+
         await connection.ExecuteAsync(
-            new CommandDefinition(
-                insertSessionSql,
-                new
-                {
-                    Id = sessionId,
-                    Name = "Inventaire Démo B1",
-                    StartedAtUtc = reference.AddDays(-2),
-                    CompletedAtUtc = (DateTimeOffset?)null
-                },
-                transaction,
-                cancellationToken: cancellationToken)).ConfigureAwait(false);
+                new CommandDefinition(
+                    insertSql,
+                    new
+                    {
+                        session.Id,
+                        session.Name,
+                        session.StartedAtUtc,
+                        session.CompletedAtUtc
+                    },
+                    transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+    }
 
-        var runs = CreateCountingRuns(sessionId, locationId, reference);
+    private static async Task<bool> EnsureCountingRunAsync(
+        IDbConnection connection,
+        IDbTransaction transaction,
+        CountingRunSeed run,
+        CancellationToken cancellationToken)
+    {
+        const string selectSql = "SELECT 1 FROM \"CountingRun\" WHERE \"Id\" = @Id LIMIT 1;";
+        var exists = await connection.ExecuteScalarAsync<int?>(
+                new CommandDefinition(selectSql, new { run.Id }, transaction, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
 
-        const string insertRunSql = @"
+        if (exists.HasValue)
+        {
+            return false;
+        }
+
+        const string insertSql = @"
 INSERT INTO ""CountingRun"" (""Id"", ""InventorySessionId"", ""LocationId"", ""StartedAtUtc"", ""CompletedAtUtc"", ""CountType"", ""OperatorDisplayName"")
 VALUES (@Id, @InventorySessionId, @LocationId, @StartedAtUtc, @CompletedAtUtc, @CountType, @OperatorDisplayName);";
 
-        const string insertLineSql = @"
-INSERT INTO ""CountLine"" (""Id"", ""CountingRunId"", ""ProductId"", ""Quantity"", ""CountedAtUtc"")
-VALUES (@Id, @CountingRunId, @ProductId, @Quantity, @CountedAtUtc);";
-
-        foreach (var run in runs)
-        {
-            await connection.ExecuteAsync(
+        await connection.ExecuteAsync(
                 new CommandDefinition(
-                    insertRunSql,
+                    insertSql,
                     new
                     {
                         run.Id,
@@ -167,122 +542,85 @@ VALUES (@Id, @CountingRunId, @ProductId, @Quantity, @CountedAtUtc);";
                         run.LocationId,
                         run.StartedAtUtc,
                         run.CompletedAtUtc,
-                        CountType = (short)run.CountType,
+                        CountType = run.CountType,
                         run.OperatorDisplayName
                     },
                     transaction,
-                    cancellationToken: cancellationToken)).ConfigureAwait(false);
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
 
-            foreach (var line in run.Lines)
-            {
-                if (!products.TryGetValue(line.ProductEan, out var productId))
-                {
-                    throw new InvalidOperationException($"Le produit avec l'EAN {line.ProductEan} est introuvable.");
-                }
-
-                await connection.ExecuteAsync(
-                    new CommandDefinition(
-                        insertLineSql,
-                        new
-                        {
-                            line.Id,
-                            CountingRunId = run.Id,
-                            ProductId = productId,
-                            line.Quantity,
-                            line.CountedAtUtc
-                        },
-                        transaction,
-                        cancellationToken: cancellationToken)).ConfigureAwait(false);
-            }
-        }
+        return true;
     }
 
-    private static IReadOnlyList<CountingRunSeed> CreateCountingRuns(Guid sessionId, Guid locationId, DateTimeOffset reference)
-    {
-        var aliceFirstStart = reference.AddDays(-2).AddHours(-2);
-        var aliceSecondStart = reference.AddDays(-1).AddHours(-1);
-        var bobStart = reference.AddHours(-12);
-
-        return new[]
-        {
-            new CountingRunSeed(
-                Guid.NewGuid(),
-                sessionId,
-                locationId,
-                aliceFirstStart,
-                aliceFirstStart.AddMinutes(45),
-                1,
-                "Alice",
-                new[]
-                {
-                    new CountLineSeed(Guid.NewGuid(), "3057065988108", 12.0m, aliceFirstStart.AddMinutes(10)),
-                    new CountLineSeed(Guid.NewGuid(), "9798347622207", 7.0m, aliceFirstStart.AddMinutes(18)),
-                    new CountLineSeed(Guid.NewGuid(), "3524891908353", 18.0m, aliceFirstStart.AddMinutes(27))
-                }),
-            new CountingRunSeed(
-                Guid.NewGuid(),
-                sessionId,
-                locationId,
-                aliceSecondStart,
-                aliceSecondStart.AddMinutes(50),
-                1,
-                "Alice",
-                new[]
-                {
-                    new CountLineSeed(Guid.NewGuid(), "3057065988108", 12.0m, aliceSecondStart.AddMinutes(12)),
-                    new CountLineSeed(Guid.NewGuid(), "9798347622207", 7.0m, aliceSecondStart.AddMinutes(22)),
-                    new CountLineSeed(Guid.NewGuid(), "3524891908353", 18.0m, aliceSecondStart.AddMinutes(35))
-                }),
-            new CountingRunSeed(
-                Guid.NewGuid(),
-                sessionId,
-                locationId,
-                bobStart,
-                bobStart.AddMinutes(40),
-                1,
-                "Bob",
-                new[]
-                {
-                    new CountLineSeed(Guid.NewGuid(), "3057065988108", 11.0m, bobStart.AddMinutes(8)),
-                    new CountLineSeed(Guid.NewGuid(), "9798347622207", 7.0m, bobStart.AddMinutes(16)),
-                    new CountLineSeed(Guid.NewGuid(), "3524891908353", 20.0m, bobStart.AddMinutes(28))
-                })
-        };
-    }
-
-    private static async Task ClearExistingDataAsync(
+    private static async Task EnsureCountLineAsync(
         IDbConnection connection,
         IDbTransaction transaction,
+        Guid runId,
+        CountLineSeed line,
         CancellationToken cancellationToken)
     {
-        var commands = new[]
-        {
-            "DELETE FROM \"Conflict\";",
-            "DELETE FROM \"CountLine\";",
-            "DELETE FROM \"CountingRun\";",
-            "DELETE FROM \"InventorySession\";",
-            "DELETE FROM \"Product\";"
-        };
+        const string selectSql = "SELECT 1 FROM \"CountLine\" WHERE \"CountingRunId\" = @RunId AND \"ProductId\" = @ProductId LIMIT 1;";
+        var exists = await connection.ExecuteScalarAsync<int?>(
+                new CommandDefinition(
+                    selectSql,
+                    new { RunId = runId, line.ProductId },
+                    transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
 
-        foreach (var command in commands)
+        if (exists.HasValue)
         {
-            await connection.ExecuteAsync(
-                    new CommandDefinition(command, transaction: transaction, cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
+            return;
         }
+
+        const string insertSql = @"
+INSERT INTO ""CountLine"" (""Id"", ""CountingRunId"", ""ProductId"", ""Quantity"", ""CountedAtUtc"")
+VALUES (@Id, @CountingRunId, @ProductId, @Quantity, @CountedAtUtc);";
+
+        await connection.ExecuteAsync(
+                new CommandDefinition(
+                    insertSql,
+                    new
+                    {
+                        line.Id,
+                        CountingRunId = runId,
+                        line.ProductId,
+                        line.Quantity,
+                        line.CountedAtUtc
+                    },
+                    transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
     }
 
-    private sealed record ProductSeed(string Ean, string Sku, string Name);
+    private sealed record OperatorInfo(Guid Id, string DisplayName);
+
+    private sealed record ProductSeed(Guid Id, string Ean, string Sku, string Name);
+
+    private sealed record InventorySessionSeed(Guid Id, string Name, DateTimeOffset StartedAtUtc, DateTimeOffset? CompletedAtUtc);
 
     private sealed record CountingRunSeed(
         Guid Id,
         Guid InventorySessionId,
         Guid LocationId,
+        short CountType,
         DateTimeOffset StartedAtUtc,
         DateTimeOffset? CompletedAtUtc,
-        short CountType,
         string OperatorDisplayName,
         IReadOnlyList<CountLineSeed> Lines);
 
-    private sealed record CountLineSeed(Guid Id, string ProductEan, decimal Quantity, DateTimeOffset CountedAtUtc);
+    private sealed record CountLineSeed(Guid Id, Guid ProductId, decimal Quantity, DateTimeOffset CountedAtUtc);
+
+    private readonly struct LocationSeed
+    {
+        public LocationSeed(InventorySessionSeed session, IReadOnlyList<CountingRunSeed> runs)
+        {
+            Session = session;
+            Runs = runs;
+        }
+
+        public InventorySessionSeed Session { get; }
+
+        public IReadOnlyList<CountingRunSeed> Runs { get; }
+    }
 }
