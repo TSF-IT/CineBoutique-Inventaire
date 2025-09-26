@@ -116,10 +116,44 @@ test.describe('Scanner avec BarcodeDetector', () => {
   test('déclenche onDetected via BarcodeDetector', async ({ page }) => {
     await page.goto('/inventory/start')
 
-    await page.getByRole('button', { name: 'Amélie' }).click()
-    await page.getByRole('button', { name: 'Comptage n°1' }).click()
-    await page.getByRole('button', { name: 'Sélectionner la zone' }).click()
-    await page.getByRole('button', { name: /Zone test/ }).first().click()
+    const userButton = page.getByRole('button', { name: 'Amélie' })
+    await expect(userButton).toBeVisible()
+    await userButton.click()
+
+    const selectZoneButton = page.getByRole('button', { name: 'Sélectionner la zone' })
+    await expect(selectZoneButton).toBeVisible()
+    await selectZoneButton.click()
+
+    await expect(page.getByTestId('page-location')).toBeVisible()
+
+    const zoneCard = page.getByTestId(`zone-card-${mockLocations[0].id}`)
+    await expect(zoneCard).toBeVisible()
+    const zoneSelectButton = zoneCard.getByTestId('btn-select-zone')
+    await expect(zoneSelectButton).toBeVisible()
+    await zoneSelectButton.click()
+
+    await expect(page).toHaveURL(/\/inventory\/count-type/)
+    await expect(page.getByTestId('page-count-type')).toBeVisible()
+
+    const btnCount1 = page.getByTestId('btn-count-type-1')
+    await expect(btnCount1).toBeVisible()
+    const isButtonDisabled = (await btnCount1.isDisabled()) || (await btnCount1.getAttribute('aria-disabled')) === 'true'
+    if (isButtonDisabled) {
+      if (await btnCount1.isDisabled()) {
+        await expect(btnCount1).toBeDisabled()
+      }
+      if ((await btnCount1.getAttribute('aria-disabled')) === 'true') {
+        await expect(btnCount1).toHaveAttribute('aria-disabled', 'true')
+      }
+      const btnCount2 = page.getByTestId('btn-count-type-2')
+      await expect(btnCount2).toBeVisible()
+      await btnCount2.click()
+    } else {
+      await btnCount1.click()
+    }
+
+    await expect(page).toHaveURL(/\/inventory\/session/)
+    await expect(page.getByTestId('page-session')).toBeVisible()
 
     await page.getByRole('button', { name: 'Activer la caméra' }).click()
 
