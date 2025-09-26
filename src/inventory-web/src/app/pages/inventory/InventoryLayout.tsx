@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Stepper } from '../../components/Stepper'
 import { Page } from '../../components/Page'
@@ -16,6 +17,25 @@ export const InventoryLayout = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const { selectedUser, countType, location: selectedLocation } = useInventory()
+  const stepperContainerRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const container = stepperContainerRef.current
+    if (!container) {
+      return
+    }
+
+    const zoneStepButton = container.querySelector<HTMLElement>(
+      'li:nth-of-type(2) button, li:nth-of-type(2) a, li:nth-of-type(2) [role="button"]',
+    )
+    if (zoneStepButton) {
+      zoneStepButton.setAttribute('data-testid', 'step-nav-location')
+      return
+    }
+
+    const zoneStepFallback = container.querySelector<HTMLElement>('li:nth-of-type(2)')
+    zoneStepFallback?.setAttribute('data-testid', 'step-nav-location')
+  }, [location.pathname])
 
   if (location.pathname === '/inventory') {
     navigate('/inventory/start', { replace: true })
@@ -39,7 +59,9 @@ export const InventoryLayout = () => {
             </div>
           </div>
         </div>
-        <Stepper steps={STEPS} activeIndex={activeIndex} />
+        <div ref={stepperContainerRef}>
+          <Stepper steps={STEPS} activeIndex={activeIndex} />
+        </div>
       </div>
       <div className="flex-1">
         <Outlet />
