@@ -143,6 +143,10 @@ test.describe('Scanner avec BarcodeDetector', () => {
       await btnCount1.click()
     }
 
+    const goToScanButton = page.getByRole('button', { name: 'Passer au scan' })
+    await expect(goToScanButton).toBeVisible({ timeout: 5000 })
+    await goToScanButton.click()
+
     await expect(page).toHaveURL(/\/inventory\/session/, { timeout: 5000 })
     await expect(page.getByTestId('page-session')).toBeVisible({ timeout: 5000 })
 

@@ -37,10 +37,25 @@ test.describe('Scanner fallback', () => {
 
   test('affiche le fallback photo lorsque la caméra est indisponible', async ({ page }) => {
     await page.addInitScript(() => {
-      // @ts-ignore
-      navigator.mediaDevices = navigator.mediaDevices || {}
-      navigator.mediaDevices.getUserMedia = () =>
-        Promise.reject(new Error('Caméra indisponible (test)'))
+      const navigatorWithMediaDevices = navigator as Navigator & {
+        mediaDevices?: (MediaDevices & Record<string, unknown>) | undefined
+      }
+      const getUserMediaMock = () => Promise.reject(new Error('Caméra indisponible (test)'))
+      const mediaDevices =
+        navigatorWithMediaDevices.mediaDevices ??
+        ({} as MediaDevices & Record<string, unknown>)
+
+      Object.defineProperty(mediaDevices, 'getUserMedia', {
+        configurable: true,
+        writable: true,
+        value: getUserMediaMock,
+      })
+
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        writable: true,
+        value: mediaDevices,
+      })
     })
 
     await page.goto('/inventory/start')
@@ -71,6 +86,10 @@ test.describe('Scanner fallback', () => {
     } else {
       await btnCount1.click()
     }
+
+    const goToScanButton = page.getByRole('button', { name: 'Passer au scan' })
+    await expect(goToScanButton).toBeVisible({ timeout: 5000 })
+    await goToScanButton.click()
 
     await expect(page).toHaveURL(/\/inventory\/session/, { timeout: 5000 })
     await expect(page.getByTestId('page-session')).toBeVisible({ timeout: 5000 })
