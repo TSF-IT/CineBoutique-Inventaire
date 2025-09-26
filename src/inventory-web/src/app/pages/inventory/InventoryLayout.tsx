@@ -3,12 +3,12 @@ import { Stepper } from '../../components/Stepper'
 import { Page } from '../../components/Page'
 import { useInventory } from '../../contexts/InventoryContext'
 
-const STEPS = ['Utilisateur', 'Type de comptage', 'Zone', 'Scan']
+const STEPS = ['Utilisateur', 'Zone', 'Type de comptage', 'Scan']
 
 const stepIndexByPath: Record<string, number> = {
   '/inventory/start': 0,
-  '/inventory/count-type': 1,
-  '/inventory/location': 2,
+  '/inventory/location': 1,
+  '/inventory/count-type': 2,
   '/inventory/session': 3,
 }
 
@@ -34,8 +34,8 @@ export const InventoryLayout = () => {
           <div className="flex flex-col items-end gap-3 sm:flex-row sm:items-center">
             <div className="hidden text-right text-xs text-slate-500 dark:text-slate-400 sm:block">
               <p>Utilisateur : {selectedUser ?? '–'}</p>
-              <p>Comptage : {countType ?? '–'}</p>
               <p>Zone : {selectedLocation?.label ?? '–'}</p>
+              <p>Comptage : {countType ?? '–'}</p>
             </div>
           </div>
         </div>
