@@ -37,9 +37,13 @@ public sealed class InventoryDataSeeder
             var operatorInfo = await GetFirstOperatorAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
             if (operatorInfo is null)
             {
-                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-                _logger.LogWarning("Aucun utilisateur existant n'a été trouvé pour le seed démo B1..B4.");
-                return;
+                await EnsureDefaultAdminOperatorAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+                operatorInfo = await GetFirstOperatorAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+            }
+
+            if (operatorInfo is null)
+            {
+                throw new InvalidOperationException("Aucun opérateur disponible après bootstrap admin.");
             }
 
             var resolvedOperator = operatorInfo;
@@ -123,6 +127,20 @@ LIMIT 1;";
             .ConfigureAwait(false);
 
         return row == default ? null : row;
+    }
+
+    private static Task EnsureDefaultAdminOperatorAsync(
+        IDbConnection connection,
+        IDbTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        const string sql = @"
+INSERT INTO admin_users (id, email, display_name, created_at)
+SELECT gen_random_uuid(), 'admin@local', 'admin', CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
+WHERE NOT EXISTS (SELECT 1 FROM admin_users WHERE email='admin@local');";
+
+        return connection.ExecuteAsync(
+            new CommandDefinition(sql, transaction: transaction, cancellationToken: cancellationToken));
     }
 
     private async Task<IDictionary<string, Guid>> EnsureDemoProductsAsync(
