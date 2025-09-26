@@ -117,48 +117,41 @@ test.describe('Scanner avec BarcodeDetector', () => {
     await page.goto('/inventory/start')
 
     const userButton = page.getByRole('button', { name: 'Amélie' })
-    await expect(userButton).toBeVisible()
+    await expect(userButton).toBeVisible({ timeout: 5000 })
     await userButton.click()
 
-    const selectZoneButton = page.getByRole('button', { name: 'Sélectionner la zone' })
-    await expect(selectZoneButton).toBeVisible()
-    await selectZoneButton.click()
-
-    await expect(page.getByTestId('page-location')).toBeVisible()
+    await expect(page).toHaveURL(/\/inventory\/location/, { timeout: 5000 })
+    await expect(page.getByTestId('page-location')).toBeVisible({ timeout: 5000 })
 
     const zoneCard = page.getByTestId(`zone-card-${mockLocations[0].id}`)
-    await expect(zoneCard).toBeVisible()
+    await expect(zoneCard).toBeVisible({ timeout: 5000 })
     const zoneSelectButton = zoneCard.getByTestId('btn-select-zone')
-    await expect(zoneSelectButton).toBeVisible()
+    await expect(zoneSelectButton).toBeVisible({ timeout: 5000 })
     await zoneSelectButton.click()
 
-    await expect(page).toHaveURL(/\/inventory\/count-type/)
-    await expect(page.getByTestId('page-count-type')).toBeVisible()
+    await expect(page).toHaveURL(/\/inventory\/count-type/, { timeout: 5000 })
+    await expect(page.getByTestId('page-count-type')).toBeVisible({ timeout: 5000 })
 
     const btnCount1 = page.getByTestId('btn-count-type-1')
-    await expect(btnCount1).toBeVisible()
-    const isButtonDisabled = (await btnCount1.isDisabled()) || (await btnCount1.getAttribute('aria-disabled')) === 'true'
-    if (isButtonDisabled) {
-      if (await btnCount1.isDisabled()) {
-        await expect(btnCount1).toBeDisabled()
-      }
-      if ((await btnCount1.getAttribute('aria-disabled')) === 'true') {
-        await expect(btnCount1).toHaveAttribute('aria-disabled', 'true')
-      }
-      const btnCount2 = page.getByTestId('btn-count-type-2')
-      await expect(btnCount2).toBeVisible()
+    await expect(btnCount1).toBeVisible({ timeout: 5000 })
+    const btnCount2 = page.getByTestId('btn-count-type-2')
+    await expect(btnCount2).toBeVisible({ timeout: 5000 })
+
+    if (await btnCount1.isDisabled()) {
       await btnCount2.click()
     } else {
       await btnCount1.click()
     }
 
-    await expect(page).toHaveURL(/\/inventory\/session/)
-    await expect(page.getByTestId('page-session')).toBeVisible()
+    await expect(page).toHaveURL(/\/inventory\/session/, { timeout: 5000 })
+    await expect(page.getByTestId('page-session')).toBeVisible({ timeout: 5000 })
 
-    await page.getByRole('button', { name: 'Activer la caméra' }).click()
+    const enableCameraButton = page.getByRole('button', { name: 'Activer la caméra' })
+    await expect(enableCameraButton).toBeVisible({ timeout: 5000 })
+    await enableCameraButton.click()
 
     await expect(page.getByText('Produit simulé ajouté')).toBeVisible({ timeout: 5000 })
-    await expect(page.getByText(`EAN ${simulatedEan}`)).toBeVisible()
-    await expect(page.getByRole('listitem').filter({ hasText: simulatedEan })).toBeVisible()
+    await expect(page.getByText(`EAN ${simulatedEan}`)).toBeVisible({ timeout: 5000 })
+    await expect(page.getByRole('listitem').filter({ hasText: simulatedEan })).toBeVisible({ timeout: 5000 })
   })
 })
