@@ -1,5 +1,5 @@
-import { LocationsSchema } from '../types/inventory'
-import type { CountType, InventorySummary, Location, ManualProductInput, Product } from '../types/inventory'
+import { CountType, LocationsSchema } from '../types/inventory'
+import type { InventorySummary, Location, ManualProductInput, Product } from '../types/inventory'
 import http, { HttpError } from '@/lib/api/http'
 import { API_BASE } from '@/lib/api/config'
 
