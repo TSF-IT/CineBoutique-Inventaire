@@ -1,6 +1,10 @@
 import { z } from 'zod'
 
-export type CountType = 1 | 2 | 3
+export enum CountType {
+  Count1 = 1,
+  Count2 = 2,
+  Count3 = 3,
+}
 
 export interface InventorySummary {
   activeSessions: number
@@ -18,9 +22,12 @@ export const LocationSchema = z.object({
   activeCountType: z
     .number()
     .int()
-    .refine((value) => value === 1 || value === 2 || value === 3, {
-      message: 'activeCountType doit être 1, 2 ou 3',
-    })
+    .refine(
+      (value) => value === CountType.Count1 || value === CountType.Count2 || value === CountType.Count3,
+      {
+        message: 'activeCountType doit être 1, 2 ou 3',
+      },
+    )
     .nullable()
     .optional(),
   activeStartedAtUtc: z.string().datetime({ offset: true }).nullable().optional(),

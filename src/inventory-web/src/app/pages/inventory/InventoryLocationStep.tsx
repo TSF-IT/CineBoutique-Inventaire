@@ -9,6 +9,7 @@ import { ErrorPanel } from '../../components/ErrorPanel'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { SlidingPanel } from '../../components/SlidingPanel'
 import { useInventory } from '../../contexts/InventoryContext'
+import { CountType } from '../../types/inventory'
 import type { Location } from '../../types/inventory'
 import type { HttpError } from '@/lib/api/http'
 
@@ -86,6 +87,19 @@ const resolveErrorPanel = (
     return { title: 'Erreur', details: error }
   }
   return { title: 'Erreur', details: 'Une erreur inattendue est survenue.' }
+}
+
+const toCountType = (value: number | null | undefined): CountType | undefined => {
+  if (value === CountType.Count1) {
+    return CountType.Count1
+  }
+  if (value === CountType.Count2) {
+    return CountType.Count2
+  }
+  if (value === CountType.Count3) {
+    return CountType.Count3
+  }
+  return undefined
 }
 
 export const InventoryLocationStep = () => {
@@ -219,7 +233,8 @@ export const InventoryLocationStep = () => {
     setActionLoading(true)
     setActionError(null)
     try {
-      const effectiveCountType = countType ?? zone.activeCountType ?? 1
+      const fallbackCountType = toCountType(zone.activeCountType) ?? CountType.Count1
+      const effectiveCountType = countType ?? fallbackCountType
       await restartInventoryRun(zone.id, effectiveCountType)
       proceedToCountTypeStep(zone, { sessionId: null, resetSession: true })
     } catch (err) {
