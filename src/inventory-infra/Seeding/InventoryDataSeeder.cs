@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Data;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
@@ -66,7 +67,7 @@ public sealed class InventoryDataSeeder
                     continue;
                 }
 
-                var locationSeed = BuildLocationSeed(code, locationId.Value, productIds, resolvedOperator, now);
+                var locationSeed = BuildLocationSeed(code, locationId.Value, new ReadOnlyDictionary<string, Guid>(productIds), resolvedOperator, now);
 
                 await EnsureInventorySessionAsync(connection, transaction, locationSeed.Session, cancellationToken)
                     .ConfigureAwait(false);
