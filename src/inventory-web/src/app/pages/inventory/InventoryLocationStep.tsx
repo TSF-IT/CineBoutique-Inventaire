@@ -290,7 +290,7 @@ export const InventoryLocationStep = () => {
   const errorPanel = useMemo(() => resolveErrorPanel(error), [error])
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6" data-testid="page-location">
       <Card className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -331,6 +331,7 @@ export const InventoryLocationStep = () => {
                       ? 'border-brand-400 bg-brand-500/10 text-brand-700 dark:bg-brand-500/20 dark:text-brand-100'
                       : 'border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200'
                   }`}
+                  data-testid={`zone-card-${zone.id}`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex flex-col gap-1">
@@ -342,7 +343,7 @@ export const InventoryLocationStep = () => {
                     {renderStatus(zone)}
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <Button onClick={() => handleLocationSelection(zone)}>
+                    <Button data-testid="btn-select-zone" onClick={() => handleLocationSelection(zone)}>
                       Choisir cette zone
                     </Button>
                     {zone.isBusy && (
