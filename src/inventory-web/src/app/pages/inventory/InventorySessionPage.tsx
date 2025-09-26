@@ -335,7 +335,7 @@ export const InventorySessionPage = () => {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6" data-testid="page-session">
       <Card className="space-y-4">
         <div className="flex flex-col gap-2">
           <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Session de comptage</h2>
