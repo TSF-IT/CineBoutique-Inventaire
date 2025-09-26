@@ -298,7 +298,15 @@ if (applyMigrations && !disableMigrations)
             var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
             runner.MigrateUp();
 
-            if (app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup"))
+            var connectionDetails = new NpgsqlConnectionStringBuilder(connectionString);
+            app.Logger.LogDebug(
+                "ConnectionStrings:Default (host/db)={HostAndDatabase}",
+                $"{connectionDetails.Host}/{connectionDetails.Database}");
+
+            var seedOnStartup = app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup");
+            app.Logger.LogDebug("AppSettings:SeedOnStartup={SeedOnStartup}", seedOnStartup);
+
+            if (seedOnStartup)
             {
                 var seeder = scope.ServiceProvider.GetService<InventoryDataSeeder>();
                 if (seeder is not null)
