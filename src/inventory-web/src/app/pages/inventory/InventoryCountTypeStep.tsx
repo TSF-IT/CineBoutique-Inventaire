@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/Card'
 import { useInventory } from '../../contexts/InventoryContext'
+import { CountType } from '../../types/inventory'
 
 export const InventoryCountTypeStep = () => {
   const navigate = useNavigate()
@@ -16,7 +17,7 @@ export const InventoryCountTypeStep = () => {
     }
   }, [location, navigate, selectedUser])
 
-  const handleSelect = (type: 1 | 2) => {
+  const handleSelect = (type: CountType) => {
     setCountType(type)
   }
 
@@ -28,13 +29,13 @@ export const InventoryCountTypeStep = () => {
           Sélectionnez le niveau de précision souhaité. Le comptage double implique une double validation.
         </p>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          {[1, 2].map((option) => {
+          {[CountType.Count1, CountType.Count2].map((option) => {
             const isSelected = countType === option
             return (
               <button
                 key={option}
                 type="button"
-                onClick={() => handleSelect(option as 1 | 2)}
+                onClick={() => handleSelect(option)}
                 className={`flex flex-col gap-2 rounded-3xl border px-6 py-6 text-left transition-all ${
                   isSelected
                     ? 'border-brand-400 bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-100'
@@ -43,7 +44,7 @@ export const InventoryCountTypeStep = () => {
               >
                 <span className="text-4xl font-bold">Comptage n°{option}</span>
                 <span className="text-sm text-slate-500 dark:text-slate-400">
-                  {option === 1
+                  {option === CountType.Count1
                     ? 'Rapide et efficace pour les zones à faible risque.'
                     : 'Deux passages consécutifs pour fiabiliser les zones sensibles.'}
                 </span>
