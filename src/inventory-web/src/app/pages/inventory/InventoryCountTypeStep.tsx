@@ -22,7 +22,7 @@ export const InventoryCountTypeStep = () => {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6" data-testid="page-count-type">
       <Card className="flex flex-col gap-4">
         <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Quel type de comptage ?</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -41,6 +41,7 @@ export const InventoryCountTypeStep = () => {
                     ? 'border-brand-400 bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-100'
                     : 'border-slate-200 bg-white text-slate-800 hover:border-brand-400/40 hover:bg-brand-50 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200'
                 }`}
+                data-testid={option === CountType.Count1 ? 'btn-count-type-1' : 'btn-count-type-2'}
               >
                 <span className="text-4xl font-bold">Comptage n°{option}</span>
                 <span className="text-sm text-slate-500 dark:text-slate-400">
