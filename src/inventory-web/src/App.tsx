@@ -28,8 +28,8 @@ const RouterView = () => {
       children: [
         { index: true, element: <Navigate to="start" replace /> },
         { path: 'start', element: <InventoryUserStep /> },
-        { path: 'count-type', element: <InventoryCountTypeStep /> },
         { path: 'location', element: <InventoryLocationStep /> },
+        { path: 'count-type', element: <InventoryCountTypeStep /> },
         { path: 'session', element: <InventorySessionPage /> },
       ],
     },

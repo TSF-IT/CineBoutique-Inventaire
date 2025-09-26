@@ -106,8 +106,7 @@ export const InventoryLocationStep = () => {
       setLoading(true)
       setError(null)
       try {
-        const effectiveCountType = countType ?? 1
-        const data = await fetchLocations({ countType: effectiveCountType })
+        const data = await fetchLocations(countType ? { countType } : undefined)
         if (!isCancelled()) {
           setLocations(Array.isArray(data) ? data : [])
         }
@@ -134,10 +133,8 @@ export const InventoryLocationStep = () => {
   useEffect(() => {
     if (!selectedUser) {
       navigate('/inventory/start', { replace: true })
-    } else if (!countType) {
-      navigate('/inventory/count-type', { replace: true })
     }
-  }, [countType, navigate, selectedUser])
+  }, [navigate, selectedUser])
 
   useEffect(() => {
     let cancelled = false
@@ -196,31 +193,35 @@ export const InventoryLocationStep = () => {
     setActionLoading(false)
   }
 
-  const handleStart = (zone: Location) => {
+  const proceedToCountTypeStep = (
+    zone: Location,
+    options?: { sessionId?: string | null; resetSession?: boolean },
+  ) => {
     setLocation(zone)
-    clearSession()
-    setSessionId(null)
+    if (options?.resetSession) {
+      clearSession()
+    }
+    if (options && 'sessionId' in options) {
+      setSessionId(options.sessionId ?? null)
+    }
     closeSheet()
-    navigate('/inventory/session')
+    navigate('/inventory/count-type')
   }
 
   const handleJoin = (zone: Location) => {
     if (!zone.activeRunId) {
       return
     }
-    setLocation(zone)
-    setSessionId(zone.activeRunId)
-    closeSheet()
-    navigate('/inventory/session')
+    proceedToCountTypeStep(zone, { sessionId: zone.activeRunId, resetSession: false })
   }
 
   const handleRestart = async (zone: Location) => {
     setActionLoading(true)
     setActionError(null)
     try {
-      const effectiveCountType = countType ?? 1
+      const effectiveCountType = countType ?? zone.activeCountType ?? 1
       await restartInventoryRun(zone.id, effectiveCountType)
-      handleStart(zone)
+      proceedToCountTypeStep(zone, { sessionId: null, resetSession: true })
     } catch (err) {
       if (isHttpError(err)) {
         setActionError(formatHttpError(err, 'Redémarrage impossible'))
@@ -234,14 +235,17 @@ export const InventoryLocationStep = () => {
     }
   }
 
+  const handleSessionOptions = (zone: Location) => {
+    setActionLocation(zone)
+    setActionError(null)
+    setActionSheetOpen(true)
+  }
+
   const handleLocationSelection = (zone: Location) => {
-    if (zone.isBusy) {
-      setActionLocation(zone)
-      setActionError(null)
-      setActionSheetOpen(true)
-    } else {
-      handleStart(zone)
-    }
+    proceedToCountTypeStep(zone, {
+      sessionId: zone.activeRunId ?? null,
+      resetSession: !zone.activeRunId,
+    })
   }
 
   const renderStatus = (zone: Location) => {
@@ -303,22 +307,15 @@ export const InventoryLocationStep = () => {
         {!loading && !errorPanel && (
           <div className="flex flex-col gap-3">
             {(Array.isArray(filteredLocations) ? filteredLocations : []).map((zone) => {
-              const isSelected = location?.id === zone.id || actionLocation?.id === zone.id
+              const isSelected = location?.id === zone.id
               return (
-                <button
+                <div
                   key={zone.id}
-                  type="button"
-                  onClick={() => handleLocationSelection(zone)}
-                  className={`flex min-h-[68px] flex-col gap-3 rounded-3xl border px-5 py-4 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${
+                  className={`flex flex-col gap-3 rounded-3xl border px-5 py-4 transition-all ${
                     isSelected
                       ? 'border-brand-400 bg-brand-500/10 text-brand-700 dark:bg-brand-500/20 dark:text-brand-100'
-                      : 'border-slate-200 bg-white text-slate-800 hover:border-brand-400/40 hover:bg-brand-50 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200'
+                      : 'border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200'
                   }`}
-                  aria-label={
-                    zone.isBusy
-                      ? `Zone ${zone.label} occupée, afficher les options`
-                      : `Zone ${zone.label} libre, démarrer le comptage`
-                  }
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex flex-col gap-1">
@@ -329,11 +326,17 @@ export const InventoryLocationStep = () => {
                     </div>
                     {renderStatus(zone)}
                   </div>
-                  <span className="mt-2 inline-flex items-center justify-between text-sm font-medium text-brand-600 dark:text-brand-200">
-                    {zone.isBusy ? 'Voir les options' : 'Démarrer'}
-                    <span aria-hidden>›</span>
-                  </span>
-                </button>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Button onClick={() => handleLocationSelection(zone)}>
+                      Choisir cette zone
+                    </Button>
+                    {zone.isBusy && (
+                      <Button variant="ghost" onClick={() => handleSessionOptions(zone)}>
+                        Gérer la session en cours
+                      </Button>
+                    )}
+                  </div>
+                </div>
               )
             })}
             {(Array.isArray(filteredLocations) ? filteredLocations : []).length === 0 && (
@@ -389,10 +392,14 @@ export const InventoryLocationStep = () => {
         ) : (
           <div className="flex flex-col gap-4">
             <p className="text-sm text-slate-600 dark:text-slate-300">
-              Cette zone est disponible. Lancez le comptage quand vous êtes prêt.
+              Cette zone est disponible. Préparez la prochaine étape lorsque vous êtes prêt.
             </p>
-            <Button fullWidth className="py-3" onClick={() => actionLocation && handleStart(actionLocation)}>
-              Démarrer le comptage
+            <Button
+              fullWidth
+              className="py-3"
+              onClick={() => actionLocation && proceedToCountTypeStep(actionLocation, { sessionId: null, resetSession: true })}
+            >
+              Choisir cette zone
             </Button>
           </div>
         )}

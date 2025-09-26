@@ -6,13 +6,15 @@ import { useInventory } from '../../contexts/InventoryContext'
 
 export const InventoryCountTypeStep = () => {
   const navigate = useNavigate()
-  const { selectedUser, countType, setCountType } = useInventory()
+  const { selectedUser, countType, setCountType, location } = useInventory()
 
   useEffect(() => {
     if (!selectedUser) {
       navigate('/inventory/start', { replace: true })
+    } else if (!location) {
+      navigate('/inventory/location', { replace: true })
     }
-  }, [navigate, selectedUser])
+  }, [location, navigate, selectedUser])
 
   const handleSelect = (type: 1 | 2) => {
     setCountType(type)
@@ -51,8 +53,8 @@ export const InventoryCountTypeStep = () => {
         </div>
       </Card>
       {countType && (
-        <Button fullWidth className="py-4" onClick={() => navigate('/inventory/location')}>
-          Sélectionner la zone
+        <Button fullWidth className="py-4" onClick={() => navigate('/inventory/session')}>
+          Passer au scan
         </Button>
       )}
     </div>
