@@ -362,7 +362,11 @@ export const InventoryLocationStep = () => {
                     {renderStatus(zone)}
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <Button data-testid="btn-select-zone" onClick={() => handleLocationSelection(zone)}>
+                    <Button
+                      data-testid="btn-select-zone"
+                      aria-label={`Zone ${zone.label} ${zone.isBusy ? 'occupée' : 'libre'}`}
+                      onClick={() => handleLocationSelection(zone)}
+                    >
                       Choisir cette zone
                     </Button>
                     {zone.isBusy && (
@@ -432,7 +436,14 @@ export const InventoryLocationStep = () => {
             <Button
               fullWidth
               className="py-3"
-              onClick={() => actionLocation && proceedToCountTypeStep(actionLocation, { sessionId: null, resetSession: true })}
+              aria-label={
+                actionLocation
+                  ? `Zone ${actionLocation.label} ${actionLocation.isBusy ? 'occupée' : 'libre'}`
+                  : 'Choisir cette zone'
+              }
+              onClick={() =>
+                actionLocation && proceedToCountTypeStep(actionLocation, { sessionId: null, resetSession: true })
+              }
             >
               Choisir cette zone
             </Button>
