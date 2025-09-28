@@ -12,30 +12,36 @@ export interface InventorySummary {
   lastActivityUtc: string | null
 }
 
-export const LocationSchema = z.object({
+const IsoDateNullable = z.preprocess((value) => {
+  if (value == null || value === '') {
+    return null
+  }
+  if (value instanceof Date) {
+    return value
+  }
+  if (typeof value === 'string') {
+    const timestamp = Date.parse(value)
+    return Number.isNaN(timestamp) ? value : new Date(timestamp)
+  }
+  return value
+}, z.date().nullable())
+
+export const LocationDto = z.object({
   id: z.string().uuid(),
   code: z.string(),
   label: z.string(),
   isBusy: z.boolean(),
   busyBy: z.string().nullable(),
-  activeRunId: z.string().uuid().nullable().optional(),
-  activeCountType: z
-    .number()
-    .int()
-    .refine(
-      (value) => value === CountType.Count1 || value === CountType.Count2 || value === CountType.Count3,
-      {
-        message: 'activeCountType doit être 1, 2 ou 3',
-      },
-    )
-    .nullable()
-    .optional(),
-  activeStartedAtUtc: z.string().datetime({ offset: true }).nullable().optional(),
+  activeRunId: z.string().uuid().nullable(),
+  activeCountType: z.number().int().nullable(),
+  activeStartedAtUtc: IsoDateNullable,
 })
 
-export const LocationsSchema = z.array(LocationSchema)
+export const LocationSchema = LocationDto
 
-export type Location = z.infer<typeof LocationSchema>
+export const LocationsSchema = z.array(LocationDto)
+
+export type Location = z.infer<typeof LocationDto>
 
 export interface Product {
   ean: string
