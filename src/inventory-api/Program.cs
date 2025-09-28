@@ -541,7 +541,11 @@ SELECT
     l.""Label"",
     (ar.""ActiveRunId"" IS NOT NULL) AS ""IsBusy"",
     ar.""BusyBy"",
-    ar.""ActiveRunId"",
+    CASE
+        WHEN ar.""ActiveRunId"" IS NULL THEN NULL
+        WHEN ar.""ActiveRunId""::text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' THEN ar.""ActiveRunId""
+        ELSE NULL
+    END AS ""ActiveRunId"",
     ar.""ActiveCountType"",
     ar.""ActiveStartedAtUtc""
 FROM ""Location"" l

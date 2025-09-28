@@ -12,9 +12,9 @@ public sealed class InventoryDataSeeder
 {
     private static readonly ProductSeed[] DemoProducts =
     {
-        new(Guid.Parse("00000000-0000-0000-0000-000000000001"), "0000000000001", "DEMO-0001", "Produit démo EAN 0001"),
-        new(Guid.Parse("00000000-0000-0000-0000-000000000002"), "0000000000002", "DEMO-0002", "Produit démo EAN 0002"),
-        new(Guid.Parse("00000000-0000-0000-0000-000000000003"), "0000000000003", "DEMO-0003", "Produit démo EAN 0003")
+        new(Guid.Parse("00000000-0000-4000-8000-000000000001"), "0000000000001", "DEMO-0001", "Produit démo EAN 0001"),
+        new(Guid.Parse("00000000-0000-4000-8000-000000000002"), "0000000000002", "DEMO-0002", "Produit démo EAN 0002"),
+        new(Guid.Parse("00000000-0000-4000-8000-000000000003"), "0000000000003", "DEMO-0003", "Produit démo EAN 0003")
     };
 
     private readonly IDbConnectionFactory _connectionFactory;
@@ -240,13 +240,13 @@ LIMIT 1;";
         var runStart = now.AddMinutes(-15);
 
         var session = new InventorySessionSeed(
-            Guid.Parse("20000000-0000-0000-0000-00000000B101"),
+            Guid.Parse("20000000-0000-4000-8000-00000000B101"),
             "Inventaire démo B1",
             runStart,
             null);
 
         var run = new CountingRunSeed(
-            Guid.Parse("10000000-0000-0000-0000-00000000B101"),
+            Guid.Parse("10000000-0000-4000-8000-00000000B101"),
             session.Id,
             locationId,
             1,
@@ -256,13 +256,13 @@ LIMIT 1;";
             new[]
             {
                 CreateCountLine(
-                    Guid.Parse("30000000-0000-0000-0000-00000000B101"),
+                    Guid.Parse("30000000-0000-4000-8000-00000000B101"),
                     products,
                     "0000000000001",
                     5m,
                     runStart.AddMinutes(5)),
                 CreateCountLine(
-                    Guid.Parse("30000000-0000-0000-0000-00000000B102"),
+                    Guid.Parse("30000000-0000-4000-8000-00000000B102"),
                     products,
                     "0000000000002",
                     2m,
@@ -283,13 +283,13 @@ LIMIT 1;";
         var ct2Start = now.AddMinutes(-10);
 
         var session = new InventorySessionSeed(
-            Guid.Parse("20000000-0000-0000-0000-00000000B201"),
+            Guid.Parse("20000000-0000-4000-8000-00000000B201"),
             "Inventaire démo B2",
             ct1Start,
             null);
 
         var ct1Run = new CountingRunSeed(
-            Guid.Parse("10000000-0000-0000-0000-00000000B201"),
+            Guid.Parse("10000000-0000-4000-8000-00000000B201"),
             session.Id,
             locationId,
             1,
@@ -299,13 +299,13 @@ LIMIT 1;";
             new[]
             {
                 CreateCountLine(
-                    Guid.Parse("30000000-0000-0000-0000-00000000B201"),
+                    Guid.Parse("30000000-0000-4000-8000-00000000B201"),
                     products,
                     "0000000000001",
                     3m,
                     ct1Start.AddMinutes(6)),
                 CreateCountLine(
-                    Guid.Parse("30000000-0000-0000-0000-00000000B202"),
+                    Guid.Parse("30000000-0000-4000-8000-00000000B202"),
                     products,
                     "0000000000003",
                     1m,
@@ -313,7 +313,7 @@ LIMIT 1;";
             });
 
         var ct2Run = new CountingRunSeed(
-            Guid.Parse("10000000-0000-0000-0000-00000000B202"),
+            Guid.Parse("10000000-0000-4000-8000-00000000B202"),
             session.Id,
             locationId,
             2,
@@ -323,7 +323,7 @@ LIMIT 1;";
             new[]
             {
                 CreateCountLine(
-                    Guid.Parse("30000000-0000-0000-0000-00000000B221"),
+                    Guid.Parse("30000000-0000-4000-8000-00000000B221"),
                     products,
                     "0000000000001",
                     4m,
@@ -345,13 +345,13 @@ LIMIT 1;";
         var ct2End = ct2Start.AddMinutes(10);
 
         var session = new InventorySessionSeed(
-            Guid.Parse("20000000-0000-0000-0000-00000000B301"),
+            Guid.Parse("20000000-0000-4000-8000-00000000B301"),
             "Inventaire démo B3",
             ct1Start,
             ct2End);
 
         var ct1Run = new CountingRunSeed(
-            Guid.Parse("10000000-0000-0000-0000-00000000B301"),
+            Guid.Parse("10000000-0000-4000-8000-00000000B301"),
             session.Id,
             locationId,
             1,
@@ -361,19 +361,19 @@ LIMIT 1;";
             new[]
             {
                 CreateCountLine(
-                    Guid.Parse("30000000-0000-0000-0000-00000000B301"),
+                    Guid.Parse("30000000-0000-4000-8000-00000000B301"),
                     products,
                     "0000000000001",
                     5m,
                     ct1Start.AddMinutes(4)),
                 CreateCountLine(
-                    Guid.Parse("30000000-0000-0000-0000-00000000B302"),
+                    Guid.Parse("30000000-0000-4000-8000-00000000B302"),
                     products,
                     "0000000000002",
                     2m,
                     ct1Start.AddMinutes(6)),
                 CreateCountLine(
-                    Guid.Parse("30000000-0000-0000-0000-00000000B303"),
+                    Guid.Parse("30000000-0000-4000-8000-00000000B303"),
                     products,
                     "0000000000003",
                     1m,
@@ -381,7 +381,7 @@ LIMIT 1;";
             });
 
         var ct2Run = new CountingRunSeed(
-            Guid.Parse("10000000-0000-0000-0000-00000000B302"),
+            Guid.Parse("10000000-0000-4000-8000-00000000B302"),
             session.Id,
             locationId,
             2,
@@ -391,19 +391,19 @@ LIMIT 1;";
             new[]
             {
                 CreateCountLine(
-                    Guid.Parse("30000000-0000-0000-0000-00000000B321"),
+                    Guid.Parse("30000000-0000-4000-8000-00000000B321"),
                     products,
                     "0000000000001",
                     5m,
                     ct2Start.AddMinutes(4)),
                 CreateCountLine(
-                    Guid.Parse("30000000-0000-0000-0000-00000000B322"),
+                    Guid.Parse("30000000-0000-4000-8000-00000000B322"),
                     products,
                     "0000000000002",
                     2m,
                     ct2Start.AddMinutes(6)),
                 CreateCountLine(
-                    Guid.Parse("30000000-0000-0000-0000-00000000B323"),
+                    Guid.Parse("30000000-0000-4000-8000-00000000B323"),
                     products,
                     "0000000000003",
                     1m,
@@ -425,13 +425,13 @@ LIMIT 1;";
         var ct2End = ct2Start.AddMinutes(10);
 
         var session = new InventorySessionSeed(
-            Guid.Parse("20000000-0000-0000-0000-00000000B401"),
+            Guid.Parse("20000000-0000-4000-8000-00000000B401"),
             "Inventaire démo B4",
             ct1Start,
             ct2End);
 
         var ct1Run = new CountingRunSeed(
-            Guid.Parse("10000000-0000-0000-0000-00000000B401"),
+            Guid.Parse("10000000-0000-4000-8000-00000000B401"),
             session.Id,
             locationId,
             1,
@@ -441,13 +441,13 @@ LIMIT 1;";
             new[]
             {
                 CreateCountLine(
-                    Guid.Parse("30000000-0000-0000-0000-00000000B401"),
+                    Guid.Parse("30000000-0000-4000-8000-00000000B401"),
                     products,
                     "0000000000001",
                     5m,
                     ct1Start.AddMinutes(4)),
                 CreateCountLine(
-                    Guid.Parse("30000000-0000-0000-0000-00000000B402"),
+                    Guid.Parse("30000000-0000-4000-8000-00000000B402"),
                     products,
                     "0000000000002",
                     2m,
@@ -455,7 +455,7 @@ LIMIT 1;";
             });
 
         var ct2Run = new CountingRunSeed(
-            Guid.Parse("10000000-0000-0000-0000-00000000B402"),
+            Guid.Parse("10000000-0000-4000-8000-00000000B402"),
             session.Id,
             locationId,
             2,
@@ -465,13 +465,13 @@ LIMIT 1;";
             new[]
             {
                 CreateCountLine(
-                    Guid.Parse("30000000-0000-0000-0000-00000000B421"),
+                    Guid.Parse("30000000-0000-4000-8000-00000000B421"),
                     products,
                     "0000000000001",
                     7m,
                     ct2Start.AddMinutes(4)),
                 CreateCountLine(
-                    Guid.Parse("30000000-0000-0000-0000-00000000B422"),
+                    Guid.Parse("30000000-0000-4000-8000-00000000B422"),
                     products,
                     "0000000000002",
                     2m,
