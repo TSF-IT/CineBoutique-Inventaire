@@ -9,7 +9,7 @@ interface InventoryContextValue {
   sessionId: string | null
   items: InventoryItem[]
   setSelectedUser: (user: string) => void
-  setCountType: (type: CountType) => void
+  setCountType: (type: CountType | null) => void
   setLocation: (location: Location) => void
   setSessionId: (sessionId: string | null) => void
   addOrIncrementItem: (product: Product, options?: { isManual?: boolean }) => void
@@ -44,7 +44,7 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
     setState(() => ({ ...INITIAL_STATE, selectedUser: user }))
   }
 
-  const setCountType = (type: CountType) => {
+  const setCountType = (type: CountType | null) => {
     setState((prev) => ({ ...prev, countType: type }))
   }
 

@@ -13,6 +13,24 @@ describe('LocationsSchema', () => {
         activeRunId: null,
         activeCountType: null,
         activeStartedAtUtc: '2025-09-28T16:04:34.514414+00:00',
+        countStatuses: [
+          {
+            countType: 1,
+            status: 'completed',
+            runId: 'a7b66fdd-3c9a-4f1f-9a4d-9a5a5cfdf111',
+            operatorDisplayName: 'Alex',
+            startedAtUtc: '2025-09-27T09:00:00+00:00',
+            completedAtUtc: '2025-09-27T09:30:00+00:00',
+          },
+          {
+            countType: 2,
+            status: 'not_started',
+            runId: null,
+            operatorDisplayName: null,
+            startedAtUtc: null,
+            completedAtUtc: null,
+          },
+        ],
       },
     ]
 
@@ -24,5 +42,8 @@ describe('LocationsSchema', () => {
     expect(result[0].busyBy).toBeNull()
     expect(result[0].activeRunId).toBeNull()
     expect(result[0].activeCountType).toBeNull()
+    expect(result[0].countStatuses).toHaveLength(2)
+    expect(result[0].countStatuses[0].status).toBe('completed')
+    expect(result[0].countStatuses[1].status).toBe('not_started')
   })
 })
