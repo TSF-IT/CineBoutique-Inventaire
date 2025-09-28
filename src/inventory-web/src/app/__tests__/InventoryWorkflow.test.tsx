@@ -26,7 +26,6 @@ const {
   fetchProductMock,
   restartInventoryRunMock,
   reserveLocation,
-  busyLocation,
 } = vi.hoisted(() => {
   const reserveLocation = {
     id: 'zone-1',
@@ -58,7 +57,6 @@ const {
     fetchProductMock: vi.fn(() => Promise.resolve({ ean: '123', name: 'Popcorn caramel' })),
     restartInventoryRunMock: vi.fn(() => Promise.resolve()),
     reserveLocation,
-    busyLocation,
   }
 })
 
@@ -83,15 +81,22 @@ const renderInventoryRoutes = (initialEntry: string, options?: RenderInventoryOp
     const inventory = useInventory()
     const initializedRef = useRef(false)
     const [ready, setReady] = useState(!initialize)
+    const initializeRef = useRef(initialize)
 
     useLayoutEffect(() => {
-      if (initializedRef.current || !initialize) {
+      initializeRef.current = initialize
+    })
+
+    useLayoutEffect(() => {
+      const initializer = initializeRef.current
+
+      if (initializedRef.current || !initializer) {
         return
       }
-      initialize(inventory)
+      initializer(inventory)
       initializedRef.current = true
       setReady(true)
-    }, [initialize, inventory])
+    }, [inventory])
 
     if (!ready) {
       return null
