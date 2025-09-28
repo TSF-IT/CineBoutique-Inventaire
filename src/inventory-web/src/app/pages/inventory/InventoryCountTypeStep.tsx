@@ -199,22 +199,21 @@ export const InventoryCountTypeStep = () => {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {DISPLAYED_COUNT_TYPES.map((option) => {
             const status = countStatuses.find((item) => item.countType === option)
+            const operatorDisplayName = status?.operatorDisplayName ?? null
             const isSelected = countType === option
             const isCompleted = status?.status === 'completed'
+            const isInProgress = status?.status === 'in_progress'
             const isInProgressByOther =
-              status?.status === 'in_progress' &&
-              status.operatorDisplayName &&
-              status.operatorDisplayName !== selectedUser
+              Boolean(isInProgress && operatorDisplayName && operatorDisplayName !== selectedUser)
             const isInProgressByUser =
-              status?.status === 'in_progress' &&
-              (!status.operatorDisplayName || status.operatorDisplayName === selectedUser)
+              Boolean(isInProgress && (!operatorDisplayName || operatorDisplayName === selectedUser))
             const isDisabled = zoneCompleted || isCompleted || isInProgressByOther
             const helperMessage = (() => {
               if (zoneCompleted || isCompleted) {
                 return 'Comptage terminé.'
               }
               if (isInProgressByOther) {
-                return `En cours par ${status?.operatorDisplayName}.`
+                return `En cours par ${operatorDisplayName}.`
               }
               if (isInProgressByUser) {
                 return 'Reprenez votre comptage en cours.'

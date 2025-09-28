@@ -889,7 +889,7 @@ static Guid? SanitizeRunId(Guid? runId)
     }
 
     Span<char> buffer = stackalloc char[36];
-    if (!runId.Value.TryFormat(buffer, out var written, "D", CultureInfo.InvariantCulture) || written != 36)
+    if (!runId.Value.TryFormat(buffer, out var written, "D") || written != 36)
     {
         return null;
     }
