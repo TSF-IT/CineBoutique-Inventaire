@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-const mockHttpModule = (implementation: (...args: any[]) => unknown) => {
+const mockHttpModule = (implementation: (...args: unknown[]) => unknown) => {
   vi.doMock('@/lib/api/http', () => ({
     default: implementation,
   }))
