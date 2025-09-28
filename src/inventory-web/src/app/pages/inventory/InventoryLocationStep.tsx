@@ -192,11 +192,11 @@ export const InventoryLocationStep = () => {
     void loadLocations()
   }
 
-  const computeDurationLabel = (startedAtUtc: string | null | undefined) => {
+  const computeDurationLabel = (startedAtUtc: string | Date | null | undefined) => {
     if (!startedAtUtc) {
       return null
     }
-    const started = new Date(startedAtUtc)
+    const started = startedAtUtc instanceof Date ? startedAtUtc : new Date(startedAtUtc)
     if (Number.isNaN(started.getTime())) {
       return null
     }
