@@ -1,12 +1,9 @@
 import type { ReactNode } from 'react'
-import { AuthProvider } from '../contexts/AuthContext'
 import { InventoryProvider } from '../contexts/InventoryContext'
 import { ThemeProvider } from '../../theme/ThemeProvider'
 
 export const AppProviders = ({ children }: { children: ReactNode }) => (
   <ThemeProvider>
-    <AuthProvider>
-      <InventoryProvider>{children}</InventoryProvider>
-    </AuthProvider>
+    <InventoryProvider>{children}</InventoryProvider>
   </ThemeProvider>
 )

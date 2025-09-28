@@ -8,7 +8,6 @@ using System.Linq;
 using System.Text.Json; // + JSON writer pour health
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using CineBoutique.Inventory.Api.Auth;
 using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Models;
@@ -86,21 +85,6 @@ if (string.IsNullOrWhiteSpace(connectionString))
 {
     throw new InvalidOperationException("La chaîne de connexion 'Default' doit être configurée.");
 }
-
-var adminAuthSection = builder.Configuration.GetSection("AdminAuth");
-var adminAuthOptions = adminAuthSection.Get<AdminAuthOptions>() ?? throw new InvalidOperationException("La section de configuration 'AdminAuth' est manquante.");
-
-if (string.IsNullOrWhiteSpace(adminAuthOptions.UserName))
-{
-    throw new InvalidOperationException("Le nom d'utilisateur admin doit être configuré.");
-}
-
-if (string.IsNullOrWhiteSpace(adminAuthOptions.Password))
-{
-    throw new InvalidOperationException("Le mot de passe admin doit être configuré.");
-}
-
-builder.Services.Configure<AdminAuthOptions>(adminAuthSection);
 
 builder.Services
     .AddFluentMigratorCore()
@@ -354,7 +338,6 @@ if (useSerilog)
 }
 
 app.UseAuthentication();
-app.UseMiddleware<AdminBasicAuthenticationMiddleware>();
 app.UseAuthorization();
 
 // -------- Health endpoints (JSON propre) --------

@@ -7,12 +7,10 @@ import { Card } from '../../components/Card'
 import { EmptyState } from '../../components/EmptyState'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { SwipeActionItem } from '../../components/SwipeActionItem'
-import { useAuth } from '../../contexts/AuthContext'
 import { useAsync } from '../../hooks/useAsync'
 import type { Location } from '../../types/inventory'
 
 export const AdminLocationsPage = () => {
-  const { user } = useAuth()
   const { data, loading, error, execute, setData } = useAsync(fetchLocations, [], { initialValue: [] })
   const [newLocationName, setNewLocationName] = useState('')
   const [creating, setCreating] = useState(false)
@@ -66,10 +64,6 @@ export const AdminLocationsPage = () => {
     } catch {
       setFeedback('Suppression impossible. Retentez plus tard.')
     }
-  }
-
-  if (!user?.roles.includes('Admin')) {
-    return <Card>Accès réservé aux administrateurs.</Card>
   }
 
   return (

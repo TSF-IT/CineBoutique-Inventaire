@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/Card'
@@ -7,15 +6,7 @@ import { CountType } from '../../types/inventory'
 
 export const InventoryCountTypeStep = () => {
   const navigate = useNavigate()
-  const { selectedUser, countType, setCountType, location } = useInventory()
-
-  useEffect(() => {
-    if (!selectedUser) {
-      navigate('/inventory/start', { replace: true })
-    } else if (!location) {
-      navigate('/inventory/location', { replace: true })
-    }
-  }, [location, navigate, selectedUser])
+  const { countType, setCountType } = useInventory()
 
   const handleSelect = (type: CountType) => {
     setCountType(type)
@@ -55,8 +46,8 @@ export const InventoryCountTypeStep = () => {
         </div>
       </Card>
       {countType && (
-        <Button fullWidth className="py-4" onClick={() => navigate('/inventory/session')}>
-          Passer au scan
+        <Button fullWidth className="py-4" onClick={() => navigate('/inventory/location')}>
+          Sélectionner la zone
         </Button>
       )}
     </div>
