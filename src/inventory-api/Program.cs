@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text.Json; // + JSON writer pour health
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using CineBoutique.Inventory.Api.Auth;
 using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Models;
