@@ -35,6 +35,18 @@ export const LocationDto = z.object({
   activeRunId: z.string().uuid().nullable(),
   activeCountType: z.number().int().nullable(),
   activeStartedAtUtc: IsoDateNullable,
+  countStatuses: z
+    .array(
+      z.object({
+        countType: z.number().int(),
+        status: z.enum(['not_started', 'in_progress', 'completed']),
+        runId: z.string().uuid().nullable(),
+        operatorDisplayName: z.string().nullable(),
+        startedAtUtc: IsoDateNullable,
+        completedAtUtc: IsoDateNullable,
+      }),
+    )
+    .default([]),
 })
 
 export const LocationSchema = LocationDto
@@ -42,6 +54,8 @@ export const LocationSchema = LocationDto
 export const LocationsSchema = z.array(LocationDto)
 
 export type Location = z.infer<typeof LocationDto>
+
+export type LocationCountStatus = Location['countStatuses'][number]
 
 export interface Product {
   ean: string
