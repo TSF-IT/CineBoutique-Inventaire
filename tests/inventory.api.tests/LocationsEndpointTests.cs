@@ -14,6 +14,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Infrastructure.Database;
@@ -100,6 +101,63 @@ public class LocationsEndpointTests : IAsyncLifetime
     {
         var response = await _client.GetAsync("/api/locations?countType=5");
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetLocations_ReturnsNullForInvalidRunIdentifiers()
+    {
+        await ResetDatabaseAsync();
+
+        var seed = await SeedDataAsync(countType: 1);
+
+        var invalidLocationId = Guid.NewGuid();
+        await SeedLocationAsync(invalidLocationId, code: "S3", label: "Zone S3");
+
+        var invalidRunId = Guid.Parse("10000000-0000-0000-0000-00000000B555");
+        var sessionId = Guid.NewGuid();
+        var startedAt = DateTimeOffset.UtcNow.AddMinutes(-3);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+            await using var connection = connectionFactory.CreateConnection();
+            await EnsureConnectionOpenAsync(connection);
+
+            const string insertSessionSql = "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc);";
+            await connection.ExecuteAsync(insertSessionSql, new { Id = sessionId, Name = "Session invalide", StartedAtUtc = startedAt });
+
+            const string insertRunSql = @"
+INSERT INTO ""CountingRun"" (""Id"", ""InventorySessionId"", ""LocationId"", ""StartedAtUtc"", ""CountType"", ""OperatorDisplayName"")
+VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType, @Operator);";
+
+            await connection.ExecuteAsync(
+                insertRunSql,
+                new
+                {
+                    Id = invalidRunId,
+                    SessionId = sessionId,
+                    LocationId = invalidLocationId,
+                    StartedAtUtc = startedAt,
+                    CountType = 1,
+                    Operator = "bob.martin"
+                });
+        }
+
+        var response = await _client.GetAsync("/api/locations?countType=1");
+        response.EnsureSuccessStatusCode();
+
+        var payload = await response.Content.ReadFromJsonAsync<List<LocationResponse>>();
+        Assert.NotNull(payload);
+
+        var regex = new Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        var validLocation = payload!.Single(item => item.Code == "S1");
+        Assert.Equal(seed.RunId, validLocation.ActiveRunId);
+        Assert.True(regex.IsMatch(validLocation.ActiveRunId!.Value.ToString()));
+
+        var invalidLocation = payload.Single(item => item.Code == "S3");
+        Assert.True(invalidLocation.IsBusy);
+        Assert.Null(invalidLocation.ActiveRunId);
     }
 
     [Fact]
