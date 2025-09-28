@@ -6,24 +6,58 @@ export interface HttpError extends Error {
   problem?: unknown
 }
 
+const SNIPPET_MAX_LENGTH = 512
+
+const truncateSnippet = (value: string) =>
+  value.length <= SNIPPET_MAX_LENGTH ? value : value.slice(0, SNIPPET_MAX_LENGTH)
+
+const buildHttpError = (
+  message: string,
+  res: Response,
+  bodyText: string,
+  problem?: unknown,
+): HttpError =>
+  Object.assign(new Error(message), {
+    status: res.status ?? 0,
+    url: res.url,
+    body: truncateSnippet(bodyText),
+    problem,
+  })
+
 export async function http(input: string, init?: RequestInit) {
   const res = await fetch(input, init)
   if (!res.ok) {
     const bodyText = await res.text().catch(() => '')
-    const err: HttpError = Object.assign(new Error(`HTTP ${res.status}`), {
-      status: res.status,
-      url: res.url,
-      body: bodyText,
-      // Essaie de parser en JSON si possible
-      problem: (() => {
-        try { return JSON.parse(bodyText) } catch { return undefined }
-      })()
-    })
+    const err: HttpError = buildHttpError(`HTTP ${res.status}`, res, bodyText, (() => {
+      try { return JSON.parse(bodyText) } catch { return undefined }
+    })())
     throw err
   }
-  // tente JSON sinon texte
+
+  const contentType = res.headers.get('content-type') ?? ''
   const text = await res.text()
-  try { return JSON.parse(text) } catch { return text }
+  const snippet = truncateSnippet(text)
+
+  if (!contentType.toLowerCase().startsWith('application/json')) {
+    throw buildHttpError(
+      `Réponse non JSON (content-type: ${contentType || 'inconnu'})`,
+      res,
+      text,
+      {
+        contentType,
+        snippet,
+      },
+    )
+  }
+
+  try {
+    return JSON.parse(text)
+  } catch {
+    throw buildHttpError('JSON invalide', res, text, {
+      contentType,
+      snippet,
+    })
+  }
 }
 
 export default http
