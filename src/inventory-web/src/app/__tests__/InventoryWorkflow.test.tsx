@@ -11,22 +11,8 @@ import { InventoryLocationStep } from '../pages/inventory/InventoryLocationStep'
 import { InventorySessionPage } from '../pages/inventory/InventorySessionPage'
 import { useInventory } from '../contexts/InventoryContext'
 import { CountType } from '../types/inventory'
-import type { HttpError } from '@/lib/api/http'
 
-const createHttpError = (overrides?: Partial<HttpError>) =>
-  Object.assign(new Error(overrides?.message ?? 'HTTP 500'), {
-    status: overrides?.status ?? 500,
-    url: overrides?.url ?? 'http://localhost:8080/api',
-    body: overrides?.body,
-    problem: overrides?.problem,
-  })
-
-const {
-  fetchLocationsMock,
-  fetchProductMock,
-  restartInventoryRunMock,
-  reserveLocation,
-} = vi.hoisted(() => {
+const { fetchLocationsMock, fetchProductMock, reserveLocation } = vi.hoisted(() => {
   const reserveLocation = {
     id: 'zone-1',
     code: 'RES',
@@ -36,6 +22,24 @@ const {
     activeRunId: null,
     activeCountType: null,
     activeStartedAtUtc: null,
+    countStatuses: [
+      {
+        countType: 1,
+        status: 'not_started' as const,
+        runId: null,
+        operatorDisplayName: null,
+        startedAtUtc: null,
+        completedAtUtc: null,
+      },
+      {
+        countType: 2,
+        status: 'not_started' as const,
+        runId: null,
+        operatorDisplayName: null,
+        startedAtUtc: null,
+        completedAtUtc: null,
+      },
+    ],
   }
   const busyLocation = {
     id: 'zone-2',
@@ -46,6 +50,24 @@ const {
     activeCountType: 1,
     activeRunId: 'run-1',
     activeStartedAtUtc: new Date().toISOString(),
+    countStatuses: [
+      {
+        countType: 1,
+        status: 'in_progress' as const,
+        runId: 'run-1',
+        operatorDisplayName: 'paul.dupont',
+        startedAtUtc: new Date().toISOString(),
+        completedAtUtc: null,
+      },
+      {
+        countType: 2,
+        status: 'not_started' as const,
+        runId: null,
+        operatorDisplayName: null,
+        startedAtUtc: null,
+        completedAtUtc: null,
+      },
+    ],
   }
   return {
     fetchLocationsMock: vi.fn(() =>
@@ -55,7 +77,6 @@ const {
       ]),
     ),
     fetchProductMock: vi.fn(() => Promise.resolve({ ean: '123', name: 'Popcorn caramel' })),
-    restartInventoryRunMock: vi.fn(() => Promise.resolve()),
     reserveLocation,
   }
 })
@@ -66,7 +87,6 @@ vi.mock('../api/inventoryApi', async (importOriginal) => {
     ...actual,
     fetchLocations: fetchLocationsMock,
     fetchProductByEan: fetchProductMock,
-    restartInventoryRun: restartInventoryRunMock,
   }
 })
 
@@ -111,8 +131,8 @@ const renderInventoryRoutes = (initialEntry: string, options?: RenderInventoryOp
         <Route path="/inventory" element={<InventoryLayout />}>
           <Route index element={<InventoryUserStep />} />
           <Route path="start" element={<InventoryUserStep />} />
-          <Route path="count-type" element={<InventoryCountTypeStep />} />
           <Route path="location" element={<InventoryLocationStep />} />
+          <Route path="count-type" element={<InventoryCountTypeStep />} />
           <Route path="session" element={<InventorySessionPage />} />
         </Route>
       </Routes>
@@ -130,42 +150,93 @@ describe('Workflow d\'inventaire', () => {
   beforeEach(() => {
     fetchLocationsMock.mockClear()
     fetchProductMock.mockClear()
-    restartInventoryRunMock.mockClear()
   })
 
-  it('permet de sélectionner utilisateur, type et zone', async () => {
+  it('permet de sélectionner utilisateur, zone et type en respectant les statuts', async () => {
     renderInventoryRoutes('/inventory/start')
 
     fireEvent.click(screen.getByRole('button', { name: 'Amélie' }))
 
-    await waitFor(() => expect(screen.getAllByTestId('page-count-type').length).toBeGreaterThan(0))
+    const locationPages = await screen.findAllByTestId('page-location')
+    expect(locationPages).not.toHaveLength(0)
 
-    const countTypePages = screen.getAllByTestId('page-count-type')
+    await waitFor(() => expect(fetchLocationsMock).toHaveBeenCalledTimes(1))
+    expect(fetchLocationsMock.mock.calls[0]).toHaveLength(0)
+
+    const busyZoneCard = await screen.findByTestId('zone-card-zone-2')
+    expect(within(busyZoneCard).getByText(/Comptage n°1 en cours/i)).toBeInTheDocument()
+
+    fireEvent.click(within(busyZoneCard).getByTestId('btn-select-zone'))
+
+    const countTypePages = await screen.findAllByTestId('page-count-type')
     const activeCountTypePage = countTypePages[countTypePages.length - 1]
+
     const countTypeOneButton = within(activeCountTypePage).getByTestId('btn-count-type-1')
-    fireEvent.click(countTypeOneButton)
-    const selectZoneButtons = screen.getAllByRole('button', { name: 'Sélectionner la zone' })
-    fireEvent.click(selectZoneButtons[selectZoneButtons.length - 1])
+    expect(countTypeOneButton).toBeDisabled()
 
-    await waitFor(() => expect(fetchLocationsMock).toHaveBeenCalledWith({ countType: 1 }))
-
-    const busyZoneCards = screen.getAllByTestId('zone-card-zone-2')
-    const busyZoneCard = busyZoneCards[busyZoneCards.length - 1]
-    fireEvent.click(within(busyZoneCard).getByRole('button', { name: 'Gérer la session en cours' }))
-
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Reprendre le comptage en cours' })).toBeInTheDocument(),
-    )
-
-    fireEvent.click(screen.getByRole('button', { name: 'Fermer' }))
-
-    const freeZoneCards = screen.getAllByTestId('zone-card-zone-1')
-    const freeZoneCard = freeZoneCards[freeZoneCards.length - 1]
-    fireEvent.click(within(freeZoneCard).getByTestId('btn-select-zone'))
+    const countTypeTwoButton = within(activeCountTypePage).getByTestId('btn-count-type-2')
+    expect(countTypeTwoButton).not.toBeDisabled()
+    fireEvent.click(countTypeTwoButton)
 
     await waitFor(() =>
       expect(
-        screen.getAllByText((content) => content.replace(/\s+/g, ' ').includes('Zone : Réserve')).length,
+        screen.getAllByText((content) => content.replace(/\s+/g, ' ').includes('Zone : Salle 1')).length,
+      ).toBeGreaterThan(0),
+    )
+    await waitFor(() =>
+      expect(
+        screen.getAllByText((content) => content.replace(/\s+/g, ' ').includes('Comptage : 2')).length,
+      ).toBeGreaterThan(0),
+    )
+  })
+
+  it('autorise la reprise de son propre comptage', async () => {
+    const selfRunLocation = {
+      ...reserveLocation,
+      id: 'zone-3',
+      code: 'SAL2',
+      label: 'Salle 2',
+      isBusy: true,
+      busyBy: 'Amélie',
+      activeRunId: 'run-self',
+      activeCountType: 1,
+      activeStartedAtUtc: new Date().toISOString(),
+      countStatuses: [
+        {
+          countType: 1,
+          status: 'in_progress' as const,
+          runId: 'run-self',
+          operatorDisplayName: 'Amélie',
+          startedAtUtc: new Date().toISOString(),
+          completedAtUtc: null,
+        },
+        reserveLocation.countStatuses[1],
+      ],
+    }
+
+    fetchLocationsMock.mockResolvedValueOnce([
+      { ...reserveLocation },
+      selfRunLocation,
+    ])
+
+    renderInventoryRoutes('/inventory/start')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Amélie' }))
+
+    const selfZoneCard = await screen.findByTestId('zone-card-zone-3')
+    fireEvent.click(within(selfZoneCard).getByTestId('btn-select-zone'))
+
+    const countTypePages = await screen.findAllByTestId('page-count-type')
+    const activeCountTypePage = countTypePages[countTypePages.length - 1]
+
+    const countTypeOneButton = within(activeCountTypePage).getByTestId('btn-count-type-1')
+    expect(countTypeOneButton).not.toBeDisabled()
+
+    fireEvent.click(countTypeOneButton)
+
+    await waitFor(() =>
+      expect(
+        screen.getAllByText((content) => content.replace(/\s+/g, ' ').includes('Zone : Salle 2')).length,
       ).toBeGreaterThan(0),
     )
     await waitFor(() =>
@@ -193,34 +264,4 @@ describe('Workflow d\'inventaire', () => {
     await waitFor(() => expect(screen.getByText('Popcorn caramel')).toBeInTheDocument())
   })
 
-  it("affiche la feuille d'actions et gère un redémarrage en erreur", async () => {
-    restartInventoryRunMock.mockRejectedValueOnce(
-      createHttpError({ message: 'HTTP 500', status: 500, body: 'Erreur serveur', url: 'http://localhost:8080/api' }),
-    )
-
-    renderInventoryRoutes('/inventory/start')
-
-    fireEvent.click(screen.getByRole('button', { name: 'Amélie' }))
-    await waitFor(() => expect(screen.getAllByTestId('page-count-type').length).toBeGreaterThan(0))
-
-    const countTypePages = screen.getAllByTestId('page-count-type')
-    const activeCountTypePage = countTypePages[countTypePages.length - 1]
-    const countTypeOneButton = within(activeCountTypePage).getByTestId('btn-count-type-1')
-    fireEvent.click(countTypeOneButton)
-    const selectZoneButtons = screen.getAllByRole('button', { name: 'Sélectionner la zone' })
-    fireEvent.click(selectZoneButtons[selectZoneButtons.length - 1])
-
-    await waitFor(() => expect(fetchLocationsMock).toHaveBeenCalledWith({ countType: 1 }))
-
-    const busyZoneCards = screen.getAllByTestId('zone-card-zone-2')
-    const busyZoneCard = busyZoneCards[busyZoneCards.length - 1]
-    fireEvent.click(within(busyZoneCard).getByRole('button', { name: 'Gérer la session en cours' }))
-    const restartButton = await screen.findByRole('button', { name: 'Redémarrer un nouveau comptage' })
-
-    fireEvent.click(restartButton)
-
-    await waitFor(() => expect(restartInventoryRunMock).toHaveBeenCalledWith('zone-2', 1))
-    const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent('Redémarrage impossible')
-  })
 })

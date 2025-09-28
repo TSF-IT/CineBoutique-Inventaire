@@ -22,7 +22,7 @@ export const InventoryUserStep = () => {
     if (operator !== selectedUser) {
       setSelectedUser(operator)
     }
-    navigate('/inventory/count-type')
+    navigate('/inventory/location')
   }
 
   return (
@@ -60,7 +60,7 @@ export const InventoryUserStep = () => {
         </div>
       </Card>
       {selectedUser && (
-        <Button fullWidth className="py-4" onClick={() => navigate('/inventory/count-type')}>
+        <Button fullWidth className="py-4" onClick={() => navigate('/inventory/location')}>
           Continuer
         </Button>
       )}
