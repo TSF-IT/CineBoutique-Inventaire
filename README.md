@@ -18,6 +18,17 @@ Chaque projet .NET cible .NET 8 et applique des analyzers configurés en avertis
 
 Une stack Docker Compose est fournie pour orchestrer l'API ASP.NET Core, la base PostgreSQL et la PWA React servie par Nginx.
 
+### Flux de développement
+
+```bash
+docker compose down -v --remove-orphans
+docker compose up --build -d
+curl -i http://localhost:8080/api/ping  # doit répondre 200 + {"message":"pong"}
+npm -w src/inventory-web run dev
+```
+
+> ℹ️ Le conteneur API tourne avec `ASPNETCORE_ENVIRONMENT=Production`, mais la configuration CORS autorise par défaut les appels provenant du front en développement (`localhost:5173`).
+
 ```bash
 docker compose up --build -d
 ```
