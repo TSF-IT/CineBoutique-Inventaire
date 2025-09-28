@@ -1,4 +1,7 @@
 services:
+  api:
+    ports:
+      - "8080:8080"
   web:
     build:
       context: ./src/inventory-web
