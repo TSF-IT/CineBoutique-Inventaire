@@ -618,7 +618,7 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
             if (open is not null)
             {
                 status.Status = LocationCountStatus.InProgress;
-                status.RunId = open.RunId;
+                status.RunId = SanitizeRunId(open.RunId);
                 status.OperatorDisplayName = open.OperatorDisplayName;
                 status.StartedAtUtc = open.StartedAtUtc;
             }
@@ -628,7 +628,7 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                 if (completed is not null)
                 {
                     status.Status = LocationCountStatus.Completed;
-                    status.RunId = completed.RunId;
+                    status.RunId = SanitizeRunId(completed.RunId);
                     status.OperatorDisplayName = completed.OperatorDisplayName;
                     status.StartedAtUtc = completed.StartedAtUtc;
                     status.CompletedAtUtc = completed.CompletedAtUtc;
@@ -640,7 +640,18 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
 
         location.CountStatuses = statuses;
 
-        var active = statuses.FirstOrDefault(state => state.Status == LocationCountStatus.InProgress);
+        LocationCountStatusDto? active = null;
+        if (countType is { } requestedType)
+        {
+            active = statuses.FirstOrDefault(
+                state => state.Status == LocationCountStatus.InProgress && state.CountType == requestedType);
+        }
+
+        if (active is null && countType is null)
+        {
+            active = statuses.FirstOrDefault(state => state.Status == LocationCountStatus.InProgress);
+        }
+
         location.IsBusy = active is not null;
         location.ActiveRunId = active?.RunId;
         location.ActiveCountType = active?.CountType;
@@ -868,6 +879,31 @@ static string DescribeCountType(int countType)
         3 => "contrôle",
         _ => $"type {countType}"
     };
+}
+
+static Guid? SanitizeRunId(Guid? runId)
+{
+    if (runId is null)
+    {
+        return null;
+    }
+
+    Span<char> buffer = stackalloc char[36];
+    if (!runId.Value.TryFormat(buffer, out var written, "D", CultureInfo.InvariantCulture) || written != 36)
+    {
+        return null;
+    }
+
+    var versionChar = buffer[14];
+    if (versionChar is < '1' or > '8')
+    {
+        return null;
+    }
+
+    var variantChar = char.ToLowerInvariant(buffer[19]);
+    return variantChar is '8' or '9' or 'a' or 'b'
+        ? runId
+        : null;
 }
 
 file sealed record LocationCountStatusRow(
