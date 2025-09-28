@@ -64,15 +64,6 @@ test.describe('Scanner fallback', () => {
     await expect(userButton).toBeVisible({ timeout: 5000 })
     await userButton.click()
 
-    await expect(page).toHaveURL(/\/inventory\/location/, { timeout: 5000 })
-    await expect(page.getByTestId('page-location')).toBeVisible({ timeout: 5000 })
-
-    const zoneCard = page.getByTestId(`zone-card-${mockLocations[0].id}`)
-    await expect(zoneCard).toBeVisible({ timeout: 5000 })
-    const zoneSelectButton = zoneCard.getByTestId('btn-select-zone')
-    await expect(zoneSelectButton).toBeVisible({ timeout: 5000 })
-    await zoneSelectButton.click()
-
     await expect(page).toHaveURL(/\/inventory\/count-type/, { timeout: 5000 })
     await expect(page.getByTestId('page-count-type')).toBeVisible({ timeout: 5000 })
 
@@ -87,9 +78,26 @@ test.describe('Scanner fallback', () => {
       await btnCount1.click()
     }
 
-    const goToScanButton = page.getByRole('button', { name: 'Passer au scan' })
-    await expect(goToScanButton).toBeVisible({ timeout: 5000 })
-    await goToScanButton.click()
+    const selectZoneCta = page.getByRole('button', { name: 'Sélectionner la zone' })
+    await expect(selectZoneCta).toBeVisible({ timeout: 5000 })
+    await selectZoneCta.click()
+
+    await expect(page).toHaveURL(/\/inventory\/location/, { timeout: 5000 })
+    await expect(page.getByTestId('page-location')).toBeVisible({ timeout: 5000 })
+
+    const zoneCard = page.getByTestId(`zone-card-${mockLocations[0].id}`)
+    await expect(zoneCard).toBeVisible({ timeout: 5000 })
+    const zoneSelectButton = zoneCard.getByTestId('btn-select-zone')
+    await expect(zoneSelectButton).toBeVisible({ timeout: 5000 })
+    await zoneSelectButton.click()
+
+    await expect(page).toHaveURL(/\/inventory\/count-type/, { timeout: 5000 })
+    await expect(page.getByTestId('page-count-type')).toBeVisible({ timeout: 5000 })
+
+    await page.evaluate(() => {
+      window.history.pushState({}, '', '/inventory/session')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
 
     await expect(page).toHaveURL(/\/inventory\/session/, { timeout: 5000 })
     await expect(page.getByTestId('page-session')).toBeVisible({ timeout: 5000 })
