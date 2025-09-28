@@ -8,7 +8,7 @@ import { INVENTORY_OPERATORS } from '../../utils/users'
 
 export const InventoryUserStep = () => {
   const navigate = useNavigate()
-  const { selectedUser, setSelectedUser, reset } = useInventory()
+  const { selectedUser, setSelectedUser } = useInventory()
   const [search, setSearch] = useState('')
 
   const filteredOperators = useMemo(() => {
@@ -20,7 +20,6 @@ export const InventoryUserStep = () => {
 
   const handleSelect = (operator: string) => {
     if (operator !== selectedUser) {
-      reset()
       setSelectedUser(operator)
     }
     navigate('/inventory/count-type')

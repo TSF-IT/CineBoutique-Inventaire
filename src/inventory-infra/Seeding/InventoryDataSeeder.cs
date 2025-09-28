@@ -17,6 +17,15 @@ public sealed class InventoryDataSeeder
         new(Guid.Parse("00000000-0000-4000-8000-000000000003"), "0000000000003", "DEMO-0003", "Produit démo EAN 0003")
     };
 
+    private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> DemoOperatorAssignments =
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
+        {
+            ["B1"] = new[] { "Amélie" },
+            ["B2"] = new[] { "Bruno", "Camille" },
+            ["B3"] = new[] { "David", "Elisa" },
+            ["B4"] = new[] { "Fanny", "Guillaume" }
+        };
+
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<InventoryDataSeeder> _logger;
 
@@ -34,25 +43,6 @@ public sealed class InventoryDataSeeder
 
         try
         {
-            var operatorInfo = await GetFirstOperatorAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
-            if (operatorInfo is null)
-            {
-                await EnsureDefaultAdminOperatorAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
-                operatorInfo = await GetFirstOperatorAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
-            }
-
-            if (operatorInfo is null)
-            {
-                throw new InvalidOperationException("Aucun opérateur disponible après bootstrap admin.");
-            }
-
-            var resolvedOperator = operatorInfo;
-
-            _logger.LogDebug(
-                "Utilisation de l'utilisateur {UserId} ({DisplayName}) pour les runs de démonstration.",
-                resolvedOperator.Id,
-                resolvedOperator.DisplayName);
-
             var productIds = await EnsureDemoProductsAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
 
             var now = DateTimeOffset.UtcNow;
@@ -71,7 +61,16 @@ public sealed class InventoryDataSeeder
                     continue;
                 }
 
-                var locationSeed = BuildLocationSeed(code, locationId.Value, new ReadOnlyDictionary<string, Guid>(productIds), resolvedOperator, now);
+                var operators = DemoOperatorAssignments.TryGetValue(code, out var assignedOperators)
+                    ? assignedOperators
+                    : Array.Empty<string>();
+
+                var locationSeed = BuildLocationSeed(
+                    code,
+                    locationId.Value,
+                    new ReadOnlyDictionary<string, Guid>(productIds),
+                    operators,
+                    now);
 
                 await EnsureInventorySessionAsync(connection, transaction, locationSeed.Session, cancellationToken)
                     .ConfigureAwait(false);
@@ -109,38 +108,6 @@ public sealed class InventoryDataSeeder
             _logger.LogError(ex, "Échec de l'initialisation des données de démonstration B1..B4.");
             throw;
         }
-    }
-
-    private async Task<OperatorInfo?> GetFirstOperatorAsync(
-        IDbConnection connection,
-        IDbTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        const string sql = @"
-SELECT id AS Id, display_name AS DisplayName
-FROM admin_users
-ORDER BY created_at ASC
-LIMIT 1;";
-
-        var row = await connection.QuerySingleOrDefaultAsync<OperatorInfo>(
-            new CommandDefinition(sql, transaction: transaction, cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
-
-        return row == default ? null : row;
-    }
-
-    private static Task EnsureDefaultAdminOperatorAsync(
-        IDbConnection connection,
-        IDbTransaction transaction,
-        CancellationToken cancellationToken)
-    {
-        const string sql = @"
-INSERT INTO admin_users (id, email, display_name, created_at)
-SELECT gen_random_uuid(), 'admin@local', 'admin', CURRENT_TIMESTAMP AT TIME ZONE 'UTC'
-WHERE NOT EXISTS (SELECT 1 FROM admin_users WHERE email='admin@local');";
-
-        return connection.ExecuteAsync(
-            new CommandDefinition(sql, transaction: transaction, cancellationToken: cancellationToken));
     }
 
     private async Task<IDictionary<string, Guid>> EnsureDemoProductsAsync(
@@ -218,15 +185,15 @@ LIMIT 1;";
         string code,
         Guid locationId,
         IReadOnlyDictionary<string, Guid> products,
-        OperatorInfo operatorInfo,
+        IReadOnlyList<string> operators,
         DateTimeOffset now)
     {
         return code switch
         {
-            "B1" => BuildB1Seed(locationId, products, operatorInfo, now),
-            "B2" => BuildB2Seed(locationId, products, operatorInfo, now),
-            "B3" => BuildB3Seed(locationId, products, operatorInfo, now),
-            "B4" => BuildB4Seed(locationId, products, operatorInfo, now),
+            "B1" => BuildB1Seed(locationId, products, operators, now),
+            "B2" => BuildB2Seed(locationId, products, operators, now),
+            "B3" => BuildB3Seed(locationId, products, operators, now),
+            "B4" => BuildB4Seed(locationId, products, operators, now),
             _ => throw new InvalidOperationException($"La zone {code} n'est pas prise en charge pour le seed démo.")
         };
     }
@@ -234,7 +201,7 @@ LIMIT 1;";
     private static LocationSeed BuildB1Seed(
         Guid locationId,
         IReadOnlyDictionary<string, Guid> products,
-        OperatorInfo operatorInfo,
+        IReadOnlyList<string> operators,
         DateTimeOffset now)
     {
         var runStart = now.AddMinutes(-15);
@@ -252,7 +219,7 @@ LIMIT 1;";
             1,
             runStart,
             null,
-            operatorInfo.DisplayName,
+            ResolveOperator(operators, 0),
             new[]
             {
                 CreateCountLine(
@@ -275,7 +242,7 @@ LIMIT 1;";
     private static LocationSeed BuildB2Seed(
         Guid locationId,
         IReadOnlyDictionary<string, Guid> products,
-        OperatorInfo operatorInfo,
+        IReadOnlyList<string> operators,
         DateTimeOffset now)
     {
         var ct1Start = now.AddMinutes(-50);
@@ -295,7 +262,7 @@ LIMIT 1;";
             1,
             ct1Start,
             ct1End,
-            operatorInfo.DisplayName,
+            ResolveOperator(operators, 0),
             new[]
             {
                 CreateCountLine(
@@ -319,7 +286,7 @@ LIMIT 1;";
             2,
             ct2Start,
             null,
-            operatorInfo.DisplayName,
+            ResolveOperator(operators, 1),
             new[]
             {
                 CreateCountLine(
@@ -336,7 +303,7 @@ LIMIT 1;";
     private static LocationSeed BuildB3Seed(
         Guid locationId,
         IReadOnlyDictionary<string, Guid> products,
-        OperatorInfo operatorInfo,
+        IReadOnlyList<string> operators,
         DateTimeOffset now)
     {
         var ct1Start = now.AddHours(-2);
@@ -357,7 +324,7 @@ LIMIT 1;";
             1,
             ct1Start,
             ct1End,
-            operatorInfo.DisplayName,
+            ResolveOperator(operators, 0),
             new[]
             {
                 CreateCountLine(
@@ -387,7 +354,7 @@ LIMIT 1;";
             2,
             ct2Start,
             ct2End,
-            operatorInfo.DisplayName,
+            ResolveOperator(operators, 1),
             new[]
             {
                 CreateCountLine(
@@ -416,7 +383,7 @@ LIMIT 1;";
     private static LocationSeed BuildB4Seed(
         Guid locationId,
         IReadOnlyDictionary<string, Guid> products,
-        OperatorInfo operatorInfo,
+        IReadOnlyList<string> operators,
         DateTimeOffset now)
     {
         var ct1Start = now.AddMinutes(-140);
@@ -437,7 +404,7 @@ LIMIT 1;";
             1,
             ct1Start,
             ct1End,
-            operatorInfo.DisplayName,
+            ResolveOperator(operators, 0),
             new[]
             {
                 CreateCountLine(
@@ -461,7 +428,7 @@ LIMIT 1;";
             2,
             ct2Start,
             ct2End,
-            operatorInfo.DisplayName,
+            ResolveOperator(operators, 1),
             new[]
             {
                 CreateCountLine(
@@ -494,6 +461,22 @@ LIMIT 1;";
         }
 
         return new CountLineSeed(lineId, productId, quantity, countedAtUtc);
+    }
+
+    private static string ResolveOperator(IReadOnlyList<string> operators, int index)
+    {
+        if (operators is null || operators.Count == 0)
+        {
+            return "Opérateur démo";
+        }
+
+        if (index < 0)
+        {
+            index = 0;
+        }
+
+        var safeIndex = index % operators.Count;
+        return operators[safeIndex];
     }
 
     private static async Task EnsureInventorySessionAsync(
@@ -611,8 +594,6 @@ VALUES (@Id, @CountingRunId, @ProductId, @Quantity, @CountedAtUtc);";
                     cancellationToken: cancellationToken))
             .ConfigureAwait(false);
     }
-
-    private sealed record OperatorInfo(Guid Id, string DisplayName);
 
     private sealed record ProductSeed(Guid Id, string Ean, string Sku, string Name);
 

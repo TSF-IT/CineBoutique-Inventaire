@@ -121,7 +121,7 @@ Fonctionnalités principales :
 - Workflow guidé pour lancer un inventaire (sélection utilisateur → type → zone avec statut en temps réel → scan).
 - Scan des codes-barres via caméra (getUserMedia + `@zxing/browser`) ou douchette Bluetooth simulée via champ de saisie.
 - Gestion des produits hors référentiel (ajout manuel avec panneau coulissant).
-- Espace administrateur protégé (login + CRUD des zones avec interactions swipe).
+- Espace administration accessible sans authentification (CRUD des zones avec interactions swipe).
 - Couverture de tests Vitest + Testing Library sur l'accueil, le workflow et la saisie par douchette.
 
 ### Ressources graphiques

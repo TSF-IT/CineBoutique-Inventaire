@@ -242,7 +242,6 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType, @Operator);";
         await EnsureConnectionOpenAsync(connection);
 
         const string cleanupSql = @"
-TRUNCATE TABLE admin_users RESTART IDENTITY CASCADE;
 TRUNCATE TABLE ""Audit"" RESTART IDENTITY CASCADE;
 TRUNCATE TABLE ""CountLine"" RESTART IDENTITY CASCADE;
 TRUNCATE TABLE ""CountingRun"" RESTART IDENTITY CASCADE;

@@ -41,7 +41,7 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<InventoryState>(INITIAL_STATE)
 
   const setSelectedUser = (user: string) => {
-    setState((prev) => ({ ...prev, selectedUser: user }))
+    setState(() => ({ ...INITIAL_STATE, selectedUser: user }))
   }
 
   const setCountType = (type: CountType) => {
