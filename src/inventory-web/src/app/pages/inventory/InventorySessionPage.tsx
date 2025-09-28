@@ -102,10 +102,10 @@ export const InventorySessionPage = () => {
   useEffect(() => {
     if (!selectedUser) {
       navigate('/inventory/start', { replace: true })
-    } else if (!countType) {
-      navigate('/inventory/count-type', { replace: true })
     } else if (!location) {
       navigate('/inventory/location', { replace: true })
+    } else if (!countType) {
+      navigate('/inventory/count-type', { replace: true })
     }
   }, [countType, location, navigate, selectedUser])
 

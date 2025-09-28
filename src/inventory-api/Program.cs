@@ -536,9 +536,117 @@ FROM ""Location"" l
 LEFT JOIN active_runs ar ON l.""Id"" = ar.""LocationId""
 ORDER BY l.""Code"" ASC;";
 
-    var locations = await connection
+    var locations = (await connection
         .QueryAsync<LocationListItemDto>(new CommandDefinition(sql, new { CountType = countType }, cancellationToken: cancellationToken))
+        .ConfigureAwait(false)).ToList();
+
+    if (locations.Count == 0)
+    {
+        return Results.Ok(locations);
+    }
+
+    var locationIds = locations.Select(location => location.Id).ToArray();
+
+    const string openRunsSql = @"SELECT
+    cr.""LocationId"",
+    cr.""CountType"",
+    cr.""Id"" AS ""RunId"",
+    cr.""StartedAtUtc"",
+    cr.""CompletedAtUtc"",
+    cr.""OperatorDisplayName""
+FROM ""CountingRun"" cr
+WHERE cr.""CompletedAtUtc"" IS NULL
+  AND cr.""LocationId"" = ANY(@LocationIds)
+ORDER BY cr.""LocationId"", cr.""CountType"", cr.""StartedAtUtc"" DESC;";
+
+    const string completedRunsSql = @"SELECT DISTINCT ON (cr.""LocationId"", cr.""CountType"")
+    cr.""LocationId"",
+    cr.""CountType"",
+    cr.""Id"" AS ""RunId"",
+    cr.""StartedAtUtc"",
+    cr.""CompletedAtUtc"",
+    cr.""OperatorDisplayName""
+FROM ""CountingRun"" cr
+WHERE cr.""CompletedAtUtc"" IS NOT NULL
+  AND cr.""LocationId"" = ANY(@LocationIds)
+ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
+
+    var openRuns = await connection
+        .QueryAsync<LocationCountStatusRow>(new CommandDefinition(openRunsSql, new { LocationIds = locationIds }, cancellationToken: cancellationToken))
         .ConfigureAwait(false);
+
+    var completedRuns = await connection
+        .QueryAsync<LocationCountStatusRow>(new CommandDefinition(completedRunsSql, new { LocationIds = locationIds }, cancellationToken: cancellationToken))
+        .ConfigureAwait(false);
+
+    var openLookup = openRuns.ToLookup(row => (row.LocationId, row.CountType));
+    var completedLookup = completedRuns.ToLookup(row => (row.LocationId, row.CountType));
+
+    static IEnumerable<short> DiscoverCountTypes(IEnumerable<LocationCountStatusRow> runs)
+        => runs
+            .Select(row => row.CountType)
+            .Where(countTypeValue => countTypeValue > 0)
+            .Distinct();
+
+    var discoveredCountTypes = DiscoverCountTypes(openRuns).Concat(DiscoverCountTypes(completedRuns));
+
+    var defaultCountTypes = new short[] { 1, 2 };
+
+    if (countType is { } requested)
+    {
+        defaultCountTypes = defaultCountTypes.Concat(new[] { (short)requested }).ToArray();
+    }
+
+    var targetCountTypes = defaultCountTypes
+        .Concat(discoveredCountTypes)
+        .Distinct()
+        .OrderBy(value => value)
+        .ToArray();
+
+    foreach (var location in locations)
+    {
+        var statuses = new List<LocationCountStatusDto>(targetCountTypes.Length);
+
+        foreach (var type in targetCountTypes)
+        {
+            var status = new LocationCountStatusDto
+            {
+                CountType = type
+            };
+
+            var open = openLookup[(location.Id, type)].FirstOrDefault();
+            if (open is not null)
+            {
+                status.Status = LocationCountStatus.InProgress;
+                status.RunId = open.RunId;
+                status.OperatorDisplayName = open.OperatorDisplayName;
+                status.StartedAtUtc = open.StartedAtUtc;
+            }
+            else
+            {
+                var completed = completedLookup[(location.Id, type)].FirstOrDefault();
+                if (completed is not null)
+                {
+                    status.Status = LocationCountStatus.Completed;
+                    status.RunId = completed.RunId;
+                    status.OperatorDisplayName = completed.OperatorDisplayName;
+                    status.StartedAtUtc = completed.StartedAtUtc;
+                    status.CompletedAtUtc = completed.CompletedAtUtc;
+                }
+            }
+
+            statuses.Add(status);
+        }
+
+        location.CountStatuses = statuses;
+
+        var active = statuses.FirstOrDefault(state => state.Status == LocationCountStatus.InProgress);
+        location.IsBusy = active is not null;
+        location.ActiveRunId = active?.RunId;
+        location.ActiveCountType = active?.CountType;
+        location.ActiveStartedAtUtc = active?.StartedAtUtc;
+        location.BusyBy = active?.OperatorDisplayName;
+    }
 
     return Results.Ok(locations);
 })
@@ -761,6 +869,14 @@ static string DescribeCountType(int countType)
         _ => $"type {countType}"
     };
 }
+
+file sealed record LocationCountStatusRow(
+    Guid LocationId,
+    short CountType,
+    Guid? RunId,
+    DateTimeOffset? StartedAtUtc,
+    DateTimeOffset? CompletedAtUtc,
+    string? OperatorDisplayName);
 
 public partial class Program
 {
