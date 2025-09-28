@@ -21,40 +21,11 @@ const isHttpError = (value: unknown): value is HttpError =>
   typeof (value as { status?: unknown }).status === 'number' &&
   typeof (value as { url?: unknown }).url === 'string'
 
-const truncate = (value: string, maxLength = 180) =>
-  value.length <= maxLength ? value : `${value.slice(0, maxLength)}…`
-
 const extractHttpDetail = (error: HttpError): string | undefined =>
   (error.problem as { detail?: string; title?: string } | undefined)?.detail ||
   (error.problem as { title?: string } | undefined)?.title ||
   error.body ||
   undefined
-
-const formatHttpError = (error: HttpError, prefix = 'Erreur réseau') => {
-  const detail = extractHttpDetail(error)
-  if (import.meta.env.DEV && error.status === 404) {
-    const diagnostics = [DEV_API_UNREACHABLE_HINT]
-    if (error.url) {
-      diagnostics.push(`URL: ${error.url}`)
-    }
-    if (detail) {
-      diagnostics.push(`Détail: ${truncate(detail)}`)
-    }
-    return diagnostics.join(' | ')
-  }
-
-  const parts = [prefix]
-  if (error.status) {
-    parts.push(`HTTP ${error.status}`)
-  }
-  if (error.url) {
-    parts.push(`URL: ${error.url}`)
-  }
-  if (detail) {
-    parts.push(`Détail: ${truncate(detail)}`)
-  }
-  return parts.join(' | ')
-}
 
 const resolveErrorPanel = (
   error: HttpError | Error | string | null,
