@@ -31,7 +31,7 @@ public static class DbMigrator
             connection.Open();
         }
 
-        const string sql = "SELECT to_regclass('public.admin_users') IS NOT NULL;";
+        const string sql = "SELECT to_regclass('""Location""') IS NOT NULL;";
         var tableExists = connection.ExecuteScalar<bool?>(sql) ?? false;
 
         Assert.True(tableExists, "Migrations did not run");

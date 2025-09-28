@@ -49,7 +49,7 @@ Par défaut l'API est attendue sur `http://localhost:8080`. En production conten
 - **Assistant d'inventaire** : sélection utilisateur → type de comptage (simple/double) → zone (API `/api/locations`) → vérification qu'aucune session n'est déjà ouverte.
 - **Scan produit** : via caméra (getUserMedia) ou douchette Bluetooth HID (champ de saisie focus permanent). Recherche `/api/products/{ean}` et ajout manuel possible.
 - **Gestion des sessions** : affichage des articles scannés, quantités modifiables, distinction des ajouts manuels.
-- **Espace administrateur** : authentification simple (JWT côté API), CRUD des zones avec interactions swipe.
+- **Espace administration** : accès libre pour éditer les zones avec interactions swipe.
 - **Panneaux coulissants** plutôt que modales intrusives pour les formulaires secondaires.
 
 ## Tests
