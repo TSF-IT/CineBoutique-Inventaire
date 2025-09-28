@@ -3,6 +3,7 @@ import { CountType, LocationsSchema } from '../types/inventory'
 import type { InventorySummary, Location, ManualProductInput, Product } from '../types/inventory'
 import http, { HttpError } from '@/lib/api/http'
 import { API_BASE } from '@/lib/api/config'
+import { areDevFixturesEnabled, cloneDevLocations } from './dev/fixtures'
 
 const isHttpError = (value: unknown): value is HttpError =>
   typeof value === 'object' &&
@@ -16,6 +17,38 @@ const toHttpError = (message: string, url: string, problem?: unknown): HttpError
     url,
     problem,
   })
+
+const shouldUseDevFixtures = (error: unknown): boolean => {
+  if (!areDevFixturesEnabled()) {
+    return false
+  }
+
+  if (!error) {
+    return true
+  }
+
+  if (!isHttpError(error)) {
+    return true
+  }
+
+  return error.status === 0 || error.status >= 500
+}
+
+const logDevFallback = (error: unknown, endpoint: string) => {
+  if (!import.meta.env.DEV) {
+    return
+  }
+
+  const details = isHttpError(error)
+    ? `statut HTTP ${error.status}${error.url ? ` (${error.url})` : ''}`
+    : error instanceof Error
+      ? error.message
+      : String(error)
+  console.warn(
+    `[DEV] Fallback fixtures pour ${endpoint} : ${details}. Activez VITE_DISABLE_DEV_FIXTURES=true pour désactiver cette aide.`,
+    error,
+  )
+}
 
 const UPPERCASE_LOCATION_KEY_MAP: Record<string, keyof Location> = {
   Id: 'id',
@@ -106,6 +139,11 @@ export const fetchLocations = async (options?: { countType?: CountType }): Promi
       throw error
     }
   } catch (error) {
+    if (shouldUseDevFixtures(error)) {
+      logDevFallback(error, `${API_BASE}${endpoint}`)
+      return cloneDevLocations()
+    }
+
     if (isHttpError(error)) {
       throw error
     }
