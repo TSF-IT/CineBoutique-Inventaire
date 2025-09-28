@@ -24,6 +24,8 @@ VITE_API_BASE=http://<IP_VM>:8080/api npm run dev -- --host
 
 Par défaut l'API est attendue sur `http://localhost:8080`. En production conteneurisée, l'application est servie par Nginx sur `http://localhost:3000` (voir `Dockerfile`).
 
+> ℹ️ En mode développement, si l'appel à `/api/locations` échoue (API arrêtée, migrations non appliquées, etc.), un jeu de données de démonstration est renvoyé automatiquement. Définissez `VITE_DISABLE_DEV_FIXTURES=true` pour désactiver ce fallback et remonter l'erreur brute.
+
 ## Scripts disponibles
 
 - `npm run dev` : serveur de développement Vite avec HMR.
