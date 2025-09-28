@@ -16,7 +16,7 @@ describe('fetchLocations (dev fixtures)', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
-    vi.stubEnv('DEV', 'true')
+    vi.stubEnv('DEV', true)
     vi.stubEnv('VITE_DISABLE_DEV_FIXTURES', '')
   })
 
