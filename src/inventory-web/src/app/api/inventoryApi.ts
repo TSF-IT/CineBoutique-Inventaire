@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { CountType, LocationsSchema } from '../types/inventory'
 import type { InventorySummary, Location, ManualProductInput, Product } from '../types/inventory'
 import http, { HttpError } from '@/lib/api/http'
@@ -93,26 +94,17 @@ export const fetchLocations = async (options?: { countType?: CountType }): Promi
     }
     const query = searchParams.toString()
     endpoint = `/locations${query ? `?${query}` : ''}`
-    const data = await http(`${API_BASE}${endpoint}`)
-    const normalised = normaliseLocationsPayload(data)
-    const parsed = LocationsSchema.safeParse(normalised)
-    if (!parsed.success) {
-      const zodError = parsed.error
-      const flattened = zodError.flatten()
-      if (import.meta.env.DEV) {
-        let sample: string | undefined
-        try {
-          sample = JSON.stringify(normalised)
-        } catch {
-          sample = undefined
-        }
-        console.warn('Réponse /locations invalide', flattened, {
-          sample: sample?.slice(0, 512),
-        })
+    const raw = await http(`${API_BASE}${endpoint}`)
+    const payload = typeof raw === 'string' ? JSON.parse(raw) : raw
+    const normalised = normaliseLocationsPayload(payload)
+    try {
+      return LocationsSchema.parse(normalised)
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        console.warn('Validation /locations failed', error.flatten())
       }
-      throw toHttpError('Impossible de récupérer les zones.', `${API_BASE}${endpoint}`, flattened)
+      throw error
     }
-    return parsed.data
   } catch (error) {
     if (isHttpError(error)) {
       throw error
@@ -120,7 +112,8 @@ export const fetchLocations = async (options?: { countType?: CountType }): Promi
     if (import.meta.env.DEV) {
       console.error('Échec de récupération des zones', error)
     }
-    throw toHttpError('Impossible de récupérer les zones.', `${API_BASE}${endpoint}`, error)
+    const problem = error instanceof z.ZodError ? error.flatten() : error
+    throw toHttpError('Impossible de récupérer les zones.', `${API_BASE}${endpoint}`, problem)
   }
 }
 
