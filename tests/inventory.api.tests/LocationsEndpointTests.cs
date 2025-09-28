@@ -13,6 +13,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Infrastructure.Database;
@@ -143,6 +144,35 @@ public class LocationsEndpointTests : IAsyncLifetime
 
         var response = await _client.PostAsync($"/api/inventories/{locationId}/restart?countType=1", null);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetLocations_ReturnsJsonArrayWithExpectedShape()
+    {
+        await ResetDatabaseAsync();
+
+        var locationId = Guid.NewGuid();
+        await SeedLocationAsync(locationId, code: "A1", label: "Allée 1");
+
+        var response = await _client.GetAsync("/api/locations");
+        response.EnsureSuccessStatusCode();
+
+        Assert.Equal("application/json; charset=utf-8", response.Content.Headers.ContentType?.ToString());
+
+        var json = await response.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(json);
+
+        Assert.Equal(JsonValueKind.Array, document.RootElement.ValueKind);
+
+        if (document.RootElement.GetArrayLength() > 0)
+        {
+            var first = document.RootElement[0];
+            Assert.Equal(JsonValueKind.Object, first.ValueKind);
+            Assert.True(first.TryGetProperty("id", out _));
+            Assert.True(first.TryGetProperty("code", out _));
+            Assert.True(first.TryGetProperty("label", out _));
+            Assert.True(first.TryGetProperty("isBusy", out _));
+        }
     }
 
     private async Task ResetDatabaseAsync()
