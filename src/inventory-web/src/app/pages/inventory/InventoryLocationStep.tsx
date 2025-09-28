@@ -65,6 +65,25 @@ const resolveErrorPanel = (
   }
   if (isHttpError(error)) {
     const detail = extractHttpDetail(error)
+    const problem = error.problem as { contentType?: string; snippet?: string } | undefined
+    const snippet = problem?.snippet
+    const looksLikeHtmlSnippet = typeof snippet === 'string' && /<(!doctype\s+html|html)/i.test(snippet.trimStart())
+    if (import.meta.env.DEV && error.status === 0 && looksLikeHtmlSnippet) {
+      const diagnostics = [
+        'La réponse n’est pas du JSON (probable proxy Vite non relié à l’API).',
+      ]
+      if (error.url) {
+        diagnostics.push(`URL: ${error.url}`)
+      }
+      if (problem?.contentType) {
+        diagnostics.push(`Content-Type: ${problem.contentType}`)
+      }
+      diagnostics.push('', 'Checklist dev :', '- L’API tourne-t-elle sur http://localhost:8080 ?', '- Le proxy Vite est-il actif ?')
+      return {
+        title: 'Erreur API',
+        details: diagnostics.filter(Boolean).join('\n'),
+      }
+    }
     if (import.meta.env.DEV && error.status === 404) {
       const diagnostics = [DEV_API_UNREACHABLE_HINT]
       if (error.url) {
