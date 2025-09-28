@@ -4,12 +4,12 @@ import { Stepper } from '../../components/Stepper'
 import { Page } from '../../components/Page'
 import { useInventory } from '../../contexts/InventoryContext'
 
-const STEPS = ['Utilisateur', 'Type de comptage', 'Zone', 'Scan']
+const STEPS = ['Utilisateur', 'Zone', 'Type de comptage', 'Scan']
 
 const stepIndexByPath: Record<string, number> = {
   '/inventory/start': 0,
-  '/inventory/count-type': 1,
-  '/inventory/location': 2,
+  '/inventory/location': 1,
+  '/inventory/count-type': 2,
   '/inventory/session': 3,
 }
 
@@ -21,21 +21,23 @@ export const InventoryLayout = () => {
 
   useEffect(() => {
     const path = location.pathname
-    if (path === '/inventory/count-type' && !selectedUser) {
-      navigate('/inventory/start', { replace: true })
+    if (path === '/inventory/location') {
+      if (!selectedUser) {
+        navigate('/inventory/start', { replace: true })
+      }
       return
     }
 
-    if (path === '/inventory/location') {
+    if (path === '/inventory/count-type') {
       if (!selectedUser) {
         navigate('/inventory/start', { replace: true })
         return
       }
 
-      if (!countType) {
-        navigate('/inventory/count-type', { replace: true })
-        return
+      if (!selectedLocation) {
+        navigate('/inventory/location', { replace: true })
       }
+      return
     }
 
     if (path === '/inventory/session') {
@@ -44,13 +46,13 @@ export const InventoryLayout = () => {
         return
       }
 
-      if (!countType) {
-        navigate('/inventory/count-type', { replace: true })
+      if (!selectedLocation) {
+        navigate('/inventory/location', { replace: true })
         return
       }
 
-      if (!selectedLocation) {
-        navigate('/inventory/location', { replace: true })
+      if (!countType) {
+        navigate('/inventory/count-type', { replace: true })
       }
     }
   }, [countType, location.pathname, navigate, selectedLocation, selectedUser])
@@ -62,14 +64,14 @@ export const InventoryLayout = () => {
     }
 
     const zoneStepButton = container.querySelector<HTMLElement>(
-      'li:nth-of-type(3) button, li:nth-of-type(3) a, li:nth-of-type(3) [role="button"]',
+      'li:nth-of-type(2) button, li:nth-of-type(2) a, li:nth-of-type(2) [role="button"]',
     )
     if (zoneStepButton) {
       zoneStepButton.setAttribute('data-testid', 'step-nav-location')
       return
     }
 
-    const zoneStepFallback = container.querySelector<HTMLElement>('li:nth-of-type(3)')
+    const zoneStepFallback = container.querySelector<HTMLElement>('li:nth-of-type(2)')
     zoneStepFallback?.setAttribute('data-testid', 'step-nav-location')
   }, [location.pathname])
 
