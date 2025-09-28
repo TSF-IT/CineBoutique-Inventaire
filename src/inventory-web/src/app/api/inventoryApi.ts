@@ -16,17 +16,64 @@ const toHttpError = (message: string, url: string, problem?: unknown): HttpError
     problem,
   })
 
+const UPPERCASE_LOCATION_KEY_MAP: Record<string, keyof Location> = {
+  Id: 'id',
+  Code: 'code',
+  Label: 'label',
+  IsBusy: 'isBusy',
+  BusyBy: 'busyBy',
+  ActiveRunId: 'activeRunId',
+  ActiveCountType: 'activeCountType',
+  ActiveStartedAtUtc: 'activeStartedAtUtc',
+}
+
+const mapUppercaseLocationKeys = (value: unknown): unknown => {
+  if (!Array.isArray(value) || value.length === 0) {
+    return value
+  }
+  const first = value[0]
+  if (!first || typeof first !== 'object') {
+    return value
+  }
+  const firstKeys = Object.keys(first as Record<string, unknown>)
+  const hasUppercaseKeys = firstKeys.some((key) => key in UPPERCASE_LOCATION_KEY_MAP)
+  if (!hasUppercaseKeys) {
+    return value
+  }
+  return value.map((item) => {
+    if (!item || typeof item !== 'object') {
+      return item
+    }
+    const source = item as Record<string, unknown>
+    const mappedEntries = Object.entries(UPPERCASE_LOCATION_KEY_MAP).reduce<Record<string, unknown>>(
+      (acc, [sourceKey, targetKey]) => {
+        if (sourceKey in source) {
+          acc[targetKey] = source[sourceKey]
+        }
+        return acc
+      },
+      {},
+    )
+    return { ...source, ...mappedEntries }
+  })
+}
+
 const normaliseLocationsPayload = (payload: unknown): unknown => {
   if (Array.isArray(payload)) {
-    return payload
+    return mapUppercaseLocationKeys(payload)
   }
   if (payload && typeof payload === 'object') {
     const candidateKeys = ['items', 'data', 'results', 'locations'] as const
     for (const key of candidateKeys) {
       const value = (payload as Record<string, unknown>)[key]
       if (Array.isArray(value)) {
-        return value
+        return mapUppercaseLocationKeys(value)
       }
+    }
+
+    const arrayValues = Object.values(payload as Record<string, unknown>).filter(Array.isArray)
+    if (arrayValues.length === 1) {
+      return mapUppercaseLocationKeys(arrayValues[0])
     }
   }
   return payload
@@ -50,10 +97,20 @@ export const fetchLocations = async (options?: { countType?: CountType }): Promi
     const normalised = normaliseLocationsPayload(data)
     const parsed = LocationsSchema.safeParse(normalised)
     if (!parsed.success) {
+      const zodError = parsed.error
+      const flattened = zodError.flatten()
       if (import.meta.env.DEV) {
-        console.error('Réponse /locations invalide', parsed.error.flatten())
+        let sample: string | undefined
+        try {
+          sample = JSON.stringify(normalised)
+        } catch {
+          sample = undefined
+        }
+        console.warn('Réponse /locations invalide', flattened, {
+          sample: sample?.slice(0, 512),
+        })
       }
-      throw new Error('Les données de zones sont invalides.')
+      throw toHttpError('Impossible de récupérer les zones.', `${API_BASE}${endpoint}`, flattened)
     }
     return parsed.data
   } catch (error) {
