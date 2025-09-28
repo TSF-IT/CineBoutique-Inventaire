@@ -30,6 +30,9 @@ public class LocationsEndpointTests : IAsyncLifetime
     private readonly PostgresTestContainerFixture _pg;
     private InventoryApiApplicationFactory _factory = default!;
     private HttpClient _client = default!;
+    private static readonly Regex ActiveRunIdRegex = new(
+        "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     public LocationsEndpointTests(PostgresTestContainerFixture pg)
     {
@@ -149,11 +152,9 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType, @Operator);";
         var payload = await response.Content.ReadFromJsonAsync<List<LocationResponse>>();
         Assert.NotNull(payload);
 
-        var regex = new Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
-
         var validLocation = payload!.Single(item => item.Code == "S1");
         Assert.Equal(seed.RunId, validLocation.ActiveRunId);
-        Assert.True(regex.IsMatch(validLocation.ActiveRunId!.Value.ToString()));
+        Assert.Matches(ActiveRunIdRegex, validLocation.ActiveRunId!.Value.ToString());
 
         var invalidLocation = payload.Single(item => item.Code == "S3");
         Assert.True(invalidLocation.IsBusy);
