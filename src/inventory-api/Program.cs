@@ -830,12 +830,18 @@ app.MapGet("/products/{code}", async (
     await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
     var sanitizedCode = code.Trim();
-    var isPotentialEan = sanitizedCode.All(char.IsDigit) && (sanitizedCode.Length == 8 || sanitizedCode.Length == 13);
+    var candidateEans = BuildCandidateEanCodes(sanitizedCode);
 
     ProductDto? product = null;
-    if (isPotentialEan)
+    if (candidateEans.Length > 0)
     {
-        product = await connection.QuerySingleOrDefaultAsync<ProductDto>(new CommandDefinition("SELECT \"Id\", \"Sku\", \"Name\", \"Ean\" FROM \"Product\" WHERE \"Ean\" = @Code LIMIT 1", new { Code = sanitizedCode }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        product = await connection
+            .QuerySingleOrDefaultAsync<ProductDto>(
+                new CommandDefinition(
+                    "SELECT \"Id\", \"Sku\", \"Name\", \"Ean\" FROM \"Product\" WHERE \"Ean\" = ANY(@Codes) LIMIT 1",
+                    new { Codes = candidateEans },
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
     }
 
     if (product is null)
@@ -899,6 +905,73 @@ static async Task<IResult> HandlePinLoginAsync(
     await auditLogger.LogAsync($"{actor} s'est connecté avec succès le {successTimestamp} UTC.", user.Name, "auth.pin.success").ConfigureAwait(false);
 
     return Results.Ok(response);
+}
+
+static string[] BuildCandidateEanCodes(string code)
+{
+    if (string.IsNullOrWhiteSpace(code))
+    {
+        return Array.Empty<string>();
+    }
+
+    if (code.Length > 32)
+    {
+        return Array.Empty<string>();
+    }
+
+    if (!code.All(char.IsDigit))
+    {
+        return Array.Empty<string>();
+    }
+
+    var candidates = new List<string>();
+    var seen = new HashSet<string>(StringComparer.Ordinal);
+
+    void AddCandidate(string value)
+    {
+        if (value.Length == 0)
+        {
+            return;
+        }
+
+        if (seen.Add(value))
+        {
+            candidates.Add(value);
+        }
+    }
+
+    AddCandidate(code);
+
+    var index = 0;
+    while (index < code.Length && code[index] == '0')
+    {
+        index++;
+        var candidate = code[index..];
+        if (candidate.Length == 0)
+        {
+            candidate = "0";
+        }
+
+        AddCandidate(candidate);
+    }
+
+    var trimmed = code.TrimStart('0');
+    if (trimmed.Length == 0)
+    {
+        trimmed = "0";
+    }
+
+    if (trimmed.Length < 8)
+    {
+        AddCandidate(trimmed.PadLeft(8, '0'));
+    }
+
+    if (trimmed.Length < 13)
+    {
+        AddCandidate(trimmed.PadLeft(13, '0'));
+    }
+
+    return candidates.ToArray();
 }
 
 static async Task EnsureConnectionOpenAsync(IDbConnection connection, CancellationToken cancellationToken)

@@ -135,6 +135,41 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
         Assert.Contains("Produit test", entry.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData("0001")]
+    [InlineData("0000000001")]
+    [InlineData("0000000000001")]
+    public async Task ScanProduct_NumericEanVariants_ReturnsStoredProduct(string scannedCode)
+    {
+        await ResetDatabaseAsync();
+
+        var productId = Guid.NewGuid();
+        var createdAt = DateTimeOffset.UtcNow.AddHours(-1);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+            await using var connection = connectionFactory.CreateConnection();
+            await EnsureConnectionOpenAsync(connection).ConfigureAwait(false);
+
+            const string insertProductSql = "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"Ean\", \"CreatedAtUtc\") VALUES (@Id, @Sku, @Name, @Ean, @CreatedAtUtc);";
+            await connection.ExecuteAsync(insertProductSql, new { Id = productId, Sku = "SKU-0001", Name = "Produit court", Ean = "0001", CreatedAtUtc = createdAt }).ConfigureAwait(false);
+        }
+
+        var response = await _client.GetAsync($"/products/{scannedCode}");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var product = await response.Content.ReadFromJsonAsync<ProductDto>();
+        Assert.NotNull(product);
+        Assert.Equal("0001", product!.Ean);
+        Assert.Equal("Produit court", product!.Name);
+
+        var auditLogs = await GetAuditLogsAsync();
+        var entry = Assert.Single(auditLogs);
+        Assert.Equal("products.scan.success", entry.Category);
+        Assert.Contains(scannedCode, entry.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public async Task ScanProduct_NotFound_WritesAuditLog()
     {
