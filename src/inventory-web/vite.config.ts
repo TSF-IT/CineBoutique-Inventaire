@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { configDefaults } from 'vitest/config'
+import devApiFixturesPlugin from './vite.dev-api-fixtures'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), devApiFixturesPlugin()],
   server: {
     port: 5173,
     proxy: {
