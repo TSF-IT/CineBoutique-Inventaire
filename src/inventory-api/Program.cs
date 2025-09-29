@@ -487,6 +487,72 @@ app.MapGet("/api/inventories/summary", async (IDbConnection connection, Cancella
         .QuerySingleAsync<InventorySummaryDto>(new CommandDefinition(summarySql, cancellationToken: cancellationToken))
         .ConfigureAwait(false);
 
+    const string openRunsDetailsSql = @"SELECT
+    cr.""Id"" AS ""RunId"",
+    cr.""LocationId"",
+    l.""Code"" AS ""LocationCode"",
+    l.""Label"" AS ""LocationLabel"",
+    cr.""CountType"",
+    cr.""OperatorDisplayName"",
+    cr.""StartedAtUtc""
+FROM ""CountingRun"" cr
+JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
+WHERE cr.""CompletedAtUtc"" IS NULL
+ORDER BY cr.""StartedAtUtc"" DESC;";
+
+    var openRunRows = (await connection
+        .QueryAsync<OpenRunSummaryRow>(new CommandDefinition(openRunsDetailsSql, cancellationToken: cancellationToken))
+        .ConfigureAwait(false)).ToList();
+
+    const string conflictsDetailsSql = @"SELECT
+    c.""Id"" AS ""ConflictId"",
+    c.""CountLineId"",
+    cl.""CountingRunId"",
+    cr.""LocationId"",
+    l.""Code"" AS ""LocationCode"",
+    l.""Label"" AS ""LocationLabel"",
+    cr.""CountType"",
+    cr.""OperatorDisplayName"",
+    c.""CreatedAtUtc""
+FROM ""Conflict"" c
+JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
+JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
+JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
+WHERE c.""ResolvedAtUtc"" IS NULL
+ORDER BY c.""CreatedAtUtc"" DESC;";
+
+    var conflictRows = (await connection
+        .QueryAsync<ConflictSummaryRow>(new CommandDefinition(conflictsDetailsSql, cancellationToken: cancellationToken))
+        .ConfigureAwait(false)).ToList();
+
+    summary.OpenRunDetails = openRunRows
+        .Select(row => new OpenRunSummaryDto
+        {
+            RunId = row.RunId,
+            LocationId = row.LocationId,
+            LocationCode = row.LocationCode,
+            LocationLabel = row.LocationLabel,
+            CountType = row.CountType,
+            OperatorDisplayName = row.OperatorDisplayName,
+            StartedAtUtc = row.StartedAtUtc,
+        })
+        .ToArray();
+
+    summary.ConflictDetails = conflictRows
+        .Select(row => new ConflictSummaryDto
+        {
+            ConflictId = row.ConflictId,
+            CountLineId = row.CountLineId,
+            CountingRunId = row.CountingRunId,
+            LocationId = row.LocationId,
+            LocationCode = row.LocationCode,
+            LocationLabel = row.LocationLabel,
+            CountType = row.CountType,
+            OperatorDisplayName = row.OperatorDisplayName,
+            CreatedAtUtc = row.CreatedAtUtc,
+        })
+        .ToArray();
+
     return Results.Ok(summary);
 })
 .WithName("GetInventorySummary")
@@ -914,6 +980,26 @@ file sealed record LocationCountStatusRow(
     DateTimeOffset? StartedAtUtc,
     DateTimeOffset? CompletedAtUtc,
     string? OperatorDisplayName);
+
+file sealed record OpenRunSummaryRow(
+    Guid RunId,
+    Guid LocationId,
+    string LocationCode,
+    string LocationLabel,
+    short CountType,
+    string? OperatorDisplayName,
+    DateTimeOffset StartedAtUtc);
+
+file sealed record ConflictSummaryRow(
+    Guid ConflictId,
+    Guid CountLineId,
+    Guid CountingRunId,
+    Guid LocationId,
+    string LocationCode,
+    string LocationLabel,
+    short CountType,
+    string? OperatorDisplayName,
+    DateTimeOffset CreatedAtUtc);
 
 public partial class Program
 {

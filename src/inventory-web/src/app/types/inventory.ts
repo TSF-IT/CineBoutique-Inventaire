@@ -11,6 +11,30 @@ export interface InventorySummary {
   openRuns: number
   conflicts: number
   lastActivityUtc: string | null
+  openRunDetails: OpenRunSummary[]
+  conflictDetails: ConflictSummary[]
+}
+
+export interface OpenRunSummary {
+  runId: string
+  locationId: string
+  locationCode: string
+  locationLabel: string
+  countType: CountType
+  operatorDisplayName: string | null
+  startedAtUtc: string
+}
+
+export interface ConflictSummary {
+  conflictId: string
+  countLineId: string
+  countingRunId: string
+  locationId: string
+  locationCode: string
+  locationLabel: string
+  countType: CountType
+  operatorDisplayName: string | null
+  createdAtUtc: string
 }
 
 const IsoDateNullable = z.preprocess((value) => {
