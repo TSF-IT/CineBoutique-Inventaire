@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
@@ -54,8 +55,9 @@ public sealed class SeedDemoTests : IAsyncLifetime, IDisposable
 
             using var scope = migrator.Services.CreateScope();
             var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-            await using NpgsqlConnection connection = connectionFactory.CreateConnection();
-            await connection.OpenAsync().ConfigureAwait(true);
+            await using NpgsqlConnection connection = await connectionFactory
+                .CreateOpenConnectionAsync(CancellationToken.None)
+                .ConfigureAwait(true);
 
             const string cleanupSql = @"TRUNCATE TABLE ""Product"" RESTART IDENTITY CASCADE;";
             await connection.ExecuteAsync(cleanupSql).ConfigureAwait(true);
