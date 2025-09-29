@@ -39,7 +39,7 @@ public sealed class AuditLoggingTests : IAsyncLifetime
     {
         var configuration = new Dictionary<string, string?>
         {
-            ["Authentication:Users:0:Name"] = "Alice",
+            ["Authentication:Users:0:Name"] = "Amélie",
             ["Authentication:Users:0:Pin"] = "1111",
             ["Authentication:Issuer"] = "CineBoutique.Inventory",
             ["Authentication:Audience"] = "CineBoutique.Inventory",
@@ -180,7 +180,7 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
 
         var entry = auditLogs.Single();
         Assert.Equal("auth.pin.success", entry.Category);
-        Assert.Equal("Alice", entry.Actor);
+        Assert.Equal("Amélie", entry.Actor);
         Assert.Contains("s'est connecté", entry.Message, StringComparison.OrdinalIgnoreCase);
     }
 

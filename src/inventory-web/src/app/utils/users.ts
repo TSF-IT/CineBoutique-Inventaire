@@ -4,9 +4,4 @@ export const INVENTORY_OPERATORS = [
   'Camille',
   'David',
   'Elisa',
-  'Fanny',
-  'Guillaume',
-  'Hugo',
-  'Inès',
-  'Jules',
 ]

@@ -50,8 +50,8 @@ Le jeu de données démo comprend notamment :
 
 - Trois produits insérés par EAN : `3057065988108` (« Liquide pour vape aux fruits rouges »), `9798347622207` (« Livre Backlot Rues de Paris ») et `3524891908353` (« Dacomex, serviettes nettoyantes »).
 - La zone `B1` avec une session d'inventaire active.
-- Deux comptages de type `1` réalisés par Alice couvrant les trois EAN (Cas A).
-- Un comptage de type `1` réalisé par Bob sur `B1` avec des quantités divergentes pour illustrer un conflit détectable en comparant les résultats avec ceux d'Alice (Cas B).
+- Deux comptages de type `1` réalisés par Amélie couvrant les trois EAN (Cas A).
+- Un comptage de type `1` réalisé par Bruno sur `B1` avec des quantités divergentes pour illustrer un conflit détectable en comparant les résultats avec ceux d'Amélie (Cas B).
 
 > 💡 Si un volume de données persiste d'une exécution précédente, créez manuellement la base :
 >
@@ -69,8 +69,11 @@ curl http://localhost:8080/api/locations
 
 Les utilisateurs de test sont définis dans `src/inventory-api/appsettings.Development.json` :
 
-- Alice — PIN `1111`
-- Bob — PIN `2222`
+- Amélie — PIN `1111`
+- Bruno — PIN `2222`
+- Camille — PIN `3333`
+- David — PIN `4444`
+- Elisa — PIN `5555`
 
 L'endpoint `POST /auth/pin` retourne un JWT court si le PIN est valide. Les endpoints principaux actuellement exposés sont :
 
