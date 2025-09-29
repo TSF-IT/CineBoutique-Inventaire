@@ -12,9 +12,9 @@ public sealed class InventoryDataSeeder
 {
     private static readonly ProductSeed[] DemoProducts =
     {
-        new(Guid.Parse("00000000-0000-4000-8000-000000000001"), "0000000000001", "DEMO-0001", "Produit démo EAN 0001"),
-        new(Guid.Parse("00000000-0000-4000-8000-000000000002"), "0000000000002", "DEMO-0002", "Produit démo EAN 0002"),
-        new(Guid.Parse("00000000-0000-4000-8000-000000000003"), "0000000000003", "DEMO-0003", "Produit démo EAN 0003")
+        new(Guid.Parse("00000000-0000-4000-8000-000000000001"), "0001", "PRODUIT-0001", "Produit démo EAN 0001"),
+        new(Guid.Parse("00000000-0000-4000-8000-000000000002"), "0002", "PRODUIT-0002", "Produit démo EAN 0002"),
+        new(Guid.Parse("00000000-0000-4000-8000-000000000003"), "0003", "PRODUIT-0003", "Produit démo EAN 0003")
     };
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> DemoOperatorAssignments =
@@ -225,13 +225,13 @@ LIMIT 1;";
                 CreateCountLine(
                     Guid.Parse("30000000-0000-4000-8000-00000000B101"),
                     products,
-                    "0000000000001",
+                    "0001",
                     5m,
                     runStart.AddMinutes(5)),
                 CreateCountLine(
                     Guid.Parse("30000000-0000-4000-8000-00000000B102"),
                     products,
-                    "0000000000002",
+                    "0002",
                     2m,
                     runStart.AddMinutes(7))
             });
@@ -268,13 +268,13 @@ LIMIT 1;";
                 CreateCountLine(
                     Guid.Parse("30000000-0000-4000-8000-00000000B201"),
                     products,
-                    "0000000000001",
+                    "0001",
                     3m,
                     ct1Start.AddMinutes(6)),
                 CreateCountLine(
                     Guid.Parse("30000000-0000-4000-8000-00000000B202"),
                     products,
-                    "0000000000003",
+                    "0003",
                     1m,
                     ct1Start.AddMinutes(12))
             });
@@ -292,7 +292,7 @@ LIMIT 1;";
                 CreateCountLine(
                     Guid.Parse("30000000-0000-4000-8000-00000000B221"),
                     products,
-                    "0000000000001",
+                    "0001",
                     4m,
                     ct2Start.AddMinutes(4))
             });
@@ -330,19 +330,19 @@ LIMIT 1;";
                 CreateCountLine(
                     Guid.Parse("30000000-0000-4000-8000-00000000B301"),
                     products,
-                    "0000000000001",
+                    "0001",
                     5m,
                     ct1Start.AddMinutes(4)),
                 CreateCountLine(
                     Guid.Parse("30000000-0000-4000-8000-00000000B302"),
                     products,
-                    "0000000000002",
+                    "0002",
                     2m,
                     ct1Start.AddMinutes(6)),
                 CreateCountLine(
                     Guid.Parse("30000000-0000-4000-8000-00000000B303"),
                     products,
-                    "0000000000003",
+                    "0003",
                     1m,
                     ct1Start.AddMinutes(8))
             });
@@ -360,19 +360,19 @@ LIMIT 1;";
                 CreateCountLine(
                     Guid.Parse("30000000-0000-4000-8000-00000000B321"),
                     products,
-                    "0000000000001",
+                    "0001",
                     5m,
                     ct2Start.AddMinutes(4)),
                 CreateCountLine(
                     Guid.Parse("30000000-0000-4000-8000-00000000B322"),
                     products,
-                    "0000000000002",
+                    "0002",
                     2m,
                     ct2Start.AddMinutes(6)),
                 CreateCountLine(
                     Guid.Parse("30000000-0000-4000-8000-00000000B323"),
                     products,
-                    "0000000000003",
+                    "0003",
                     1m,
                     ct2Start.AddMinutes(8))
             });
@@ -410,13 +410,13 @@ LIMIT 1;";
                 CreateCountLine(
                     Guid.Parse("30000000-0000-4000-8000-00000000B401"),
                     products,
-                    "0000000000001",
+                    "0001",
                     5m,
                     ct1Start.AddMinutes(4)),
                 CreateCountLine(
                     Guid.Parse("30000000-0000-4000-8000-00000000B402"),
                     products,
-                    "0000000000002",
+                    "0002",
                     2m,
                     ct1Start.AddMinutes(6))
             });
@@ -434,13 +434,13 @@ LIMIT 1;";
                 CreateCountLine(
                     Guid.Parse("30000000-0000-4000-8000-00000000B421"),
                     products,
-                    "0000000000001",
+                    "0001",
                     7m,
                     ct2Start.AddMinutes(4)),
                 CreateCountLine(
                     Guid.Parse("30000000-0000-4000-8000-00000000B422"),
                     products,
-                    "0000000000002",
+                    "0002",
                     2m,
                     ct2Start.AddMinutes(6))
             });
