@@ -961,12 +961,22 @@ app.MapGet("/api/products/{code}", async (
     ProductDto? product = null;
     if (candidateEans.Length > 0)
     {
+        var dynamicParameters = new DynamicParameters();
+        var parameterNames = new string[candidateEans.Length];
+
+        for (var index = 0; index < candidateEans.Length; index++)
+        {
+            var parameterName = $"Code{index}";
+            parameterNames[index] = parameterName;
+            dynamicParameters.Add(parameterName, candidateEans[index]);
+        }
+
+        var conditions = string.Join(" OR ", parameterNames.Select(name => $"\"Ean\" = @{name}"));
+        var sql = $"SELECT \"Id\", \"Sku\", \"Name\", \"Ean\" FROM \"Product\" WHERE {conditions} LIMIT 1";
+
         product = await connection
             .QuerySingleOrDefaultAsync<ProductDto>(
-                new CommandDefinition(
-                    "SELECT \"Id\", \"Sku\", \"Name\", \"Ean\" FROM \"Product\" WHERE \"Ean\" IN @Codes LIMIT 1",
-                    new { Codes = candidateEans },
-                    cancellationToken: cancellationToken))
+                new CommandDefinition(sql, dynamicParameters, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
     }
 
