@@ -964,7 +964,7 @@ app.MapGet("/api/products/{code}", async (
         product = await connection
             .QuerySingleOrDefaultAsync<ProductDto>(
                 new CommandDefinition(
-                    "SELECT \"Id\", \"Sku\", \"Name\", \"Ean\" FROM \"Product\" WHERE \"Ean\" = ANY(@Codes) LIMIT 1",
+                    "SELECT \"Id\", \"Sku\", \"Name\", \"Ean\" FROM \"Product\" WHERE \"Ean\" IN @Codes LIMIT 1",
                     new { Codes = candidateEans },
                     cancellationToken: cancellationToken))
             .ConfigureAwait(false);
