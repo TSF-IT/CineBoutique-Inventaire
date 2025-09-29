@@ -62,6 +62,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         Assert.NotNull(payload);
         Assert.Equal(0, payload!.ActiveSessions);
         Assert.Equal(0, payload.OpenRuns);
+        Assert.Equal(0, payload.Conflicts);
         Assert.Null(payload.LastActivityUtc);
     }
 
@@ -108,8 +109,72 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         Assert.NotNull(payload);
         Assert.Equal(1, payload!.ActiveSessions);
         Assert.Equal(1, payload.OpenRuns);
+        Assert.Equal(0, payload.Conflicts);
         Assert.NotNull(payload.LastActivityUtc);
         Assert.True(payload.LastActivityUtc >= countedAt.AddMinutes(-1));
+    }
+
+    [Fact]
+    public async Task GetInventorySummary_CountsUnresolvedConflicts()
+    {
+        await ResetDatabaseAsync();
+
+        using var scope = _factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        var sessionId = Guid.NewGuid();
+        var locationId = Guid.NewGuid();
+        var runId = Guid.NewGuid();
+        var productId = Guid.NewGuid();
+        var countLineId = Guid.NewGuid();
+        var startedAt = DateTimeOffset.UtcNow.AddHours(-1);
+        var completedAt = DateTimeOffset.UtcNow.AddMinutes(-30);
+
+        const string insertLocation = "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\") VALUES (@Id, 'Z2', 'Zone 2');";
+        await connection.ExecuteAsync(insertLocation, new { Id = locationId });
+
+        const string insertSession = "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, 'Session', @StartedAt);";
+        await connection.ExecuteAsync(insertSession, new { Id = sessionId, StartedAt = startedAt });
+
+        const string insertRun =
+            "INSERT INTO \"CountingRun\" (\"Id\", \"InventorySessionId\", \"LocationId\", \"StartedAtUtc\", \"CompletedAtUtc\", \"CountType\")\n" +
+            "VALUES (@Id, @SessionId, @LocationId, @StartedAt, @CompletedAt, 1);";
+        await connection.ExecuteAsync(insertRun, new
+        {
+            Id = runId,
+            SessionId = sessionId,
+            LocationId = locationId,
+            StartedAt = startedAt,
+            CompletedAt = completedAt
+        });
+
+        const string insertProduct = "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"CreatedAtUtc\") VALUES (@Id, 'SKU-2', 'Produit', @CreatedAt);";
+        await connection.ExecuteAsync(insertProduct, new { Id = productId, CreatedAt = startedAt });
+
+        const string insertCountLine =
+            "INSERT INTO \"CountLine\" (\"Id\", \"CountingRunId\", \"ProductId\", \"Quantity\", \"CountedAtUtc\")\n" +
+            "VALUES (@Id, @RunId, @ProductId, 2, @CountedAt);";
+        await connection.ExecuteAsync(insertCountLine, new
+        {
+            Id = countLineId,
+            RunId = runId,
+            ProductId = productId,
+            CountedAt = completedAt
+        });
+
+        const string insertConflict =
+            "INSERT INTO \"Conflict\" (\"Id\", \"CountLineId\", \"Status\", \"Notes\", \"CreatedAtUtc\") VALUES (@Id, @CountLineId, 'pending', NULL, @CreatedAt);";
+        await connection.ExecuteAsync(insertConflict, new { Id = Guid.NewGuid(), CountLineId = countLineId, CreatedAt = completedAt });
+
+        var response = await _client.GetAsync("/api/inventories/summary");
+        response.EnsureSuccessStatusCode();
+
+        var payload = await response.Content.ReadFromJsonAsync<InventorySummaryDto>();
+        Assert.NotNull(payload);
+        Assert.Equal(1, payload!.Conflicts);
+        Assert.Equal(0, payload.OpenRuns);
     }
 
     private async Task ResetDatabaseAsync()

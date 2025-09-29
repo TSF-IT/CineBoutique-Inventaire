@@ -470,6 +470,7 @@ app.MapGet("/api/inventories/summary", async (IDbConnection connection, Cancella
     const string summarySql = @"SELECT
     (SELECT COUNT(*)::int FROM ""InventorySession"" WHERE ""CompletedAtUtc"" IS NULL) AS ""ActiveSessions"",
     (SELECT COUNT(*)::int FROM ""CountingRun"" WHERE ""CompletedAtUtc"" IS NULL) AS ""OpenRuns"",
+    (SELECT COUNT(*)::int FROM ""Conflict"" WHERE ""ResolvedAtUtc"" IS NULL) AS ""Conflicts"",
     (
         SELECT MAX(value) FROM (
             SELECT MAX(""CreatedAtUtc"") AS value FROM ""Audit""
@@ -494,7 +495,7 @@ app.MapGet("/api/inventories/summary", async (IDbConnection connection, Cancella
 .WithOpenApi(op =>
 {
     op.Summary = "Récupère un résumé des inventaires en cours.";
-    op.Description = "Fournit un aperçu synthétique incluant les sessions actives, les runs ouverts et la dernière activité.";
+    op.Description = "Fournit un aperçu synthétique incluant les comptages en cours, les conflits à résoudre et la dernière activité.";
     return op;
 });
 
