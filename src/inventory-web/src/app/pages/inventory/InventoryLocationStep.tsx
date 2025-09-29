@@ -287,7 +287,6 @@ export const InventoryLocationStep = () => {
         {!loading && !errorPanel && (
           <div className="flex flex-col gap-3">
             {(Array.isArray(filteredLocations) ? filteredLocations : []).map((zone) => {
-              const statuses = getRelevantStatuses(zone)
               const visibleStatuses = getVisibleStatuses(zone)
               const zoneCompleted = isZoneCompleted(zone)
               const isSelected = location?.id === zone.id
