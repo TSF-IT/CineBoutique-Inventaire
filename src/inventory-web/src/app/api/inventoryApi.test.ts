@@ -36,8 +36,9 @@ describe('fetchLocations (dev fixtures)', () => {
 
     const locations = await fetchLocations()
 
-    expect(locations).toHaveLength(4)
+    expect(locations).toHaveLength(39)
     expect(locations[0].code).toBe('B1')
+    expect(locations[locations.length - 1].code).toBe('S19')
     expect(warnSpy).toHaveBeenCalled()
   })
 
