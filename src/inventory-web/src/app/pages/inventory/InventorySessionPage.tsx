@@ -12,6 +12,7 @@ import { EmptyState } from '../../components/EmptyState'
 import { SlidingPanel } from '../../components/SlidingPanel'
 import { useInventory } from '../../contexts/InventoryContext'
 import type { HttpError } from '@/lib/api/http'
+import type { Product } from '../../types/inventory'
 
 const DEV_API_UNREACHABLE_HINT =
   "Impossible de joindre l’API : vérifie que le backend tourne (curl http://localhost:8080/healthz) ou que le proxy Vite est actif."
@@ -94,8 +95,11 @@ export const InventorySessionPage = () => {
   const [manualEan, setManualEan] = useState('')
   const [manualName, setManualName] = useState('')
   const [manualLoading, setManualLoading] = useState(false)
+  const [inputLookupStatus, setInputLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not-found' | 'error'>('idle')
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [recentScans, setRecentScans] = useState<string[]>([])
+  const manualLookupIdRef = useRef(0)
+  const lastSearchedInputRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!selectedUser) {
@@ -118,8 +122,21 @@ export const InventorySessionPage = () => {
     [items],
   )
 
+  const searchProductByEan = useCallback(async (ean: string) => {
+    try {
+      const product = await fetchProductByEan(ean)
+      return { status: 'found' as const, product }
+    } catch (error) {
+      const err = error as HttpError
+      if (isHttpError(err) && err.status === 404) {
+        return { status: 'not-found' as const, error: err }
+      }
+      return { status: 'error' as const, error: err }
+    }
+  }, [])
+
   const handleDetected = useCallback(
-    async (rawValue: string) => {
+    async (rawValue: string, options?: { openManualPanel?: boolean }) => {
       const value = rawValue.trim()
       if (!value) {
         return
@@ -133,27 +150,90 @@ export const InventorySessionPage = () => {
         const next = [value, ...previous.filter((item) => item !== value)]
         return next.slice(0, 5)
       })
-      try {
-        const product = await fetchProductByEan(value)
+
+      const result = await searchProductByEan(value)
+
+      if (result.status === 'found') {
+        const product: Product = result.product
         addOrIncrementItem(product)
         setStatus(`${product.name} ajouté`)
-      } catch (error) {
-        const err = error as HttpError
-        if (isHttpError(err) && err.status === 404) {
-          setStatus(null)
-          setManualEan(value)
+        return
+      }
+
+      if (result.status === 'not-found') {
+        setStatus(null)
+        setManualEan(value)
+        if (options?.openManualPanel ?? true) {
           setManualOpen(true)
+        }
+        return
+      }
+
+      const err = result.error
+      if (isHttpError(err)) {
+        setErrorMessage(buildHttpMessage('Erreur réseau', err))
+      } else {
+        setErrorMessage('Impossible de récupérer le produit. Réessayez ou ajoutez-le manuellement.')
+      }
+    },
+    [addOrIncrementItem, searchProductByEan],
+  )
+
+  const trimmedScanValue = scanValue.trim()
+
+  useEffect(() => {
+    if (!trimmedScanValue) {
+      manualLookupIdRef.current += 1
+      lastSearchedInputRef.current = null
+      setInputLookupStatus('idle')
+      return
+    }
+
+    if (lastSearchedInputRef.current === trimmedScanValue) {
+      return
+    }
+
+    lastSearchedInputRef.current = trimmedScanValue
+    const currentLookupId = ++manualLookupIdRef.current
+    setInputLookupStatus('loading')
+    setStatus(`Recherche du code ${trimmedScanValue}`)
+    setErrorMessage(null)
+
+    const timeoutId = window.setTimeout(() => {
+      void (async () => {
+        const result = await searchProductByEan(trimmedScanValue)
+
+        if (manualLookupIdRef.current !== currentLookupId) {
+          return
+        }
+
+        if (result.status === 'found') {
+          const product: Product = result.product
+          addOrIncrementItem(product)
+          setStatus(`${product.name} ajouté`)
+          setScanValue('')
+          setInputLookupStatus('found')
+        } else if (result.status === 'not-found') {
+          setStatus(null)
+          setManualEan(trimmedScanValue)
+          setErrorMessage('Aucun produit trouvé pour cet EAN. Ajoutez-le manuellement.')
+          setInputLookupStatus('not-found')
         } else {
+          const err = result.error
           if (isHttpError(err)) {
             setErrorMessage(buildHttpMessage('Erreur réseau', err))
           } else {
             setErrorMessage('Impossible de récupérer le produit. Réessayez ou ajoutez-le manuellement.')
           }
+          setInputLookupStatus('error')
         }
-      }
-    },
-    [addOrIncrementItem],
-  )
+      })()
+    }, 300)
+
+    return () => {
+      window.clearTimeout(timeoutId)
+    }
+  }, [addOrIncrementItem, searchProductByEan, trimmedScanValue])
 
   const handleImagePicked = useCallback(
     async (file: File) => {
@@ -221,14 +301,14 @@ export const InventorySessionPage = () => {
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (event.key === 'Enter') {
         event.preventDefault()
-        const value = scanValue.trim()
+        const value = trimmedScanValue
         if (value) {
           setScanValue('')
-          void handleDetected(value)
+          void handleDetected(value, { openManualPanel: false })
         }
       }
     },
-    [handleDetected, scanValue],
+    [handleDetected, trimmedScanValue],
   )
 
   const handleInputChange = useCallback(
@@ -263,6 +343,8 @@ export const InventorySessionPage = () => {
         setManualOpen(false)
         setManualName('')
         setManualEan('')
+        setScanValue('')
+        setInputLookupStatus('idle')
         inputRef.current?.focus()
       } catch (error) {
         const err = error as HttpError
@@ -310,7 +392,15 @@ export const InventorySessionPage = () => {
           autoFocus
         />
         <div className="flex justify-end">
-          <Button variant="ghost" onClick={() => setManualOpen(true)}>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setManualEan(trimmedScanValue)
+              setManualOpen(true)
+            }}
+            data-testid="btn-open-manual"
+            disabled={!trimmedScanValue || inputLookupStatus !== 'not-found'}
+          >
             Ajouter manuellement
           </Button>
         </div>
