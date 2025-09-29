@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { fetchLocations } from '../../api/inventoryApi'
+import { fetchInventorySummary, fetchLocations } from '../../api/inventoryApi'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Card } from '../../components/Card'
@@ -10,6 +10,7 @@ import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { useInventory } from '../../contexts/InventoryContext'
 import { CountType } from '../../types/inventory'
 import type { Location, LocationCountStatus } from '../../types/inventory'
+import { getLocationDisplayName, isLocationLabelRedundant } from '../../utils/locationDisplay'
 import type { HttpError } from '@/lib/api/http'
 
 const DEV_API_UNREACHABLE_HINT =
@@ -87,6 +88,8 @@ export const InventoryLocationStep = () => {
   const [locations, setLocations] = useState<Location[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<HttpError | Error | string | null>(null)
+  const [conflictLookup, setConflictLookup] = useState<Map<string, true>>(new Map())
+  const [conflictsLoaded, setConflictsLoaded] = useState(false)
   const loadLocations = useCallback(
     async (options?: { isCancelled?: () => boolean }) => {
       const isCancelled = options?.isCancelled ?? (() => false)
@@ -117,6 +120,43 @@ export const InventoryLocationStep = () => {
     [],
   )
 
+  const loadConflicts = useCallback(
+    async (options?: { isCancelled?: () => boolean }) => {
+      const isCancelled = options?.isCancelled ?? (() => false)
+      try {
+        const summary = await fetchInventorySummary()
+        if (isCancelled()) {
+          return
+        }
+
+        const nextLookup = new Map<string, true>()
+        for (const conflict of summary.conflictDetails ?? []) {
+          const idKey = conflict.locationId?.trim().toLowerCase()
+          if (idKey) {
+            nextLookup.set(idKey, true)
+          }
+          const codeKey = conflict.locationCode?.trim().toLowerCase()
+          if (codeKey) {
+            nextLookup.set(codeKey, true)
+          }
+        }
+
+        setConflictLookup(nextLookup)
+        setConflictsLoaded(true)
+      } catch (err) {
+        if (isCancelled()) {
+          return
+        }
+        if (import.meta.env.DEV) {
+          console.error('Impossible de charger les informations de conflit.', err)
+        }
+        setConflictLookup(new Map())
+        setConflictsLoaded(false)
+      }
+    },
+    [],
+  )
+
   useEffect(() => {
     if (!selectedUser) {
       navigate('/inventory/start', { replace: true })
@@ -126,10 +166,11 @@ export const InventoryLocationStep = () => {
   useEffect(() => {
     let cancelled = false
     void loadLocations({ isCancelled: () => cancelled })
+    void loadConflicts({ isCancelled: () => cancelled })
     return () => {
       cancelled = true
     }
-  }, [loadLocations])
+  }, [loadConflicts, loadLocations])
 
   const filteredLocations = useMemo(() => {
     const safeList = Array.isArray(locations) ? locations : []
@@ -144,6 +185,7 @@ export const InventoryLocationStep = () => {
 
   const handleRetry = () => {
     void loadLocations()
+    void loadConflicts()
   }
 
   const computeDurationLabel = (startedAtUtc: string | Date | null | undefined) => {
@@ -261,7 +303,7 @@ export const InventoryLocationStep = () => {
           <div>
             <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Sélectionnez la zone</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Choisissez la zone physique ou logique à inventorier.
+              Choisissez la zone à inventorier.
             </p>
           </div>
           <Button variant="ghost" onClick={handleRetry} disabled={loading}>
@@ -301,6 +343,19 @@ export const InventoryLocationStep = () => {
                 : isSelected
                   ? 'border-brand-400 bg-brand-500/10 text-brand-700 dark:bg-brand-500/20 dark:text-brand-100'
                   : 'border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200'
+              const displayName = getLocationDisplayName(zone.code, zone.label)
+              const shouldDisplayLabel = !isLocationLabelRedundant(zone.code, zone.label)
+              const conflictStatus = (() => {
+                if (!conflictsLoaded) {
+                  return null
+                }
+                const idKey = zone.id?.trim().toLowerCase()
+                const codeKey = zone.code?.trim().toLowerCase()
+                const hasConflict = Boolean(
+                  (idKey && conflictLookup.get(idKey)) || (codeKey && conflictLookup.get(codeKey)),
+                )
+                return hasConflict ? 'conflict' : 'none'
+              })()
               return (
                 <div
                   key={zone.id}
@@ -312,7 +367,9 @@ export const InventoryLocationStep = () => {
                       <span className="text-sm font-semibold uppercase tracking-wider text-brand-500">
                         {zone.code}
                       </span>
-                      <span className="text-lg font-semibold">{zone.label}</span>
+                      {shouldDisplayLabel && (
+                        <span className="text-lg font-semibold">{zone.label}</span>
+                      )}
                     </div>
                     {visibleStatuses.length > 0 && (
                       <div className="flex flex-col gap-1" aria-live="polite">
@@ -329,17 +386,31 @@ export const InventoryLocationStep = () => {
                     )}
                   </div>
                   {zoneCompleted && (
-                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                      Les comptages 1 et 2 sont terminés pour cette zone.
-                    </p>
+                    <div className="text-xs font-medium">
+                      <p className="text-slate-500 dark:text-slate-400">
+                        Les comptages 1 et 2 sont terminés pour cette zone.
+                      </p>
+                      {conflictStatus === 'none' && (
+                        <p className="mt-1 flex items-center gap-2 text-emerald-600 dark:text-emerald-300">
+                          <span aria-hidden>✅</span>
+                          <span>Aucun conflit</span>
+                        </p>
+                      )}
+                      {conflictStatus === 'conflict' && (
+                        <p className="mt-1 flex items-center gap-2 text-rose-600 dark:text-rose-300">
+                          <span aria-hidden>⚠️</span>
+                          <span>Conflit détecté</span>
+                        </p>
+                      )}
+                    </div>
                   )}
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <Button
                       data-testid="btn-select-zone"
                       aria-label={
                         visibleStatuses.length > 0 || zoneCompleted
-                          ? `Zone ${zone.label} – ${statusSummary}`
-                          : `Zone ${zone.label}`
+                          ? `Zone ${displayName} – ${statusSummary}`
+                          : `Zone ${displayName}`
                       }
                       onClick={() => handleLocationSelection(zone)}
                       disabled={zoneCompleted}
