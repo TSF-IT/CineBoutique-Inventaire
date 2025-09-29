@@ -80,7 +80,8 @@ L'endpoint `POST /auth/pin` retourne un JWT court si le PIN est valide. Les endp
 - `GET /health` : liveness simple.
 - `GET /ready` : vérifie l'accès à PostgreSQL (`SELECT 1`).
 - `GET /locations` : liste les zones d'inventaire et l'état d'occupation courant (filtrable par type de comptage).
-- `GET /products/{code}` : recherche par SKU ou code EAN-8/EAN-13.
+- `GET /api/products/{code}` : recherche par SKU ou code EAN-8/EAN-13.
+- `POST /api/products` : création manuelle d'un produit (SKU, nom, EAN optionnel).
 - `POST /auth/pin` : authentification par PIN/JWT (utilisateurs définis dans la configuration).
 - `POST /api/inventories/{locationId}/restart` : clôture les runs actifs d'une zone pour redémarrer un comptage.
 
