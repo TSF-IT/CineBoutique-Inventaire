@@ -96,7 +96,6 @@ export const InventorySessionPage = () => {
   const [manualName, setManualName] = useState('')
   const [manualLoading, setManualLoading] = useState(false)
   const [inputLookupStatus, setInputLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not-found' | 'error'>('idle')
-  const [manualCandidate, setManualCandidate] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [recentScans, setRecentScans] = useState<string[]>([])
   const manualLookupIdRef = useRef(0)
@@ -163,7 +162,6 @@ export const InventorySessionPage = () => {
 
       if (result.status === 'not-found') {
         setStatus(null)
-        setManualCandidate(value)
         setManualEan(value)
         if (options?.openManualPanel ?? true) {
           setManualOpen(true)
@@ -187,7 +185,6 @@ export const InventorySessionPage = () => {
     if (!trimmedScanValue) {
       manualLookupIdRef.current += 1
       lastSearchedInputRef.current = null
-      setManualCandidate(null)
       setInputLookupStatus('idle')
       return
     }
@@ -198,7 +195,6 @@ export const InventorySessionPage = () => {
 
     lastSearchedInputRef.current = trimmedScanValue
     const currentLookupId = ++manualLookupIdRef.current
-    setManualCandidate(null)
     setInputLookupStatus('loading')
     setStatus(`Recherche du code ${trimmedScanValue}`)
     setErrorMessage(null)
@@ -216,11 +212,9 @@ export const InventorySessionPage = () => {
           addOrIncrementItem(product)
           setStatus(`${product.name} ajouté`)
           setScanValue('')
-          setManualCandidate(null)
           setInputLookupStatus('found')
         } else if (result.status === 'not-found') {
           setStatus(null)
-          setManualCandidate(trimmedScanValue)
           setManualEan(trimmedScanValue)
           setErrorMessage('Aucun produit trouvé pour cet EAN. Ajoutez-le manuellement.')
           setInputLookupStatus('not-found')
@@ -350,7 +344,6 @@ export const InventorySessionPage = () => {
         setManualName('')
         setManualEan('')
         setScanValue('')
-        setManualCandidate(null)
         setInputLookupStatus('idle')
         inputRef.current?.focus()
       } catch (error) {
