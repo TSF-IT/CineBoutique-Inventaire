@@ -809,7 +809,133 @@ WHERE ""LocationId"" = @LocationId
     return op;
 });
 
-app.MapGet("/products/{code}", async (
+app.MapPost("/api/products", async (
+    CreateProductRequest request,
+    IDbConnection connection,
+    IAuditLogger auditLogger,
+    HttpContext httpContext,
+    CancellationToken cancellationToken) =>
+{
+    if (request is null)
+    {
+        return Results.BadRequest(new { message = "Le corps de la requête est requis." });
+    }
+
+    var sanitizedSku = request.Sku?.Trim();
+    var sanitizedName = request.Name?.Trim();
+    var sanitizedEan = string.IsNullOrWhiteSpace(request.Ean) ? null : request.Ean.Trim();
+
+    if (string.IsNullOrWhiteSpace(sanitizedSku))
+    {
+        await LogProductCreationAttemptAsync(auditLogger, httpContext, "sans SKU", "products.create.invalid").ConfigureAwait(false);
+        return Results.BadRequest(new { message = "Le SKU est requis." });
+    }
+
+    if (sanitizedSku.Length > 32)
+    {
+        await LogProductCreationAttemptAsync(auditLogger, httpContext, "avec un SKU trop long", "products.create.invalid").ConfigureAwait(false);
+        return Results.BadRequest(new { message = "Le SKU ne peut pas dépasser 32 caractères." });
+    }
+
+    if (string.IsNullOrWhiteSpace(sanitizedName))
+    {
+        await LogProductCreationAttemptAsync(auditLogger, httpContext, "sans nom", "products.create.invalid").ConfigureAwait(false);
+        return Results.BadRequest(new { message = "Le nom est requis." });
+    }
+
+    if (sanitizedName.Length > 256)
+    {
+        await LogProductCreationAttemptAsync(auditLogger, httpContext, "avec un nom trop long", "products.create.invalid").ConfigureAwait(false);
+        return Results.BadRequest(new { message = "Le nom ne peut pas dépasser 256 caractères." });
+    }
+
+    if (sanitizedEan is not null)
+    {
+        if (sanitizedEan.Length is < 8 or > 13)
+        {
+            await LogProductCreationAttemptAsync(auditLogger, httpContext, "avec un EAN invalide", "products.create.invalid").ConfigureAwait(false);
+            return Results.BadRequest(new { message = "L'EAN doit contenir entre 8 et 13 caractères." });
+        }
+
+        if (!sanitizedEan.All(char.IsDigit))
+        {
+            await LogProductCreationAttemptAsync(auditLogger, httpContext, "avec un EAN non numérique", "products.create.invalid").ConfigureAwait(false);
+            return Results.BadRequest(new { message = "L'EAN doit contenir uniquement des chiffres." });
+        }
+    }
+
+    await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+    const string skuExistsSql = "SELECT 1 FROM \"Product\" WHERE LOWER(\"Sku\") = LOWER(@Sku) LIMIT 1";
+    var skuExists = await connection.QuerySingleOrDefaultAsync<int?>(
+            new CommandDefinition(skuExistsSql, new { Sku = sanitizedSku }, cancellationToken: cancellationToken))
+        .ConfigureAwait(false);
+
+    if (skuExists.HasValue)
+    {
+        await LogProductCreationAttemptAsync(auditLogger, httpContext, $"avec un SKU déjà utilisé ({sanitizedSku})", "products.create.conflict").ConfigureAwait(false);
+        return Results.Conflict(new { message = "Un produit avec ce SKU existe déjà." });
+    }
+
+    if (sanitizedEan is not null)
+    {
+        const string eanExistsSql = "SELECT 1 FROM \"Product\" WHERE \"Ean\" = @Ean LIMIT 1";
+        var eanExists = await connection.QuerySingleOrDefaultAsync<int?>(
+                new CommandDefinition(eanExistsSql, new { Ean = sanitizedEan }, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        if (eanExists.HasValue)
+        {
+            await LogProductCreationAttemptAsync(auditLogger, httpContext, $"avec un EAN déjà utilisé ({sanitizedEan})", "products.create.conflict").ConfigureAwait(false);
+            return Results.Conflict(new { message = "Un produit avec cet EAN existe déjà." });
+        }
+    }
+
+    var now = DateTimeOffset.UtcNow;
+    var newProductId = Guid.NewGuid();
+
+    const string insertSql = @"
+INSERT INTO ""Product"" (""Id"", ""Sku"", ""Name"", ""Ean"", ""CreatedAtUtc"")
+VALUES (@Id, @Sku, @Name, @Ean, @CreatedAtUtc)
+RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
+
+    var createdProduct = await connection.QuerySingleAsync<ProductDto>(
+            new CommandDefinition(
+                insertSql,
+                new
+                {
+                    Id = newProductId,
+                    Sku = sanitizedSku,
+                    Name = sanitizedName,
+                    Ean = sanitizedEan,
+                    CreatedAtUtc = now
+                },
+                cancellationToken: cancellationToken))
+        .ConfigureAwait(false);
+
+    var userName = GetAuthenticatedUserName(httpContext);
+    var actor = FormatActorLabel(userName);
+    var timestamp = FormatTimestamp(now);
+    var eanLabel = string.IsNullOrWhiteSpace(createdProduct.Ean) ? "non renseigné" : createdProduct.Ean;
+    var creationMessage = $"{actor} a créé le produit \"{createdProduct.Name}\" (SKU {createdProduct.Sku}, EAN {eanLabel}) le {timestamp} UTC.";
+    await auditLogger.LogAsync(creationMessage, userName, "products.create.success").ConfigureAwait(false);
+
+    var location = $"/api/products/{Uri.EscapeDataString(createdProduct.Sku)}";
+    return Results.Created(location, createdProduct);
+})
+.WithName("CreateProduct")
+.WithTags("Produits")
+.Produces<ProductDto>(StatusCodes.Status201Created)
+.Produces(StatusCodes.Status400BadRequest)
+.Produces(StatusCodes.Status409Conflict)
+.WithOpenApi(op =>
+{
+    op.Summary = "Crée un nouveau produit.";
+    op.Description = "Permet l'ajout manuel d'un produit en spécifiant son SKU, son nom et éventuellement un code EAN.";
+    return op;
+});
+
+app.MapGet("/api/products/{code}", async (
     string code,
     IDbConnection connection,
     IAuditLogger auditLogger,
@@ -868,6 +994,17 @@ app.MapGet("/products/{code}", async (
     await auditLogger.LogAsync(notFoundMessage, userName, "products.scan.not_found").ConfigureAwait(false);
 
     return Results.NotFound();
+})
+.WithName("GetProductByCode")
+.WithTags("Produits")
+.Produces<ProductDto>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status400BadRequest)
+.Produces(StatusCodes.Status404NotFound)
+.WithOpenApi(op =>
+{
+    op.Summary = "Recherche un produit par code scanné.";
+    op.Description = "Retourne un produit à partir de son SKU ou d'un code EAN scanné.";
+    return op;
 });
 
 await app.RunAsync().ConfigureAwait(false);
@@ -1019,6 +1156,20 @@ static string DescribeCountType(int countType)
         3 => "contrôle",
         _ => $"type {countType}"
     };
+}
+
+static async Task LogProductCreationAttemptAsync(
+    IAuditLogger auditLogger,
+    HttpContext httpContext,
+    string details,
+    string category)
+{
+    var now = DateTimeOffset.UtcNow;
+    var userName = GetAuthenticatedUserName(httpContext);
+    var actor = FormatActorLabel(userName);
+    var timestamp = FormatTimestamp(now);
+    var message = $"{actor} a tenté de créer un produit {details} le {timestamp} UTC.";
+    await auditLogger.LogAsync(message, userName, category).ConfigureAwait(false);
 }
 
 static Guid? SanitizeRunId(Guid? runId)
