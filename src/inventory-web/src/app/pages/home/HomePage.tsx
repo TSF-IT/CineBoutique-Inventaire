@@ -44,7 +44,7 @@ const describeError = (error: unknown): { title: string; details?: string } | nu
       (typeof error.status === 'number' ? `HTTP ${error.status}` : undefined)
     const enrichedDetail =
       import.meta.env.DEV && error.status === 404 && detail
-        ? `${detail}\nVérifie que l'API répond sur ${error.url ?? 'http://localhost:8080/api'}.`
+        ? `${detail}\nVérifie que l’API répond sur ${error.url ?? 'http://localhost:8080/api'}.`
         : detail
     return {
       title: 'Erreur API',
@@ -106,7 +106,7 @@ export const HomePage = () => {
       </header>
 
       <Card className="flex flex-col gap-4">
-        <SectionTitle>État de l'inventaire</SectionTitle>
+        <SectionTitle>État de l’inventaire</SectionTitle>
         {loading && <LoadingIndicator label="Chargement des indicateurs" />}
         {!loading && errorDetails && (
           <ErrorPanel title={errorDetails.title} details={errorDetails.details} actionLabel="Réessayer" onAction={handleRetry} />
@@ -132,7 +132,7 @@ export const HomePage = () => {
         {!loading && !errorDetails && (!displaySummary || !hasContextInfos) && (
           <EmptyState
             title="Pas encore de données"
-            description="Le résumé d'inventaire n'est pas disponible pour le moment. Vous pourrez le consulter dès qu'un comptage aura débuté."
+            description="Le résumé d’inventaire n’est pas disponible pour le moment. Vous pourrez le consulter dès qu’un comptage aura débuté."
           />
         )}
       </Card>
