@@ -487,13 +487,20 @@ app.MapGet("/api/inventories/summary", async (IDbConnection connection, Cancella
         .QuerySingleAsync<InventorySummaryDto>(new CommandDefinition(summarySql, cancellationToken: cancellationToken))
         .ConfigureAwait(false);
 
-    const string openRunsDetailsSql = @"SELECT
+    var hasOperatorDisplayNameColumn = await ColumnExistsAsync(connection, "CountingRun", "OperatorDisplayName", cancellationToken)
+        .ConfigureAwait(false);
+
+    var operatorDisplayNameProjection = hasOperatorDisplayNameColumn
+        ? "cr.\"OperatorDisplayName\""
+        : "NULL::text";
+
+    var openRunsDetailsSql = $@"SELECT
     cr.""Id"" AS ""RunId"",
     cr.""LocationId"",
     l.""Code"" AS ""LocationCode"",
     l.""Label"" AS ""LocationLabel"",
     cr.""CountType"",
-    cr.""OperatorDisplayName"",
+    {operatorDisplayNameProjection} AS ""OperatorDisplayName"",
     cr.""StartedAtUtc""
 FROM ""CountingRun"" cr
 JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
@@ -504,7 +511,7 @@ ORDER BY cr.""StartedAtUtc"" DESC;";
         .QueryAsync<OpenRunSummaryRow>(new CommandDefinition(openRunsDetailsSql, cancellationToken: cancellationToken))
         .ConfigureAwait(false)).ToList();
 
-    const string conflictsDetailsSql = @"SELECT
+    var conflictsDetailsSql = $@"SELECT
     c.""Id"" AS ""ConflictId"",
     c.""CountLineId"",
     cl.""CountingRunId"",
@@ -512,7 +519,7 @@ ORDER BY cr.""StartedAtUtc"" DESC;";
     l.""Code"" AS ""LocationCode"",
     l.""Label"" AS ""LocationLabel"",
     cr.""CountType"",
-    cr.""OperatorDisplayName"",
+    {operatorDisplayNameProjection} AS ""OperatorDisplayName"",
     c.""CreatedAtUtc""
 FROM ""Conflict"" c
 JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
@@ -574,13 +581,20 @@ app.MapGet("/api/locations", async (int? countType, IDbConnection connection, Ca
 
     await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-    const string sql = @"WITH active_runs AS (
+    var hasOperatorDisplayNameColumn = await ColumnExistsAsync(connection, "CountingRun", "OperatorDisplayName", cancellationToken)
+        .ConfigureAwait(false);
+
+    var operatorDisplayNameProjection = hasOperatorDisplayNameColumn
+        ? "cr.\"OperatorDisplayName\""
+        : "NULL::text";
+
+    var sql = $@"WITH active_runs AS (
     SELECT DISTINCT ON (cr.""LocationId"")
         cr.""LocationId"",
         cr.""Id"" AS ""ActiveRunId"",
         cr.""CountType"" AS ""ActiveCountType"",
         cr.""StartedAtUtc"" AS ""ActiveStartedAtUtc"",
-        cr.""OperatorDisplayName"" AS ""BusyBy""
+        {operatorDisplayNameProjection} AS ""BusyBy""
     FROM ""CountingRun"" cr
     WHERE cr.""CompletedAtUtc"" IS NULL
       AND (@CountType IS NULL OR cr.""CountType"" = @CountType)
@@ -614,25 +628,25 @@ ORDER BY l.""Code"" ASC;";
 
     var locationIds = locations.Select(location => location.Id).ToArray();
 
-    const string openRunsSql = @"SELECT
+    var openRunsSql = $@"SELECT
     cr.""LocationId"",
     cr.""CountType"",
     cr.""Id"" AS ""RunId"",
     cr.""StartedAtUtc"",
     cr.""CompletedAtUtc"",
-    cr.""OperatorDisplayName""
+    {operatorDisplayNameProjection} AS ""OperatorDisplayName""
 FROM ""CountingRun"" cr
 WHERE cr.""CompletedAtUtc"" IS NULL
   AND cr.""LocationId"" = ANY(@LocationIds)
 ORDER BY cr.""LocationId"", cr.""CountType"", cr.""StartedAtUtc"" DESC;";
 
-    const string completedRunsSql = @"SELECT DISTINCT ON (cr.""LocationId"", cr.""CountType"")
+    var completedRunsSql = $@"SELECT DISTINCT ON (cr.""LocationId"", cr.""CountType"")
     cr.""LocationId"",
     cr.""CountType"",
     cr.""Id"" AS ""RunId"",
     cr.""StartedAtUtc"",
     cr.""CompletedAtUtc"",
-    cr.""OperatorDisplayName""
+    {operatorDisplayNameProjection} AS ""OperatorDisplayName""
 FROM ""CountingRun"" cr
 WHERE cr.""CompletedAtUtc"" IS NOT NULL
   AND cr.""LocationId"" = ANY(@LocationIds)
@@ -1119,6 +1133,22 @@ static string[] BuildCandidateEanCodes(string code)
     }
 
     return candidates.ToArray();
+}
+
+static async Task<bool> ColumnExistsAsync(IDbConnection connection, string tableName, string columnName, CancellationToken cancellationToken)
+{
+    const string sql = @"SELECT 1
+FROM information_schema.columns
+WHERE table_schema = current_schema()
+  AND table_name = @TableName
+  AND column_name = @ColumnName
+LIMIT 1;";
+
+    var result = await connection.ExecuteScalarAsync<int?>(
+            new CommandDefinition(sql, new { TableName = tableName, ColumnName = columnName }, cancellationToken: cancellationToken))
+        .ConfigureAwait(false);
+
+    return result.HasValue;
 }
 
 static async Task EnsureConnectionOpenAsync(IDbConnection connection, CancellationToken cancellationToken)
