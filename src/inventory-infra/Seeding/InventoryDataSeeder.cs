@@ -23,7 +23,7 @@ public sealed class InventoryDataSeeder
             ["B1"] = new[] { "Amélie" },
             ["B2"] = new[] { "Bruno", "Camille" },
             ["B3"] = new[] { "David", "Elisa" },
-            ["B4"] = new[] { "Fanny", "Guillaume" }
+            ["B4"] = new[] { "Amélie", "Bruno" }
         };
 
     private readonly IDbConnectionFactory _connectionFactory;
