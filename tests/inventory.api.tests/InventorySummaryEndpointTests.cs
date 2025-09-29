@@ -64,6 +64,8 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         Assert.Equal(0, payload.OpenRuns);
         Assert.Equal(0, payload.Conflicts);
         Assert.Null(payload.LastActivityUtc);
+        Assert.Empty(payload.OpenRunDetails);
+        Assert.Empty(payload.ConflictDetails);
     }
 
     [Fact]
@@ -112,6 +114,16 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         Assert.Equal(0, payload.Conflicts);
         Assert.NotNull(payload.LastActivityUtc);
         Assert.True(payload.LastActivityUtc >= countedAt.AddMinutes(-1));
+        Assert.Single(payload.OpenRunDetails);
+        var openRun = payload.OpenRunDetails[0];
+        Assert.Equal(runId, openRun.RunId);
+        Assert.Equal(locationId, openRun.LocationId);
+        Assert.Equal("Z1", openRun.LocationCode);
+        Assert.Equal("Zone 1", openRun.LocationLabel);
+        Assert.Equal(1, openRun.CountType);
+        Assert.Null(openRun.OperatorDisplayName);
+        Assert.Equal(startedAt, openRun.StartedAtUtc, TimeSpan.FromSeconds(1));
+        Assert.Empty(payload.ConflictDetails);
     }
 
     [Fact]
@@ -175,6 +187,15 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         Assert.NotNull(payload);
         Assert.Equal(1, payload!.Conflicts);
         Assert.Equal(0, payload.OpenRuns);
+        Assert.Single(payload.ConflictDetails);
+        var conflict = payload.ConflictDetails[0];
+        Assert.Equal(locationId, conflict.LocationId);
+        Assert.Equal("Z2", conflict.LocationCode);
+        Assert.Equal("Zone 2", conflict.LocationLabel);
+        Assert.Equal(1, conflict.CountType);
+        Assert.Equal(runId, conflict.CountingRunId);
+        Assert.Equal(countLineId, conflict.CountLineId);
+        Assert.Equal(0, payload.OpenRunDetails.Count);
     }
 
     private async Task ResetDatabaseAsync()

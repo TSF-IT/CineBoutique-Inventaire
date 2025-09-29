@@ -1,13 +1,14 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import clsx from 'clsx'
 import { Link, useNavigate } from 'react-router-dom'
 import { fetchInventorySummary } from '../../api/inventoryApi'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/Card'
 import { ErrorPanel } from '../../components/ErrorPanel'
-import { EmptyState } from '../../components/EmptyState'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { Page } from '../../components/Page'
 import { SectionTitle } from '../../components/SectionTitle'
+import { SlidingPanel } from '../../components/SlidingPanel'
 import { useAsync } from '../../hooks/useAsync'
 import type { InventorySummary } from '../../types/inventory'
 import type { HttpError } from '@/lib/api/http'
@@ -30,6 +31,30 @@ const formatLastActivity = (value: string | null) => {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(date)
+}
+
+const formatDateTime = (value: string) => {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return 'Non disponible'
+  }
+  return new Intl.DateTimeFormat('fr-FR', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date)
+}
+
+const describeCountType = (value: number) => {
+  switch (value) {
+    case 1:
+      return 'Premier passage'
+    case 2:
+      return 'Second passage'
+    case 3:
+      return 'Contrôle'
+    default:
+      return `Type ${value}`
+  }
 }
 
 const describeError = (error: unknown): { title: string; details?: string } | null => {
@@ -62,6 +87,8 @@ const describeError = (error: unknown): { title: string; details?: string } | nu
 
 export const HomePage = () => {
   const navigate = useNavigate()
+  const [openRunsPanelOpen, setOpenRunsPanelOpen] = useState(false)
+  const [conflictsPanelOpen, setConflictsPanelOpen] = useState(false)
   const onError = useCallback((e: unknown) => {
     const err = e as HttpError
     console.error('[home] http error', err)
@@ -78,19 +105,27 @@ export const HomePage = () => {
 
   const errorDetails = useMemo(() => describeError(error), [error])
 
-  const hasContextInfos = useMemo(() => {
-    if (!data) {
-      return false
-    }
-    return (
-      (data.openRuns ?? 0) > 0 ||
-      (data.conflicts ?? 0) > 0 ||
-      (data.activeSessions ?? 0) > 0 ||
-      Boolean(data.lastActivityUtc)
-    )
-  }, [data])
-
   const displaySummary: InventorySummary | null = data ?? null
+  const openRunsCount = displaySummary?.openRuns ?? 0
+  const conflictCount = displaySummary?.conflicts ?? 0
+  const openRunDetails = displaySummary?.openRunDetails ?? []
+  const conflictDetails = displaySummary?.conflictDetails ?? []
+  const hasOpenRuns = openRunsCount > 0
+  const hasConflicts = conflictCount > 0
+  const canShowOpenRunsPanel = hasOpenRuns && openRunDetails.length > 0
+  const canShowConflictsPanel = hasConflicts && conflictDetails.length > 0
+
+  const handleOpenRunsClick = useCallback(() => {
+    if (canShowOpenRunsPanel) {
+      setOpenRunsPanelOpen(true)
+    }
+  }, [canShowOpenRunsPanel])
+
+  const handleConflictsClick = useCallback(() => {
+    if (canShowConflictsPanel) {
+      setConflictsPanelOpen(true)
+    }
+  }, [canShowConflictsPanel])
 
   return (
     <Page>
@@ -111,16 +146,70 @@ export const HomePage = () => {
         {!loading && errorDetails && (
           <ErrorPanel title={errorDetails.title} details={errorDetails.details} actionLabel="Réessayer" onAction={handleRetry} />
         )}
-        {!loading && !errorDetails && hasContextInfos && displaySummary && (
+        {!loading && !errorDetails && displaySummary && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="rounded-2xl border border-brand-300 bg-brand-100/70 p-5 dark:border-brand-500/30 dark:bg-brand-500/10">
+            <button
+              type="button"
+              onClick={handleOpenRunsClick}
+              disabled={!canShowOpenRunsPanel}
+              className={clsx(
+                'flex flex-col rounded-2xl border border-brand-300 bg-brand-100/70 p-5 text-left transition dark:border-brand-500/30 dark:bg-brand-500/10',
+                canShowOpenRunsPanel
+                  ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2'
+                  : 'cursor-default'
+              )}
+            >
               <p className="text-sm uppercase text-brand-600 dark:text-brand-200">Comptages en cours</p>
-              <p className="mt-2 text-4xl font-bold text-brand-700 dark:text-white">{displaySummary.openRuns}</p>
-            </div>
-            <div className="rounded-2xl border border-rose-300 bg-rose-100/70 p-5 dark:border-rose-500/40 dark:bg-rose-500/10">
-              <p className="text-sm uppercase text-rose-700 dark:text-rose-200">Conflits</p>
-              <p className="mt-2 text-4xl font-bold text-rose-700 dark:text-rose-100">{displaySummary.conflicts}</p>
-            </div>
+              <p
+                className={clsx(
+                  'mt-2 font-semibold',
+                  hasOpenRuns
+                    ? 'text-4xl text-brand-700 dark:text-white'
+                    : 'text-lg text-brand-700 dark:text-brand-100'
+                )}
+              >
+                {hasOpenRuns ? openRunsCount : 'Aucun comptage en cours'}
+              </p>
+              {canShowOpenRunsPanel && (
+                <p className="mt-1 text-xs text-brand-700/80 dark:text-brand-200/80">Touchez pour voir le détail</p>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={handleConflictsClick}
+              disabled={!canShowConflictsPanel}
+              className={clsx(
+                'flex flex-col rounded-2xl border p-5 text-left transition',
+                hasConflicts
+                  ? 'border-rose-300 bg-rose-100/70 dark:border-rose-500/40 dark:bg-rose-500/10'
+                  : 'border-emerald-300 bg-emerald-100/70 dark:border-emerald-500/30 dark:bg-emerald-500/10',
+                canShowConflictsPanel
+                  ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-rose-500'
+                  : 'cursor-default'
+              )}
+            >
+              <p
+                className={clsx(
+                  'text-sm uppercase',
+                  hasConflicts ? 'text-rose-700 dark:text-rose-200' : 'text-emerald-700 dark:text-emerald-200'
+                )}
+              >
+                Conflits
+              </p>
+              <p
+                className={clsx(
+                  'mt-2 font-semibold',
+                  hasConflicts
+                    ? 'text-4xl text-rose-700 dark:text-rose-100'
+                    : 'text-lg text-emerald-800 dark:text-emerald-100'
+                )}
+              >
+                {hasConflicts ? conflictCount : 'Aucun conflit'}
+              </p>
+              {canShowConflictsPanel && (
+                <p className="mt-1 text-xs text-rose-700/80 dark:text-rose-200/70">Touchez pour voir le détail</p>
+              )}
+            </button>
             <div className="rounded-2xl border border-slate-300 bg-slate-100/70 p-5 dark:border-slate-600/60 dark:bg-slate-900/40">
               <p className="text-sm uppercase text-slate-600 dark:text-slate-300">Dernière activité</p>
               <p className="mt-2 text-lg font-semibold text-slate-800 dark:text-white">
@@ -129,11 +218,10 @@ export const HomePage = () => {
             </div>
           </div>
         )}
-        {!loading && !errorDetails && (!displaySummary || !hasContextInfos) && (
-          <EmptyState
-            title="Pas encore de données"
-            description="Le résumé d’inventaire n’est pas disponible pour le moment. Vous pourrez le consulter dès qu’un comptage aura débuté."
-          />
+        {!loading && !errorDetails && !displaySummary && (
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Les indicateurs ne sont pas disponibles pour le moment.
+          </p>
         )}
       </Card>
 
@@ -151,6 +239,50 @@ export const HomePage = () => {
           Espace administrateur
         </Link>
       </div>
+
+      <SlidingPanel open={openRunsPanelOpen} title="Comptages en cours" onClose={() => setOpenRunsPanelOpen(false)}>
+        {openRunDetails.length === 0 ? (
+          <p className="text-sm text-slate-600 dark:text-slate-300">Aucun comptage en cours.</p>
+        ) : (
+          <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+            {openRunDetails.map((run) => (
+              <li key={run.runId} className="py-3">
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                  {run.locationCode} · {run.locationLabel}
+                </p>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  {describeCountType(run.countType)} — démarré le {formatDateTime(run.startedAtUtc)}
+                </p>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  Opérateur : {run.operatorDisplayName?.trim() || 'Non renseigné'}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </SlidingPanel>
+
+      <SlidingPanel open={conflictsPanelOpen} title="Conflits à résoudre" onClose={() => setConflictsPanelOpen(false)}>
+        {conflictDetails.length === 0 ? (
+          <p className="text-sm text-slate-600 dark:text-slate-300">Aucun conflit actif.</p>
+        ) : (
+          <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+            {conflictDetails.map((conflict) => (
+              <li key={conflict.conflictId} className="py-3">
+                <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                  {conflict.locationCode} · {conflict.locationLabel}
+                </p>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  {describeCountType(conflict.countType)} — signalé le {formatDateTime(conflict.createdAtUtc)}
+                </p>
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  Opérateur : {conflict.operatorDisplayName?.trim() || 'Non renseigné'}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </SlidingPanel>
     </Page>
   )
 }

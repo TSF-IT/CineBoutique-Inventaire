@@ -114,8 +114,19 @@ const normaliseLocationsPayload = (payload: unknown): unknown => {
 }
 
 export const fetchInventorySummary = async (): Promise<InventorySummary> => {
-  const data = await http(`${API_BASE}/inventories/summary`)
-  return data as InventorySummary
+  const data = (await http(`${API_BASE}/inventories/summary`)) as Partial<InventorySummary> | null | undefined
+
+  const openRunDetails = Array.isArray(data?.openRunDetails) ? data!.openRunDetails : []
+  const conflictDetails = Array.isArray(data?.conflictDetails) ? data!.conflictDetails : []
+
+  return {
+    activeSessions: data?.activeSessions ?? 0,
+    openRuns: data?.openRuns ?? 0,
+    conflicts: data?.conflicts ?? 0,
+    lastActivityUtc: data?.lastActivityUtc ?? null,
+    openRunDetails,
+    conflictDetails,
+  }
 }
 
 export const fetchLocations = async (options?: { countType?: CountType }): Promise<Location[]> => {
