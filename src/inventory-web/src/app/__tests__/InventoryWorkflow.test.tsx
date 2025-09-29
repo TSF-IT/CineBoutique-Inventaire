@@ -12,6 +12,7 @@ import { InventorySessionPage } from '../pages/inventory/InventorySessionPage'
 import { useInventory } from '../contexts/InventoryContext'
 import { CountType } from '../types/inventory'
 import type { InventorySummary, Location } from '../types/inventory'
+import type { HttpError } from '../lib/api/http'
 
 const { fetchLocationsMock, fetchProductMock, fetchInventorySummaryMock, reserveLocation } = vi.hoisted(() => {
   const reserveLocation: Location = {
@@ -323,7 +324,7 @@ describe('Workflow d\'inventaire', () => {
     )
   })
 
-  it('ajoute un produit via saisie manuelle simulant une douchette', async () => {
+  it("ajoute automatiquement un produit lorsqu'un EAN connu est saisi", async () => {
     renderInventoryRoutes('/inventory/session', {
       initialize: (inventory) => {
         inventory.setSelectedUser('Amélie')
@@ -335,10 +336,48 @@ describe('Workflow d\'inventaire', () => {
 
     const [input] = await screen.findAllByLabelText('Scanner (douchette ou saisie)')
     fireEvent.change(input, { target: { value: '123' } })
-    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' })
 
     await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('123'))
     await waitFor(() => expect(screen.getByText('Popcorn caramel')).toBeInTheDocument())
+    await waitFor(() => expect((input as HTMLInputElement).value).toBe(''))
+  })
+
+  it("active l'ajout manuel uniquement lorsqu'un EAN est introuvable", async () => {
+    const notFoundError: HttpError = {
+      name: 'Error',
+      message: 'HTTP 404',
+      status: 404,
+      url: '/api/products/999',
+    }
+
+    fetchProductMock.mockRejectedValueOnce(notFoundError)
+
+    renderInventoryRoutes('/inventory/session', {
+      initialize: (inventory) => {
+        inventory.setSelectedUser('Amélie')
+        inventory.setCountType(CountType.Count1)
+        inventory.setLocation({ ...reserveLocation })
+        inventory.clearSession()
+      },
+    })
+
+    const [input] = await screen.findAllByLabelText('Scanner (douchette ou saisie)')
+    const sessionPages = await screen.findAllByTestId('page-session')
+    const inputPage = (input as HTMLElement).closest('[data-testid="page-session"]') as HTMLElement | null
+    const pageContainer = inputPage ?? sessionPages[sessionPages.length - 1]
+    const manualButton = within(pageContainer).getByTestId('btn-open-manual')
+
+    expect(manualButton).toBeDisabled()
+
+    fireEvent.change(input, { target: { value: '999' } })
+
+    expect(manualButton).toBeDisabled()
+    await waitFor(() => expect((input as HTMLInputElement).value).toBe('999'))
+
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('999'))
+    expect(fetchProductMock).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(screen.getByText(/Aucun produit trouvé/)).toBeInTheDocument())
+    await waitFor(() => expect(manualButton).toBeEnabled())
   })
 
 })
