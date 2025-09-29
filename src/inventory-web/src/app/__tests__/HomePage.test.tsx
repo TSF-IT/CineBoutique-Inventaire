@@ -6,7 +6,12 @@ import { HomePage } from '../pages/home/HomePage'
 
 vi.mock('../api/inventoryApi', () => ({
   fetchInventorySummary: vi.fn(() =>
-    Promise.resolve({ activeSessions: 3, openRuns: 1, lastActivityUtc: '2025-01-01T12:00:00Z' }),
+    Promise.resolve({
+      activeSessions: 3,
+      openRuns: 1,
+      conflicts: 2,
+      lastActivityUtc: '2025-01-01T12:00:00Z',
+    }),
   ),
 }))
 
@@ -21,9 +26,11 @@ describe('HomePage', () => {
     )
 
     await waitFor(() => {
-      expect(screen.getByText('Sessions actives')).toBeInTheDocument()
-      expect(screen.getByText('3')).toBeInTheDocument()
-      expect(screen.getByText('Runs ouverts')).toBeInTheDocument()
+      expect(screen.getByText("État de l'inventaire")).toBeInTheDocument()
+      expect(screen.getByText('Comptages en cours')).toBeInTheDocument()
+      expect(screen.getByText('1')).toBeInTheDocument()
+      expect(screen.getByText('Conflits')).toBeInTheDocument()
+      expect(screen.getByText('2')).toBeInTheDocument()
     })
 
     expect(screen.getByRole('button', { name: 'Débuter un inventaire' })).toBeInTheDocument()
