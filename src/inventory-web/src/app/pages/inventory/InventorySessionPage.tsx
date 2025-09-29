@@ -1,4 +1,4 @@
-import type { FormEvent, KeyboardEvent } from 'react'
+import type { FormEvent, KeyboardEvent, ChangeEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrowserMultiFormatReader } from '@zxing/browser'
@@ -90,13 +90,11 @@ export const InventorySessionPage = () => {
   const [status, setStatus] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [manualOpen, setManualOpen] = useState(false)
+  const [scanValue, setScanValue] = useState('')
   const [manualEan, setManualEan] = useState('')
   const [manualName, setManualName] = useState('')
   const [manualLoading, setManualLoading] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
-  const hidInputRef = useRef<HTMLInputElement | null>(null)
-  const hidBufferRef = useRef('')
-  const hidResetTimeoutRef = useRef<number | null>(null)
   const [recentScans, setRecentScans] = useState<string[]>([])
 
   useEffect(() => {
@@ -114,35 +112,6 @@ export const InventorySessionPage = () => {
       inputRef.current?.focus()
     }
   }, [manualOpen])
-
-  useEffect(() => {
-    const hiddenInput = hidInputRef.current
-    if (!hiddenInput) {
-      return
-    }
-    const focusTarget = () => {
-      if (document.activeElement !== hiddenInput && !manualOpen) {
-        hiddenInput.focus()
-      }
-    }
-    hiddenInput.focus()
-    const handleBlur = () => {
-      window.setTimeout(focusTarget, 50)
-    }
-    hiddenInput.addEventListener('blur', handleBlur)
-    const interval = window.setInterval(focusTarget, 4000)
-    return () => {
-      hiddenInput.removeEventListener('blur', handleBlur)
-      window.clearInterval(interval)
-    }
-  }, [manualOpen])
-
-  useEffect(() => () => {
-    if (hidResetTimeoutRef.current) {
-      window.clearTimeout(hidResetTimeoutRef.current)
-      hidResetTimeoutRef.current = null
-    }
-  }, [])
 
   const sortedItems = useMemo(
     () => [...items].sort((a, b) => b.lastScanAt.localeCompare(a.lastScanAt)),
@@ -248,49 +217,34 @@ export const InventorySessionPage = () => {
     [handleDetected],
   )
 
-  const flushHidBuffer = useCallback(() => {
-    if (hidResetTimeoutRef.current) {
-      window.clearTimeout(hidResetTimeoutRef.current)
-      hidResetTimeoutRef.current = null
-    }
-    const value = hidBufferRef.current.trim()
-    hidBufferRef.current = ''
-    if (value) {
-      void handleDetected(value)
-    }
-  }, [handleDetected])
-
   const handleInputKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (event.key === 'Enter') {
         event.preventDefault()
-        const target = event.target as HTMLInputElement
-        const value = target.value.trim()
-        target.value = ''
-        void handleDetected(value)
+        const value = scanValue.trim()
+        if (value) {
+          setScanValue('')
+          void handleDetected(value)
+        }
       }
     },
-    [handleDetected],
+    [handleDetected, scanValue],
   )
 
-  const handleHidKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLInputElement>) => {
-      if (event.key === 'Enter') {
-        event.preventDefault()
-        flushHidBuffer()
+  const handleInputChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const { value } = event.target
+      if (value.includes('\n') || value.includes('\r')) {
+        const [code] = value.split(/\s+/)
+        setScanValue('')
+        if (code.trim()) {
+          void handleDetected(code)
+        }
         return
       }
-      if (event.key.length === 1) {
-        hidBufferRef.current = `${hidBufferRef.current}${event.key}`
-        if (hidResetTimeoutRef.current) {
-          window.clearTimeout(hidResetTimeoutRef.current)
-        }
-        hidResetTimeoutRef.current = window.setTimeout(() => {
-          hidBufferRef.current = ''
-        }, 120)
-      }
+      setScanValue(value)
     },
-    [flushHidBuffer],
+    [handleDetected],
   )
 
   const handleManualSubmit = useCallback(
@@ -309,6 +263,7 @@ export const InventorySessionPage = () => {
         setManualOpen(false)
         setManualName('')
         setManualEan('')
+        inputRef.current?.focus()
       } catch (error) {
         const err = error as HttpError
         if (isHttpError(err)) {
@@ -344,39 +299,21 @@ export const InventorySessionPage = () => {
           </p>
           {sessionId && <p className="text-xs text-slate-500 dark:text-slate-400">Session existante #{sessionId}</p>}
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <Button variant="secondary" onClick={() => setUseCamera((prev) => !prev)}>
-            {useCamera ? 'Désactiver la caméra' : 'Activer la caméra'}
-          </Button>
-          <Button variant="ghost" onClick={() => setManualOpen(true)}>
-            Ajouter manuellement
-          </Button>
-        </div>
-        <BarcodeScanner
-          active={useCamera}
-          onDetected={handleDetected}
-          onError={(message) => {
-            setStatus(null)
-            setErrorMessage(message)
-          }}
-          onPickImage={(file) => void handleImagePicked(file)}
-          preferredFormats={['EAN_13', 'EAN_8', 'CODE_128', 'CODE_39', 'ITF', 'QR_CODE']}
-        />
         <Input
           ref={inputRef}
           name="scanInput"
           label="Scanner (douchette ou saisie)"
           placeholder="Scannez un EAN et validez avec Entrée"
+          value={scanValue}
+          onChange={handleInputChange}
           onKeyDown={handleInputKeyDown}
           autoFocus
         />
-        <input
-          ref={hidInputRef}
-          type="text"
-          aria-hidden
-          className="absolute left-[-9999px] top-auto h-0 w-0 opacity-0"
-          onKeyDown={handleHidKeyDown}
-        />
+        <div className="flex justify-end">
+          <Button variant="ghost" onClick={() => setManualOpen(true)}>
+            Ajouter manuellement
+          </Button>
+        </div>
         {status && <p className="text-sm text-brand-600 dark:text-brand-200">{status}</p>}
         {errorMessage && <p className="text-sm text-red-600 dark:text-red-300">{errorMessage}</p>}
         {import.meta.env.DEV && recentScans.length > 0 && (
@@ -437,6 +374,28 @@ export const InventorySessionPage = () => {
             </li>
           ))}
         </ul>
+      </Card>
+
+      <Card className="space-y-4">
+        <div className="flex flex-col gap-2">
+          <h3 className="text-xl font-semibold text-slate-900 dark:text-white">Scanner avec le téléphone</h3>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Utilisez l’appareil photo pour lire un code-barres lorsque la douchette n’est pas disponible.
+          </p>
+        </div>
+        <Button variant="secondary" onClick={() => setUseCamera((prev) => !prev)}>
+          {useCamera ? 'Désactiver la caméra' : 'Activer la caméra'}
+        </Button>
+        <BarcodeScanner
+          active={useCamera}
+          onDetected={handleDetected}
+          onError={(message) => {
+            setStatus(null)
+            setErrorMessage(message)
+          }}
+          onPickImage={(file) => void handleImagePicked(file)}
+          preferredFormats={['EAN_13', 'EAN_8', 'CODE_128', 'CODE_39', 'ITF', 'QR_CODE']}
+        />
       </Card>
 
       <SlidingPanel open={manualOpen} title="Ajouter un produit" onClose={() => setManualOpen(false)}>
