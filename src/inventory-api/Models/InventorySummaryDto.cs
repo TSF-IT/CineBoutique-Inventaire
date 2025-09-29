@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace CineBoutique.Inventory.Api.Models;
 
@@ -11,4 +12,8 @@ public sealed class InventorySummaryDto
     public int Conflicts { get; set; }
 
     public DateTimeOffset? LastActivityUtc { get; set; }
+
+    public IReadOnlyList<OpenRunSummaryDto> OpenRunDetails { get; set; } = Array.Empty<OpenRunSummaryDto>();
+
+    public IReadOnlyList<ConflictSummaryDto> ConflictDetails { get; set; } = Array.Empty<ConflictSummaryDto>();
 }
