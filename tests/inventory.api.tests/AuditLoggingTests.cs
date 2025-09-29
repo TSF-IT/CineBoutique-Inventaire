@@ -163,10 +163,12 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
     }
 
     [Theory]
-    [InlineData("0001")]
-    [InlineData("0000000001")]
-    [InlineData("0000000000001")]
-    public async Task ScanProduct_NumericEanVariants_ReturnsStoredProduct(string scannedCode)
+    [InlineData("0001", "0001")]
+    [InlineData("0001", "0000000001")]
+    [InlineData("0001", "0000000000001")]
+    [InlineData("0000000000001", "0000000000001")]
+    [InlineData("0000000000001", "0001")]
+    public async Task ScanProduct_NumericEanVariants_ReturnsStoredProduct(string storedEan, string scannedCode)
     {
         await ResetDatabaseAsync();
 
@@ -180,7 +182,9 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
             await EnsureConnectionOpenAsync(connection);
 
             const string insertProductSql = "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"Ean\", \"CreatedAtUtc\") VALUES (@Id, @Sku, @Name, @Ean, @CreatedAtUtc);";
-            await connection.ExecuteAsync(insertProductSql, new { Id = productId, Sku = "SKU-0001", Name = "Produit court", Ean = "0001", CreatedAtUtc = createdAt });
+            await connection.ExecuteAsync(
+                insertProductSql,
+                new { Id = productId, Sku = "SKU-0001", Name = "Produit court", Ean = storedEan, CreatedAtUtc = createdAt });
         }
 
         var response = await _client.GetAsync($"/api/products/{scannedCode}");
@@ -188,7 +192,7 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
 
         var product = await response.Content.ReadFromJsonAsync<ProductDto>();
         Assert.NotNull(product);
-        Assert.Equal("0001", product!.Ean);
+        Assert.Equal(storedEan, product!.Ean);
         Assert.Equal("Produit court", product!.Name);
 
         var auditLogs = await GetAuditLogsAsync();
