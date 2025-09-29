@@ -5,6 +5,7 @@ import { Card } from '../../components/Card'
 import { useInventory } from '../../contexts/InventoryContext'
 import { CountType } from '../../types/inventory'
 import type { LocationCountStatus } from '../../types/inventory'
+import { getLocationDisplayName, isLocationLabelRedundant } from '../../utils/locationDisplay'
 
 const DISPLAYED_COUNT_TYPES: CountType[] = [CountType.Count1, CountType.Count2]
 
@@ -69,7 +70,7 @@ const describeCountStatus = (status: LocationCountStatus, selectedUser: string |
         : null
     const duration = computeDurationLabel(status.startedAtUtc ?? null)
     const meta = [ownerLabel, duration].filter(Boolean).join(' • ')
-    return `${baseLabel} en cours${meta ? ` (${meta})` : ''}`
+  return `${baseLabel} en cours${meta ? ` (${meta})` : ''}`
   }
   return `${baseLabel} disponible`
 }
@@ -122,6 +123,9 @@ export const InventoryCountTypeStep = () => {
     [countStatuses],
   )
 
+  const displayName = location ? getLocationDisplayName(location.code, location.label) : ''
+  const shouldDisplayLabel = location ? !isLocationLabelRedundant(location.code, location.label) : false
+
   const handleSelect = (type: CountType) => {
     const status = countStatuses.find((item) => item.countType === type)
     if (!status || zoneCompleted) {
@@ -166,7 +170,7 @@ export const InventoryCountTypeStep = () => {
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {location
-              ? `Choisissez le passage à réaliser pour la zone ${location.label}.`
+              ? `Choisissez le passage à réaliser pour la zone ${displayName}.`
               : 'Sélectionnez la zone à inventorier pour continuer.'}
           </p>
         </div>
@@ -176,10 +180,14 @@ export const InventoryCountTypeStep = () => {
               <span className="text-xs font-semibold uppercase tracking-wide text-brand-500">
                 Zone {location.code}
               </span>
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{location.label}</span>
+              {shouldDisplayLabel && (
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{location.label}</span>
+              )}
             </div>
             <div className="mt-2 flex flex-col gap-1">
-              {countStatuses.map((status) => (
+              {countStatuses
+                .filter((status) => status.status !== 'not_started')
+                .map((status) => (
                 <span
                   key={`${location.id}-${status.countType}`}
                   className={`flex items-center gap-2 ${statusTextClass(status)}`}

@@ -11,9 +11,10 @@ import { InventoryLocationStep } from '../pages/inventory/InventoryLocationStep'
 import { InventorySessionPage } from '../pages/inventory/InventorySessionPage'
 import { useInventory } from '../contexts/InventoryContext'
 import { CountType } from '../types/inventory'
+import type { InventorySummary, Location } from '../types/inventory'
 
-const { fetchLocationsMock, fetchProductMock, reserveLocation } = vi.hoisted(() => {
-  const reserveLocation = {
+const { fetchLocationsMock, fetchProductMock, fetchInventorySummaryMock, reserveLocation } = vi.hoisted(() => {
+  const reserveLocation: Location = {
     id: 'zone-1',
     code: 'RES',
     label: 'Réserve',
@@ -25,7 +26,7 @@ const { fetchLocationsMock, fetchProductMock, reserveLocation } = vi.hoisted(() 
     countStatuses: [
       {
         countType: 1,
-        status: 'not_started' as const,
+        status: 'not_started',
         runId: null,
         operatorDisplayName: null,
         startedAtUtc: null,
@@ -33,7 +34,7 @@ const { fetchLocationsMock, fetchProductMock, reserveLocation } = vi.hoisted(() 
       },
       {
         countType: 2,
-        status: 'not_started' as const,
+        status: 'not_started',
         runId: null,
         operatorDisplayName: null,
         startedAtUtc: null,
@@ -41,7 +42,7 @@ const { fetchLocationsMock, fetchProductMock, reserveLocation } = vi.hoisted(() 
       },
     ],
   }
-  const busyLocation = {
+  const busyLocation: Location = {
     id: 'zone-2',
     code: 'SAL1',
     label: 'Salle 1',
@@ -49,19 +50,19 @@ const { fetchLocationsMock, fetchProductMock, reserveLocation } = vi.hoisted(() 
     busyBy: 'paul.dupont',
     activeCountType: 1,
     activeRunId: 'run-1',
-    activeStartedAtUtc: new Date().toISOString(),
+    activeStartedAtUtc: new Date(),
     countStatuses: [
       {
         countType: 1,
-        status: 'in_progress' as const,
+        status: 'in_progress',
         runId: 'run-1',
         operatorDisplayName: 'paul.dupont',
-        startedAtUtc: new Date().toISOString(),
+        startedAtUtc: new Date(),
         completedAtUtc: null,
       },
       {
         countType: 2,
-        status: 'not_started' as const,
+        status: 'not_started',
         runId: null,
         operatorDisplayName: null,
         startedAtUtc: null,
@@ -69,14 +70,21 @@ const { fetchLocationsMock, fetchProductMock, reserveLocation } = vi.hoisted(() 
       },
     ],
   }
+  const emptySummary: InventorySummary = {
+    activeSessions: 0,
+    openRuns: 0,
+    conflicts: 0,
+    lastActivityUtc: null,
+    openRunDetails: [],
+    conflictDetails: [],
+  }
   return {
-    fetchLocationsMock: vi.fn(() =>
-      Promise.resolve([
-        { ...reserveLocation },
-        { ...busyLocation },
-      ]),
-    ),
+    fetchLocationsMock: vi.fn(async (): Promise<Location[]> => [
+      { ...reserveLocation },
+      { ...busyLocation },
+    ]),
     fetchProductMock: vi.fn(() => Promise.resolve({ ean: '123', name: 'Popcorn caramel' })),
+    fetchInventorySummaryMock: vi.fn(async (): Promise<InventorySummary> => ({ ...emptySummary })),
     reserveLocation,
   }
 })
@@ -87,6 +95,7 @@ vi.mock('../api/inventoryApi', async (importOriginal) => {
     ...actual,
     fetchLocations: fetchLocationsMock,
     fetchProductByEan: fetchProductMock,
+    fetchInventorySummary: fetchInventorySummaryMock,
   }
 })
 
@@ -150,6 +159,7 @@ describe('Workflow d\'inventaire', () => {
   beforeEach(() => {
     fetchLocationsMock.mockClear()
     fetchProductMock.mockClear()
+    fetchInventorySummaryMock.mockClear()
   })
 
   it('permet de sélectionner utilisateur, zone et type en respectant les statuts', async () => {
@@ -162,6 +172,8 @@ describe('Workflow d\'inventaire', () => {
 
     await waitFor(() => expect(fetchLocationsMock).toHaveBeenCalledTimes(1))
     expect(fetchLocationsMock.mock.calls[0]).toHaveLength(0)
+
+    await waitFor(() => expect(fetchInventorySummaryMock).toHaveBeenCalledTimes(1))
 
     const busyZoneCard = await screen.findByTestId('zone-card-zone-2')
     expect(within(busyZoneCard).getByText(/Comptage n°1 en cours/i)).toBeInTheDocument()
@@ -190,8 +202,73 @@ describe('Workflow d\'inventaire', () => {
     )
   })
 
+  it("affiche l'état de conflit pour une zone terminée", async () => {
+    const completedZone: Location = {
+      id: 'zone-4',
+      code: 'ZC4',
+      label: 'Zone ZC4',
+      isBusy: false,
+      busyBy: null,
+      activeRunId: null,
+      activeCountType: null,
+      activeStartedAtUtc: null,
+      countStatuses: [
+        {
+          countType: CountType.Count1,
+          status: 'completed',
+          runId: 'run-10',
+          operatorDisplayName: 'Luc',
+          startedAtUtc: new Date(),
+          completedAtUtc: new Date(),
+        },
+        {
+          countType: CountType.Count2,
+          status: 'completed',
+          runId: 'run-11',
+          operatorDisplayName: 'Mila',
+          startedAtUtc: new Date(),
+          completedAtUtc: new Date(),
+        },
+      ],
+    }
+
+    fetchLocationsMock.mockResolvedValueOnce([
+      { ...reserveLocation },
+      completedZone,
+    ])
+
+    fetchInventorySummaryMock.mockResolvedValueOnce({
+      activeSessions: 0,
+      openRuns: 0,
+      conflicts: 1,
+      lastActivityUtc: null,
+      openRunDetails: [],
+      conflictDetails: [
+        {
+          conflictId: 'conf-1',
+          countLineId: 'line-1',
+          countingRunId: 'run-10',
+          locationId: completedZone.id,
+          locationCode: completedZone.code,
+          locationLabel: completedZone.label,
+          countType: CountType.Count1,
+          operatorDisplayName: 'Luc',
+          createdAtUtc: new Date().toISOString(),
+        },
+      ],
+    })
+
+    renderInventoryRoutes('/inventory/start')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Amélie' }))
+
+    const conflictZoneCard = await screen.findByTestId(`zone-card-${completedZone.id}`)
+    await waitFor(() => expect(within(conflictZoneCard).getByText('Conflit détecté')).toBeInTheDocument())
+    expect(within(conflictZoneCard).queryByText('Aucun conflit')).not.toBeInTheDocument()
+  })
+
   it('autorise la reprise de son propre comptage', async () => {
-    const selfRunLocation = {
+    const selfRunLocation: Location = {
       ...reserveLocation,
       id: 'zone-3',
       code: 'SAL2',
@@ -200,14 +277,14 @@ describe('Workflow d\'inventaire', () => {
       busyBy: 'Amélie',
       activeRunId: 'run-self',
       activeCountType: 1,
-      activeStartedAtUtc: new Date().toISOString(),
+      activeStartedAtUtc: new Date(),
       countStatuses: [
         {
-          countType: 1,
-          status: 'in_progress' as const,
+          countType: CountType.Count1,
+          status: 'in_progress',
           runId: 'run-self',
           operatorDisplayName: 'Amélie',
-          startedAtUtc: new Date().toISOString(),
+          startedAtUtc: new Date(),
           completedAtUtc: null,
         },
         reserveLocation.countStatuses[1],
