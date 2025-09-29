@@ -55,9 +55,11 @@ public sealed class SeedDemoTests : IAsyncLifetime, IDisposable
 
             using var scope = migrator.Services.CreateScope();
             var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-            await using NpgsqlConnection connection = await connectionFactory
+            var openedConnection = await connectionFactory
                 .CreateOpenConnectionAsync(CancellationToken.None)
                 .ConfigureAwait(true);
+
+            await using var connection = openedConnection;
 
             const string cleanupSql = @"TRUNCATE TABLE ""Product"" RESTART IDENTITY CASCADE;";
             await connection.ExecuteAsync(cleanupSql).ConfigureAwait(true);
