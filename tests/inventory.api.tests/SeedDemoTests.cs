@@ -1,8 +1,6 @@
 #pragma warning disable CA1707
 using System;
 using System.Collections.Generic;
-using System.Data;
-using System.Data.Common;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -12,12 +10,13 @@ using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
 
 [Collection(TestCollections.Postgres)]
-public sealed class SeedDemoTests : IAsyncLifetime
+public sealed class SeedDemoTests : IAsyncLifetime, IDisposable
 {
     private readonly PostgresTestContainerFixture _pg;
     private readonly IReadOnlyDictionary<string, string?> _authConfiguration = new Dictionary<string, string?>(StringComparer.Ordinal)
@@ -32,6 +31,7 @@ public sealed class SeedDemoTests : IAsyncLifetime
 
     private InventoryApiApplicationFactory _factory = default!;
     private HttpClient _client = default!;
+    private bool _disposed;
 
     public SeedDemoTests(PostgresTestContainerFixture pg)
     {
@@ -50,15 +50,15 @@ public sealed class SeedDemoTests : IAsyncLifetime
                        ["AppSettings:SeedOnStartup"] = "false"
                    }))
         {
-            await migrator.EnsureMigratedAsync().ConfigureAwait(false);
+            await migrator.EnsureMigratedAsync().ConfigureAwait(true);
 
             using var scope = migrator.Services.CreateScope();
             var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-            await using var connection = connectionFactory.CreateConnection();
-            await EnsureConnectionOpenAsync(connection).ConfigureAwait(false);
+            await using NpgsqlConnection connection = connectionFactory.CreateConnection();
+            await connection.OpenAsync().ConfigureAwait(true);
 
             const string cleanupSql = @"TRUNCATE TABLE ""Product"" RESTART IDENTITY CASCADE;";
-            await connection.ExecuteAsync(cleanupSql).ConfigureAwait(false);
+            await connection.ExecuteAsync(cleanupSql).ConfigureAwait(true);
         }
 
         // Étape 2 : démarrer l'API avec le seed de démonstration activé mais sans relancer les migrations.
@@ -75,46 +75,40 @@ public sealed class SeedDemoTests : IAsyncLifetime
 
     public Task DisposeAsync()
     {
-        _client.Dispose();
-        _factory.Dispose();
+        Dispose();
         return Task.CompletedTask;
     }
 
     [Theory]
+    [InlineData("1", "PRODUIT-0001")]
+    [InlineData("0001", "PRODUIT-0001")]
+    [InlineData("00000001", "PRODUIT-0001")]
     [InlineData("0000000000001", "PRODUIT-0001")]
     [InlineData("0000000000002", "PRODUIT-0002")]
     [InlineData("0000000000003", "PRODUIT-0003")]
     public async Task DemoSeed_ExposesProductsByEan(string ean, string expectedSku)
     {
-        var response = await _client.GetAsync($"/api/products/{ean}").ConfigureAwait(false);
+        var requestUri = new Uri($"/api/products/{ean}", UriKind.Relative);
+        var response = await _client.GetAsync(requestUri).ConfigureAwait(true);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var product = await response.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
+        var product = await response.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(true);
         Assert.NotNull(product);
         Assert.Equal(expectedSku, product!.Sku);
         Assert.Equal(ean, product.Ean);
     }
 
-    private static async Task EnsureConnectionOpenAsync(IDbConnection connection)
+    public void Dispose()
     {
-        if (connection is null)
-        {
-            throw new ArgumentNullException(nameof(connection));
-        }
-
-        if (connection.State == ConnectionState.Open)
+        if (_disposed)
         {
             return;
         }
 
-        if (connection is DbConnection dbConnection)
-        {
-            await dbConnection.OpenAsync().ConfigureAwait(false);
-            return;
-        }
-
-        connection.Open();
+        _client?.Dispose();
+        _factory?.Dispose();
+        _disposed = true;
     }
 }
 #pragma warning restore CA1707
