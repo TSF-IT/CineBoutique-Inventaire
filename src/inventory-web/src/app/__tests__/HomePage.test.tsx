@@ -3,10 +3,10 @@ import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { ThemeProvider } from '../../theme/ThemeProvider'
 import { HomePage } from '../pages/home/HomePage'
+import type { InventorySummary } from '../types/inventory'
 
 const fetchInventorySummaryMock = vi.hoisted(() =>
-  vi.fn(() =>
-    Promise.resolve({
+  vi.fn(async (): Promise<InventorySummary> => ({
       activeSessions: 3,
       openRuns: 1,
       conflicts: 2,
@@ -35,8 +35,7 @@ const fetchInventorySummaryMock = vi.hoisted(() =>
           createdAtUtc: '2025-01-01T11:00:00Z',
         },
       ],
-    }),
-  ),
+    })),
 )
 
 vi.mock('../api/inventoryApi', () => ({
