@@ -150,10 +150,10 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
         {
             var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
             await using var connection = connectionFactory.CreateConnection();
-            await EnsureConnectionOpenAsync(connection).ConfigureAwait(false);
+            await EnsureConnectionOpenAsync(connection);
 
             const string insertProductSql = "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"Ean\", \"CreatedAtUtc\") VALUES (@Id, @Sku, @Name, @Ean, @CreatedAtUtc);";
-            await connection.ExecuteAsync(insertProductSql, new { Id = productId, Sku = "SKU-0001", Name = "Produit court", Ean = "0001", CreatedAtUtc = createdAt }).ConfigureAwait(false);
+            await connection.ExecuteAsync(insertProductSql, new { Id = productId, Sku = "SKU-0001", Name = "Produit court", Ean = "0001", CreatedAtUtc = createdAt });
         }
 
         var response = await _client.GetAsync($"/products/{scannedCode}");
