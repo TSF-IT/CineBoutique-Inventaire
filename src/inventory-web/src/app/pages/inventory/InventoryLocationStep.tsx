@@ -184,6 +184,9 @@ export const InventoryLocationStep = () => {
       .sort((a, b) => a.countType - b.countType)
   }
 
+  const getVisibleStatuses = (zone: Location): LocationCountStatus[] =>
+    getRelevantStatuses(zone).filter((status) => status.status !== 'not_started')
+
   const isZoneCompleted = (zone: Location) => {
     const statuses = getRelevantStatuses(zone)
     return statuses.length > 0 && statuses.every((status) => status.status === 'completed')
@@ -205,7 +208,7 @@ export const InventoryLocationStep = () => {
       const meta = [ownerLabel, duration].filter(Boolean).join(' • ')
       return `${baseLabel} en cours${meta ? ` (${meta})` : ''}`
     }
-    return `${baseLabel} disponible`
+    return baseLabel
   }
 
   const statusTextClass = (status: LocationCountStatus) => {
@@ -284,13 +287,15 @@ export const InventoryLocationStep = () => {
         {!loading && !errorPanel && (
           <div className="flex flex-col gap-3">
             {(Array.isArray(filteredLocations) ? filteredLocations : []).map((zone) => {
-              const statuses = getRelevantStatuses(zone)
+              const visibleStatuses = getVisibleStatuses(zone)
               const zoneCompleted = isZoneCompleted(zone)
               const isSelected = location?.id === zone.id
               const statusSummary =
-                statuses.length > 0
-                  ? statuses.map((status) => describeCountStatus(status)).join(', ')
-                  : 'Aucun comptage démarré'
+                visibleStatuses.length > 0
+                  ? visibleStatuses.map((status) => describeCountStatus(status)).join(', ')
+                  : zoneCompleted
+                    ? 'Comptages terminés'
+                    : 'Aucun comptage en cours'
               const toneClass = zoneCompleted
                 ? 'border-slate-200 bg-slate-50 text-slate-500 opacity-80 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400'
                 : isSelected
@@ -309,9 +314,9 @@ export const InventoryLocationStep = () => {
                       </span>
                       <span className="text-lg font-semibold">{zone.label}</span>
                     </div>
-                    <div className="flex flex-col gap-1" aria-live="polite">
-                      {statuses.length > 0 ? (
-                        statuses.map((status) => (
+                    {visibleStatuses.length > 0 && (
+                      <div className="flex flex-col gap-1" aria-live="polite">
+                        {visibleStatuses.map((status) => (
                           <span
                             key={`${zone.id}-${status.countType}`}
                             className={`flex items-center gap-2 ${statusTextClass(status)}`}
@@ -319,11 +324,9 @@ export const InventoryLocationStep = () => {
                             <span aria-hidden>{statusIcon(status)}</span>
                             <span>{describeCountStatus(status)}</span>
                           </span>
-                        ))
-                      ) : (
-                        <span className="text-sm text-slate-600 dark:text-slate-300">Comptages disponibles</span>
-                      )}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   {zoneCompleted && (
                     <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
@@ -333,7 +336,11 @@ export const InventoryLocationStep = () => {
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <Button
                       data-testid="btn-select-zone"
-                      aria-label={`Zone ${zone.label} – ${statusSummary}`}
+                      aria-label={
+                        visibleStatuses.length > 0 || zoneCompleted
+                          ? `Zone ${zone.label} – ${statusSummary}`
+                          : `Zone ${zone.label}`
+                      }
                       onClick={() => handleLocationSelection(zone)}
                       disabled={zoneCompleted}
                       aria-disabled={zoneCompleted}
