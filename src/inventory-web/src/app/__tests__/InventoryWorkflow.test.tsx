@@ -11,9 +11,10 @@ import { InventoryLocationStep } from '../pages/inventory/InventoryLocationStep'
 import { InventorySessionPage } from '../pages/inventory/InventorySessionPage'
 import { useInventory } from '../contexts/InventoryContext'
 import { CountType } from '../types/inventory'
+import type { InventorySummary, Location } from '../types/inventory'
 
 const { fetchLocationsMock, fetchProductMock, fetchInventorySummaryMock, reserveLocation } = vi.hoisted(() => {
-  const reserveLocation = {
+  const reserveLocation: Location = {
     id: 'zone-1',
     code: 'RES',
     label: 'Réserve',
@@ -25,7 +26,7 @@ const { fetchLocationsMock, fetchProductMock, fetchInventorySummaryMock, reserve
     countStatuses: [
       {
         countType: 1,
-        status: 'not_started' as const,
+        status: 'not_started',
         runId: null,
         operatorDisplayName: null,
         startedAtUtc: null,
@@ -33,7 +34,7 @@ const { fetchLocationsMock, fetchProductMock, fetchInventorySummaryMock, reserve
       },
       {
         countType: 2,
-        status: 'not_started' as const,
+        status: 'not_started',
         runId: null,
         operatorDisplayName: null,
         startedAtUtc: null,
@@ -41,7 +42,7 @@ const { fetchLocationsMock, fetchProductMock, fetchInventorySummaryMock, reserve
       },
     ],
   }
-  const busyLocation = {
+  const busyLocation: Location = {
     id: 'zone-2',
     code: 'SAL1',
     label: 'Salle 1',
@@ -49,19 +50,19 @@ const { fetchLocationsMock, fetchProductMock, fetchInventorySummaryMock, reserve
     busyBy: 'paul.dupont',
     activeCountType: 1,
     activeRunId: 'run-1',
-    activeStartedAtUtc: new Date().toISOString(),
+    activeStartedAtUtc: new Date(),
     countStatuses: [
       {
         countType: 1,
-        status: 'in_progress' as const,
+        status: 'in_progress',
         runId: 'run-1',
         operatorDisplayName: 'paul.dupont',
-        startedAtUtc: new Date().toISOString(),
+        startedAtUtc: new Date(),
         completedAtUtc: null,
       },
       {
         countType: 2,
-        status: 'not_started' as const,
+        status: 'not_started',
         runId: null,
         operatorDisplayName: null,
         startedAtUtc: null,
@@ -69,24 +70,21 @@ const { fetchLocationsMock, fetchProductMock, fetchInventorySummaryMock, reserve
       },
     ],
   }
+  const emptySummary: InventorySummary = {
+    activeSessions: 0,
+    openRuns: 0,
+    conflicts: 0,
+    lastActivityUtc: null,
+    openRunDetails: [],
+    conflictDetails: [],
+  }
   return {
-    fetchLocationsMock: vi.fn(() =>
-      Promise.resolve([
-        { ...reserveLocation },
-        { ...busyLocation },
-      ]),
-    ),
+    fetchLocationsMock: vi.fn(async (): Promise<Location[]> => [
+      { ...reserveLocation },
+      { ...busyLocation },
+    ]),
     fetchProductMock: vi.fn(() => Promise.resolve({ ean: '123', name: 'Popcorn caramel' })),
-    fetchInventorySummaryMock: vi.fn(() =>
-      Promise.resolve({
-        activeSessions: 0,
-        openRuns: 0,
-        conflicts: 0,
-        lastActivityUtc: null,
-        openRunDetails: [],
-        conflictDetails: [],
-      }),
-    ),
+    fetchInventorySummaryMock: vi.fn(async (): Promise<InventorySummary> => ({ ...emptySummary })),
     reserveLocation,
   }
 })
@@ -205,7 +203,7 @@ describe('Workflow d\'inventaire', () => {
   })
 
   it("affiche l'état de conflit pour une zone terminée", async () => {
-    const completedZone = {
+    const completedZone: Location = {
       id: 'zone-4',
       code: 'ZC4',
       label: 'Zone ZC4',
@@ -216,20 +214,20 @@ describe('Workflow d\'inventaire', () => {
       activeStartedAtUtc: null,
       countStatuses: [
         {
-          countType: 1 as const,
-          status: 'completed' as const,
+          countType: CountType.Count1,
+          status: 'completed',
           runId: 'run-10',
           operatorDisplayName: 'Luc',
-          startedAtUtc: new Date().toISOString(),
-          completedAtUtc: new Date().toISOString(),
+          startedAtUtc: new Date(),
+          completedAtUtc: new Date(),
         },
         {
-          countType: 2 as const,
-          status: 'completed' as const,
+          countType: CountType.Count2,
+          status: 'completed',
           runId: 'run-11',
           operatorDisplayName: 'Mila',
-          startedAtUtc: new Date().toISOString(),
-          completedAtUtc: new Date().toISOString(),
+          startedAtUtc: new Date(),
+          completedAtUtc: new Date(),
         },
       ],
     }
@@ -270,7 +268,7 @@ describe('Workflow d\'inventaire', () => {
   })
 
   it('autorise la reprise de son propre comptage', async () => {
-    const selfRunLocation = {
+    const selfRunLocation: Location = {
       ...reserveLocation,
       id: 'zone-3',
       code: 'SAL2',
@@ -279,14 +277,14 @@ describe('Workflow d\'inventaire', () => {
       busyBy: 'Amélie',
       activeRunId: 'run-self',
       activeCountType: 1,
-      activeStartedAtUtc: new Date().toISOString(),
+      activeStartedAtUtc: new Date(),
       countStatuses: [
         {
-          countType: 1,
-          status: 'in_progress' as const,
+          countType: CountType.Count1,
+          status: 'in_progress',
           runId: 'run-self',
           operatorDisplayName: 'Amélie',
-          startedAtUtc: new Date().toISOString(),
+          startedAtUtc: new Date(),
           completedAtUtc: null,
         },
         reserveLocation.countStatuses[1],
