@@ -197,11 +197,6 @@ export const InventoryCountTypeStep = () => {
                 </span>
               ))}
             </div>
-            {zoneCompleted && (
-              <p className="mt-2 text-xs font-medium text-slate-500 dark:text-slate-400">
-                Les comptages 1 et 2 sont terminés pour cette zone.
-              </p>
-            )}
           </div>
         )}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
