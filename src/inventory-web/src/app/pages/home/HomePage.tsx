@@ -82,7 +82,12 @@ export const HomePage = () => {
     if (!data) {
       return false
     }
-    return (data.activeSessions ?? 0) > 0 || (data.openRuns ?? 0) > 0 || Boolean(data.lastActivityUtc)
+    return (
+      (data.openRuns ?? 0) > 0 ||
+      (data.conflicts ?? 0) > 0 ||
+      (data.activeSessions ?? 0) > 0 ||
+      Boolean(data.lastActivityUtc)
+    )
   }, [data])
 
   const displaySummary: InventorySummary | null = data ?? null
@@ -101,7 +106,7 @@ export const HomePage = () => {
       </header>
 
       <Card className="flex flex-col gap-4">
-        <SectionTitle>État des inventaires</SectionTitle>
+        <SectionTitle>État de l'inventaire</SectionTitle>
         {loading && <LoadingIndicator label="Chargement des indicateurs" />}
         {!loading && errorDetails && (
           <ErrorPanel title={errorDetails.title} details={errorDetails.details} actionLabel="Réessayer" onAction={handleRetry} />
@@ -109,12 +114,12 @@ export const HomePage = () => {
         {!loading && !errorDetails && hasContextInfos && displaySummary && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div className="rounded-2xl border border-brand-300 bg-brand-100/70 p-5 dark:border-brand-500/30 dark:bg-brand-500/10">
-              <p className="text-sm uppercase text-brand-600 dark:text-brand-200">Sessions actives</p>
-              <p className="mt-2 text-4xl font-bold text-brand-700 dark:text-white">{displaySummary.activeSessions}</p>
+              <p className="text-sm uppercase text-brand-600 dark:text-brand-200">Comptages en cours</p>
+              <p className="mt-2 text-4xl font-bold text-brand-700 dark:text-white">{displaySummary.openRuns}</p>
             </div>
-            <div className="rounded-2xl border border-emerald-300 bg-emerald-100/70 p-5 dark:border-emerald-500/40 dark:bg-emerald-500/10">
-              <p className="text-sm uppercase text-emerald-700 dark:text-emerald-200">Runs ouverts</p>
-              <p className="mt-2 text-4xl font-bold text-emerald-700 dark:text-emerald-100">{displaySummary.openRuns}</p>
+            <div className="rounded-2xl border border-rose-300 bg-rose-100/70 p-5 dark:border-rose-500/40 dark:bg-rose-500/10">
+              <p className="text-sm uppercase text-rose-700 dark:text-rose-200">Conflits</p>
+              <p className="mt-2 text-4xl font-bold text-rose-700 dark:text-rose-100">{displaySummary.conflicts}</p>
             </div>
             <div className="rounded-2xl border border-slate-300 bg-slate-100/70 p-5 dark:border-slate-600/60 dark:bg-slate-900/40">
               <p className="text-sm uppercase text-slate-600 dark:text-slate-300">Dernière activité</p>
