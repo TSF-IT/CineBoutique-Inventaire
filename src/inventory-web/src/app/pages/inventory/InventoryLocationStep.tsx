@@ -364,7 +364,7 @@ export const InventoryLocationStep = () => {
                 >
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex flex-col gap-1">
-                      <span className="text-sm font-semibold uppercase tracking-wider text-brand-500">
+                      <span className="text-lg font-semibold uppercase tracking-wider text-brand-500">
                         {zone.code}
                       </span>
                       {shouldDisplayLabel && (
@@ -385,41 +385,41 @@ export const InventoryLocationStep = () => {
                       </div>
                     )}
                   </div>
-                  {zoneCompleted && (
-                    <div className="text-xs font-medium">
-                      <p className="text-slate-500 dark:text-slate-400">
-                        Les comptages 1 et 2 sont terminés pour cette zone.
-                      </p>
-                      {conflictStatus === 'none' && (
-                        <p className="mt-1 flex items-center gap-2 text-emerald-600 dark:text-emerald-300">
-                          <span aria-hidden>✅</span>
-                          <span>Aucun conflit</span>
+                    <div className="mt-2 flex flex-col gap-2">
+                      {zoneCompleted && (
+                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                          Les comptages 1 et 2 sont terminés pour cette zone.
                         </p>
                       )}
-                      {conflictStatus === 'conflict' && (
-                        <p className="mt-1 flex items-center gap-2 text-rose-600 dark:text-rose-300">
-                          <span aria-hidden>⚠️</span>
-                          <span>Conflit détecté</span>
-                        </p>
-                      )}
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {zoneCompleted && conflictStatus === 'none' && (
+                          <span className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-200">
+                            <span aria-hidden>✅</span>
+                            <span>Aucun conflit</span>
+                          </span>
+                        )}
+                        {zoneCompleted && conflictStatus === 'conflict' && (
+                          <span className="flex items-center gap-2 text-sm font-medium text-rose-700 dark:text-rose-200">
+                            <span aria-hidden>⚠️</span>
+                            <span>Conflit détecté</span>
+                          </span>
+                        )}
+                        <Button
+                          data-testid="btn-select-zone"
+                          aria-label={
+                            visibleStatuses.length > 0 || zoneCompleted
+                              ? `Zone ${displayName} – ${statusSummary}`
+                              : `Zone ${displayName}`
+                          }
+                          onClick={() => handleLocationSelection(zone)}
+                          disabled={zoneCompleted}
+                          aria-disabled={zoneCompleted}
+                          title={zoneCompleted ? 'Les deux comptages sont terminés' : undefined}
+                        >
+                          {zoneCompleted ? 'Zone terminée' : 'Choisir cette zone'}
+                        </Button>
+                      </div>
                     </div>
-                  )}
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <Button
-                      data-testid="btn-select-zone"
-                      aria-label={
-                        visibleStatuses.length > 0 || zoneCompleted
-                          ? `Zone ${displayName} – ${statusSummary}`
-                          : `Zone ${displayName}`
-                      }
-                      onClick={() => handleLocationSelection(zone)}
-                      disabled={zoneCompleted}
-                      aria-disabled={zoneCompleted}
-                      title={zoneCompleted ? 'Les deux comptages sont terminés' : undefined}
-                    >
-                      {zoneCompleted ? 'Zone terminée' : 'Choisir cette zone'}
-                    </Button>
-                  </div>
                 </div>
               )
             })}
