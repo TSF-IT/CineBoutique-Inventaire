@@ -12,7 +12,7 @@ import { InventorySessionPage } from '../pages/inventory/InventorySessionPage'
 import { useInventory } from '../contexts/InventoryContext'
 import { CountType } from '../types/inventory'
 
-const { fetchLocationsMock, fetchProductMock, reserveLocation } = vi.hoisted(() => {
+const { fetchLocationsMock, fetchProductMock, fetchInventorySummaryMock, reserveLocation } = vi.hoisted(() => {
   const reserveLocation = {
     id: 'zone-1',
     code: 'RES',
@@ -77,6 +77,16 @@ const { fetchLocationsMock, fetchProductMock, reserveLocation } = vi.hoisted(() 
       ]),
     ),
     fetchProductMock: vi.fn(() => Promise.resolve({ ean: '123', name: 'Popcorn caramel' })),
+    fetchInventorySummaryMock: vi.fn(() =>
+      Promise.resolve({
+        activeSessions: 0,
+        openRuns: 0,
+        conflicts: 0,
+        lastActivityUtc: null,
+        openRunDetails: [],
+        conflictDetails: [],
+      }),
+    ),
     reserveLocation,
   }
 })
@@ -87,6 +97,7 @@ vi.mock('../api/inventoryApi', async (importOriginal) => {
     ...actual,
     fetchLocations: fetchLocationsMock,
     fetchProductByEan: fetchProductMock,
+    fetchInventorySummary: fetchInventorySummaryMock,
   }
 })
 
@@ -150,6 +161,7 @@ describe('Workflow d\'inventaire', () => {
   beforeEach(() => {
     fetchLocationsMock.mockClear()
     fetchProductMock.mockClear()
+    fetchInventorySummaryMock.mockClear()
   })
 
   it('permet de sélectionner utilisateur, zone et type en respectant les statuts', async () => {
@@ -162,6 +174,8 @@ describe('Workflow d\'inventaire', () => {
 
     await waitFor(() => expect(fetchLocationsMock).toHaveBeenCalledTimes(1))
     expect(fetchLocationsMock.mock.calls[0]).toHaveLength(0)
+
+    await waitFor(() => expect(fetchInventorySummaryMock).toHaveBeenCalledTimes(1))
 
     const busyZoneCard = await screen.findByTestId('zone-card-zone-2')
     expect(within(busyZoneCard).getByText(/Comptage n°1 en cours/i)).toBeInTheDocument()
@@ -188,6 +202,71 @@ describe('Workflow d\'inventaire', () => {
         screen.getAllByText((content) => content.replace(/\s+/g, ' ').includes('Comptage : 2')).length,
       ).toBeGreaterThan(0),
     )
+  })
+
+  it("affiche l'état de conflit pour une zone terminée", async () => {
+    const completedZone = {
+      id: 'zone-4',
+      code: 'ZC4',
+      label: 'Zone ZC4',
+      isBusy: false,
+      busyBy: null,
+      activeRunId: null,
+      activeCountType: null,
+      activeStartedAtUtc: null,
+      countStatuses: [
+        {
+          countType: 1 as const,
+          status: 'completed' as const,
+          runId: 'run-10',
+          operatorDisplayName: 'Luc',
+          startedAtUtc: new Date().toISOString(),
+          completedAtUtc: new Date().toISOString(),
+        },
+        {
+          countType: 2 as const,
+          status: 'completed' as const,
+          runId: 'run-11',
+          operatorDisplayName: 'Mila',
+          startedAtUtc: new Date().toISOString(),
+          completedAtUtc: new Date().toISOString(),
+        },
+      ],
+    }
+
+    fetchLocationsMock.mockResolvedValueOnce([
+      { ...reserveLocation },
+      completedZone,
+    ])
+
+    fetchInventorySummaryMock.mockResolvedValueOnce({
+      activeSessions: 0,
+      openRuns: 0,
+      conflicts: 1,
+      lastActivityUtc: null,
+      openRunDetails: [],
+      conflictDetails: [
+        {
+          conflictId: 'conf-1',
+          countLineId: 'line-1',
+          countingRunId: 'run-10',
+          locationId: completedZone.id,
+          locationCode: completedZone.code,
+          locationLabel: completedZone.label,
+          countType: CountType.Count1,
+          operatorDisplayName: 'Luc',
+          createdAtUtc: new Date().toISOString(),
+        },
+      ],
+    })
+
+    renderInventoryRoutes('/inventory/start')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Amélie' }))
+
+    const conflictZoneCard = await screen.findByTestId(`zone-card-${completedZone.id}`)
+    await waitFor(() => expect(within(conflictZoneCard).getByText('Conflit détecté')).toBeInTheDocument())
+    expect(within(conflictZoneCard).queryByText('Aucun conflit')).not.toBeInTheDocument()
   })
 
   it('autorise la reprise de son propre comptage', async () => {
