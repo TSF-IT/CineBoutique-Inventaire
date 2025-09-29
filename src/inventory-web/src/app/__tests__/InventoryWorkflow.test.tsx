@@ -12,7 +12,7 @@ import { InventorySessionPage } from '../pages/inventory/InventorySessionPage'
 import { useInventory } from '../contexts/InventoryContext'
 import { CountType } from '../types/inventory'
 import type { InventorySummary, Location } from '../types/inventory'
-import type { HttpError } from '../lib/api/http'
+import type { HttpError } from '../../lib/api/http'
 
 const { fetchLocationsMock, fetchProductMock, fetchInventorySummaryMock, reserveLocation } = vi.hoisted(() => {
   const reserveLocation: Location = {
