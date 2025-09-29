@@ -267,7 +267,12 @@ app.Use(async (context, next) =>
 
 var applyMigrations = app.Configuration.GetValue<bool>("APPLY_MIGRATIONS");
 var disableMigrations = app.Configuration.GetValue<bool>("DISABLE_MIGRATIONS");
-app.Logger.LogInformation("APPLY_MIGRATIONS={Apply} DISABLE_MIGRATIONS={Disable}", applyMigrations, disableMigrations);
+var seedOnStartup = app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup");
+app.Logger.LogInformation(
+    "APPLY_MIGRATIONS={Apply} DISABLE_MIGRATIONS={Disable} SeedOnStartup={Seed}",
+    applyMigrations,
+    disableMigrations,
+    seedOnStartup);
 
 if (applyMigrations && !disableMigrations)
 {
@@ -288,18 +293,6 @@ if (applyMigrations && !disableMigrations)
                 "ConnectionStrings:Default (host/db)={HostAndDatabase}",
                 $"{connectionDetails.Host}/{connectionDetails.Database}");
 
-            var seedOnStartup = app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup");
-            app.Logger.LogDebug("AppSettings:SeedOnStartup={SeedOnStartup}", seedOnStartup);
-
-            if (seedOnStartup)
-            {
-                var seeder = scope.ServiceProvider.GetService<InventoryDataSeeder>();
-                if (seeder is not null)
-                {
-                    await seeder.SeedAsync().ConfigureAwait(false);
-                }
-            }
-
             break;
         }
         catch (Exception ex) when (attempt < maxAttempts && ex is NpgsqlException or TimeoutException or InvalidOperationException)
@@ -312,6 +305,11 @@ if (applyMigrations && !disableMigrations)
 else if (applyMigrations)
 {
     app.Logger.LogInformation("Migrations skipped because DISABLE_MIGRATIONS is true");
+}
+
+if (seedOnStartup)
+{
+    await EnsureDemoSeedAsync(app).ConfigureAwait(false);
 }
 
 if (app.Environment.IsDevelopment())
@@ -1042,6 +1040,29 @@ static async Task<IResult> HandlePinLoginAsync(
     await auditLogger.LogAsync($"{actor} s'est connecté avec succès le {successTimestamp} UTC.", user.Name, "auth.pin.success").ConfigureAwait(false);
 
     return Results.Ok(response);
+}
+
+static async Task EnsureDemoSeedAsync(WebApplication app)
+{
+    ArgumentNullException.ThrowIfNull(app);
+
+    await using var scope = app.Services.CreateAsyncScope();
+    var seeder = scope.ServiceProvider.GetService<InventoryDataSeeder>();
+    if (seeder is null)
+    {
+        app.Logger.LogWarning("InventoryDataSeeder introuvable, le seed de démonstration est ignoré.");
+        return;
+    }
+
+    try
+    {
+        await seeder.SeedAsync().ConfigureAwait(false);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Échec du seed de démonstration.");
+        throw;
+    }
 }
 
 static string[] BuildCandidateEanCodes(string code)
