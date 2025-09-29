@@ -1,7 +1,7 @@
 import { CountType, LocationsSchema } from '../../types/inventory'
 import type { Location } from '../../types/inventory'
 
-const minutesAgo = (minutes: number): string => new Date(Date.now() - minutes * 60_000).toISOString()
+const minutesAgo = (minutes: number): Date => new Date(Date.now() - minutes * 60_000)
 
 const createDefaultStatuses = (): Location['countStatuses'] => [
   {
