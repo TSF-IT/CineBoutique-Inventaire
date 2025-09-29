@@ -195,7 +195,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         Assert.Equal(1, conflict.CountType);
         Assert.Equal(runId, conflict.CountingRunId);
         Assert.Equal(countLineId, conflict.CountLineId);
-        Assert.Equal(0, payload.OpenRunDetails.Count);
+        Assert.Empty(payload.OpenRunDetails);
     }
 
     private async Task ResetDatabaseAsync()
