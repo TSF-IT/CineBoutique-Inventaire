@@ -123,7 +123,7 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
             await connection.ExecuteAsync(insertProductSql, new { Id = productId, Sku = "SKU-100", Name = "Produit test", Ean = "1234567890123", CreatedAtUtc = createdAt });
         }
 
-        var response = await _client.GetAsync("/products/1234567890123");
+        var response = await _client.GetAsync("/api/products/1234567890123");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var auditLogs = await GetAuditLogsAsync();
@@ -133,6 +133,33 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
         Assert.Equal("products.scan.success", entry.Category);
         Assert.Contains("1234567890123", entry.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("Produit test", entry.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CreateProduct_Success_WritesAuditLog()
+    {
+        await ResetDatabaseAsync();
+
+        var response = await _client.PostAsJsonAsync("/api/products", new CreateProductRequest
+        {
+            Sku = "SKU-NEW",
+            Name = "Nouveau produit",
+            Ean = "9876543210987"
+        });
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        var created = await response.Content.ReadFromJsonAsync<ProductDto>();
+        Assert.NotNull(created);
+        Assert.Equal("SKU-NEW", created!.Sku);
+        Assert.Equal("Nouveau produit", created!.Name);
+        Assert.Equal("9876543210987", created!.Ean);
+
+        var auditLogs = await GetAuditLogsAsync();
+        var entry = Assert.Single(auditLogs);
+        Assert.Equal("products.create.success", entry.Category);
+        Assert.Contains("SKU-NEW", entry.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("Nouveau produit", entry.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Theory]
@@ -156,7 +183,7 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
             await connection.ExecuteAsync(insertProductSql, new { Id = productId, Sku = "SKU-0001", Name = "Produit court", Ean = "0001", CreatedAtUtc = createdAt });
         }
 
-        var response = await _client.GetAsync($"/products/{scannedCode}");
+        var response = await _client.GetAsync($"/api/products/{scannedCode}");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var product = await response.Content.ReadFromJsonAsync<ProductDto>();
@@ -175,7 +202,7 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
     {
         await ResetDatabaseAsync();
 
-        var response = await _client.GetAsync("/products/00000000");
+        var response = await _client.GetAsync("/api/products/00000000");
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
 
         var auditLogs = await GetAuditLogsAsync();
@@ -191,7 +218,7 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
     {
         await ResetDatabaseAsync();
 
-        var response = await _client.GetAsync("/products/%20");
+        var response = await _client.GetAsync("/api/products/%20");
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
 
         var auditLogs = await GetAuditLogsAsync();
