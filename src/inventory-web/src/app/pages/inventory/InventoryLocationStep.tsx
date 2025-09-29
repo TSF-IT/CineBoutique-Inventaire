@@ -386,11 +386,6 @@ export const InventoryLocationStep = () => {
                     )}
                   </div>
                   <div className="mt-2 flex flex-col gap-2">
-                    {zoneCompleted && (
-                      <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                        Les comptages 1 et 2 sont terminés pour cette zone.
-                      </p>
-                    )}
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <Button
                         data-testid="btn-select-zone"
