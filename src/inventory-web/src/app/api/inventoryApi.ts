@@ -1,6 +1,12 @@
 import { z } from 'zod'
 import { CountType, LocationsSchema } from '../types/inventory'
-import type { InventorySummary, Location, Product } from '../types/inventory'
+import type {
+  ConflictZoneDetail,
+  ConflictZoneSummary,
+  InventorySummary,
+  Location,
+  Product,
+} from '../types/inventory'
 import http, { HttpError } from '@/lib/api/http'
 import { API_BASE } from '@/lib/api/config'
 import { areDevFixturesEnabled, cloneDevLocations } from './dev/fixtures'
@@ -117,7 +123,7 @@ export const fetchInventorySummary = async (): Promise<InventorySummary> => {
   const data = (await http(`${API_BASE}/inventories/summary`)) as Partial<InventorySummary> | null | undefined
 
   const openRunDetails = Array.isArray(data?.openRunDetails) ? data!.openRunDetails : []
-  const conflictDetails = Array.isArray(data?.conflictDetails) ? data!.conflictDetails : []
+  const conflictZones = Array.isArray(data?.conflictZones) ? data!.conflictZones : []
 
   return {
     activeSessions: data?.activeSessions ?? 0,
@@ -125,8 +131,23 @@ export const fetchInventorySummary = async (): Promise<InventorySummary> => {
     conflicts: data?.conflicts ?? 0,
     lastActivityUtc: data?.lastActivityUtc ?? null,
     openRunDetails,
-    conflictDetails,
+    conflictZones,
   }
+}
+
+export const getConflictZonesSummary = async (): Promise<ConflictZoneSummary[]> => {
+  const summary = await fetchInventorySummary()
+  return summary.conflictZones
+}
+
+export const getConflictZoneDetail = async (
+  locationId: string,
+  signal?: AbortSignal,
+): Promise<ConflictZoneDetail> => {
+  const data = await http(`${API_BASE}/conflicts/${encodeURIComponent(locationId)}`, {
+    signal,
+  })
+  return data as ConflictZoneDetail
 }
 
 export const fetchLocations = async (options?: { countType?: CountType }): Promise<Location[]> => {
