@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Data;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
@@ -10,21 +9,21 @@ namespace CineBoutique.Inventory.Infrastructure.Seeding;
 
 public sealed class InventoryDataSeeder
 {
+    private static readonly Guid DemoSessionId = Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+
+    private static readonly Guid DemoLocationB1Id = Guid.Parse("11111111-2222-4333-8444-b1b1b1b1b1b1");
+    private static readonly Guid DemoLocationB2Id = Guid.Parse("11111111-2222-4333-8444-b2b2b2b2b2b2");
+
+    private static readonly Guid DemoRunB1Id = Guid.Parse("11111111-2222-3333-4444-555555555555");
+    private static readonly Guid DemoRunB2Id = Guid.Parse("22222222-3333-4444-5555-666666666666");
+
     private static readonly ProductSeed[] DemoProducts =
     {
-        new(Guid.Parse("00000000-0000-4000-8000-000000000001"), "0000000000001", "PRODUIT-0001", "Produit démo EAN 0001"),
-        new(Guid.Parse("00000000-0000-4000-8000-000000000002"), "0000000000002", "PRODUIT-0002", "Produit démo EAN 0002"),
-        new(Guid.Parse("00000000-0000-4000-8000-000000000003"), "0000000000003", "PRODUIT-0003", "Produit démo EAN 0003")
+        new(Guid.Parse("00000000-0000-4000-8000-000000000000"), "0000000000000", "DEMO-0000", "Produit inconnu (démo)"),
+        new(Guid.Parse("00000000-0000-4000-8000-000000000001"), "0000000000001", "DEMO-0001", "Produit démo EAN 0001"),
+        new(Guid.Parse("00000000-0000-4000-8000-000000000002"), "0000000000002", "DEMO-0002", "Produit démo EAN 0002"),
+        new(Guid.Parse("00000000-0000-4000-8000-000000000003"), "0000000000003", "DEMO-0003", "Produit démo EAN 0003")
     };
-
-    private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> DemoOperatorAssignments =
-        new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal)
-        {
-            ["B1"] = new[] { "Amélie" },
-            ["B2"] = new[] { "Bruno", "Camille" },
-            ["B3"] = new[] { "David", "Elisa" },
-            ["B4"] = new[] { "Amélie", "Bruno" }
-        };
 
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<InventoryDataSeeder> _logger;
@@ -46,66 +45,68 @@ public sealed class InventoryDataSeeder
             var productIds = await EnsureDemoProductsAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
 
             var now = DateTimeOffset.UtcNow;
-            var locationCodes = new[] { "B1", "B2", "B3", "B4" };
+            var demoSeed = BuildDemoSeed(now);
 
-            foreach (var code in locationCodes)
+            await EnsureInventorySessionAsync(connection, transaction, demoSeed.Session, cancellationToken)
+                .ConfigureAwait(false);
+
+            foreach (var location in demoSeed.Locations)
             {
-                var locationId = await FindLocationIdAsync(connection, transaction, code, cancellationToken)
+                var locationId = await EnsureLocationAsync(connection, transaction, location, cancellationToken)
                     .ConfigureAwait(false);
 
-                if (!locationId.HasValue)
+                foreach (var runSeed in location.Runs)
                 {
-                    _logger.LogWarning(
-                        "La zone {LocationCode} est introuvable, le seed démo est ignoré pour cette zone.",
-                        code);
-                    continue;
-                }
-
-                var operators = DemoOperatorAssignments.TryGetValue(code, out var assignedOperators)
-                    ? assignedOperators
-                    : Array.Empty<string>();
-
-                var locationSeed = BuildLocationSeed(
-                    code,
-                    locationId.Value,
-                    new ReadOnlyDictionary<string, Guid>(productIds),
-                    operators,
-                    now);
-
-                await EnsureInventorySessionAsync(connection, transaction, locationSeed.Session, cancellationToken)
-                    .ConfigureAwait(false);
-
-                foreach (var run in locationSeed.Runs)
-                {
-                    var created = await EnsureCountingRunAsync(connection, transaction, run, cancellationToken)
+                    var run = runSeed with { LocationId = locationId };
+                    var createdRun = await EnsureCountingRunAsync(connection, transaction, run, cancellationToken)
                         .ConfigureAwait(false);
+
+                    if (createdRun)
+                    {
+                        _logger.LogInformation(
+                            "SeedRun id={RunId} session={SessionId} location={LocationId} operator={Operator}",
+                            run.Id,
+                            run.InventorySessionId,
+                            run.LocationId,
+                            run.OperatorDisplayName);
+                    }
 
                     foreach (var line in run.Lines)
                     {
-                        await EnsureCountLineAsync(connection, transaction, run.Id, line, cancellationToken)
-                            .ConfigureAwait(false);
-                    }
+                        if (!productIds.TryGetValue(line.Ean, out var productId))
+                        {
+                            throw new InvalidOperationException($"Produit démo manquant pour l'EAN {line.Ean}.");
+                        }
 
-                    if (created)
-                    {
-                        _logger.LogDebug(
-                            "Run {RunId} ({CountType}) seedé pour la zone {LocationCode}.",
-                            run.Id,
-                            run.CountType,
-                            code);
+                        var createdLine = await EnsureCountLineAsync(
+                                connection,
+                                transaction,
+                                run.Id,
+                                productId,
+                                line,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+
+                        if (createdLine)
+                        {
+                            _logger.LogInformation(
+                                "SeedLine runId={RunId} product={ProductId} qty={Qty}",
+                                run.Id,
+                                productId,
+                                line.Quantity);
+                        }
                     }
                 }
             }
 
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
 
-            _logger.LogInformation(
-                "Demo seed (B1..B4) applied: B1 CT1 in-progress; B2 CT1 completed + CT2 in-progress; B3 two completed same; B4 two completed different.");
+            _logger.LogInformation("Jeu de données démo initialisé : session principale + runs B1 et B2.");
         }
         catch (Exception ex)
         {
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-            _logger.LogError(ex, "Échec de l'initialisation des données de démonstration B1..B4.");
+            _logger.LogError(ex, "Échec de l'initialisation des données de démonstration.");
             throw;
         }
     }
@@ -124,8 +125,8 @@ VALUES (@Id, @Sku, @Name, @Ean, @CreatedAtUtc);";
 
         foreach (var definition in DemoProducts)
         {
-            var existing = await connection.QuerySingleOrDefaultAsync<Guid?>(
-                new CommandDefinition(selectSql, new { definition.Ean }, transaction, cancellationToken: cancellationToken))
+            var existing = await connection.QuerySingleOrDefaultAsync<Guid?>
+                    (new CommandDefinition(selectSql, new { definition.Ean }, transaction, cancellationToken: cancellationToken))
                 .ConfigureAwait(false);
 
             if (existing.HasValue)
@@ -155,328 +156,67 @@ VALUES (@Id, @Sku, @Name, @Ean, @CreatedAtUtc);";
         return products;
     }
 
-    private static async Task<Guid?> FindLocationIdAsync(
-        IDbConnection connection,
-        IDbTransaction transaction,
-        string locationCode,
-        CancellationToken cancellationToken)
+    private static DemoSeed BuildDemoSeed(DateTimeOffset now)
     {
-        const string sql = @"
-SELECT ""Id""
-FROM ""Location""
-WHERE ""Code"" ILIKE @CodePattern OR ""Label"" ILIKE @LabelPattern
-ORDER BY ""Code"" ASC
-LIMIT 1;";
-
-        return await connection.QuerySingleOrDefaultAsync<Guid?>(
-                new CommandDefinition(
-                    sql,
-                    new
-                    {
-                        CodePattern = locationCode,
-                        LabelPattern = "%" + locationCode + "%"
-                    },
-                    transaction,
-                    cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
-    }
-
-    private static LocationSeed BuildLocationSeed(
-        string code,
-        Guid locationId,
-        IReadOnlyDictionary<string, Guid> products,
-        IReadOnlyList<string> operators,
-        DateTimeOffset now)
-    {
-        return code switch
-        {
-            "B1" => BuildB1Seed(locationId, products, operators, now),
-            "B2" => BuildB2Seed(locationId, products, operators, now),
-            "B3" => BuildB3Seed(locationId, products, operators, now),
-            "B4" => BuildB4Seed(locationId, products, operators, now),
-            _ => throw new InvalidOperationException($"La zone {code} n'est pas prise en charge pour le seed démo.")
-        };
-    }
-
-    private static LocationSeed BuildB1Seed(
-        Guid locationId,
-        IReadOnlyDictionary<string, Guid> products,
-        IReadOnlyList<string> operators,
-        DateTimeOffset now)
-    {
-        var runStart = now.AddMinutes(-15);
-
         var session = new InventorySessionSeed(
-            Guid.Parse("20000000-0000-4000-8000-00000000B101"),
-            "Inventaire démo B1",
-            runStart,
+            DemoSessionId,
+            "Session de démonstration CinéBoutique",
+            now.AddHours(-1),
             null);
 
-        var run = new CountingRunSeed(
-            Guid.Parse("10000000-0000-4000-8000-00000000B101"),
+        var runB1Start = now.AddMinutes(-10);
+        var runB1 = new CountingRunSeed(
+            DemoRunB1Id,
             session.Id,
-            locationId,
+            DemoLocationB1Id,
             1,
-            runStart,
+            runB1Start,
             null,
-            ResolveOperator(operators, 0),
+            "Amélie",
             new[]
             {
-                CreateCountLine(
-                    Guid.Parse("30000000-0000-4000-8000-00000000B101"),
-                    products,
-                    "0000000000001",
-                    5m,
-                    runStart.AddMinutes(5)),
-                CreateCountLine(
-                    Guid.Parse("30000000-0000-4000-8000-00000000B102"),
-                    products,
-                    "0000000000002",
-                    2m,
-                    runStart.AddMinutes(7))
-            });
-
-        return new LocationSeed(session, new[] { run });
-    }
-
-    private static LocationSeed BuildB2Seed(
-        Guid locationId,
-        IReadOnlyDictionary<string, Guid> products,
-        IReadOnlyList<string> operators,
-        DateTimeOffset now)
-    {
-        var ct1Start = now.AddMinutes(-50);
-        var ct1End = now.AddMinutes(-40);
-        var ct2Start = now.AddMinutes(-10);
-
-        var session = new InventorySessionSeed(
-            Guid.Parse("20000000-0000-4000-8000-00000000B201"),
-            "Inventaire démo B2",
-            ct1Start,
-            null);
-
-        var ct1Run = new CountingRunSeed(
-            Guid.Parse("10000000-0000-4000-8000-00000000B201"),
-            session.Id,
-            locationId,
-            1,
-            ct1Start,
-            ct1End,
-            ResolveOperator(operators, 0),
-            new[]
-            {
-                CreateCountLine(
-                    Guid.Parse("30000000-0000-4000-8000-00000000B201"),
-                    products,
+                new CountLineSeed(
+                    Guid.Parse("aaaaaaaa-1111-2222-3333-444444444441"),
                     "0000000000001",
                     3m,
-                    ct1Start.AddMinutes(6)),
-                CreateCountLine(
-                    Guid.Parse("30000000-0000-4000-8000-00000000B202"),
-                    products,
-                    "0000000000003",
-                    1m,
-                    ct1Start.AddMinutes(12))
-            });
-
-        var ct2Run = new CountingRunSeed(
-            Guid.Parse("10000000-0000-4000-8000-00000000B202"),
-            session.Id,
-            locationId,
-            2,
-            ct2Start,
-            null,
-            ResolveOperator(operators, 1),
-            new[]
-            {
-                CreateCountLine(
-                    Guid.Parse("30000000-0000-4000-8000-00000000B221"),
-                    products,
-                    "0000000000001",
-                    4m,
-                    ct2Start.AddMinutes(4))
-            });
-
-        return new LocationSeed(session, new[] { ct1Run, ct2Run });
-    }
-
-    private static LocationSeed BuildB3Seed(
-        Guid locationId,
-        IReadOnlyDictionary<string, Guid> products,
-        IReadOnlyList<string> operators,
-        DateTimeOffset now)
-    {
-        var ct1Start = now.AddHours(-2);
-        var ct1End = ct1Start.AddMinutes(10);
-        var ct2Start = now.AddMinutes(-100);
-        var ct2End = ct2Start.AddMinutes(10);
-
-        var session = new InventorySessionSeed(
-            Guid.Parse("20000000-0000-4000-8000-00000000B301"),
-            "Inventaire démo B3",
-            ct1Start,
-            ct2End);
-
-        var ct1Run = new CountingRunSeed(
-            Guid.Parse("10000000-0000-4000-8000-00000000B301"),
-            session.Id,
-            locationId,
-            1,
-            ct1Start,
-            ct1End,
-            ResolveOperator(operators, 0),
-            new[]
-            {
-                CreateCountLine(
-                    Guid.Parse("30000000-0000-4000-8000-00000000B301"),
-                    products,
-                    "0000000000001",
+                    runB1Start.AddMinutes(1)),
+                new CountLineSeed(
+                    Guid.Parse("aaaaaaaa-1111-2222-3333-444444444442"),
+                    "0000000000000",
                     5m,
-                    ct1Start.AddMinutes(4)),
-                CreateCountLine(
-                    Guid.Parse("30000000-0000-4000-8000-00000000B302"),
-                    products,
-                    "0000000000002",
-                    2m,
-                    ct1Start.AddMinutes(6)),
-                CreateCountLine(
-                    Guid.Parse("30000000-0000-4000-8000-00000000B303"),
-                    products,
-                    "0000000000003",
-                    1m,
-                    ct1Start.AddMinutes(8))
+                    runB1Start.AddMinutes(2))
             });
 
-        var ct2Run = new CountingRunSeed(
-            Guid.Parse("10000000-0000-4000-8000-00000000B302"),
+        var runB2Start = now.AddMinutes(-45);
+        var runB2 = new CountingRunSeed(
+            DemoRunB2Id,
             session.Id,
-            locationId,
+            DemoLocationB2Id,
             2,
-            ct2Start,
-            ct2End,
-            ResolveOperator(operators, 1),
+            runB2Start,
+            runB2Start.AddMinutes(9),
+            "Bruno",
             new[]
             {
-                CreateCountLine(
-                    Guid.Parse("30000000-0000-4000-8000-00000000B321"),
-                    products,
-                    "0000000000001",
-                    5m,
-                    ct2Start.AddMinutes(4)),
-                CreateCountLine(
-                    Guid.Parse("30000000-0000-4000-8000-00000000B322"),
-                    products,
+                new CountLineSeed(
+                    Guid.Parse("bbbbbbbb-2222-3333-4444-555555555551"),
                     "0000000000002",
-                    2m,
-                    ct2Start.AddMinutes(6)),
-                CreateCountLine(
-                    Guid.Parse("30000000-0000-4000-8000-00000000B323"),
-                    products,
-                    "0000000000003",
-                    1m,
-                    ct2Start.AddMinutes(8))
-            });
-
-        return new LocationSeed(session, new[] { ct1Run, ct2Run });
-    }
-
-    private static LocationSeed BuildB4Seed(
-        Guid locationId,
-        IReadOnlyDictionary<string, Guid> products,
-        IReadOnlyList<string> operators,
-        DateTimeOffset now)
-    {
-        var ct1Start = now.AddMinutes(-140);
-        var ct1End = ct1Start.AddMinutes(10);
-        var ct2Start = now.AddMinutes(-120);
-        var ct2End = ct2Start.AddMinutes(10);
-
-        var session = new InventorySessionSeed(
-            Guid.Parse("20000000-0000-4000-8000-00000000B401"),
-            "Inventaire démo B4",
-            ct1Start,
-            ct2End);
-
-        var ct1Run = new CountingRunSeed(
-            Guid.Parse("10000000-0000-4000-8000-00000000B401"),
-            session.Id,
-            locationId,
-            1,
-            ct1Start,
-            ct1End,
-            ResolveOperator(operators, 0),
-            new[]
-            {
-                CreateCountLine(
-                    Guid.Parse("30000000-0000-4000-8000-00000000B401"),
-                    products,
-                    "0000000000001",
-                    5m,
-                    ct1Start.AddMinutes(4)),
-                CreateCountLine(
-                    Guid.Parse("30000000-0000-4000-8000-00000000B402"),
-                    products,
-                    "0000000000002",
-                    2m,
-                    ct1Start.AddMinutes(6))
-            });
-
-        var ct2Run = new CountingRunSeed(
-            Guid.Parse("10000000-0000-4000-8000-00000000B402"),
-            session.Id,
-            locationId,
-            2,
-            ct2Start,
-            ct2End,
-            ResolveOperator(operators, 1),
-            new[]
-            {
-                CreateCountLine(
-                    Guid.Parse("30000000-0000-4000-8000-00000000B421"),
-                    products,
-                    "0000000000001",
                     7m,
-                    ct2Start.AddMinutes(4)),
-                CreateCountLine(
-                    Guid.Parse("30000000-0000-4000-8000-00000000B422"),
-                    products,
-                    "0000000000002",
-                    2m,
-                    ct2Start.AddMinutes(6))
+                    runB2Start.AddMinutes(3)),
+                new CountLineSeed(
+                    Guid.Parse("bbbbbbbb-2222-3333-4444-555555555552"),
+                    "0000000000003",
+                    1m,
+                    runB2Start.AddMinutes(6))
             });
 
-        return new LocationSeed(session, new[] { ct1Run, ct2Run });
-    }
-
-    private static CountLineSeed CreateCountLine(
-        Guid lineId,
-        IReadOnlyDictionary<string, Guid> products,
-        string ean,
-        decimal quantity,
-        DateTimeOffset countedAtUtc)
-    {
-        if (!products.TryGetValue(ean, out var productId))
+        var locations = new[]
         {
-            throw new InvalidOperationException($"Produit démo manquant pour l'EAN {ean}.");
-        }
+            new LocationSeed("B1", DemoLocationB1Id, "Zone B1", new[] { runB1 }),
+            new LocationSeed("B2", DemoLocationB2Id, "Zone B2", new[] { runB2 })
+        };
 
-        return new CountLineSeed(lineId, productId, quantity, countedAtUtc);
-    }
-
-    private static string ResolveOperator(IReadOnlyList<string> operators, int index)
-    {
-        if (operators is null || operators.Count == 0)
-        {
-            return "Opérateur démo";
-        }
-
-        if (index < 0)
-        {
-            index = 0;
-        }
-
-        var safeIndex = index % operators.Count;
-        return operators[safeIndex];
+        return new DemoSeed(session, locations);
     }
 
     private static async Task EnsureInventorySessionAsync(
@@ -486,8 +226,8 @@ LIMIT 1;";
         CancellationToken cancellationToken)
     {
         const string selectSql = "SELECT 1 FROM \"InventorySession\" WHERE \"Id\" = @Id LIMIT 1;";
-        var exists = await connection.ExecuteScalarAsync<int?>(
-                new CommandDefinition(selectSql, new { session.Id }, transaction, cancellationToken: cancellationToken))
+        var exists = await connection.ExecuteScalarAsync<int?>
+                (new CommandDefinition(selectSql, new { session.Id }, transaction, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
         if (exists.HasValue)
@@ -514,6 +254,41 @@ VALUES (@Id, @Name, @StartedAtUtc, @CompletedAtUtc);";
             .ConfigureAwait(false);
     }
 
+    private static async Task<Guid> EnsureLocationAsync(
+        IDbConnection connection,
+        IDbTransaction transaction,
+        LocationSeed location,
+        CancellationToken cancellationToken)
+    {
+        const string selectSql = "SELECT \"Id\" FROM \"Location\" WHERE \"Code\" = @Code LIMIT 1;";
+        var existing = await connection.QuerySingleOrDefaultAsync<Guid?>
+                (new CommandDefinition(selectSql, new { location.Code }, transaction, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        if (existing.HasValue)
+        {
+            return existing.Value;
+        }
+
+        const string insertSql =
+            "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\") VALUES (@Id, @Code, @Label);";
+
+        await connection.ExecuteAsync(
+                new CommandDefinition(
+                    insertSql,
+                    new
+                    {
+                        location.Id,
+                        location.Code,
+                        location.Label
+                    },
+                    transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return location.Id;
+    }
+
     private static async Task<bool> EnsureCountingRunAsync(
         IDbConnection connection,
         IDbTransaction transaction,
@@ -521,8 +296,8 @@ VALUES (@Id, @Name, @StartedAtUtc, @CompletedAtUtc);";
         CancellationToken cancellationToken)
     {
         const string selectSql = "SELECT 1 FROM \"CountingRun\" WHERE \"Id\" = @Id LIMIT 1;";
-        var exists = await connection.ExecuteScalarAsync<int?>(
-                new CommandDefinition(selectSql, new { run.Id }, transaction, cancellationToken: cancellationToken))
+        var exists = await connection.ExecuteScalarAsync<int?>
+                (new CommandDefinition(selectSql, new { run.Id }, transaction, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
         if (exists.HasValue)
@@ -554,25 +329,22 @@ VALUES (@Id, @InventorySessionId, @LocationId, @StartedAtUtc, @CompletedAtUtc, @
         return true;
     }
 
-    private static async Task EnsureCountLineAsync(
+    private static async Task<bool> EnsureCountLineAsync(
         IDbConnection connection,
         IDbTransaction transaction,
         Guid runId,
+        Guid productId,
         CountLineSeed line,
         CancellationToken cancellationToken)
     {
-        const string selectSql = "SELECT 1 FROM \"CountLine\" WHERE \"CountingRunId\" = @RunId AND \"ProductId\" = @ProductId LIMIT 1;";
-        var exists = await connection.ExecuteScalarAsync<int?>(
-                new CommandDefinition(
-                    selectSql,
-                    new { RunId = runId, line.ProductId },
-                    transaction,
-                    cancellationToken: cancellationToken))
+        const string selectSql = "SELECT 1 FROM \"CountLine\" WHERE \"Id\" = @Id LIMIT 1;";
+        var exists = await connection.ExecuteScalarAsync<int?>
+                (new CommandDefinition(selectSql, new { line.Id }, transaction, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
         if (exists.HasValue)
         {
-            return;
+            return false;
         }
 
         const string insertSql = @"
@@ -586,13 +358,15 @@ VALUES (@Id, @CountingRunId, @ProductId, @Quantity, @CountedAtUtc);";
                     {
                         line.Id,
                         CountingRunId = runId,
-                        line.ProductId,
+                        ProductId = productId,
                         line.Quantity,
                         line.CountedAtUtc
                     },
                     transaction,
                     cancellationToken: cancellationToken))
             .ConfigureAwait(false);
+
+        return true;
     }
 
     private sealed record ProductSeed(Guid Id, string Ean, string Sku, string Name);
@@ -609,18 +383,9 @@ VALUES (@Id, @CountingRunId, @ProductId, @Quantity, @CountedAtUtc);";
         string OperatorDisplayName,
         IReadOnlyList<CountLineSeed> Lines);
 
-    private sealed record CountLineSeed(Guid Id, Guid ProductId, decimal Quantity, DateTimeOffset CountedAtUtc);
+    private sealed record CountLineSeed(Guid Id, string Ean, decimal Quantity, DateTimeOffset CountedAtUtc);
 
-    private readonly struct LocationSeed
-    {
-        public LocationSeed(InventorySessionSeed session, IReadOnlyList<CountingRunSeed> runs)
-        {
-            Session = session;
-            Runs = runs;
-        }
+    private sealed record LocationSeed(string Code, Guid Id, string Label, IReadOnlyList<CountingRunSeed> Runs);
 
-        public InventorySessionSeed Session { get; }
-
-        public IReadOnlyList<CountingRunSeed> Runs { get; }
-    }
+    private sealed record DemoSeed(InventorySessionSeed Session, IReadOnlyList<LocationSeed> Locations);
 }
