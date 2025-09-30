@@ -226,6 +226,34 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         }
     }
 
+    [Fact]
+    public async Task GetInventorySummary_ReturnsOk_WhenAuditTableMissing()
+    {
+        await ResetDatabaseAsync();
+
+        using var scope = _factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        const string dropAuditSql = "DROP TABLE IF EXISTS \"Audit\";";
+        await connection.ExecuteAsync(dropAuditSql);
+
+        try
+        {
+            var response = await _client.GetAsync("/api/inventories/summary");
+            response.EnsureSuccessStatusCode();
+
+            var payload = await response.Content.ReadFromJsonAsync<InventorySummaryDto>();
+            Assert.NotNull(payload);
+        }
+        finally
+        {
+            await _factory.EnsureMigratedAsync();
+            await ResetDatabaseAsync();
+        }
+    }
+
     private async Task ResetDatabaseAsync()
     {
         using var scope = _factory.Services.CreateScope();

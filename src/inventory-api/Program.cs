@@ -467,21 +467,31 @@ app.MapGet("/api/inventories/summary", async (IDbConnection connection, Cancella
 {
     await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-    const string summarySql = @"SELECT
-    (SELECT COUNT(*)::int FROM ""InventorySession"" WHERE ""CompletedAtUtc"" IS NULL) AS ""ActiveSessions"",
-    (SELECT COUNT(*)::int FROM ""CountingRun"" WHERE ""CompletedAtUtc"" IS NULL) AS ""OpenRuns"",
-    (SELECT COUNT(*)::int FROM ""Conflict"" WHERE ""ResolvedAtUtc"" IS NULL) AS ""Conflicts"",
+    var activitySources = new List<string>
+    {
+        "SELECT MAX(\"CountedAtUtc\") AS value FROM \"CountLine\"",
+        "SELECT MAX(\"StartedAtUtc\") FROM \"CountingRun\"",
+        "SELECT MAX(\"CompletedAtUtc\") FROM \"CountingRun\""
+    };
+
+    if (await TableExistsAsync(connection, "Audit", cancellationToken).ConfigureAwait(false))
+    {
+        activitySources.Insert(0, "SELECT MAX(\"CreatedAtUtc\") AS value FROM \"Audit\"");
+    }
+
+    var activityUnion = string.Join(
+        "\n            UNION ALL\n            ",
+        activitySources);
+
+    var summarySql = $@"SELECT
+    (SELECT COUNT(*)::int FROM \"InventorySession\" WHERE \"CompletedAtUtc\" IS NULL) AS \"ActiveSessions\",
+    (SELECT COUNT(*)::int FROM \"CountingRun\" WHERE \"CompletedAtUtc\" IS NULL) AS \"OpenRuns\",
+    (SELECT COUNT(*)::int FROM \"Conflict\" WHERE \"ResolvedAtUtc\" IS NULL) AS \"Conflicts\",
     (
         SELECT MAX(value) FROM (
-            SELECT MAX(""CreatedAtUtc"") AS value FROM ""Audit""
-            UNION ALL
-            SELECT MAX(""CountedAtUtc"") FROM ""CountLine""
-            UNION ALL
-            SELECT MAX(""StartedAtUtc"") FROM ""CountingRun""
-            UNION ALL
-            SELECT MAX(""CompletedAtUtc"") FROM ""CountingRun""
+            {activityUnion}
         ) AS activity
-    ) AS ""LastActivityUtc"";";
+    ) AS \"LastActivityUtc\";";
 
     var summary = await connection
         .QuerySingleAsync<InventorySummaryDto>(new CommandDefinition(summarySql, cancellationToken: cancellationToken))
@@ -1133,6 +1143,21 @@ static string[] BuildCandidateEanCodes(string code)
     }
 
     return candidates.ToArray();
+}
+
+static async Task<bool> TableExistsAsync(IDbConnection connection, string tableName, CancellationToken cancellationToken)
+{
+    const string sql = @"SELECT 1
+FROM information_schema.tables
+WHERE table_schema = current_schema()
+  AND table_name = @TableName
+LIMIT 1;";
+
+    var result = await connection.ExecuteScalarAsync<int?>(
+            new CommandDefinition(sql, new { TableName = tableName }, cancellationToken: cancellationToken))
+        .ConfigureAwait(false);
+
+    return result.HasValue;
 }
 
 static async Task<bool> ColumnExistsAsync(IDbConnection connection, string tableName, string columnName, CancellationToken cancellationToken)
