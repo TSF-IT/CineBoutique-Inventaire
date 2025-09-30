@@ -84,6 +84,45 @@ L'endpoint `POST /auth/pin` retourne un JWT court si le PIN est valide. Les endp
 - `POST /api/products` : création manuelle d'un produit (SKU, nom, EAN optionnel).
 - `POST /auth/pin` : authentification par PIN/JWT (utilisateurs définis dans la configuration).
 - `POST /api/inventories/{locationId}/restart` : clôture les runs actifs d'une zone pour redémarrer un comptage.
+- `POST /api/inventories/{locationId}/complete` : clôture un comptage en enregistrant les quantités scannées (produits connus ou inconnus).
+
+### Finaliser un comptage d'inventaire
+
+Le front appelle l'endpoint `POST /api/inventories/{locationId}/complete` pour indiquer la fin d'un comptage sur une zone donnée. Le payload attendu est le suivant :
+
+```json
+{
+  "runId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "countType": 1,
+  "operator": "amelie.dupont",
+  "items": [
+    {
+      "ean": "3057065988108",
+      "quantity": 3,
+      "isManual": false
+    },
+    {
+      "ean": "0001",
+      "quantity": 1,
+      "isManual": true
+    }
+  ]
+}
+```
+
+La réponse contient l'identifiant du run clôturé ainsi que les agrégats utiles à l'IHM :
+
+```json
+{
+  "runId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "inventorySessionId": "9f0b1a3e-1c1c-4f33-a123-78a12c1e5a2b",
+  "locationId": "zone-1",
+  "countType": 1,
+  "completedAtUtc": "2024-05-08T12:34:56.789Z",
+  "itemsCount": 2,
+  "totalQuantity": 4
+}
+```
 
 ## Configuration applicative
 
