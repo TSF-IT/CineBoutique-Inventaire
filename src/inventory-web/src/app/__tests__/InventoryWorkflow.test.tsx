@@ -11,7 +11,7 @@ import { InventoryLocationStep } from '../pages/inventory/InventoryLocationStep'
 import { InventorySessionPage } from '../pages/inventory/InventorySessionPage'
 import { useInventory } from '../contexts/InventoryContext'
 import { CountType } from '../types/inventory'
-import type { InventorySummary, Location } from '../types/inventory'
+import type { InventorySummary, Location, CompleteInventoryRunPayload } from '../types/inventory'
 import type { HttpError } from '../../lib/api/http'
 
 const {
@@ -92,15 +92,24 @@ const {
     ]),
     fetchProductMock: vi.fn(() => Promise.resolve({ ean: '123', name: 'Popcorn caramel' })),
     fetchInventorySummaryMock: vi.fn(async (): Promise<InventorySummary> => ({ ...emptySummary })),
-    completeInventoryRunMock: vi.fn(async () => ({
-      runId: 'run-1',
-      inventorySessionId: 'session-1',
-      locationId: reserveLocation.id,
-      countType: 1,
-      completedAtUtc: new Date().toISOString(),
-      itemsCount: 1,
-      totalQuantity: 1,
-    })),
+    completeInventoryRunMock: vi.fn<(locationId: string, payload: CompleteInventoryRunPayload) => Promise<{
+        runId: string;
+        inventorySessionId: string;
+        locationId: string;
+        countType: number;
+        completedAtUtc: string;
+        itemsCount: number;
+        totalQuantity: number;
+      }>>()
+      .mockResolvedValue({
+        runId: 'run-1',
+        inventorySessionId: 'session-1',
+        locationId: reserveLocation.id,
+        countType: 1,
+        completedAtUtc: new Date().toISOString(),
+        itemsCount: 1,
+        totalQuantity: 1,
+      }),
     reserveLocation,
   }
 })
@@ -505,7 +514,9 @@ describe('Workflow d\'inventaire', () => {
     fireEvent.click(finishButton)
 
     await waitFor(() => expect(completeInventoryRunMock).toHaveBeenCalledTimes(1))
-    const [locationId, payload] = completeInventoryRunMock.mock.calls[0]
+    expect(completeInventoryRunMock.mock.calls.length).toBeGreaterThan(0)
+    const [locationId, payload] = completeInventoryRunMock.mock.calls.at(-1)!
+    expect(payload).toBeTruthy()
     expect(locationId).toBeTruthy()
     expect(payload).toMatchObject({
       runId: null,

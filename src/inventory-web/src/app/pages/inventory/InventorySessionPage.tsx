@@ -16,6 +16,7 @@ import { EmptyState } from '../../components/EmptyState'
 import { useInventory } from '../../contexts/InventoryContext'
 import type { HttpError } from '@/lib/api/http'
 import type { Product } from '../../types/inventory'
+import { CountType } from '../../types/inventory'
 
 const DEV_API_UNREACHABLE_HINT =
   "Impossible de joindre l’API : vérifie que le backend tourne (curl http://localhost:8080/healthz) ou que le proxy Vite est actif."
