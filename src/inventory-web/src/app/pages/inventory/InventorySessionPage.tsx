@@ -1,3 +1,4 @@
+// Modifications : forcer l'inclusion de runId=null lors de la complétion sans run existant.
 import type { KeyboardEvent, ChangeEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -401,10 +402,7 @@ export const InventorySessionPage = () => {
         countType: countType as 1 | 2 | 3,
         operator: trimmedOperator,
         items: payloadItems,
-      }
-
-      if (existingRunId) {
-        payload.runId = existingRunId
+        runId: existingRunId || null,
       }
 
       await completeInventoryRun(locationId, payload)
