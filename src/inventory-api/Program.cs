@@ -51,7 +51,7 @@ builder.Configuration
     .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true)
     .AddEnvironmentVariables();
 
-bool disableSerilog = builder.Configuration["DISABLE_SERILOG"]?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;
+var disableSerilog = builder.Configuration["DISABLE_SERILOG"]?.Equals("true", StringComparison.OrdinalIgnoreCase) == true;
 
 var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
 if (allowedOrigins.Length == 0)
@@ -1444,12 +1444,6 @@ static string BuildUnknownSku(string ean)
     return sku[^32..];
 }
 
-private sealed record SanitizedCountLine(string Ean, decimal Quantity, bool IsManual);
-
-private sealed record CountingRunRow(Guid Id, Guid InventorySessionId, Guid LocationId, short CountType);
-
-private sealed record ProductLookupRow(Guid Id, string Ean);
-
 static async Task<bool> TableExistsAsync(IDbConnection connection, string tableName, CancellationToken cancellationToken)
 {
     const string sql = @"SELECT 1
@@ -1566,6 +1560,12 @@ static Guid? SanitizeRunId(Guid? runId)
         ? runId
         : null;
 }
+
+private sealed record SanitizedCountLine(string Ean, decimal Quantity, bool IsManual);
+
+private sealed record CountingRunRow(Guid Id, Guid InventorySessionId, Guid LocationId, short CountType);
+
+private sealed record ProductLookupRow(Guid Id, string Ean);
 
 // Types internes mappés Dapper
 file sealed class LocationCountStatusRow
