@@ -90,10 +90,12 @@ export interface Product {
 }
 
 export interface InventoryItem {
+  id: string
   product: Product
   quantity: number
   lastScanAt: string
   isManual: boolean
+  addedAt: number
 }
 
 export interface InventoryCountSubmissionItem {
