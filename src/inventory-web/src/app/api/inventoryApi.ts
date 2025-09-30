@@ -1,6 +1,12 @@
 import { z } from 'zod'
 import { CountType, LocationsSchema } from '../types/inventory'
-import type { InventorySummary, Location, ManualProductInput, Product } from '../types/inventory'
+import type {
+  CompleteInventoryRunPayload,
+  CompleteInventoryRunResult,
+  InventorySummary,
+  Location,
+  Product,
+} from '../types/inventory'
 import http, { HttpError } from '@/lib/api/http'
 import { API_BASE } from '@/lib/api/config'
 import { areDevFixturesEnabled, cloneDevLocations } from './dev/fixtures'
@@ -171,12 +177,15 @@ export const fetchProductByEan = async (ean: string): Promise<Product> => {
   return data as Product
 }
 
-export const createManualProduct = async (payload: ManualProductInput): Promise<Product> => {
-  const data = await http(`${API_BASE}/products`, {
+export const completeInventoryRun = async (
+  locationId: string,
+  payload: CompleteInventoryRunPayload,
+): Promise<CompleteInventoryRunResult> => {
+  const data = await http(`${API_BASE}/inventories/${encodeURIComponent(locationId)}/complete`, {
     method: 'POST',
     body: JSON.stringify(payload),
   })
-  return data as Product
+  return data as CompleteInventoryRunResult
 }
 
 export const restartInventoryRun = async (locationId: string, countType: CountType): Promise<void> => {

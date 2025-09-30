@@ -96,7 +96,25 @@ export interface InventoryItem {
   isManual: boolean
 }
 
-export interface ManualProductInput {
+export interface InventoryCountSubmissionItem {
   ean: string
-  name: string
+  quantity: number
+  isManual: boolean
+}
+
+export interface CompleteInventoryRunPayload {
+  runId?: string | null
+  countType: CountType
+  operator: string
+  items: InventoryCountSubmissionItem[]
+}
+
+export interface CompleteInventoryRunResult {
+  runId: string
+  inventorySessionId: string
+  locationId: string
+  countType: CountType
+  completedAtUtc: string
+  itemsCount: number
+  totalQuantity: number
 }
