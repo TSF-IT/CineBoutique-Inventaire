@@ -38,3 +38,11 @@ body {
 .no-focus-ring:focus-visible {
   outline: none;
 }
+
+/* Centre strictement les glyphes +/- dans les boutons circulaires */
+.btn-glyph-center {
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
