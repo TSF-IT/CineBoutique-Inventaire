@@ -35,7 +35,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.Net.Http.Headers;
 using Microsoft.OpenApi.Models;
 using Npgsql;
-using Serilog;
+using Serilog; // requis pour UseSerilog()
 using CineBoutique.Inventory.Api.Infrastructure.Health;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -56,11 +56,7 @@ var disableSerilog = builder.Configuration["DISABLE_SERILOG"]?.Equals("true", St
 var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
 if (allowedOrigins.Length == 0)
 {
-    allowedOrigins = new[]
-    {
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    };
+    allowedOrigins = AppDefaults.DevOrigins;
 }
 
 var useSerilog = !disableSerilog;
@@ -146,7 +142,7 @@ builder.Services.AddControllers();
 builder.Services
     .AddHealthChecks()
     .AddCheck("self", () => HealthCheckResult.Healthy())
-    .AddCheck<DatabaseHealthCheck>("db", tags: new[] { "ready" });
+    .AddCheck<DatabaseHealthCheck>("db", tags: ["ready"]);
 
 builder.Services.AddScoped<IDbConnection>(sp =>
 {
@@ -192,7 +188,7 @@ builder.Services.AddCors(options =>
     options.AddPolicy(DevCorsPolicy, policyBuilder =>
     {
         policyBuilder
-            .WithOrigins("http://localhost:5173")
+            .WithOrigins(AppDefaults.DevOrigins)
             .AllowAnyHeader()
             .AllowAnyMethod();
     });
@@ -210,7 +206,7 @@ builder.Services.AddCors(options =>
         }
 
         policyBuilder
-            .WithMethods("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
+            .WithMethods(AppDefaults.CorsMethods)
             .AllowAnyHeader()
             .SetPreflightMaxAge(TimeSpan.FromHours(1));
     });
@@ -264,7 +260,7 @@ app.Use(async (context, next) =>
 
 var applyMigrations = app.Configuration.GetValue<bool>("APPLY_MIGRATIONS");
 var disableMigrations = app.Configuration.GetValue<bool>("DISABLE_MIGRATIONS");
-app.Logger.LogInformation("APPLY_MIGRATIONS={Apply} DISABLE_MIGRATIONS={Disable}", applyMigrations, disableMigrations);
+Log.MigrationsFlags(app.Logger, applyMigrations, disableMigrations);
 
 if (applyMigrations && !disableMigrations)
 {
@@ -281,12 +277,10 @@ if (applyMigrations && !disableMigrations)
             runner.MigrateUp();
 
             var connectionDetails = new NpgsqlConnectionStringBuilder(connectionString);
-            app.Logger.LogDebug(
-                "ConnectionStrings:Default (host/db)={HostAndDatabase}",
-                $"{connectionDetails.Host}/{connectionDetails.Database}");
+            Log.DbHostDb(app.Logger, $"{connectionDetails.Host}/{connectionDetails.Database}");
 
             var seedOnStartup = app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup");
-            app.Logger.LogDebug("AppSettings:SeedOnStartup={SeedOnStartup}", seedOnStartup);
+            Log.SeedOnStartup(app.Logger, seedOnStartup);
 
             if (seedOnStartup)
             {
@@ -301,14 +295,14 @@ if (applyMigrations && !disableMigrations)
         }
         catch (Exception ex) when (attempt < maxAttempts && ex is NpgsqlException or TimeoutException or InvalidOperationException)
         {
-            app.Logger.LogWarning(ex, "Échec de l'application des migrations (tentative {Attempt}/{Max}). Nouvel essai imminent.", attempt, maxAttempts);
+            Log.MigrationRetry(app.Logger, attempt, maxAttempts, ex);
             await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
         }
     }
 }
 else if (applyMigrations)
 {
-    app.Logger.LogInformation("Migrations skipped because DISABLE_MIGRATIONS is true");
+    Log.MigrationsSkipped(app.Logger);
 }
 
 if (app.Environment.IsDevelopment())
@@ -421,6 +415,8 @@ diag.MapGet("/info", (IConfiguration cfg, IWebHostEnvironment env) =>
     });
 }).WithName("DiagInfo");
 
+#pragma warning disable CA1031
+
 diag.MapGet("/ping-db", async (IConfiguration cfg) =>
 {
     var cs = cfg.GetConnectionString("Default");
@@ -451,6 +447,8 @@ diag.MapGet("/ping-db", async (IConfiguration cfg) =>
             });
     }
 }).WithName("DiagPingDb");
+
+#pragma warning restore CA1031
 
 // --- Résumé inventaires ---
 app.MapGet("/api/inventories/summary", async (IDbConnection connection, CancellationToken cancellationToken) =>
@@ -538,7 +536,6 @@ ORDER BY c.""CreatedAtUtc"" DESC;";
             LocationLabel = row.LocationLabel,
             CountType = row.CountType,
             OperatorDisplayName = row.OperatorDisplayName,
-            // StartedAtUtc est non-nullable ici -> utiliser la surcharge non-nullable
             StartedAtUtc = TimeUtil.ToUtcOffset(row.StartedAtUtc),
         })
         .ToArray();
@@ -554,7 +551,6 @@ ORDER BY c.""CreatedAtUtc"" DESC;";
             LocationLabel = row.LocationLabel,
             CountType = row.CountType,
             OperatorDisplayName = row.OperatorDisplayName,
-            // CreatedAtUtc est non-nullable
             CreatedAtUtc = TimeUtil.ToUtcOffset(row.CreatedAtUtc),
         })
         .ToArray();
@@ -843,9 +839,8 @@ app.MapPost("/api/inventories/{locationId:guid}/complete", async (
         "SELECT \"Id\", \"Code\", \"Label\" FROM \"Location\" WHERE \"Id\" = @LocationId LIMIT 1;";
 
     var location = await connection
-        .QuerySingleOrDefaultAsync<LocationMetadata>(
-            new CommandDefinition(selectLocationSql, new { LocationId = locationId }, transaction, cancellationToken: cancellationToken))
-        .ConfigureAwait(false);
+        .QuerySingleOrDefaultAsync<LocationMetadataRow>(
+            new CommandDefinition(selectLocationSql, new { LocationId = locationId }, transaction, cancellationToken: cancellationToken));
 
     if (location is null)
     {
@@ -1066,7 +1061,7 @@ app.MapPost("/api/inventories/{locationId:guid}/complete", async (
     var auditMessage =
         $"{actor} a terminé {zoneDescription} pour un {countDescription} le {timestamp} UTC ({response.ItemsCount} références, total {response.TotalQuantity}).";
 
-    await auditLogger.LogAsync(auditMessage, operatorName, "inventories.complete.success").ConfigureAwait(false);
+    await auditLogger.LogAsync(auditMessage, operatorName, "inventories.complete.success", cancellationToken).ConfigureAwait(false);
 
     return Results.Ok(response);
 })
@@ -1103,13 +1098,13 @@ WHERE ""LocationId"" = @LocationId
         .ExecuteAsync(new CommandDefinition(sql, new { LocationId = locationId, CountType = countType, NowUtc = now }, cancellationToken: cancellationToken))
         .ConfigureAwait(false);
 
+    // IMPORTANT : remapper sur Id, Code, Label pour LocationMetadata (évite l’erreur Dapper)
     var locationInfo = await connection
-        .QuerySingleOrDefaultAsync<LocationMetadata>(
-            new CommandDefinition(
-                "SELECT \"Code\" AS Code, \"Label\" AS Label FROM \"Location\" WHERE \"Id\" = @LocationId LIMIT 1",
-                new { LocationId = locationId },
-                cancellationToken: cancellationToken))
-        .ConfigureAwait(false);
+    .QuerySingleOrDefaultAsync<LocationMetadataRow>(
+        new CommandDefinition(
+            "SELECT \"Id\", \"Code\", \"Label\" FROM \"Location\" WHERE \"Id\" = @LocationId LIMIT 1",
+            new { LocationId = locationId },
+            cancellationToken: cancellationToken));
 
     var userName = GetAuthenticatedUserName(httpContext);
     var actor = FormatActorLabel(userName);
@@ -1121,7 +1116,7 @@ WHERE ""LocationId"" = @LocationId
     var resultDetails = affected > 0 ? "et clôturé les comptages actifs" : "mais aucun comptage actif n'était ouvert";
     var message = $"{actor} a relancé {zoneDescription} pour un {countDescription} le {timestamp} UTC {resultDetails}.";
 
-    await auditLogger.LogAsync(message, userName, "inventories.restart").ConfigureAwait(false);
+    await auditLogger.LogAsync(message, userName, "inventories.restart", cancellationToken).ConfigureAwait(false);
 
     return Results.NoContent();
 })
@@ -1155,25 +1150,25 @@ app.MapPost("/api/products", async (
 
     if (string.IsNullOrWhiteSpace(sanitizedSku))
     {
-        await LogProductCreationAttemptAsync(auditLogger, httpContext, "sans SKU", "products.create.invalid").ConfigureAwait(false);
+        await LogProductCreationAttemptAsync(auditLogger, httpContext, "sans SKU", "products.create.invalid", cancellationToken).ConfigureAwait(false);
         return Results.BadRequest(new { message = "Le SKU est requis." });
     }
 
     if (sanitizedSku.Length > 32)
     {
-        await LogProductCreationAttemptAsync(auditLogger, httpContext, "avec un SKU trop long", "products.create.invalid").ConfigureAwait(false);
+        await LogProductCreationAttemptAsync(auditLogger, httpContext, "avec un SKU trop long", "products.create.invalid", cancellationToken).ConfigureAwait(false);
         return Results.BadRequest(new { message = "Le SKU ne peut pas dépasser 32 caractères." });
     }
 
     if (string.IsNullOrWhiteSpace(sanitizedName))
     {
-        await LogProductCreationAttemptAsync(auditLogger, httpContext, "sans nom", "products.create.invalid").ConfigureAwait(false);
+        await LogProductCreationAttemptAsync(auditLogger, httpContext, "sans nom", "products.create.invalid", cancellationToken).ConfigureAwait(false);
         return Results.BadRequest(new { message = "Le nom est requis." });
     }
 
     if (sanitizedName.Length > 256)
     {
-        await LogProductCreationAttemptAsync(auditLogger, httpContext, "avec un nom trop long", "products.create.invalid").ConfigureAwait(false);
+        await LogProductCreationAttemptAsync(auditLogger, httpContext, "avec un nom trop long", "products.create.invalid", cancellationToken).ConfigureAwait(false);
         return Results.BadRequest(new { message = "Le nom ne peut pas dépasser 256 caractères." });
     }
 
@@ -1181,13 +1176,13 @@ app.MapPost("/api/products", async (
     {
         if (sanitizedEan.Length is < 8 or > 13)
         {
-            await LogProductCreationAttemptAsync(auditLogger, httpContext, "avec un EAN invalide", "products.create.invalid").ConfigureAwait(false);
+            await LogProductCreationAttemptAsync(auditLogger, httpContext, "avec un EAN invalide", "products.create.invalid", cancellationToken).ConfigureAwait(false);
             return Results.BadRequest(new { message = "L'EAN doit contenir entre 8 et 13 caractères." });
         }
 
         if (!sanitizedEan.All(char.IsDigit))
         {
-            await LogProductCreationAttemptAsync(auditLogger, httpContext, "avec un EAN non numérique", "products.create.invalid").ConfigureAwait(false);
+            await LogProductCreationAttemptAsync(auditLogger, httpContext, "avec un EAN non numérique", "products.create.invalid", cancellationToken).ConfigureAwait(false);
             return Results.BadRequest(new { message = "L'EAN doit contenir uniquement des chiffres." });
         }
     }
@@ -1201,7 +1196,7 @@ app.MapPost("/api/products", async (
 
     if (skuExists.HasValue)
     {
-        await LogProductCreationAttemptAsync(auditLogger, httpContext, $"avec un SKU déjà utilisé ({sanitizedSku})", "products.create.conflict").ConfigureAwait(false);
+        await LogProductCreationAttemptAsync(auditLogger, httpContext, $"avec un SKU déjà utilisé ({sanitizedSku})", "products.create.conflict", cancellationToken).ConfigureAwait(false);
         return Results.Conflict(new { message = "Un produit avec ce SKU existe déjà." });
     }
 
@@ -1214,7 +1209,7 @@ app.MapPost("/api/products", async (
 
         if (eanExists.HasValue)
         {
-            await LogProductCreationAttemptAsync(auditLogger, httpContext, $"avec un EAN déjà utilisé ({sanitizedEan})", "products.create.conflict").ConfigureAwait(false);
+            await LogProductCreationAttemptAsync(auditLogger, httpContext, $"avec un EAN déjà utilisé ({sanitizedEan})", "products.create.conflict", cancellationToken).ConfigureAwait(false);
             return Results.Conflict(new { message = "Un produit avec cet EAN existe déjà." });
         }
     }
@@ -1246,7 +1241,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
     var timestamp = FormatTimestamp(now);
     var eanLabel = string.IsNullOrWhiteSpace(createdProduct.Ean) ? "non renseigné" : createdProduct.Ean;
     var creationMessage = $"{actor} a créé le produit \"{createdProduct.Name}\" (SKU {createdProduct.Sku}, EAN {eanLabel}) le {timestamp} UTC.";
-    await auditLogger.LogAsync(creationMessage, userName, "products.create.success").ConfigureAwait(false);
+    await auditLogger.LogAsync(creationMessage, userName, "products.create.success", cancellationToken).ConfigureAwait(false);
 
     var location = $"/api/products/{Uri.EscapeDataString(createdProduct.Sku)}";
     return Results.Created(location, createdProduct);
@@ -1277,7 +1272,7 @@ app.MapGet("/api/products/{code}", async (
         var invalidActor = FormatActorLabel(invalidUser);
         var invalidTimestamp = FormatTimestamp(nowInvalid);
         var invalidMessage = $"{invalidActor} a tenté de scanner un code produit vide le {invalidTimestamp} UTC.";
-        await auditLogger.LogAsync(invalidMessage, invalidUser, "products.scan.invalid").ConfigureAwait(false);
+        await auditLogger.LogAsync(invalidMessage, invalidUser, "products.scan.invalid", cancellationToken).ConfigureAwait(false);
         return Results.BadRequest(new { message = "Le code produit est requis." });
     }
 
@@ -1328,12 +1323,12 @@ app.MapGet("/api/products/{code}", async (
         var skuLabel = string.IsNullOrWhiteSpace(product.Sku) ? "non renseigné" : product.Sku;
         var eanLabel = string.IsNullOrWhiteSpace(product.Ean) ? "non renseigné" : product.Ean;
         var successMessage = $"{actor} a scanné le code {sanitizedCode} et a identifié le produit \"{productLabel}\" (SKU {skuLabel}, EAN {eanLabel}) le {timestamp} UTC.";
-        await auditLogger.LogAsync(successMessage, userName, "products.scan.success").ConfigureAwait(false);
+        await auditLogger.LogAsync(successMessage, userName, "products.scan.success", cancellationToken).ConfigureAwait(false);
         return Results.Ok(product);
     }
 
     var notFoundMessage = $"{actor} a scanné le code {sanitizedCode} sans correspondance produit le {timestamp} UTC.";
-    await auditLogger.LogAsync(notFoundMessage, userName, "products.scan.not_found").ConfigureAwait(false);
+    await auditLogger.LogAsync(notFoundMessage, userName, "products.scan.not_found", cancellationToken).ConfigureAwait(false);
 
     return Results.NotFound();
 })
@@ -1358,12 +1353,13 @@ static async Task<IResult> HandlePinLoginAsync(
     PinAuthenticationRequest request,
     ITokenService tokenService,
     IOptions<AuthenticationOptions> options,
-    IAuditLogger auditLogger)
+    IAuditLogger auditLogger,
+    CancellationToken cancellationToken)
 {
     if (request is null || string.IsNullOrWhiteSpace(request.Pin))
     {
         var timestamp = FormatTimestamp(DateTimeOffset.UtcNow);
-        await auditLogger.LogAsync($"Tentative de connexion admin rejetée : code PIN absent le {timestamp} UTC.", null, "auth.pin.failure").ConfigureAwait(false);
+        await auditLogger.LogAsync($"Tentative de connexion admin rejetée : code PIN absent le {timestamp} UTC.", null, "auth.pin.failure", cancellationToken).ConfigureAwait(false);
         return Results.BadRequest(new { message = "Le code PIN est requis." });
     }
 
@@ -1372,7 +1368,7 @@ static async Task<IResult> HandlePinLoginAsync(
     if (user is null)
     {
         var timestamp = FormatTimestamp(DateTimeOffset.UtcNow);
-        await auditLogger.LogAsync($"Tentative de connexion admin refusée (PIN inconnu) le {timestamp} UTC.", null, "auth.pin.failure").ConfigureAwait(false);
+        await auditLogger.LogAsync($"Tentative de connexion admin refusée (PIN inconnu) le {timestamp} UTC.", null, "auth.pin.failure", cancellationToken).ConfigureAwait(false);
         return Results.Unauthorized();
     }
 
@@ -1381,7 +1377,7 @@ static async Task<IResult> HandlePinLoginAsync(
 
     var successTimestamp = FormatTimestamp(DateTimeOffset.UtcNow);
     var actor = FormatActorLabel(user.Name);
-    await auditLogger.LogAsync($"{actor} s'est connecté avec succès le {successTimestamp} UTC.", user.Name, "auth.pin.success").ConfigureAwait(false);
+    await auditLogger.LogAsync($"{actor} s'est connecté avec succès le {successTimestamp} UTC.", user.Name, "auth.pin.success", cancellationToken).ConfigureAwait(false);
 
     return Results.Ok(response);
 }
@@ -1557,14 +1553,15 @@ static async Task LogProductCreationAttemptAsync(
     IAuditLogger auditLogger,
     HttpContext httpContext,
     string details,
-    string category)
+    string category,
+    CancellationToken cancellationToken)
 {
     var now = DateTimeOffset.UtcNow;
     var userName = GetAuthenticatedUserName(httpContext);
     var actor = FormatActorLabel(userName);
     var timestamp = FormatTimestamp(now);
     var message = $"{actor} a tenté de créer un produit {details} le {timestamp} UTC.";
-    await auditLogger.LogAsync(message, userName, category).ConfigureAwait(false);
+    await auditLogger.LogAsync(message, userName, category, cancellationToken).ConfigureAwait(false);
 }
 
 static Guid? SanitizeRunId(Guid? runId)
@@ -1631,6 +1628,14 @@ internal sealed class ConflictSummaryRow
     public DateTime CreatedAtUtc { get; set; }
 }
 
+internal sealed class LocationMetadataRow
+{
+    public Guid Id { get; set; }
+    public string Code { get; set; } = "";
+    public string Label { get; set; } = "";
+}
+
+
 public partial class Program { }
 
 // ===== Utilitaire temps (deux surcharges) =====
@@ -1643,4 +1648,66 @@ internal static class TimeUtil
     // nullable -> nullable
     public static DateTimeOffset? ToUtcOffset(DateTime? dt) =>
         dt.HasValue ? ToUtcOffset(dt.Value) : (DateTimeOffset?)null;
+}
+
+internal static class AppDefaults
+{
+    public static readonly string[] DevOrigins =
+    [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ];
+
+    public static readonly string[] CorsMethods =
+    [
+        "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"
+    ];
+}
+
+internal static class Log
+{
+    private static readonly Action<Microsoft.Extensions.Logging.ILogger, bool, bool, Exception?> _migrationsFlags =
+        Microsoft.Extensions.Logging.LoggerMessage.Define<bool, bool>(
+            Microsoft.Extensions.Logging.LogLevel.Information,
+            new Microsoft.Extensions.Logging.EventId(1000, nameof(MigrationsFlags)),
+            "APPLY_MIGRATIONS={Apply} DISABLE_MIGRATIONS={Disable}");
+
+    internal static void MigrationsFlags(Microsoft.Extensions.Logging.ILogger logger, bool apply, bool disable) =>
+        _migrationsFlags(logger, apply, disable, null);
+
+    private static readonly Action<Microsoft.Extensions.Logging.ILogger, string, Exception?> _dbHostDb =
+        Microsoft.Extensions.Logging.LoggerMessage.Define<string>(
+            Microsoft.Extensions.Logging.LogLevel.Debug,
+            new Microsoft.Extensions.Logging.EventId(1001, nameof(DbHostDb)),
+            "ConnectionStrings:Default (host/db)={HostAndDatabase}");
+
+    internal static void DbHostDb(Microsoft.Extensions.Logging.ILogger logger, string hostDb) =>
+        _dbHostDb(logger, hostDb, null);
+
+    private static readonly Action<Microsoft.Extensions.Logging.ILogger, bool, Exception?> _seedOnStartup =
+        Microsoft.Extensions.Logging.LoggerMessage.Define<bool>(
+            Microsoft.Extensions.Logging.LogLevel.Debug,
+            new Microsoft.Extensions.Logging.EventId(1002, nameof(SeedOnStartup)),
+            "AppSettings:SeedOnStartup={SeedOnStartup}");
+
+    internal static void SeedOnStartup(Microsoft.Extensions.Logging.ILogger logger, bool seed) =>
+        _seedOnStartup(logger, seed, null);
+
+    private static readonly Action<Microsoft.Extensions.Logging.ILogger, int, int, Exception?> _migrationRetry =
+        Microsoft.Extensions.Logging.LoggerMessage.Define<int, int>(
+            Microsoft.Extensions.Logging.LogLevel.Warning,
+            new Microsoft.Extensions.Logging.EventId(1003, nameof(MigrationRetry)),
+            "Échec de l'application des migrations (tentative {Attempt}/{Max}). Nouvel essai imminent.");
+
+    internal static void MigrationRetry(Microsoft.Extensions.Logging.ILogger logger, int attempt, int max, Exception ex) =>
+        _migrationRetry(logger, attempt, max, ex);
+
+    private static readonly Action<Microsoft.Extensions.Logging.ILogger, Exception?> _migrationsSkipped =
+        Microsoft.Extensions.Logging.LoggerMessage.Define(
+            Microsoft.Extensions.Logging.LogLevel.Information,
+            new Microsoft.Extensions.Logging.EventId(1004, nameof(MigrationsSkipped)),
+            "Migrations skipped because DISABLE_MIGRATIONS is true");
+
+    internal static void MigrationsSkipped(Microsoft.Extensions.Logging.ILogger logger) =>
+        _migrationsSkipped(logger, null);
 }
