@@ -210,44 +210,59 @@ export const completeInventoryRun = async (
   })
 
   if (!res.ok) {
-    let detail = `Status Code: ${res.status}`
+    let parsedBody: unknown = null
+    let bodyText = ''
+    let messageFromBody: string | null = null
+
     try {
       const contentType = res.headers.get('content-type') ?? ''
-      if (contentType.includes('application/json')) {
-        const data = (await res.json()) as { message?: unknown; detail?: unknown; title?: unknown }
-        const candidate =
-          typeof data.message === 'string' && data.message.trim().length > 0
-            ? data.message
-            : typeof data.detail === 'string' && data.detail.trim().length > 0
-              ? data.detail
-              : typeof data.title === 'string' && data.title.trim().length > 0
-                ? data.title
-                : null
-        if (candidate) {
-          detail = candidate
+      if (contentType.toLowerCase().includes('application/json')) {
+        parsedBody = await res.json()
+        if (parsedBody && typeof parsedBody === 'object') {
+          const candidates = [
+            (parsedBody as { message?: unknown }).message,
+            (parsedBody as { detail?: unknown }).detail,
+            (parsedBody as { title?: unknown }).title,
+          ]
+          const chosen = candidates.find((value) => typeof value === 'string' && value.trim().length > 0) as
+            | string
+            | undefined
+          if (chosen) {
+            messageFromBody = chosen.trim()
+          }
         }
       } else {
-        const text = await res.text()
-        if (text.trim()) {
-          detail = text
+        bodyText = await res.text()
+        if (bodyText.trim()) {
+          messageFromBody = bodyText.trim()
         }
       }
     } catch {
-      // Ignorer les erreurs de parsing afin de remonter au moins le statut HTTP
+      // Lecture best effort, status traité ci-dessous
     }
+
+    const problemPayload = parsedBody ?? (bodyText ? { body: bodyText } : undefined)
 
     if (res.status === 415) {
-      throw new Error('Unsupported Media Type: requête JSON attendue (Content-Type: application/json).')
+      throw Object.assign(
+        new Error('Unsupported Media Type: requête JSON attendue (Content-Type: application/json).'),
+        { status: res.status, problem: problemPayload },
+      )
     }
 
-    if (!detail || detail === `Status Code: ${res.status}`) {
-      detail =
-        res.status === 400 || res.status === 404
-          ? 'Impossible de terminer le comptage.'
-          : `Impossible de terminer le comptage. (HTTP ${res.status})`
+    let message: string
+    if (res.status === 400) {
+      message = messageFromBody ?? 'Requête invalide.'
+    } else if (res.status === 404) {
+      message = 'Zone introuvable pour ce comptage.'
+    } else {
+      message = messageFromBody ?? `Impossible de terminer le comptage (HTTP ${res.status}).`
     }
 
-    throw new Error(detail)
+    throw Object.assign(new Error(message), {
+      status: res.status,
+      problem: problemPayload,
+    })
   }
 
   return (await res.json()) as CompleteInventoryRunResponse
