@@ -377,7 +377,7 @@ export const InventorySessionPage = () => {
     }
 
     if (!locationId) {
-      setErrorMessage('Zone introuvable pour ce comptage.')
+      setErrorMessage("Impossible de terminer : la zone sélectionnée n’a pas d’identifiant valide.")
       return
     }
     setCompletionLoading(true)
@@ -525,23 +525,24 @@ export const InventorySessionPage = () => {
                 {item.isManual && <p className="text-xs text-amber-600 dark:text-amber-300">Ajout manuel</p>}
               </div>
               <div className="flex items-center gap-3">
-                <button
+                <Button
                   type="button"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 bg-slate-100 text-xl font-semibold leading-none text-slate-700 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:focus:ring-offset-slate-900"
+                  variant="secondary"
+                  className="tap-highlight-none no-focus-ring h-10 w-10 px-0 py-0 flex items-center justify-center text-lg leading-none font-semibold"
                   onClick={() => adjustQuantity(item.product.ean, -1)}
                   aria-label="Retirer"
                 >
                   −
-                </button>
+                </Button>
                 <span className="text-2xl font-bold text-slate-900 dark:text-white">{item.quantity}</span>
-                <button
+                <Button
                   type="button"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-transparent bg-brand-600 text-xl font-semibold leading-none text-white shadow-sm transition focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-60 dark:bg-brand-500 dark:focus:ring-offset-slate-900"
+                  className="tap-highlight-none no-focus-ring h-10 w-10 px-0 py-0 flex items-center justify-center text-lg leading-none font-semibold"
                   onClick={() => adjustQuantity(item.product.ean, 1)}
                   aria-label="Ajouter"
                 >
                   +
-                </button>
+                </Button>
               </div>
             </li>
           ))}
