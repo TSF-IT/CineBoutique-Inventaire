@@ -492,7 +492,7 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                 const string insertRunSql =
                     "INSERT INTO \"CountingRun\" (\"Id\", \"InventorySessionId\", \"LocationId\", \"CountType\", \"StartedAtUtc\", \"CompletedAtUtc\"{0}) VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc, @CompletedAtUtc{1});";
 
-                var insertRunParameters = hasOperatorDisplayNameColumn
+                object insertRunParameters = hasOperatorDisplayNameColumn
                     ? new
                     {
                         Id = countingRunId,
@@ -874,7 +874,7 @@ ORDER BY cl.""CountingRunId"", p.""Id"", cl.""CountedAtUtc"" DESC, cl.""Id"" DES
                 continue;
             }
 
-            var lineId = ResolveCountLineId(lineIdLookup, currentRunId, counterpartRunId.Value, key);
+            var lineId = ResolveCountLineId((IDictionary<Guid, IDictionary<string, Guid>>)lineIdLookup, currentRunId, counterpartRunId.Value, key);
             if (lineId is null)
             {
                 continue;
@@ -907,7 +907,7 @@ ORDER BY cl.""CountingRunId"", p.""Id"", cl.""CountedAtUtc"" DESC, cl.""Id"" DES
     }
 
     private static Guid? ResolveCountLineId(
-        IReadOnlyDictionary<Guid, IReadOnlyDictionary<string, Guid>> lookup,
+        IDictionary<Guid, IDictionary<string, Guid>> lookup,
         Guid currentRunId,
         Guid counterpartRunId,
         string key)
