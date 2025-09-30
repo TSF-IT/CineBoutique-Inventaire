@@ -5,7 +5,7 @@ using System.Data.Common;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
-using System.Text.Json; // + JSON writer pour health
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Auth;
@@ -22,13 +22,13 @@ using FluentMigrator.Runner.Initialization;
 using FluentMigrator.Runner.Processors;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
-using Microsoft.AspNetCore.Diagnostics.HealthChecks; // + HealthChecks mapping
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Diagnostics.HealthChecks; // + HealthChecks types
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -36,8 +36,6 @@ using Microsoft.Net.Http.Headers;
 using Microsoft.OpenApi.Models;
 using Npgsql;
 using Serilog;
-
-// + HealthCheck DB (tu crées le fichier DatabaseHealthCheck.cs)
 using CineBoutique.Inventory.Api.Infrastructure.Health;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -147,8 +145,8 @@ builder.Services.AddControllers();
 // --- Health checks (liveness + readiness) ---
 builder.Services
     .AddHealthChecks()
-    .AddCheck("self", () => HealthCheckResult.Healthy()) // liveness
-    .AddCheck<DatabaseHealthCheck>("db", tags: new[] { "ready" }); // readiness DB
+    .AddCheck("self", () => HealthCheckResult.Healthy())
+    .AddCheck<DatabaseHealthCheck>("db", tags: new[] { "ready" });
 
 builder.Services.AddScoped<IDbConnection>(sp =>
 {
@@ -159,9 +157,8 @@ builder.Services.AddScoped<IDbConnection>(sp =>
 // IAuditLogger (API) -> DbAuditLogger écrit déjà dans audit_logs
 builder.Services.AddScoped<IAuditLogger, DbAuditLogger>();
 
-// BRIDGE : remplace l'impl par défaut du Domain (DapperAuditLogger) par le pont vers DbAuditLogger
-builder.Services.AddScoped<CineBoutique.Inventory.Domain.Auditing.IAuditLogger,
-    DomainAuditBridgeLogger>();
+// BRIDGE : remplace l'impl du Domain par le pont vers DbAuditLogger
+builder.Services.AddScoped<CineBoutique.Inventory.Domain.Auditing.IAuditLogger, DomainAuditBridgeLogger>();
 
 builder.Services.AddSingleton<ITokenService, JwtTokenService>();
 
@@ -204,7 +201,7 @@ builder.Services.AddCors(options =>
     {
         if (allowedOrigins.Length > 0)
         {
-            // Pense à ajouter l'IP LAN du poste (ex: http://192.168.1.42:5173) dans AllowedOrigins pour tester depuis l'iPhone.
+            // Ajouter l’IP LAN si besoin (ex: http://192.168.1.42:5173)
             policyBuilder.WithOrigins(allowedOrigins).AllowCredentials();
         }
         else
@@ -362,14 +359,14 @@ static Task WriteHealthJson(HttpContext ctx, HealthReport report)
     return ctx.Response.WriteAsync(JsonSerializer.Serialize(payload));
 }
 
-// Liveness (ne charge aucun check → 200 si le process répond)
+// Liveness
 app.MapHealthChecks("/health", new HealthCheckOptions
 {
     Predicate = _ => false,
     ResponseWriter = WriteHealthJson
 }).AllowAnonymous();
 
-// Readiness (DB taggée "ready")
+// Readiness (DB tag "ready")
 app.MapHealthChecks("/ready", new HealthCheckOptions
 {
     Predicate = r => r.Tags.Contains("ready"),
@@ -382,21 +379,16 @@ app.MapHealthChecks("/ready", new HealthCheckOptions
     ResponseWriter = WriteHealthJson
 }).AllowAnonymous();
 
-// Option: compat hérité si tu avais /healthz auparavant (liveness)
+// Compat
 app.MapHealthChecks("/healthz", new HealthCheckOptions
 {
     Predicate = _ => false,
     ResponseWriter = WriteHealthJson
 }).AllowAnonymous();
 
-// ===== ALIAS D'AUTH PIN (pour CI ET proxy) =====
-app.MapPost("/auth/pin", HandlePinLoginAsync)
-   .WithName("PinLogin")
-   .AllowAnonymous();
-
-app.MapPost("/api/auth/pin", HandlePinLoginAsync)
-   .WithName("ApiPinLogin")
-   .AllowAnonymous();
+// ===== ALIAS D'AUTH PIN =====
+app.MapPost("/auth/pin", HandlePinLoginAsync).WithName("PinLogin").AllowAnonymous();
+app.MapPost("/api/auth/pin", HandlePinLoginAsync).WithName("ApiPinLogin").AllowAnonymous();
 
 app.MapControllers();
 
@@ -460,9 +452,7 @@ diag.MapGet("/ping-db", async (IConfiguration cfg) =>
     }
 }).WithName("DiagPingDb");
 
-// --- SUPPRESSION de l'ancien MapGet("/ready", ...) custom ---
-// (remplacé par HealthChecks ci-dessus)
-
+// --- Résumé inventaires ---
 app.MapGet("/api/inventories/summary", async (IDbConnection connection, CancellationToken cancellationToken) =>
 {
     await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -479,36 +469,33 @@ app.MapGet("/api/inventories/summary", async (IDbConnection connection, Cancella
         activitySources.Insert(0, "SELECT MAX(\"CreatedAtUtc\") AS value FROM \"Audit\"");
     }
 
-    var activityUnion = string.Join(
-        "\n            UNION ALL\n            ",
-        activitySources);
+    var activityUnion = string.Join("\n            UNION ALL\n            ", activitySources);
 
     var summarySql = $@"SELECT
-    (SELECT COUNT(*)::int FROM \"InventorySession\" WHERE \"CompletedAtUtc\" IS NULL) AS \"ActiveSessions\",
-    (SELECT COUNT(*)::int FROM \"CountingRun\" WHERE \"CompletedAtUtc\" IS NULL) AS \"OpenRuns\",
-    (SELECT COUNT(*)::int FROM \"Conflict\" WHERE \"ResolvedAtUtc\" IS NULL) AS \"Conflicts\",
+    (SELECT COUNT(*)::int FROM ""InventorySession"" WHERE ""CompletedAtUtc"" IS NULL) AS ""ActiveSessions"",
+    (SELECT COUNT(*)::int FROM ""CountingRun""   WHERE ""CompletedAtUtc"" IS NULL) AS ""OpenRuns"",
+    (SELECT COUNT(*)::int FROM ""Conflict""      WHERE ""ResolvedAtUtc""   IS NULL) AS ""Conflicts"",
     (
         SELECT MAX(value) FROM (
             {activityUnion}
         ) AS activity
-    ) AS \"LastActivityUtc\";";
+    ) AS ""LastActivityUtc"";";
 
     var summary = await connection
         .QuerySingleAsync<InventorySummaryDto>(new CommandDefinition(summarySql, cancellationToken: cancellationToken))
         .ConfigureAwait(false);
 
-    var hasOperatorDisplayNameColumn = await ColumnExistsAsync(connection, "CountingRun", "OperatorDisplayName", cancellationToken)
-        .ConfigureAwait(false);
+    var hasOperatorDisplayNameColumn = await ColumnExistsAsync(connection, "CountingRun", "OperatorDisplayName", cancellationToken).ConfigureAwait(false);
 
     var operatorDisplayNameProjection = hasOperatorDisplayNameColumn
         ? "cr.\"OperatorDisplayName\""
         : "NULL::text";
 
     var openRunsDetailsSql = $@"SELECT
-    cr.""Id"" AS ""RunId"",
+    cr.""Id""          AS ""RunId"",
     cr.""LocationId"",
-    l.""Code"" AS ""LocationCode"",
-    l.""Label"" AS ""LocationLabel"",
+    l.""Code""         AS ""LocationCode"",
+    l.""Label""        AS ""LocationLabel"",
     cr.""CountType"",
     {operatorDisplayNameProjection} AS ""OperatorDisplayName"",
     cr.""StartedAtUtc""
@@ -522,19 +509,19 @@ ORDER BY cr.""StartedAtUtc"" DESC;";
         .ConfigureAwait(false)).ToList();
 
     var conflictsDetailsSql = $@"SELECT
-    c.""Id"" AS ""ConflictId"",
+    c.""Id""          AS ""ConflictId"",
     c.""CountLineId"",
     cl.""CountingRunId"",
     cr.""LocationId"",
-    l.""Code"" AS ""LocationCode"",
-    l.""Label"" AS ""LocationLabel"",
+    l.""Code""        AS ""LocationCode"",
+    l.""Label""       AS ""LocationLabel"",
     cr.""CountType"",
     {operatorDisplayNameProjection} AS ""OperatorDisplayName"",
     c.""CreatedAtUtc""
 FROM ""Conflict"" c
-JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
+JOIN ""CountLine""  cl ON cl.""Id"" = c.""CountLineId""
 JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
-JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
+JOIN ""Location""   l  ON l.""Id"" = cr.""LocationId""
 WHERE c.""ResolvedAtUtc"" IS NULL
 ORDER BY c.""CreatedAtUtc"" DESC;";
 
@@ -551,7 +538,8 @@ ORDER BY c.""CreatedAtUtc"" DESC;";
             LocationLabel = row.LocationLabel,
             CountType = row.CountType,
             OperatorDisplayName = row.OperatorDisplayName,
-            StartedAtUtc = row.StartedAtUtc,
+            // StartedAtUtc est non-nullable ici -> utiliser la surcharge non-nullable
+            StartedAtUtc = TimeUtil.ToUtcOffset(row.StartedAtUtc),
         })
         .ToArray();
 
@@ -566,7 +554,8 @@ ORDER BY c.""CreatedAtUtc"" DESC;";
             LocationLabel = row.LocationLabel,
             CountType = row.CountType,
             OperatorDisplayName = row.OperatorDisplayName,
-            CreatedAtUtc = row.CreatedAtUtc,
+            // CreatedAtUtc est non-nullable
+            CreatedAtUtc = TimeUtil.ToUtcOffset(row.CreatedAtUtc),
         })
         .ToArray();
 
@@ -582,6 +571,7 @@ ORDER BY c.""CreatedAtUtc"" DESC;";
     return op;
 });
 
+// --- Locations + statuts ---
 app.MapGet("/api/locations", async (int? countType, IDbConnection connection, CancellationToken cancellationToken) =>
 {
     if (countType.HasValue && countType is not (1 or 2 or 3))
@@ -591,8 +581,7 @@ app.MapGet("/api/locations", async (int? countType, IDbConnection connection, Ca
 
     await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-    var hasOperatorDisplayNameColumn = await ColumnExistsAsync(connection, "CountingRun", "OperatorDisplayName", cancellationToken)
-        .ConfigureAwait(false);
+    var hasOperatorDisplayNameColumn = await ColumnExistsAsync(connection, "CountingRun", "OperatorDisplayName", cancellationToken).ConfigureAwait(false);
 
     var operatorDisplayNameProjection = hasOperatorDisplayNameColumn
         ? "cr.\"OperatorDisplayName\""
@@ -601,8 +590,8 @@ app.MapGet("/api/locations", async (int? countType, IDbConnection connection, Ca
     var sql = $@"WITH active_runs AS (
     SELECT DISTINCT ON (cr.""LocationId"")
         cr.""LocationId"",
-        cr.""Id"" AS ""ActiveRunId"",
-        cr.""CountType"" AS ""ActiveCountType"",
+        cr.""Id""          AS ""ActiveRunId"",
+        cr.""CountType""   AS ""ActiveCountType"",
         cr.""StartedAtUtc"" AS ""ActiveStartedAtUtc"",
         {operatorDisplayNameProjection} AS ""BusyBy""
     FROM ""CountingRun"" cr
@@ -641,25 +630,25 @@ ORDER BY l.""Code"" ASC;";
     var openRunsSql = $@"SELECT
     cr.""LocationId"",
     cr.""CountType"",
-    cr.""Id"" AS ""RunId"",
+    cr.""Id""          AS ""RunId"",
     cr.""StartedAtUtc"",
     cr.""CompletedAtUtc"",
     {operatorDisplayNameProjection} AS ""OperatorDisplayName""
 FROM ""CountingRun"" cr
 WHERE cr.""CompletedAtUtc"" IS NULL
-  AND cr.""LocationId"" = ANY(@LocationIds)
+  AND cr.""LocationId"" = ANY(@LocationIds::uuid[])
 ORDER BY cr.""LocationId"", cr.""CountType"", cr.""StartedAtUtc"" DESC;";
 
     var completedRunsSql = $@"SELECT DISTINCT ON (cr.""LocationId"", cr.""CountType"")
     cr.""LocationId"",
     cr.""CountType"",
-    cr.""Id"" AS ""RunId"",
+    cr.""Id""           AS ""RunId"",
     cr.""StartedAtUtc"",
     cr.""CompletedAtUtc"",
     {operatorDisplayNameProjection} AS ""OperatorDisplayName""
 FROM ""CountingRun"" cr
 WHERE cr.""CompletedAtUtc"" IS NOT NULL
-  AND cr.""LocationId"" = ANY(@LocationIds)
+  AND cr.""LocationId"" = ANY(@LocationIds::uuid[])
 ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
 
     var openRuns = await connection
@@ -711,7 +700,7 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                 status.Status = LocationCountStatus.InProgress;
                 status.RunId = SanitizeRunId(open.RunId);
                 status.OperatorDisplayName = open.OperatorDisplayName;
-                status.StartedAtUtc = open.StartedAtUtc;
+                status.StartedAtUtc = TimeUtil.ToUtcOffset(open.StartedAtUtc);
             }
             else
             {
@@ -721,8 +710,8 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                     status.Status = LocationCountStatus.Completed;
                     status.RunId = SanitizeRunId(completed.RunId);
                     status.OperatorDisplayName = completed.OperatorDisplayName;
-                    status.StartedAtUtc = completed.StartedAtUtc;
-                    status.CompletedAtUtc = completed.CompletedAtUtc;
+                    status.StartedAtUtc = TimeUtil.ToUtcOffset(completed.StartedAtUtc);
+                    status.CompletedAtUtc = TimeUtil.ToUtcOffset(completed.CompletedAtUtc);
                 }
             }
 
@@ -774,6 +763,7 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
     return op;
 });
 
+// --- Restart runs d’une zone ---
 app.MapPost("/api/inventories/{locationId:guid}/restart", async (
     Guid locationId,
     int countType,
@@ -833,6 +823,7 @@ WHERE ""LocationId"" = @LocationId
     return op;
 });
 
+// --- Produits ---
 app.MapPost("/api/products", async (
     CreateProductRequest request,
     IDbConnection connection,
@@ -1006,7 +997,11 @@ app.MapGet("/api/products/{code}", async (
 
     if (product is null)
     {
-        product = await connection.QuerySingleOrDefaultAsync<ProductDto>(new CommandDefinition("SELECT \"Id\", \"Sku\", \"Name\", \"Ean\" FROM \"Product\" WHERE LOWER(\"Sku\") = LOWER(@Code) LIMIT 1", new { Code = sanitizedCode }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+        product = await connection.QuerySingleOrDefaultAsync<ProductDto>(
+            new CommandDefinition(
+                "SELECT \"Id\", \"Sku\", \"Name\", \"Ean\" FROM \"Product\" WHERE LOWER(\"Sku\") = LOWER(@Code) LIMIT 1",
+                new { Code = sanitizedCode },
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
     }
 
     var now = DateTimeOffset.UtcNow;
@@ -1262,34 +1257,51 @@ static Guid? SanitizeRunId(Guid? runId)
         : null;
 }
 
-file sealed record LocationCountStatusRow(
-    Guid LocationId,
-    short CountType,
-    Guid? RunId,
-    DateTimeOffset? StartedAtUtc,
-    DateTimeOffset? CompletedAtUtc,
-    string? OperatorDisplayName);
-
-file sealed record OpenRunSummaryRow(
-    Guid RunId,
-    Guid LocationId,
-    string LocationCode,
-    string LocationLabel,
-    short CountType,
-    string? OperatorDisplayName,
-    DateTimeOffset StartedAtUtc);
-
-file sealed record ConflictSummaryRow(
-    Guid ConflictId,
-    Guid CountLineId,
-    Guid CountingRunId,
-    Guid LocationId,
-    string LocationCode,
-    string LocationLabel,
-    short CountType,
-    string? OperatorDisplayName,
-    DateTimeOffset CreatedAtUtc);
-
-public partial class Program
+// Types internes mappés Dapper
+file sealed class LocationCountStatusRow
 {
+    public Guid LocationId { get; set; }
+    public short CountType { get; set; }
+    public Guid? RunId { get; set; }
+    public DateTime? StartedAtUtc { get; set; }
+    public DateTime? CompletedAtUtc { get; set; }
+    public string? OperatorDisplayName { get; set; }
+}
+
+file sealed class OpenRunSummaryRow
+{
+    public Guid RunId { get; set; }
+    public Guid LocationId { get; set; }
+    public string LocationCode { get; set; } = "";
+    public string LocationLabel { get; set; } = "";
+    public short CountType { get; set; }
+    public string? OperatorDisplayName { get; set; }
+    public DateTime StartedAtUtc { get; set; }
+}
+
+file sealed class ConflictSummaryRow
+{
+    public Guid ConflictId { get; set; }
+    public Guid CountLineId { get; set; }
+    public Guid CountingRunId { get; set; }
+    public Guid LocationId { get; set; }
+    public string LocationCode { get; set; } = "";
+    public string LocationLabel { get; set; } = "";
+    public short CountType { get; set; }
+    public string? OperatorDisplayName { get; set; }
+    public DateTime CreatedAtUtc { get; set; }
+}
+
+public partial class Program { }
+
+// ===== Utilitaire temps (deux surcharges) =====
+internal static class TimeUtil
+{
+    // non-nullable -> non-nullable
+    public static DateTimeOffset ToUtcOffset(DateTime dt) =>
+        new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc));
+
+    // nullable -> nullable
+    public static DateTimeOffset? ToUtcOffset(DateTime? dt) =>
+        dt.HasValue ? ToUtcOffset(dt.Value) : (DateTimeOffset?)null;
 }
