@@ -491,6 +491,48 @@ describe('Workflow d\'inventaire', () => {
     await within(activeSessionPage).findByText('Produit inconnu EAN 99999999')
   })
 
+  it("conserve l'ordre d'insertion des articles lors des ajustements de quantité", async () => {
+    renderInventoryRoutes('/inventory/session', {
+      initialize: (inventory) => {
+        inventory.setSelectedUser('Amélie')
+        inventory.setCountType(CountType.Count1)
+        inventory.setLocation({ ...reserveLocation })
+        inventory.clearSession()
+        inventory.addOrIncrementItem({ ean: '001', name: 'Produit A' })
+        inventory.addOrIncrementItem({ ean: '0000', name: 'Produit B' })
+      },
+    })
+
+    const sessionPages = await screen.findAllByTestId('page-session')
+    const activeSessionPage = sessionPages[sessionPages.length - 1]
+
+    const readRenderedEans = () =>
+      within(activeSessionPage)
+        .queryAllByTestId('scanned-item')
+        .map((element) => element.getAttribute('data-ean') ?? '')
+
+    await waitFor(() => expect(readRenderedEans()).toEqual(['001', '0000']))
+
+    const initialRows = within(activeSessionPage).getAllByTestId('scanned-item')
+    expect(initialRows).toHaveLength(2)
+    const secondRow = initialRows[1]
+    const incrementButton = within(secondRow).getByRole('button', { name: 'Ajouter' })
+
+    fireEvent.click(incrementButton)
+
+    await waitFor(() => expect(within(secondRow).getByText('2')).toBeInTheDocument())
+    await waitFor(() => expect(readRenderedEans()).toEqual(['001', '0000']))
+
+    const updatedRows = within(activeSessionPage).getAllByTestId('scanned-item')
+    const updatedSecondRow = updatedRows[1]
+    const decrementButton = within(updatedSecondRow).getByRole('button', { name: 'Retirer' })
+
+    fireEvent.click(decrementButton)
+
+    await waitFor(() => expect(within(updatedSecondRow).getByText('1')).toBeInTheDocument())
+    await waitFor(() => expect(readRenderedEans()).toEqual(['001', '0000']))
+  })
+
   it('envoie le comptage finalisé lorsque le bouton est actionné', async () => {
     renderInventoryRoutes('/inventory/session', {
       initialize: (inventory) => {
