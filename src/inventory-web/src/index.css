@@ -27,3 +27,14 @@ body {
   color: var(--cb-text);
   transition: background-color 200ms ease, color 200ms ease;
 }
+
+/* Supprime le halo bleu/gris au tap sur iOS / mobiles */
+.tap-highlight-none {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Par sécurité, pas d'outline par défaut sur ces boutons spécifiques */
+.no-focus-ring:focus,
+.no-focus-ring:focus-visible {
+  outline: none;
+}
