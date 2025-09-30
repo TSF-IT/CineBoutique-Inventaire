@@ -130,7 +130,7 @@ export const InventoryLocationStep = () => {
         }
 
         const nextLookup = new Map<string, true>()
-        for (const conflict of summary.conflictDetails ?? []) {
+        for (const conflict of summary.conflictZones ?? []) {
           const idKey = conflict.locationId?.trim().toLowerCase()
           if (idKey) {
             nextLookup.set(idKey, true)
