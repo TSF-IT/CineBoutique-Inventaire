@@ -10,8 +10,9 @@ import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { Page } from '../../components/Page'
 import { SectionTitle } from '../../components/SectionTitle'
 import { SlidingPanel } from '../../components/SlidingPanel'
+import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
 import { useAsync } from '../../hooks/useAsync'
-import type { InventorySummary, Location } from '../../types/inventory'
+import type { ConflictZoneSummary, InventorySummary, Location } from '../../types/inventory'
 import type { HttpError } from '@/lib/api/http'
 
 const isHttpError = (value: unknown): value is HttpError =>
@@ -89,7 +90,8 @@ const describeError = (error: unknown): { title: string; details?: string } | nu
 export const HomePage = () => {
   const navigate = useNavigate()
   const [openRunsPanelOpen, setOpenRunsPanelOpen] = useState(false)
-  const [conflictsPanelOpen, setConflictsPanelOpen] = useState(false)
+  const [conflictModalOpen, setConflictModalOpen] = useState(false)
+  const [selectedZone, setSelectedZone] = useState<ConflictZoneSummary | null>(null)
   const onError = useCallback((e: unknown) => {
     const err = e as HttpError
     console.error('[home] http error', err)
@@ -129,7 +131,7 @@ export const HomePage = () => {
   const openRunsCount = displaySummary?.openRuns ?? 0
   const conflictCount = displaySummary?.conflicts ?? 0
   const openRunDetails = displaySummary?.openRunDetails ?? []
-  const conflictDetails = displaySummary?.conflictDetails ?? []
+  const conflictZones = useMemo(() => displaySummary?.conflictZones ?? [], [displaySummary])
   const locations = locationsData ?? []
   const completedRuns = useMemo(() => {
     return locations.reduce((acc, location) => {
@@ -148,7 +150,7 @@ export const HomePage = () => {
   const hasOpenRuns = openRunsCount > 0
   const hasConflicts = conflictCount > 0
   const canShowOpenRunsPanel = hasOpenRuns && openRunDetails.length > 0
-  const canShowConflictsPanel = hasConflicts && conflictDetails.length > 0
+  const canOpenConflicts = hasConflicts && conflictZones.length > 0
 
   const handleOpenRunsClick = useCallback(() => {
     if (canShowOpenRunsPanel) {
@@ -156,11 +158,15 @@ export const HomePage = () => {
     }
   }, [canShowOpenRunsPanel])
 
-  const handleConflictsClick = useCallback(() => {
-    if (canShowConflictsPanel) {
-      setConflictsPanelOpen(true)
-    }
-  }, [canShowConflictsPanel])
+  const openConflictModal = useCallback((zone: ConflictZoneSummary) => {
+    setSelectedZone(zone)
+    setConflictModalOpen(true)
+  }, [])
+
+  const handleConflictModalClose = useCallback(() => {
+    setConflictModalOpen(false)
+    setSelectedZone(null)
+  }, [])
 
   return (
     <Page>
@@ -212,18 +218,12 @@ export const HomePage = () => {
                 Comptages terminés : {completedRuns} / {totalExpected || 0}
               </p>
             </button>
-            <button
-              type="button"
-              onClick={handleConflictsClick}
-              disabled={!canShowConflictsPanel}
+            <div
               className={clsx(
                 'flex flex-col rounded-2xl border p-5 text-left transition',
                 hasConflicts
                   ? 'border-rose-300 bg-rose-100/70 dark:border-rose-500/40 dark:bg-rose-500/10'
-                  : 'border-emerald-300 bg-emerald-100/70 dark:border-emerald-500/30 dark:bg-emerald-500/10',
-                canShowConflictsPanel
-                  ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-rose-500'
-                  : 'cursor-default'
+                  : 'border-emerald-300 bg-emerald-100/70 dark:border-emerald-500/30 dark:bg-emerald-500/10'
               )}
             >
               <p
@@ -244,10 +244,38 @@ export const HomePage = () => {
               >
                 {hasConflicts ? conflictCount : 'Aucun conflit'}
               </p>
-              {canShowConflictsPanel && (
-                <p className="mt-1 text-xs text-rose-700/80 dark:text-rose-200/70">Touchez pour voir le détail</p>
+              {canOpenConflicts && (
+                <p className="mt-1 text-xs text-rose-700/80 dark:text-rose-200/70">
+                  Touchez une zone pour voir le détail
+                </p>
               )}
-            </button>
+              <div className="mt-4 flex flex-col gap-2">
+                {hasConflicts && conflictZones.length > 0 ? (
+                  <ul className="divide-y divide-rose-200/70 rounded-2xl border border-rose-200/70 bg-white/60 dark:divide-rose-500/40 dark:border-rose-500/30 dark:bg-rose-500/10">
+                    {conflictZones.map((zone) => (
+                      <li key={zone.locationId}>
+                        <button
+                          type="button"
+                          onClick={() => openConflictModal(zone)}
+                          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm transition hover:bg-rose-100/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 dark:hover:bg-rose-500/20"
+                        >
+                          <span className="font-medium text-rose-900 dark:text-rose-100">
+                            {zone.locationCode} · {zone.locationLabel}
+                          </span>
+                          <span className="text-xs font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-200">
+                            {zone.conflictLines} réf.
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="rounded-2xl border border-emerald-200 bg-white/60 px-4 py-3 text-xs text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200">
+                    Aucune divergence détectée.
+                  </p>
+                )}
+              </div>
+            </div>
             <div className="rounded-2xl border border-slate-300 bg-slate-100/70 p-5 dark:border-slate-600/60 dark:bg-slate-900/40">
               <p className="text-sm uppercase text-slate-600 dark:text-slate-300">Dernière activité</p>
               <p className="mt-2 text-lg font-semibold text-slate-800 dark:text-white">
@@ -300,27 +328,7 @@ export const HomePage = () => {
         )}
       </SlidingPanel>
 
-      <SlidingPanel open={conflictsPanelOpen} title="Conflits à résoudre" onClose={() => setConflictsPanelOpen(false)}>
-        {conflictDetails.length === 0 ? (
-          <p className="text-sm text-slate-600 dark:text-slate-300">Aucun conflit actif.</p>
-        ) : (
-          <ul className="divide-y divide-slate-200 dark:divide-slate-800">
-            {conflictDetails.map((conflict) => (
-              <li key={conflict.conflictId} className="py-3">
-                <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                  {conflict.locationCode} · {conflict.locationLabel}
-                </p>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
-                  {describeCountType(conflict.countType)} — signalé le {formatDateTime(conflict.createdAtUtc)}
-                </p>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
-                  Opérateur : {conflict.operatorDisplayName?.trim() || 'Non renseigné'}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </SlidingPanel>
+      <ConflictZoneModal open={conflictModalOpen} zone={selectedZone} onClose={handleConflictModalClose} />
     </Page>
   )
 }
