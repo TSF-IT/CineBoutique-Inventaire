@@ -111,7 +111,9 @@ if (authenticationOptions.TokenLifetimeMinutes <= 0)
 
 builder.Services.Configure<AuthenticationOptions>(authenticationSection);
 
+// Infrastructure + seeder
 builder.Services.AddInventoryInfrastructure(builder.Configuration);
+builder.Services.AddTransient<InventoryDataSeeder>();
 
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -202,6 +204,14 @@ builder.Services.AddCors(options =>
     });
 });
 
+builder.Logging.ClearProviders();
+builder.Logging.AddSimpleConsole(options =>
+{
+    options.SingleLine = true;
+    options.TimestampFormat = "HH:mm:ss ";
+});
+builder.Logging.SetMinimumLevel(LogLevel.Information);
+
 var app = builder.Build();
 
 // --- FORWARDED HEADERS pour proxy (Nginx) ---
@@ -213,6 +223,11 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
 if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("CI"))
 {
     app.UseDeveloperExceptionPage();
+    app.MapPost("/diagnostics/seed", async (InventoryDataSeeder seeder) =>
+    {
+        await seeder.SeedAsync();
+        return Results.NoContent();
+    });
 }
 else
 {
@@ -269,18 +284,6 @@ if (applyMigrations && !disableMigrations)
             var connectionDetails = new NpgsqlConnectionStringBuilder(connectionString);
             AppLog.DbHostDb(app.Logger, $"{connectionDetails.Host}/{connectionDetails.Database}");
 
-            var seedOnStartup = app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup");
-            AppLog.SeedOnStartup(app.Logger, seedOnStartup);
-
-            if (seedOnStartup)
-            {
-                var seeder = scope.ServiceProvider.GetService<InventoryDataSeeder>();
-                if (seeder is not null)
-                {
-                    await seeder.SeedAsync().ConfigureAwait(false);
-                }
-            }
-
             break;
         }
         catch (Exception ex) when (attempt < maxAttempts && ex is NpgsqlException or TimeoutException or InvalidOperationException)
@@ -293,6 +296,16 @@ if (applyMigrations && !disableMigrations)
 else if (applyMigrations)
 {
     AppLog.MigrationsSkipped(app.Logger);
+}
+
+var seedOnStartup = app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup");
+AppLog.SeedOnStartup(app.Logger, seedOnStartup);
+
+if (seedOnStartup)
+{
+    using var scope = app.Services.CreateScope();
+    var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
+    await seeder.SeedAsync().ConfigureAwait(false);
 }
 
 if (app.Environment.IsDevelopment())

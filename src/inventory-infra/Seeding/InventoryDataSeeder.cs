@@ -17,9 +17,9 @@ public sealed class InventoryDataSeeder
     private static readonly Guid DemoRunB1Id = Guid.Parse("11111111-2222-3333-4444-555555555555");
     private static readonly Guid DemoRunB2Id = Guid.Parse("22222222-3333-4444-5555-666666666666");
 
+    // IMPORTANT: pas de "produit inconnu" dans le seed. Les EAN inconnus sont gérés au runtime.
     private static readonly ProductSeed[] DemoProducts =
     {
-        new(Guid.Parse("00000000-0000-4000-8000-000000000000"), "0000000000000", "DEMO-0000", "Produit inconnu (démo)"),
         new(Guid.Parse("00000000-0000-4000-8000-000000000001"), "0000000000001", "DEMO-0001", "Produit démo EAN 0001"),
         new(Guid.Parse("00000000-0000-4000-8000-000000000002"), "0000000000002", "DEMO-0002", "Produit démo EAN 0002"),
         new(Guid.Parse("00000000-0000-4000-8000-000000000003"), "0000000000003", "DEMO-0003", "Produit démo EAN 0003")
@@ -71,6 +71,7 @@ public sealed class InventoryDataSeeder
                             run.OperatorDisplayName);
                     }
 
+                    // Toujours assurer les lignes, même si le run existait déjà (idempotent)
                     foreach (var line in run.Lines)
                     {
                         if (!productIds.TryGetValue(line.Ean, out var productId))
@@ -180,9 +181,10 @@ VALUES (@Id, @Sku, @Name, @Ean, @CreatedAtUtc);";
                     "0000000000001",
                     3m,
                     runB1Start.AddMinutes(1)),
+                // Remplacé l'EAN inconnu par un EAN connu (0002)
                 new CountLineSeed(
                     Guid.Parse("aaaaaaaa-1111-2222-3333-444444444442"),
-                    "0000000000000",
+                    "0000000000002",
                     5m,
                     runB1Start.AddMinutes(2))
             });
@@ -337,12 +339,22 @@ VALUES (@Id, @InventorySessionId, @LocationId, @StartedAtUtc, @CompletedAtUtc, @
         CountLineSeed line,
         CancellationToken cancellationToken)
     {
-        const string selectSql = "SELECT 1 FROM \"CountLine\" WHERE \"Id\" = @Id LIMIT 1;";
-        var exists = await connection.ExecuteScalarAsync<int?>
-                (new CommandDefinition(selectSql, new { line.Id }, transaction, cancellationToken: cancellationToken))
+        // 1) Idempotence stricte: même Id déjà présent
+        const string selectByIdSql = "SELECT 1 FROM \"CountLine\" WHERE \"Id\" = @Id LIMIT 1;";
+        var existsById = await connection.ExecuteScalarAsync<int?>(
+                new CommandDefinition(selectByIdSql, new { line.Id }, transaction, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
+        if (existsById.HasValue)
+        {
+            return false;
+        }
 
-        if (exists.HasValue)
+        // 2) Idempotence métier: une ligne pour ce run et ce produit existe déjà
+        const string selectByBusinessSql = "SELECT 1 FROM \"CountLine\" WHERE \"CountingRunId\" = @RunId AND \"ProductId\" = @ProductId LIMIT 1;";
+        var existsByBusiness = await connection.ExecuteScalarAsync<int?>(
+                new CommandDefinition(selectByBusinessSql, new { RunId = runId, ProductId = productId }, transaction, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+        if (existsByBusiness.HasValue)
         {
             return false;
         }
