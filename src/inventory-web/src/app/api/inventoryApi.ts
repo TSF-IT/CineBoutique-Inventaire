@@ -178,6 +178,7 @@ export interface CompleteInventoryRunItem {
 }
 
 export interface CompleteInventoryRunPayload {
+  runId?: string | null
   countType: 1 | 2 | 3
   operator: string
   items: CompleteInventoryRunItem[]

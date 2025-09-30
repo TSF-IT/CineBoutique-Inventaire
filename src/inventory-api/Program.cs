@@ -237,7 +237,7 @@ else
             var feature = context.Features.Get<IExceptionHandlerFeature>();
             var problem = new ProblemDetails
             {
-                Title = "An error occurred while processing your request.",
+                Title = "Une erreur est survenue lors du traitement de votre requête.",
                 Status = StatusCodes.Status500InternalServerError,
                 Detail = app.Environment.IsDevelopment() ? feature?.Error.ToString() : null
             };
@@ -824,6 +824,12 @@ app.MapPost("/api/inventories/{locationId:guid}/complete", async (
 
     await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
+    var hasOperatorDisplayNameColumn = await ColumnExistsAsync(
+        connection,
+        "CountingRun",
+        "OperatorDisplayName",
+        cancellationToken).ConfigureAwait(false);
+
     if (connection is not DbConnection dbConnection)
     {
         return Results.Problem(
@@ -905,24 +911,38 @@ app.MapPost("/api/inventories/{locationId:guid}/complete", async (
                     cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
-        const string insertRunSql =
-            "INSERT INTO \"CountingRun\" (\"Id\", \"InventorySessionId\", \"LocationId\", \"CountType\", \"StartedAtUtc\", \"CompletedAtUtc\", \"OperatorDisplayName\") " +
-            "VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc, @CompletedAtUtc, @Operator);";
+        var insertRunSql = hasOperatorDisplayNameColumn
+            ? "INSERT INTO \"CountingRun\" (\"Id\", \"InventorySessionId\", \"LocationId\", \"CountType\", \"StartedAtUtc\", \"CompletedAtUtc\", \"OperatorDisplayName\") " +
+              "VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc, @CompletedAtUtc, @Operator);"
+            : "INSERT INTO \"CountingRun\" (\"Id\", \"InventorySessionId\", \"LocationId\", \"CountType\", \"StartedAtUtc\", \"CompletedAtUtc\") " +
+              "VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc, @CompletedAtUtc);";
+
+        object insertRunParameters = hasOperatorDisplayNameColumn
+            ? new
+            {
+                Id = countingRunId,
+                SessionId = inventorySessionId,
+                LocationId = locationId,
+                CountType = countType,
+                StartedAtUtc = now,
+                CompletedAtUtc = now,
+                Operator = operatorName
+            }
+            : new
+            {
+                Id = countingRunId,
+                SessionId = inventorySessionId,
+                LocationId = locationId,
+                CountType = countType,
+                StartedAtUtc = now,
+                CompletedAtUtc = now
+            };
 
         await connection
             .ExecuteAsync(
                 new CommandDefinition(
                     insertRunSql,
-                    new
-                    {
-                        Id = countingRunId,
-                        SessionId = inventorySessionId,
-                        LocationId = locationId,
-                        CountType = countType,
-                        StartedAtUtc = now,
-                        CompletedAtUtc = now,
-                        Operator = operatorName
-                    },
+                    insertRunParameters,
                     transaction,
                     cancellationToken: cancellationToken))
             .ConfigureAwait(false);
@@ -935,21 +955,32 @@ app.MapPost("/api/inventories/{locationId:guid}/complete", async (
         .ExecuteAsync(new CommandDefinition(updateSessionSql, new { SessionId = inventorySessionId, CompletedAtUtc = now }, transaction, cancellationToken: cancellationToken))
         .ConfigureAwait(false);
 
-    const string updateRunSql =
-        "UPDATE \"CountingRun\" SET \"CountType\" = @CountType, \"CompletedAtUtc\" = @CompletedAtUtc, \"OperatorDisplayName\" = @Operator " +
-        "WHERE \"Id\" = @RunId;";
+    var updateRunSql = hasOperatorDisplayNameColumn
+        ? "UPDATE \"CountingRun\" SET \"CountType\" = @CountType, \"CompletedAtUtc\" = @CompletedAtUtc, \"OperatorDisplayName\" = @Operator " +
+          "WHERE \"Id\" = @RunId;"
+        : "UPDATE \"CountingRun\" SET \"CountType\" = @CountType, \"CompletedAtUtc\" = @CompletedAtUtc " +
+          "WHERE \"Id\" = @RunId;";
+
+    object updateRunParameters = hasOperatorDisplayNameColumn
+        ? new
+        {
+            RunId = countingRunId,
+            CountType = countType,
+            CompletedAtUtc = now,
+            Operator = operatorName
+        }
+        : new
+        {
+            RunId = countingRunId,
+            CountType = countType,
+            CompletedAtUtc = now
+        };
 
     await connection
         .ExecuteAsync(
             new CommandDefinition(
                 updateRunSql,
-                new
-                {
-                    RunId = countingRunId,
-                    CountType = countType,
-                    CompletedAtUtc = now,
-                    Operator = operatorName
-                },
+                updateRunParameters,
                 transaction,
                 cancellationToken: cancellationToken))
         .ConfigureAwait(false);
