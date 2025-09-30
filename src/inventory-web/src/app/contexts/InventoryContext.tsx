@@ -37,6 +37,15 @@ const INITIAL_STATE: InventoryState = {
 
 const InventoryContext = createContext<InventoryContextValue | undefined>(undefined)
 
+const createInventoryItemId = () => {
+  if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID()
+  }
+
+  const randomSuffix = Math.random().toString(36).slice(2)
+  return `inventory-item-${Date.now().toString(36)}-${randomSuffix}`
+}
+
 export const InventoryProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<InventoryState>(INITIAL_STATE)
 
@@ -70,10 +79,12 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
         return { ...prev, items: nextItems }
       }
       const nextItem: InventoryItem = {
+        id: createInventoryItemId(),
         product,
         quantity: 1,
         lastScanAt: new Date().toISOString(),
         isManual: Boolean(options?.isManual),
+        addedAt: Date.now(),
       }
       return { ...prev, items: [...prev.items, nextItem] }
     })
