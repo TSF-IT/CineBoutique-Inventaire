@@ -874,7 +874,8 @@ ORDER BY cl.""CountingRunId"", p.""Id"", cl.""CountedAtUtc"" DESC, cl.""Id"" DES
                 continue;
             }
 
-            var lineId = ResolveCountLineId((IDictionary<Guid, IDictionary<string, Guid>>)lineIdLookup, currentRunId, counterpartRunId.Value, key);
+            var lineId = ResolveCountLineId(lineIdLookup, currentRunId, counterpartRunId.Value, key);
+
             if (lineId is null)
             {
                 continue;
@@ -906,21 +907,18 @@ ORDER BY cl.""CountingRunId"", p.""Id"", cl.""CountedAtUtc"" DESC, cl.""Id"" DES
         }
     }
 
-    private static Guid? ResolveCountLineId(
-        IDictionary<Guid, IDictionary<string, Guid>> lookup,
-        Guid currentRunId,
-        Guid counterpartRunId,
-        string key)
+    private static Guid? ResolveCountLineId<TInner>(
+    IDictionary<Guid, TInner> lookup,
+    Guid currentRunId,
+    Guid counterpartRunId,
+    string key)
+    where TInner : IDictionary<string, Guid>
     {
         if (lookup.TryGetValue(currentRunId, out var currentLines) && currentLines.TryGetValue(key, out var currentLineId))
-        {
             return currentLineId;
-        }
 
         if (lookup.TryGetValue(counterpartRunId, out var counterpartLines) && counterpartLines.TryGetValue(key, out var counterpartLineId))
-        {
             return counterpartLineId;
-        }
 
         return null;
     }
@@ -937,7 +935,17 @@ ORDER BY cl.""CountingRunId"", p.""Id"", cl.""CountedAtUtc"" DESC, cl.""Id"" DES
 
     private sealed record SanitizedCountLine(string Ean, decimal Quantity, bool IsManual);
 
-    private sealed record AggregatedCountRow(Guid CountingRunId, Guid ProductId, string? Ean, decimal Quantity);
+    // Déplace idéalement en fichier dédié, sinon laisse-le juste hors de la classe imbriquée.
+    public sealed class AggregatedCountRow
+    {
+        public Guid CountingRunId { get; set; }
+        public string Ean { get; set; } = string.Empty;
+        public Guid ProductId { get; set; }
+        public decimal Quantity { get; set; }
+
+        // Dapper aime bien ça
+        public AggregatedCountRow() { }
+    }
 
     private sealed record CountLineReference(Guid CountingRunId, Guid CountLineId, Guid ProductId, string? Ean);
 }
