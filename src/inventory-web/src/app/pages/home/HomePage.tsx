@@ -1,7 +1,8 @@
+// Modifications : chargement des zones pour le compteur terminé et panneau enrichi des runs ouverts.
 import { useCallback, useMemo, useState } from 'react'
 import clsx from 'clsx'
 import { Link, useNavigate } from 'react-router-dom'
-import { fetchInventorySummary } from '../../api/inventoryApi'
+import { fetchInventorySummary, fetchLocations } from '../../api/inventoryApi'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/Card'
 import { ErrorPanel } from '../../components/ErrorPanel'
@@ -10,7 +11,7 @@ import { Page } from '../../components/Page'
 import { SectionTitle } from '../../components/SectionTitle'
 import { SlidingPanel } from '../../components/SlidingPanel'
 import { useAsync } from '../../hooks/useAsync'
-import type { InventorySummary } from '../../types/inventory'
+import type { InventorySummary, Location } from '../../types/inventory'
 import type { HttpError } from '@/lib/api/http'
 
 const isHttpError = (value: unknown): value is HttpError =>
@@ -39,7 +40,7 @@ const formatDateTime = (value: string) => {
     return 'Non disponible'
   }
   return new Intl.DateTimeFormat('fr-FR', {
-    dateStyle: 'medium',
+    dateStyle: 'short',
     timeStyle: 'short',
   }).format(date)
 }
@@ -94,22 +95,56 @@ export const HomePage = () => {
     console.error('[home] http error', err)
   }, [])
 
-  const { data, loading, error, execute } = useAsync(fetchInventorySummary, [], {
+  const {
+    data: summaryData,
+    loading: summaryLoading,
+    error: summaryError,
+    execute: executeSummary,
+  } = useAsync(fetchInventorySummary, [], {
     initialValue: null,
     onError,
   })
 
+  const {
+    data: locationsData,
+    loading: locationsLoading,
+    error: locationsError,
+    execute: executeLocations,
+  } = useAsync<Location[]>(fetchLocations, [], {
+    initialValue: [],
+    onError,
+  })
+
   const handleRetry = useCallback(() => {
-    void execute()
-  }, [execute])
+    void executeSummary()
+    void executeLocations()
+  }, [executeSummary, executeLocations])
 
-  const errorDetails = useMemo(() => describeError(error), [error])
+  const combinedError = summaryError ?? locationsError
+  const combinedLoading = summaryLoading || locationsLoading
 
-  const displaySummary: InventorySummary | null = data ?? null
+  const errorDetails = useMemo(() => describeError(combinedError), [combinedError])
+
+  const displaySummary: InventorySummary | null = summaryData ?? null
   const openRunsCount = displaySummary?.openRuns ?? 0
   const conflictCount = displaySummary?.conflicts ?? 0
   const openRunDetails = displaySummary?.openRunDetails ?? []
   const conflictDetails = displaySummary?.conflictDetails ?? []
+  const locations = locationsData ?? []
+  const completedRuns = useMemo(() => {
+    return locations.reduce((acc, location) => {
+      const statuses = location.countStatuses ?? []
+      const completedTypes = statuses.reduce<Set<number>>((set, status) => {
+        if (status.status === 'completed' && (status.countType === 1 || status.countType === 2)) {
+          set.add(status.countType)
+        }
+        return set
+      }, new Set<number>())
+      return acc + completedTypes.size
+    }, 0)
+  }, [locations])
+
+  const totalExpected = useMemo(() => locations.length * 2, [locations.length])
   const hasOpenRuns = openRunsCount > 0
   const hasConflicts = conflictCount > 0
   const canShowOpenRunsPanel = hasOpenRuns && openRunDetails.length > 0
@@ -142,11 +177,11 @@ export const HomePage = () => {
 
       <Card className="flex flex-col gap-4">
         <SectionTitle>État de l’inventaire</SectionTitle>
-        {loading && <LoadingIndicator label="Chargement des indicateurs" />}
-        {!loading && errorDetails && (
+        {combinedLoading && <LoadingIndicator label="Chargement des indicateurs" />}
+        {!combinedLoading && errorDetails && (
           <ErrorPanel title={errorDetails.title} details={errorDetails.details} actionLabel="Réessayer" onAction={handleRetry} />
         )}
-        {!loading && !errorDetails && displaySummary && (
+        {!combinedLoading && !errorDetails && displaySummary && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <button
               type="button"
@@ -173,6 +208,9 @@ export const HomePage = () => {
               {canShowOpenRunsPanel && (
                 <p className="mt-1 text-xs text-brand-700/80 dark:text-brand-200/80">Touchez pour voir le détail</p>
               )}
+              <p className="mt-3 text-xs text-brand-700/80 dark:text-brand-100/70">
+                Comptages terminés : {completedRuns} / {totalExpected || 0}
+              </p>
             </button>
             <button
               type="button"
@@ -218,7 +256,7 @@ export const HomePage = () => {
             </div>
           </div>
         )}
-        {!loading && !errorDetails && !displaySummary && (
+        {!combinedLoading && !errorDetails && !displaySummary && (
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Les indicateurs ne sont pas disponibles pour le moment.
           </p>
@@ -245,19 +283,19 @@ export const HomePage = () => {
           <p className="text-sm text-slate-600 dark:text-slate-300">Aucun comptage en cours.</p>
         ) : (
           <ul className="divide-y divide-slate-200 dark:divide-slate-800">
-            {openRunDetails.map((run) => (
-              <li key={run.runId} className="py-3">
-                <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                  {run.locationCode} · {run.locationLabel}
-                </p>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
-                  {describeCountType(run.countType)} — démarré le {formatDateTime(run.startedAtUtc)}
-                </p>
-                <p className="text-sm text-slate-600 dark:text-slate-300">
-                  Opérateur : {run.operatorDisplayName?.trim() || 'Non renseigné'}
-                </p>
-              </li>
-            ))}
+            {openRunDetails.map((run) => {
+              const operator = run.operatorDisplayName?.trim() || '—'
+              return (
+                <li key={run.runId} className="py-3">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                    {run.locationCode} – {run.locationLabel}
+                  </p>
+                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                    {describeCountType(run.countType)} · {operator} · démarré {formatDateTime(run.startedAtUtc)}
+                  </p>
+                </li>
+              )
+            })}
           </ul>
         )}
       </SlidingPanel>
