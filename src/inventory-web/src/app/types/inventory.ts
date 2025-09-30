@@ -12,7 +12,7 @@ export interface InventorySummary {
   conflicts: number
   lastActivityUtc: string | null
   openRunDetails: OpenRunSummary[]
-  conflictDetails: ConflictSummary[]
+  conflictZones: ConflictZoneSummary[]
 }
 
 export interface OpenRunSummary {
@@ -25,16 +25,26 @@ export interface OpenRunSummary {
   startedAtUtc: string
 }
 
-export interface ConflictSummary {
-  conflictId: string
-  countLineId: string
-  countingRunId: string
+export interface ConflictZoneSummary {
   locationId: string
   locationCode: string
   locationLabel: string
-  countType: CountType
-  operatorDisplayName: string | null
-  createdAtUtc: string
+  conflictLines: number
+}
+
+export interface ConflictZoneItem {
+  ean: string
+  productId: string
+  qtyC1: number
+  qtyC2: number
+  delta: number
+}
+
+export interface ConflictZoneDetail {
+  locationId: string
+  locationCode: string
+  locationLabel: string
+  items: ConflictZoneItem[]
 }
 
 const IsoDateNullable = z.preprocess((value) => {
