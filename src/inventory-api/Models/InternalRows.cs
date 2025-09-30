@@ -39,25 +39,33 @@ internal sealed class OpenRunSummaryRow
     public DateTime StartedAtUtc { get; set; }
 }
 
-internal sealed class ConflictSummaryRow
+internal sealed class ConflictZoneSummaryRow
 {
-    public Guid ConflictId { get; set; }
-
-    public Guid CountLineId { get; set; }
-
-    public Guid CountingRunId { get; set; }
-
     public Guid LocationId { get; set; }
 
     public string LocationCode { get; set; } = string.Empty;
 
     public string LocationLabel { get; set; } = string.Empty;
 
+    public int ConflictLines { get; set; }
+}
+
+internal sealed class ConflictZoneItemRow
+{
+    public Guid ProductId { get; set; }
+
+    public string Ean { get; set; } = string.Empty;
+
+    public int QtyC1 { get; set; }
+
+    public int QtyC2 { get; set; }
+}
+
+internal sealed class LastRunLookupRow
+{
     public short CountType { get; set; }
 
-    public string? OperatorDisplayName { get; set; }
-
-    public DateTime CreatedAtUtc { get; set; }
+    public Guid RunId { get; set; }
 }
 
 internal sealed class LocationMetadataRow

@@ -15,5 +15,5 @@ public sealed class InventorySummaryDto
 
     public IReadOnlyList<OpenRunSummaryDto> OpenRunDetails { get; set; } = Array.Empty<OpenRunSummaryDto>();
 
-    public IReadOnlyList<ConflictSummaryDto> ConflictDetails { get; set; } = Array.Empty<ConflictSummaryDto>();
+    public IReadOnlyList<ConflictZoneSummaryDto> ConflictZones { get; set; } = Array.Empty<ConflictZoneSummaryDto>();
 }

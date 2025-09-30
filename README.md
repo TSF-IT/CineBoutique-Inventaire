@@ -121,6 +121,8 @@ L'endpoint `POST /auth/pin` retourne un JWT court si le PIN est valide. Les endp
 - `POST /auth/pin` : authentification par PIN/JWT (utilisateurs définis dans la configuration).
 - `POST /api/inventories/{locationId}/restart` : clôture les runs actifs d'une zone pour redémarrer un comptage.
 - `POST /api/inventories/{locationId}/complete` : clôture un comptage en enregistrant les quantités scannées (produits connus ou inconnus).
+- `GET /api/inventories/summary` : retourne l'état agrégé des inventaires (sessions actives, runs ouverts, zones en conflit).
+- `GET /api/conflicts/{locationId}` : expose le comparatif Comptage 1 / Comptage 2 pour une zone en conflit (EAN, quantités et delta).
 
 ### Finaliser un comptage d'inventaire
 
