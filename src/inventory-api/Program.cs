@@ -1,9 +1,6 @@
 // Modifications : simplification de Program.cs via des extensions et intégration du mapping conflits.
-using System;
-using System.Collections.Generic;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System.Data;
-using System.Diagnostics;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Auth;
 using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Endpoints;
@@ -15,7 +12,6 @@ using CineBoutique.Inventory.Infrastructure.DependencyInjection;
 using CineBoutique.Inventory.Infrastructure.Migrations;
 using CineBoutique.Inventory.Infrastructure.Seeding;
 using FluentMigrator.Runner;
-using FluentMigrator.Runner.Initialization;
 using FluentMigrator.Runner.Processors;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
@@ -30,6 +26,7 @@ using Microsoft.Net.Http.Headers;
 using Npgsql;
 using Serilog; // requis pour UseSerilog()
 using CineBoutique.Inventory.Api.Infrastructure.Health;
+using AppLog = CineBoutique.Inventory.Api.Hosting.Log;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -253,7 +250,7 @@ app.Use(async (context, next) =>
 
 var applyMigrations = app.Configuration.GetValue<bool>("APPLY_MIGRATIONS");
 var disableMigrations = app.Configuration.GetValue<bool>("DISABLE_MIGRATIONS");
-Log.MigrationsFlags(app.Logger, applyMigrations, disableMigrations);
+AppLog.MigrationsFlags(app.Logger, applyMigrations, disableMigrations);
 
 if (applyMigrations && !disableMigrations)
 {
@@ -270,10 +267,10 @@ if (applyMigrations && !disableMigrations)
             runner.MigrateUp();
 
             var connectionDetails = new NpgsqlConnectionStringBuilder(connectionString);
-            Log.DbHostDb(app.Logger, $"{connectionDetails.Host}/{connectionDetails.Database}");
+            AppLog.DbHostDb(app.Logger, $"{connectionDetails.Host}/{connectionDetails.Database}");
 
             var seedOnStartup = app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup");
-            Log.SeedOnStartup(app.Logger, seedOnStartup);
+            AppLog.SeedOnStartup(app.Logger, seedOnStartup);
 
             if (seedOnStartup)
             {
@@ -288,14 +285,14 @@ if (applyMigrations && !disableMigrations)
         }
         catch (Exception ex) when (attempt < maxAttempts && ex is NpgsqlException or TimeoutException or InvalidOperationException)
         {
-            Log.MigrationRetry(app.Logger, attempt, maxAttempts, ex);
+            AppLog.MigrationRetry(app.Logger, attempt, maxAttempts, ex);
             await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
         }
     }
 }
 else if (applyMigrations)
 {
-    Log.MigrationsSkipped(app.Logger);
+    AppLog.MigrationsSkipped(app.Logger);
 }
 
 if (app.Environment.IsDevelopment())
