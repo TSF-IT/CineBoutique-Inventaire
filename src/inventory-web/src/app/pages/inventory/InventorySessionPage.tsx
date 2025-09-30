@@ -1,4 +1,4 @@
-import type { FormEvent, KeyboardEvent, ChangeEvent } from 'react'
+import type { KeyboardEvent, ChangeEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrowserMultiFormatReader } from '@zxing/browser'
@@ -9,7 +9,6 @@ import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Card } from '../../components/Card'
 import { EmptyState } from '../../components/EmptyState'
-import { SlidingPanel } from '../../components/SlidingPanel'
 import { useInventory } from '../../contexts/InventoryContext'
 import type { HttpError } from '@/lib/api/http'
 import type { Product } from '../../types/inventory'
@@ -24,19 +23,22 @@ const isHttpError = (value: unknown): value is HttpError =>
   typeof (value as { url?: unknown }).url === 'string'
 
 const buildHttpMessage = (prefix: string, error: HttpError) => {
+  const problem = error.problem as { detail?: string; title?: string; message?: string } | undefined
+  const detail = problem?.detail ?? problem?.title ?? problem?.message ?? error.body
+  const trimmedDetail = detail?.trim()
+
   if (import.meta.env.DEV && error.status === 404) {
-    const diagnostics = [DEV_API_UNREACHABLE_HINT]
-    if (error.url) {
-      diagnostics.push(`URL: ${error.url}`)
+    const looksLikeProxyNotFound = !trimmedDetail || /^not found$/i.test(trimmedDetail)
+    if (looksLikeProxyNotFound) {
+      const diagnostics = [DEV_API_UNREACHABLE_HINT]
+      if (error.url) {
+        diagnostics.push(`URL: ${error.url}`)
+      }
+      if (trimmedDetail) {
+        diagnostics.push(`Détail: ${trimmedDetail}`)
+      }
+      return diagnostics.join(' | ')
     }
-    const detail =
-      (error.problem as { detail?: string; title?: string } | undefined)?.detail ||
-      (error.problem as { title?: string } | undefined)?.title ||
-      error.body
-    if (detail) {
-      diagnostics.push(`Détail: ${detail}`)
-    }
-    return diagnostics.join(' | ')
   }
 
   const diagnostics: string[] = []
@@ -46,12 +48,8 @@ const buildHttpMessage = (prefix: string, error: HttpError) => {
   if (error.url) {
     diagnostics.push(`URL: ${error.url}`)
   }
-  const detail =
-    (error.problem as { detail?: string; title?: string } | undefined)?.detail ||
-    (error.problem as { title?: string } | undefined)?.title ||
-    error.body
-  if (detail) {
-    diagnostics.push(`Détail: ${detail}`)
+  if (trimmedDetail) {
+    diagnostics.push(`Détail: ${trimmedDetail}`)
   }
   return diagnostics.length > 0 ? `${prefix} | ${diagnostics.join(' | ')}` : prefix
 }
@@ -91,7 +89,6 @@ export const InventorySessionPage = () => {
   const [useCamera, setUseCamera] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [manualOpen, setManualOpen] = useState(false)
   const [scanValue, setScanValue] = useState('')
   const [manualEan, setManualEan] = useState('')
   const [inputLookupStatus, setInputLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not-found' | 'error'>('idle')
@@ -110,12 +107,6 @@ export const InventorySessionPage = () => {
       navigate('/inventory/count-type', { replace: true })
     }
   }, [countType, location, navigate, selectedUser])
-
-  useEffect(() => {
-    if (!manualOpen) {
-      inputRef.current?.focus()
-    }
-  }, [manualOpen])
 
   const sortedItems = useMemo(
     () => [...items].sort((a, b) => b.lastScanAt.localeCompare(a.lastScanAt)),
@@ -136,7 +127,7 @@ export const InventorySessionPage = () => {
   }, [])
 
   const handleDetected = useCallback(
-    async (rawValue: string, options?: { openManualPanel?: boolean }) => {
+    async (rawValue: string) => {
       const value = rawValue.trim()
       if (!value) {
         return
@@ -163,9 +154,7 @@ export const InventorySessionPage = () => {
       if (result.status === 'not-found') {
         setStatus(null)
         setManualEan(value)
-        if (options?.openManualPanel ?? true) {
-          setManualOpen(true)
-        }
+        setInputLookupStatus('not-found')
         return
       }
 
@@ -180,6 +169,7 @@ export const InventorySessionPage = () => {
   )
 
   const trimmedScanValue = scanValue.trim()
+  const manualCandidateEan = manualEan.trim() || trimmedScanValue
 
   useEffect(() => {
     if (!trimmedScanValue) {
@@ -304,7 +294,7 @@ export const InventorySessionPage = () => {
         const value = trimmedScanValue
         if (value) {
           setScanValue('')
-          void handleDetected(value, { openManualPanel: false })
+          void handleDetected(value)
         }
       }
     },
@@ -327,33 +317,30 @@ export const InventorySessionPage = () => {
     [handleDetected],
   )
 
-  const handleManualSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault()
-      const sanitizedEan = manualEan.trim()
-      if (!sanitizedEan) {
-        setErrorMessage('Indiquez un EAN pour ajouter le produit à la session.')
-        return
-      }
-      if (!/^\d{4,18}$/.test(sanitizedEan)) {
-        setErrorMessage("L'EAN doit contenir uniquement des chiffres (4 à 18 caractères).")
-        return
-      }
-      setErrorMessage(null)
-      const product: Product = {
-        ean: sanitizedEan,
-        name: `Produit inconnu EAN ${sanitizedEan}`,
-      }
-      addOrIncrementItem(product, { isManual: true })
-      setStatus(`${product.name} ajouté manuellement`)
-      setManualOpen(false)
-      setManualEan('')
-      setScanValue('')
-      setInputLookupStatus('idle')
-      inputRef.current?.focus()
-    },
-    [addOrIncrementItem, manualEan],
-  )
+  const handleManualAdd = useCallback(() => {
+    const sanitizedEan = manualCandidateEan.trim()
+    if (!sanitizedEan) {
+      setErrorMessage('Indiquez un EAN pour ajouter le produit à la session.')
+      return
+    }
+    if (!/^\d{4,18}$/.test(sanitizedEan)) {
+      setErrorMessage("L'EAN doit contenir uniquement des chiffres (4 à 18 caractères).")
+      return
+    }
+
+    const product: Product = {
+      ean: sanitizedEan,
+      name: `Produit inconnu EAN ${sanitizedEan}`,
+    }
+
+    setErrorMessage(null)
+    addOrIncrementItem(product, { isManual: true })
+    setStatus(`${product.name} ajouté manuellement`)
+    setManualEan('')
+    setScanValue('')
+    setInputLookupStatus('idle')
+    inputRef.current?.focus()
+  }, [addOrIncrementItem, manualCandidateEan])
 
   const handleCompleteRun = useCallback(async () => {
     if (!location || !countType || items.length === 0 || !selectedUser) {
@@ -374,7 +361,6 @@ export const InventorySessionPage = () => {
         })),
       })
       setStatus('Comptage terminé avec succès.')
-      setManualOpen(false)
       setManualEan('')
       clearSession()
       setScanValue('')
@@ -429,11 +415,10 @@ export const InventorySessionPage = () => {
           <Button
             variant="ghost"
             onClick={() => {
-              setManualEan(trimmedScanValue)
-              setManualOpen(true)
+              handleManualAdd()
             }}
             data-testid="btn-open-manual"
-            disabled={!trimmedScanValue || inputLookupStatus !== 'not-found'}
+            disabled={!manualCandidateEan || inputLookupStatus !== 'not-found'}
           >
             Ajouter manuellement
           </Button>
@@ -536,22 +521,6 @@ export const InventorySessionPage = () => {
         />
       </Card>
 
-      <SlidingPanel open={manualOpen} title="Ajouter un produit" onClose={() => setManualOpen(false)}>
-        <form className="space-y-4" onSubmit={handleManualSubmit} data-testid="manual-add-form">
-          <p className="text-sm text-slate-600 dark:text-slate-300">
-            Le produit n&apos;est pas référencé. Confirmez l&apos;EAN pour l&apos;ajouter au comptage en tant que produit inconnu.
-          </p>
-          <Input
-            label="EAN"
-            name="manualEan"
-            value={manualEan}
-            onChange={(event) => setManualEan(event.target.value)}
-          />
-          <Button type="submit" fullWidth className="py-4">
-            Ajouter à la session
-          </Button>
-        </form>
-      </SlidingPanel>
     </div>
   )
 }
