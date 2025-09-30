@@ -350,6 +350,7 @@ export const InventorySessionPage = () => {
   }, [addOrIncrementItem, manualCandidateEan])
 
   const trimmedOperator = selectedUser?.trim() ?? ''
+  const existingRunId = typeof sessionId === 'string' ? sessionId.trim() : ''
   const locationId = typeof location?.id === 'string' ? location.id.trim() : ''
   const isValidCountType =
     countType === CountType.Count1 || countType === CountType.Count2 || countType === CountType.Count3
@@ -402,6 +403,10 @@ export const InventorySessionPage = () => {
         items: payloadItems,
       }
 
+      if (existingRunId) {
+        payload.runId = existingRunId
+      }
+
       await completeInventoryRun(locationId, payload)
       setStatus('Comptage terminé avec succès.')
       setManualEan('')
@@ -431,6 +436,7 @@ export const InventorySessionPage = () => {
   }, [
     clearSession,
     countType,
+    existingRunId,
     isValidCountType,
     items,
     locationId,
@@ -528,7 +534,7 @@ export const InventorySessionPage = () => {
                 <Button
                   type="button"
                   variant="secondary"
-                  className="tap-highlight-none no-focus-ring h-10 w-10 px-0 py-0 flex items-center justify-center text-lg leading-none font-semibold"
+                  className="tap-highlight-none no-focus-ring btn-glyph-center h-10 w-10 text-xl font-semibold"
                   onClick={() => adjustQuantity(item.product.ean, -1)}
                   aria-label="Retirer"
                 >
@@ -537,7 +543,7 @@ export const InventorySessionPage = () => {
                 <span className="text-2xl font-bold text-slate-900 dark:text-white">{item.quantity}</span>
                 <Button
                   type="button"
-                  className="tap-highlight-none no-focus-ring h-10 w-10 px-0 py-0 flex items-center justify-center text-lg leading-none font-semibold"
+                  className="tap-highlight-none no-focus-ring btn-glyph-center h-10 w-10 text-xl font-semibold"
                   onClick={() => adjustQuantity(item.product.ean, 1)}
                   aria-label="Ajouter"
                 >
