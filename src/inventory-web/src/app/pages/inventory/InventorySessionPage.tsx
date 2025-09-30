@@ -3,7 +3,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import { BarcodeFormat, DecodeHintType } from '@zxing/library'
-import { completeInventoryRun, fetchProductByEan } from '../../api/inventoryApi'
+import {
+  completeInventoryRun,
+  fetchProductByEan,
+  type CompleteInventoryRunPayload,
+} from '../../api/inventoryApi'
 import { BarcodeScanner } from '../../components/BarcodeScanner'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
@@ -93,6 +97,8 @@ export const InventorySessionPage = () => {
   const [manualEan, setManualEan] = useState('')
   const [inputLookupStatus, setInputLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not-found' | 'error'>('idle')
   const [completionLoading, setCompletionLoading] = useState(false)
+  const completionDialogRef = useRef<HTMLDialogElement | null>(null)
+  const completionOkButtonRef = useRef<HTMLButtonElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [recentScans, setRecentScans] = useState<string[]>([])
   const manualLookupIdRef = useRef(0)
@@ -342,43 +348,66 @@ export const InventorySessionPage = () => {
     inputRef.current?.focus()
   }, [addOrIncrementItem, manualCandidateEan])
 
+  const trimmedOperator = selectedUser?.trim() ?? ''
+  const isValidCountType =
+    countType === CountType.Count1 || countType === CountType.Count2 || countType === CountType.Count3
+  const canCompleteRun =
+    Boolean(location) &&
+    isValidCountType &&
+    trimmedOperator.length > 0 &&
+    items.length > 0 &&
+    !completionLoading
+
   const handleCompleteRun = useCallback(async () => {
-    if (!location || !countType || items.length === 0 || !selectedUser) {
+    if (!location || !isValidCountType || trimmedOperator.length === 0 || items.length === 0) {
       return
     }
     setCompletionLoading(true)
     setErrorMessage(null)
     setStatus('Envoi du comptage…')
     try {
-      await completeInventoryRun(location.id, {
-        runId: sessionId,
-        countType,
-        operator: selectedUser,
+      const payload: CompleteInventoryRunPayload = {
+        countType: countType as 1 | 2 | 3,
+        operator: trimmedOperator,
         items: items.map((item) => ({
           ean: item.product.ean,
           quantity: item.quantity,
-          isManual: item.isManual,
+          isManual: Boolean(item.isManual),
         })),
-      })
+      }
+
+      await completeInventoryRun(location.id, payload)
       setStatus('Comptage terminé avec succès.')
       setManualEan('')
       clearSession()
       setScanValue('')
       setInputLookupStatus('idle')
       setRecentScans([])
-      navigate('/inventory/location', { replace: true })
-    } catch (error) {
-      const err = error as HttpError
-      setStatus(null)
-      if (isHttpError(err)) {
-        setErrorMessage(buildHttpMessage('Impossible de terminer le comptage', err))
+      const dialog = completionDialogRef.current
+      if (dialog && typeof dialog.showModal === 'function') {
+        dialog.showModal()
+        requestAnimationFrame(() => {
+          completionOkButtonRef.current?.focus()
+        })
       } else {
-        setErrorMessage('Échec de l’envoi du comptage. Réessayez.')
+        navigate('/', { replace: true })
       }
+    } catch (error) {
+      setStatus(null)
+      const message =
+        error instanceof Error && error.message.trim().length > 0
+          ? error.message
+          : 'Impossible de terminer le comptage.'
+      setErrorMessage(message)
     } finally {
       setCompletionLoading(false)
     }
-  }, [clearSession, countType, items, location, navigate, selectedUser, sessionId])
+  }, [clearSession, countType, isValidCountType, items, location, navigate, trimmedOperator])
+
+  const handleCompletionModalOk = () => {
+    completionDialogRef.current?.close()
+    navigate('/', { replace: true })
+  }
 
   const adjustQuantity = (ean: string, delta: number) => {
     const item = items.find((entry) => entry.product.ean === ean)
@@ -488,17 +517,35 @@ export const InventorySessionPage = () => {
             <Button
               data-testid="btn-complete-run"
               className="py-3"
-              disabled={completionLoading}
+              disabled={!canCompleteRun}
+              aria-disabled={!canCompleteRun}
               onClick={() => {
                 void handleCompleteRun()
               }}
             >
-              {completionLoading ? 'Envoi en cours…' : 'Terminer ce comptage'}
+              {completionLoading ? 'Enregistrement…' : 'Terminer ce comptage'}
             </Button>
           </div>
         )}
       </Card>
-
+      <dialog
+        ref={completionDialogRef}
+        id="complete-inventory-modal"
+        aria-modal="true"
+        className="rounded-2xl border border-slate-300 bg-white p-6 text-slate-900 shadow-xl backdrop:bg-black/40 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+      >
+        <p className="text-lg font-semibold">Le comptage a été enregistré avec succès.</p>
+        <div className="mt-6 flex justify-end">
+          <Button
+            ref={completionOkButtonRef}
+            type="button"
+            onClick={handleCompletionModalOk}
+            data-testid="btn-complete-ok"
+          >
+            OK
+          </Button>
+        </div>
+      </dialog>
       <Card className="space-y-4">
         <div className="flex flex-col gap-2">
           <h3 className="text-xl font-semibold text-slate-900 dark:text-white">Scanner avec le téléphone</h3>
