@@ -1,12 +1,6 @@
 import { z } from 'zod'
 import { CountType, LocationsSchema } from '../types/inventory'
-import type {
-  CompleteInventoryRunPayload,
-  CompleteInventoryRunResult,
-  InventorySummary,
-  Location,
-  Product,
-} from '../types/inventory'
+import type { InventorySummary, Location, Product } from '../types/inventory'
 import http, { HttpError } from '@/lib/api/http'
 import { API_BASE } from '@/lib/api/config'
 import { areDevFixturesEnabled, cloneDevLocations } from './dev/fixtures'
@@ -177,15 +171,86 @@ export const fetchProductByEan = async (ean: string): Promise<Product> => {
   return data as Product
 }
 
+export interface CompleteInventoryRunItem {
+  ean: string
+  quantity: number
+  isManual: boolean
+}
+
+export interface CompleteInventoryRunPayload {
+  countType: 1 | 2 | 3
+  operator: string
+  items: CompleteInventoryRunItem[]
+}
+
+export interface CompleteInventoryRunResponse {
+  runId: string
+  inventorySessionId: string
+  locationId: string
+  countType: number
+  completedAtUtc: string
+  itemsCount: number
+  totalQuantity: number
+}
+
 export const completeInventoryRun = async (
   locationId: string,
   payload: CompleteInventoryRunPayload,
-): Promise<CompleteInventoryRunResult> => {
-  const data = await http(`${API_BASE}/inventories/${encodeURIComponent(locationId)}/complete`, {
+  signal?: AbortSignal,
+): Promise<CompleteInventoryRunResponse> => {
+  const url = `${API_BASE}/inventories/${encodeURIComponent(locationId)}/complete`
+
+  const res = await fetch(url, {
     method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
     body: JSON.stringify(payload),
+    signal,
   })
-  return data as CompleteInventoryRunResult
+
+  if (!res.ok) {
+    let detail = `Status Code: ${res.status}`
+    try {
+      const contentType = res.headers.get('content-type') ?? ''
+      if (contentType.includes('application/json')) {
+        const data = (await res.json()) as { message?: unknown; detail?: unknown; title?: unknown }
+        const candidate =
+          typeof data.message === 'string' && data.message.trim().length > 0
+            ? data.message
+            : typeof data.detail === 'string' && data.detail.trim().length > 0
+              ? data.detail
+              : typeof data.title === 'string' && data.title.trim().length > 0
+                ? data.title
+                : null
+        if (candidate) {
+          detail = candidate
+        }
+      } else {
+        const text = await res.text()
+        if (text.trim()) {
+          detail = text
+        }
+      }
+    } catch {
+      // Ignorer les erreurs de parsing afin de remonter au moins le statut HTTP
+    }
+
+    if (res.status === 415) {
+      throw new Error('Unsupported Media Type: requête JSON attendue (Content-Type: application/json).')
+    }
+
+    if (!detail || detail === `Status Code: ${res.status}`) {
+      detail =
+        res.status === 400 || res.status === 404
+          ? 'Impossible de terminer le comptage.'
+          : `Impossible de terminer le comptage. (HTTP ${res.status})`
+    }
+
+    throw new Error(detail)
+  }
+
+  return (await res.json()) as CompleteInventoryRunResponse
 }
 
 export const restartInventoryRun = async (locationId: string, countType: CountType): Promise<void> => {
