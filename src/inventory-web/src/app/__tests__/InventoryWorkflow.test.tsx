@@ -83,7 +83,7 @@ const {
     conflicts: 0,
     lastActivityUtc: null,
     openRunDetails: [],
-    conflictDetails: [],
+    conflictZones: [],
   }
   return {
     fetchLocationsMock: vi.fn(async (): Promise<Location[]> => [
@@ -224,7 +224,7 @@ describe('Workflow d\'inventaire', () => {
       conflicts: 0,
       lastActivityUtc: null,
       openRunDetails: [],
-      conflictDetails: [],
+      conflictZones: [],
     }))
     completeInventoryRunMock.mockReset()
     completeInventoryRunMock.mockImplementation(async () => ({
@@ -319,17 +319,12 @@ describe('Workflow d\'inventaire', () => {
       conflicts: 1,
       lastActivityUtc: null,
       openRunDetails: [],
-      conflictDetails: [
+      conflictZones: [
         {
-          conflictId: 'conf-1',
-          countLineId: 'line-1',
-          countingRunId: 'run-10',
           locationId: completedZone.id,
           locationCode: completedZone.code,
           locationLabel: completedZone.label,
-          countType: CountType.Count1,
-          operatorDisplayName: 'Luc',
-          createdAtUtc: new Date().toISOString(),
+          conflictLines: 1,
         },
       ],
     })

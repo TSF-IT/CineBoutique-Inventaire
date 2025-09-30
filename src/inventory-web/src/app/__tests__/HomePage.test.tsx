@@ -23,17 +23,18 @@ const fetchInventorySummaryMock = vi.hoisted(() =>
           startedAtUtc: '2025-01-01T10:00:00Z',
         },
       ],
-      conflictDetails: [
+      conflictZones: [
         {
-          conflictId: 'conf-1',
-          countLineId: 'line-1',
-          countingRunId: 'run-1',
           locationId: 'loc-1',
           locationCode: 'Z1',
           locationLabel: 'Zone 1',
-          countType: 1,
-          operatorDisplayName: 'Amélie',
-          createdAtUtc: '2025-01-01T11:00:00Z',
+          conflictLines: 2,
+        },
+        {
+          locationId: 'loc-2',
+          locationCode: 'Z2',
+          locationLabel: 'Zone 2',
+          conflictLines: 1,
         },
       ],
     })),
@@ -125,7 +126,8 @@ describe('HomePage', () => {
       expect(screen.getByText('1')).toBeInTheDocument()
       expect(screen.getByText('Conflits')).toBeInTheDocument()
       expect(screen.getByText('2')).toBeInTheDocument()
-      expect(screen.getAllByText('Touchez pour voir le détail')).toHaveLength(2)
+      expect(screen.getByText('Touchez pour voir le détail')).toBeInTheDocument()
+      expect(screen.getByText('Touchez une zone pour voir le détail')).toBeInTheDocument()
       expect(screen.getByText('Comptages terminés : 2 / 4')).toBeInTheDocument()
     })
 
@@ -140,7 +142,7 @@ describe('HomePage', () => {
       conflicts: 0,
       lastActivityUtc: null,
       openRunDetails: [],
-      conflictDetails: [],
+      conflictZones: [],
     })
     fetchLocationsMock.mockResolvedValueOnce([])
 

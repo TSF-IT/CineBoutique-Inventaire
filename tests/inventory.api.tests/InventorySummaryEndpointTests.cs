@@ -65,7 +65,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         Assert.Equal(0, payload.Conflicts);
         Assert.Null(payload.LastActivityUtc);
         Assert.Empty(payload.OpenRunDetails);
-        Assert.Empty(payload.ConflictDetails);
+        Assert.Empty(payload.ConflictZones);
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         Assert.Equal(1, openRun.CountType);
         Assert.Null(openRun.OperatorDisplayName);
         Assert.Equal(startedAt, openRun.StartedAtUtc, TimeSpan.FromSeconds(1));
-        Assert.Empty(payload.ConflictDetails);
+        Assert.Empty(payload.ConflictZones);
     }
 
     [Fact]
@@ -141,6 +141,8 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         var runId = Guid.NewGuid();
         var productId = Guid.NewGuid();
         var countLineId = Guid.NewGuid();
+        var secondProductId = Guid.NewGuid();
+        var secondCountLineId = Guid.NewGuid();
         var startedAt = DateTimeOffset.UtcNow.AddHours(-1);
         var completedAt = DateTimeOffset.UtcNow.AddMinutes(-30);
 
@@ -165,6 +167,9 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         const string insertProduct = "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"CreatedAtUtc\") VALUES (@Id, 'SKU-2', 'Produit', @CreatedAt);";
         await connection.ExecuteAsync(insertProduct, new { Id = productId, CreatedAt = startedAt });
 
+        const string insertSecondProduct = "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"CreatedAtUtc\") VALUES (@Id, 'SKU-3', 'Produit 2', @CreatedAt);";
+        await connection.ExecuteAsync(insertSecondProduct, new { Id = secondProductId, CreatedAt = startedAt });
+
         const string insertCountLine =
             "INSERT INTO \"CountLine\" (\"Id\", \"CountingRunId\", \"ProductId\", \"Quantity\", \"CountedAtUtc\")\n" +
             "VALUES (@Id, @RunId, @ProductId, 2, @CountedAt);";
@@ -176,9 +181,18 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
             CountedAt = completedAt
         });
 
+        await connection.ExecuteAsync(insertCountLine, new
+        {
+            Id = secondCountLineId,
+            RunId = runId,
+            ProductId = secondProductId,
+            CountedAt = completedAt
+        });
+
         const string insertConflict =
             "INSERT INTO \"Conflict\" (\"Id\", \"CountLineId\", \"Status\", \"Notes\", \"CreatedAtUtc\") VALUES (@Id, @CountLineId, 'pending', NULL, @CreatedAt);";
         await connection.ExecuteAsync(insertConflict, new { Id = Guid.NewGuid(), CountLineId = countLineId, CreatedAt = completedAt });
+        await connection.ExecuteAsync(insertConflict, new { Id = Guid.NewGuid(), CountLineId = secondCountLineId, CreatedAt = completedAt });
 
         var response = await _client.GetAsync("/api/inventories/summary");
         response.EnsureSuccessStatusCode();
@@ -187,14 +201,12 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         Assert.NotNull(payload);
         Assert.Equal(1, payload!.Conflicts);
         Assert.Equal(0, payload.OpenRuns);
-        Assert.Single(payload.ConflictDetails);
-        var conflict = payload.ConflictDetails[0];
-        Assert.Equal(locationId, conflict.LocationId);
-        Assert.Equal("Z2", conflict.LocationCode);
-        Assert.Equal("Zone 2", conflict.LocationLabel);
-        Assert.Equal(1, conflict.CountType);
-        Assert.Equal(runId, conflict.CountingRunId);
-        Assert.Equal(countLineId, conflict.CountLineId);
+        Assert.Single(payload.ConflictZones);
+        var conflictZone = payload.ConflictZones[0];
+        Assert.Equal(locationId, conflictZone.LocationId);
+        Assert.Equal("Z2", conflictZone.LocationCode);
+        Assert.Equal("Zone 2", conflictZone.LocationLabel);
+        Assert.Equal(2, conflictZone.ConflictLines);
         Assert.Empty(payload.OpenRunDetails);
     }
 
