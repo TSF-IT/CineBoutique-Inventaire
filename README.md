@@ -44,14 +44,50 @@ Une fois les conteneurs démarrés :
 - API : http://localhost:8080/swagger
 - Front PWA : http://localhost:3000
 
-Les migrations FluentMigrator et le seed de démonstration (zones `B1` à `B20`, `S1` à `S19`, produits réels et scénarios de comptage) sont exécutés automatiquement au démarrage lorsque `AppSettings:SeedOnStartup` vaut `true` (activé par défaut en environnement `Development`).
+Les migrations FluentMigrator et le seed de démonstration (zones `B1` à `B20`, `S1` à `S19`, catalogue produit de démo et comptages pré-remplis) sont exécutés automatiquement au démarrage lorsque `AppSettings:SeedOnStartup` vaut `true` (activé par défaut en environnement `Development`).
 
-Le jeu de données démo comprend notamment :
+Le jeu de données démo comprend désormais :
 
-- Trois produits insérés par EAN : `3057065988108` (« Liquide pour vape aux fruits rouges »), `9798347622207` (« Livre Backlot Rues de Paris ») et `3524891908353` (« Dacomex, serviettes nettoyantes »).
-- La zone `B1` avec une session d'inventaire active.
-- Deux comptages de type `1` réalisés par Amélie couvrant les trois EAN (Cas A).
-- Un comptage de type `1` réalisé par Bruno sur `B1` avec des quantités divergentes pour illustrer un conflit détectable en comparant les résultats avec ceux d'Amélie (Cas B).
+- Une session d'inventaire unique et stable (`aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee`) démarrée il y a environ une heure.
+- Les emplacements `B1` (`11111111-2222-4333-8444-b1b1b1b1b1b1`) et `B2` (`11111111-2222-4333-8444-b2b2b2b2b2b2`) créés si besoin puis réutilisés à l'identique.
+- Un comptage de type `1` en cours sur `B1` (run `11111111-2222-3333-4444-555555555555`) opéré par Amélie, démarré il y a dix minutes, avec deux lignes de comptage (`EAN 0000000000001` quantité `3`, `EAN 0000000000000` quantité `5`).
+- Un comptage de type `2` terminé sur `B2` (run `22222222-3333-4444-5555-666666666666`) réalisé par Bruno, clôturé neuf minutes après son lancement, comprenant deux lignes (`EAN 0000000000002` quantité `7`, `EAN 0000000000003` quantité `1`).
+- Un catalogue produit minimal de quatre références (`0000000000000` à `0000000000003`) réutilisables par les scénarios de tests.
+
+### Vérifications du seed démo
+
+```sql
+-- Résumé des runs ouverts
+SELECT R."Id"        AS "RunId",
+       R."InventorySessionId" AS "SessionId",
+       R."LocationId",
+       R."OperatorDisplayName",
+       R."StartedAtUtc",
+       R."CompletedAtUtc",
+       COUNT(L."Id") AS "LineCount"
+FROM "CountingRun" R
+LEFT JOIN "CountLine" L ON L."CountingRunId" = R."Id"
+GROUP BY R."Id", R."InventorySessionId", R."LocationId", R."OperatorDisplayName", R."StartedAtUtc", R."CompletedAtUtc"
+ORDER BY R."StartedAtUtc";
+
+-- Détail des lignes d’un run connu
+SELECT L."Id", L."CountingRunId", L."ProductId", L."Quantity", L."CountedAtUtc"
+FROM "CountLine" L
+WHERE L."CountingRunId" = '11111111-2222-3333-4444-555555555555'
+ORDER BY L."CountedAtUtc", L."Id";
+```
+
+### Reseed dev
+
+```bash
+docker compose down -v --remove-orphans
+docker compose up -d --build
+# ou, pour ne réinitialiser que les données :
+docker compose exec db sh -lc "psql -U postgres -d cineboutique -c 'TRUNCATE TABLE \"CountLine\" RESTART IDENTITY CASCADE;'"
+docker compose exec db sh -lc "psql -U postgres -d cineboutique -c 'TRUNCATE TABLE \"CountingRun\" RESTART IDENTITY CASCADE;'"
+docker compose exec db sh -lc "psql -U postgres -d cineboutique -c 'TRUNCATE TABLE \"InventorySession\" RESTART IDENTITY CASCADE;'"
+docker compose exec db sh -lc "psql -U postgres -d cineboutique -c 'TRUNCATE TABLE \"Product\" RESTART IDENTITY CASCADE;'"
+```
 
 > 💡 Si un volume de données persiste d'une exécution précédente, créez manuellement la base :
 >
