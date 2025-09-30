@@ -3,8 +3,10 @@ import react from '@vitejs/plugin-react'
 import { configDefaults } from 'vitest/config'
 import devApiFixturesPlugin from './vite.dev-api-fixtures'
 
+const useDevFixtures = process.env.VITE_USE_DEV_FIXTURES === 'true'
+
 export default defineConfig({
-  plugins: [react(), devApiFixturesPlugin()],
+  plugins: [react(), ...(useDevFixtures ? [devApiFixturesPlugin()] : [])],
   server: {
     port: 5173,
     proxy: {
