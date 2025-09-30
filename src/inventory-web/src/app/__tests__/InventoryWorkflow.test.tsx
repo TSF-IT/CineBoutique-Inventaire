@@ -413,7 +413,7 @@ describe('Workflow d\'inventaire', () => {
       name: 'Error',
       message: 'HTTP 404',
       status: 404,
-      url: '/api/products/999',
+      url: '/api/products/99999999',
     }
 
     fetchProductMock.mockRejectedValueOnce(notFoundError)
@@ -435,12 +435,12 @@ describe('Workflow d\'inventaire', () => {
 
     expect(manualButton).toBeDisabled()
 
-    fireEvent.change(input, { target: { value: '999' } })
+    fireEvent.change(input, { target: { value: '99999999' } })
 
     expect(manualButton).toBeDisabled()
-    await waitFor(() => expect((input as HTMLInputElement).value).toBe('999'))
+    await waitFor(() => expect((input as HTMLInputElement).value).toBe('99999999'))
 
-    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('999'))
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('99999999'))
     expect(fetchProductMock).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(screen.getByText(/Aucun produit trouvé/)).toBeInTheDocument())
     await waitFor(() => expect(manualButton).toBeEnabled())
@@ -451,7 +451,7 @@ describe('Workflow d\'inventaire', () => {
       name: 'Error',
       message: 'HTTP 404',
       status: 404,
-      url: '/api/products/999',
+      url: '/api/products/99999999',
     }
 
     fetchProductMock.mockRejectedValueOnce(notFoundError)
@@ -468,24 +468,18 @@ describe('Workflow d\'inventaire', () => {
     const sessionPages = await screen.findAllByTestId('page-session')
     const activeSessionPage = sessionPages[sessionPages.length - 1]
     const input = within(activeSessionPage).getByLabelText('Scanner (douchette ou saisie)')
+    const manualButton = within(activeSessionPage).getByTestId('btn-open-manual')
 
-    fireEvent.change(input, { target: { value: '999\n' } })
+    expect(manualButton).toBeDisabled()
 
-    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('999'))
+    fireEvent.change(input, { target: { value: '99999999\n' } })
 
-    const manualForms = await within(activeSessionPage).findAllByTestId('manual-add-form')
-    const manualForm = manualForms[manualForms.length - 1]
-    const manualDialog = manualForm.closest('[role="dialog"]') as HTMLElement | null
-    const manualEanField = within(manualForm).getByLabelText('EAN') as HTMLInputElement
-    expect(manualEanField.value).toBe('999')
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('99999999'))
+    await waitFor(() => expect(manualButton).toBeEnabled())
 
-    fireEvent.change(manualEanField, { target: { value: '0001' } })
+    fireEvent.click(manualButton)
 
-    fireEvent.submit(manualForm)
-
-    await waitFor(() => expect(manualDialog?.getAttribute('aria-hidden')).toBe('true'))
-
-    await within(activeSessionPage).findByText('Produit inconnu EAN 0001')
+    await within(activeSessionPage).findByText('Produit inconnu EAN 99999999')
   })
 
   it('envoie le comptage finalisé lorsque le bouton est actionné', async () => {
