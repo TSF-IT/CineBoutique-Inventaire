@@ -350,34 +350,59 @@ export const InventorySessionPage = () => {
   }, [addOrIncrementItem, manualCandidateEan])
 
   const trimmedOperator = selectedUser?.trim() ?? ''
+  const locationId = typeof location?.id === 'string' ? location.id.trim() : ''
   const isValidCountType =
     countType === CountType.Count1 || countType === CountType.Count2 || countType === CountType.Count3
   const canCompleteRun =
-    Boolean(location) &&
+    locationId.length > 0 &&
     isValidCountType &&
     trimmedOperator.length > 0 &&
     items.length > 0 &&
     !completionLoading
 
   const handleCompleteRun = useCallback(async () => {
-    if (!location || !isValidCountType || trimmedOperator.length === 0 || items.length === 0) {
+    if (!isValidCountType) {
+      setErrorMessage('Type de comptage invalide.')
+      return
+    }
+
+    if (trimmedOperator.length === 0) {
+      setErrorMessage("Indiquez l'opérateur qui réalise le comptage.")
+      return
+    }
+
+    if (items.length === 0) {
+      setErrorMessage('Ajoutez au moins un article avant de terminer le comptage.')
+      return
+    }
+
+    if (!locationId) {
+      setErrorMessage('Zone introuvable pour ce comptage.')
       return
     }
     setCompletionLoading(true)
     setErrorMessage(null)
     setStatus('Envoi du comptage…')
     try {
-      const payload: CompleteInventoryRunPayload = {
-        countType: countType as 1 | 2 | 3,
-        operator: trimmedOperator,
-        items: items.map((item) => ({
+      const payloadItems = items
+        .map((item) => ({
           ean: item.product.ean,
           quantity: item.quantity,
           isManual: Boolean(item.isManual),
-        })),
+        }))
+        .filter((entry) => entry.ean.trim().length > 0 && entry.quantity > 0)
+
+      if (payloadItems.length === 0) {
+        throw new Error('Ajoutez au moins un article avec une quantité positive pour terminer le comptage.')
       }
 
-      await completeInventoryRun(location.id, payload)
+      const payload: CompleteInventoryRunPayload = {
+        countType: countType as 1 | 2 | 3,
+        operator: trimmedOperator,
+        items: payloadItems,
+      }
+
+      await completeInventoryRun(locationId, payload)
       setStatus('Comptage terminé avec succès.')
       setManualEan('')
       clearSession()
@@ -403,7 +428,15 @@ export const InventorySessionPage = () => {
     } finally {
       setCompletionLoading(false)
     }
-  }, [clearSession, countType, isValidCountType, items, location, navigate, trimmedOperator])
+  }, [
+    clearSession,
+    countType,
+    isValidCountType,
+    items,
+    locationId,
+    navigate,
+    trimmedOperator,
+  ])
 
   const handleCompletionModalOk = () => {
     completionDialogRef.current?.close()
@@ -494,18 +527,18 @@ export const InventorySessionPage = () => {
               <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  className="h-10 w-10 rounded-full border border-slate-300 bg-slate-100 text-xl text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-300 bg-slate-100 text-xl font-semibold leading-none text-slate-700 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:focus:ring-offset-slate-900"
                   onClick={() => adjustQuantity(item.product.ean, -1)}
-                  aria-label={`Retirer ${item.product.name}`}
+                  aria-label="Retirer"
                 >
-                  –
+                  −
                 </button>
                 <span className="text-2xl font-bold text-slate-900 dark:text-white">{item.quantity}</span>
                 <button
                   type="button"
-                  className="h-10 w-10 rounded-full bg-brand-600 text-xl text-white dark:bg-brand-500"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-transparent bg-brand-600 text-xl font-semibold leading-none text-white shadow-sm transition focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 focus:ring-offset-white disabled:cursor-not-allowed disabled:opacity-60 dark:bg-brand-500 dark:focus:ring-offset-slate-900"
                   onClick={() => adjustQuantity(item.product.ean, 1)}
-                  aria-label={`Ajouter ${item.product.name}`}
+                  aria-label="Ajouter"
                 >
                   +
                 </button>
