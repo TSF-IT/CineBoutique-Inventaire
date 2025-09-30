@@ -1561,14 +1561,12 @@ static Guid? SanitizeRunId(Guid? runId)
         : null;
 }
 
-private sealed record SanitizedCountLine(string Ean, decimal Quantity, bool IsManual);
-
-private sealed record CountingRunRow(Guid Id, Guid InventorySessionId, Guid LocationId, short CountType);
-
-private sealed record ProductLookupRow(Guid Id, string Ean);
+internal sealed record SanitizedCountLine(string Ean, decimal Quantity, bool IsManual);
+internal sealed record CountingRunRow(Guid Id, Guid InventorySessionId, Guid LocationId, short CountType);
+internal sealed record ProductLookupRow(Guid Id, string Ean);
 
 // Types internes mappés Dapper
-file sealed class LocationCountStatusRow
+internal sealed class LocationCountStatusRow
 {
     public Guid LocationId { get; set; }
     public short CountType { get; set; }
@@ -1578,7 +1576,7 @@ file sealed class LocationCountStatusRow
     public string? OperatorDisplayName { get; set; }
 }
 
-file sealed class OpenRunSummaryRow
+internal sealed class OpenRunSummaryRow
 {
     public Guid RunId { get; set; }
     public Guid LocationId { get; set; }
@@ -1589,7 +1587,7 @@ file sealed class OpenRunSummaryRow
     public DateTime StartedAtUtc { get; set; }
 }
 
-file sealed class ConflictSummaryRow
+internal sealed class ConflictSummaryRow
 {
     public Guid ConflictId { get; set; }
     public Guid CountLineId { get; set; }
