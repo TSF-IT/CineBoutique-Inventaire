@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import { BarcodeFormat, DecodeHintType } from '@zxing/library'
-import { createManualProduct, fetchProductByEan } from '../../api/inventoryApi'
+import { completeInventoryRun, fetchProductByEan } from '../../api/inventoryApi'
 import { BarcodeScanner } from '../../components/BarcodeScanner'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
@@ -86,6 +86,7 @@ export const InventorySessionPage = () => {
     setQuantity,
     removeItem,
     sessionId,
+    clearSession,
   } = useInventory()
   const [useCamera, setUseCamera] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
@@ -93,9 +94,8 @@ export const InventorySessionPage = () => {
   const [manualOpen, setManualOpen] = useState(false)
   const [scanValue, setScanValue] = useState('')
   const [manualEan, setManualEan] = useState('')
-  const [manualName, setManualName] = useState('')
-  const [manualLoading, setManualLoading] = useState(false)
   const [inputLookupStatus, setInputLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not-found' | 'error'>('idle')
+  const [completionLoading, setCompletionLoading] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [recentScans, setRecentScans] = useState<string[]>([])
   const manualLookupIdRef = useRef(0)
@@ -328,37 +328,71 @@ export const InventorySessionPage = () => {
   )
 
   const handleManualSubmit = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
+    (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault()
-      if (!manualEan.trim() || !manualName.trim()) {
-        setErrorMessage('Indiquez un EAN et un libellé pour créer le produit.')
+      const sanitizedEan = manualEan.trim()
+      if (!sanitizedEan) {
+        setErrorMessage('Indiquez un EAN pour ajouter le produit à la session.')
         return
       }
-      setManualLoading(true)
-      setErrorMessage(null)
-      try {
-        const product = await createManualProduct({ ean: manualEan.trim(), name: manualName.trim() })
-        addOrIncrementItem(product, { isManual: true })
-        setStatus(`${product.name} ajouté manuellement`)
-        setManualOpen(false)
-        setManualName('')
-        setManualEan('')
-        setScanValue('')
-        setInputLookupStatus('idle')
-        inputRef.current?.focus()
-      } catch (error) {
-        const err = error as HttpError
-        if (isHttpError(err)) {
-          setErrorMessage(buildHttpMessage('Création impossible', err))
-        } else {
-          setErrorMessage("Échec de la création du produit. Vérifiez l'EAN et réessayez.")
-        }
-      } finally {
-        setManualLoading(false)
+      if (!/^\d{4,18}$/.test(sanitizedEan)) {
+        setErrorMessage("L'EAN doit contenir uniquement des chiffres (4 à 18 caractères).")
+        return
       }
+      setErrorMessage(null)
+      const product: Product = {
+        ean: sanitizedEan,
+        name: `Produit inconnu EAN ${sanitizedEan}`,
+      }
+      addOrIncrementItem(product, { isManual: true })
+      setStatus(`${product.name} ajouté manuellement`)
+      setManualOpen(false)
+      setManualEan('')
+      setScanValue('')
+      setInputLookupStatus('idle')
+      inputRef.current?.focus()
     },
-    [addOrIncrementItem, manualEan, manualName],
+    [addOrIncrementItem, manualEan],
   )
+
+  const handleCompleteRun = useCallback(async () => {
+    if (!location || !countType || items.length === 0 || !selectedUser) {
+      return
+    }
+    setCompletionLoading(true)
+    setErrorMessage(null)
+    setStatus('Envoi du comptage…')
+    try {
+      await completeInventoryRun(location.id, {
+        runId: sessionId,
+        countType,
+        operator: selectedUser,
+        items: items.map((item) => ({
+          ean: item.product.ean,
+          quantity: item.quantity,
+          isManual: item.isManual,
+        })),
+      })
+      setStatus('Comptage terminé avec succès.')
+      setManualOpen(false)
+      setManualEan('')
+      clearSession()
+      setScanValue('')
+      setInputLookupStatus('idle')
+      setRecentScans([])
+      navigate('/inventory/location', { replace: true })
+    } catch (error) {
+      const err = error as HttpError
+      setStatus(null)
+      if (isHttpError(err)) {
+        setErrorMessage(buildHttpMessage('Impossible de terminer le comptage', err))
+      } else {
+        setErrorMessage('Échec de l’envoi du comptage. Réessayez.')
+      }
+    } finally {
+      setCompletionLoading(false)
+    }
+  }, [clearSession, countType, items, location, navigate, selectedUser, sessionId])
 
   const adjustQuantity = (ean: string, delta: number) => {
     const item = items.find((entry) => entry.product.ean === ean)
@@ -464,6 +498,20 @@ export const InventorySessionPage = () => {
             </li>
           ))}
         </ul>
+        {sortedItems.length > 0 && (
+          <div className="flex justify-end">
+            <Button
+              data-testid="btn-complete-run"
+              className="py-3"
+              disabled={completionLoading}
+              onClick={() => {
+                void handleCompleteRun()
+              }}
+            >
+              {completionLoading ? 'Envoi en cours…' : 'Terminer ce comptage'}
+            </Button>
+          </div>
+        )}
       </Card>
 
       <Card className="space-y-4">
@@ -489,21 +537,18 @@ export const InventorySessionPage = () => {
       </Card>
 
       <SlidingPanel open={manualOpen} title="Ajouter un produit" onClose={() => setManualOpen(false)}>
-        <form className="space-y-4" onSubmit={handleManualSubmit}>
+        <form className="space-y-4" onSubmit={handleManualSubmit} data-testid="manual-add-form">
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            Le produit n&apos;est pas référencé. Confirmez l&apos;EAN pour l&apos;ajouter au comptage en tant que produit inconnu.
+          </p>
           <Input
             label="EAN"
             name="manualEan"
             value={manualEan}
             onChange={(event) => setManualEan(event.target.value)}
           />
-          <Input
-            label="Libellé"
-            name="manualLabel"
-            value={manualName}
-            onChange={(event) => setManualName(event.target.value)}
-          />
-          <Button type="submit" fullWidth disabled={manualLoading} className="py-4">
-            {manualLoading ? 'Création…' : 'Ajouter à la session'}
+          <Button type="submit" fullWidth className="py-4">
+            Ajouter à la session
           </Button>
         </form>
       </SlidingPanel>

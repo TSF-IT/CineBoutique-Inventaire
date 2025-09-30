@@ -14,7 +14,13 @@ import { CountType } from '../types/inventory'
 import type { InventorySummary, Location } from '../types/inventory'
 import type { HttpError } from '../../lib/api/http'
 
-const { fetchLocationsMock, fetchProductMock, fetchInventorySummaryMock, reserveLocation } = vi.hoisted(() => {
+const {
+  fetchLocationsMock,
+  fetchProductMock,
+  fetchInventorySummaryMock,
+  completeInventoryRunMock,
+  reserveLocation,
+} = vi.hoisted(() => {
   const reserveLocation: Location = {
     id: 'zone-1',
     code: 'RES',
@@ -86,6 +92,15 @@ const { fetchLocationsMock, fetchProductMock, fetchInventorySummaryMock, reserve
     ]),
     fetchProductMock: vi.fn(() => Promise.resolve({ ean: '123', name: 'Popcorn caramel' })),
     fetchInventorySummaryMock: vi.fn(async (): Promise<InventorySummary> => ({ ...emptySummary })),
+    completeInventoryRunMock: vi.fn(async () => ({
+      runId: 'run-1',
+      inventorySessionId: 'session-1',
+      locationId: reserveLocation.id,
+      countType: 1,
+      completedAtUtc: new Date().toISOString(),
+      itemsCount: 1,
+      totalQuantity: 1,
+    })),
     reserveLocation,
   }
 })
@@ -97,6 +112,7 @@ vi.mock('../api/inventoryApi', async (importOriginal) => {
     fetchLocations: fetchLocationsMock,
     fetchProductByEan: fetchProductMock,
     fetchInventorySummary: fetchInventorySummaryMock,
+    completeInventoryRun: completeInventoryRunMock,
   }
 })
 
@@ -158,9 +174,59 @@ const renderInventoryRoutes = (initialEntry: string, options?: RenderInventoryOp
 
 describe('Workflow d\'inventaire', () => {
   beforeEach(() => {
-    fetchLocationsMock.mockClear()
-    fetchProductMock.mockClear()
-    fetchInventorySummaryMock.mockClear()
+    fetchLocationsMock.mockReset()
+    fetchLocationsMock.mockImplementation(async (): Promise<Location[]> => [
+      { ...reserveLocation },
+      {
+        id: 'zone-2',
+        code: 'SAL1',
+        label: 'Salle 1',
+        isBusy: true,
+        busyBy: 'paul.dupont',
+        activeCountType: 1,
+        activeRunId: 'run-1',
+        activeStartedAtUtc: new Date(),
+        countStatuses: [
+          {
+            countType: 1,
+            status: 'in_progress',
+            runId: 'run-1',
+            operatorDisplayName: 'paul.dupont',
+            startedAtUtc: new Date(),
+            completedAtUtc: null,
+          },
+          {
+            countType: 2,
+            status: 'not_started',
+            runId: null,
+            operatorDisplayName: null,
+            startedAtUtc: null,
+            completedAtUtc: null,
+          },
+        ],
+      },
+    ])
+    fetchProductMock.mockReset()
+    fetchProductMock.mockImplementation(() => Promise.resolve({ ean: '123', name: 'Popcorn caramel' }))
+    fetchInventorySummaryMock.mockReset()
+    fetchInventorySummaryMock.mockImplementation(async (): Promise<InventorySummary> => ({
+      activeSessions: 0,
+      openRuns: 0,
+      conflicts: 0,
+      lastActivityUtc: null,
+      openRunDetails: [],
+      conflictDetails: [],
+    }))
+    completeInventoryRunMock.mockReset()
+    completeInventoryRunMock.mockImplementation(async () => ({
+      runId: 'run-1',
+      inventorySessionId: 'session-1',
+      locationId: reserveLocation.id,
+      countType: 2,
+      completedAtUtc: new Date().toISOString(),
+      itemsCount: 1,
+      totalQuantity: 1,
+    }))
   })
 
   it('permet de sélectionner utilisateur, zone et type en respectant les statuts', async () => {
@@ -378,6 +444,88 @@ describe('Workflow d\'inventaire', () => {
     expect(fetchProductMock).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(screen.getByText(/Aucun produit trouvé/)).toBeInTheDocument())
     await waitFor(() => expect(manualButton).toBeEnabled())
+  })
+
+  it("permet d'ajouter un produit inconnu via l'ajout manuel", async () => {
+    const notFoundError: HttpError = {
+      name: 'Error',
+      message: 'HTTP 404',
+      status: 404,
+      url: '/api/products/999',
+    }
+
+    fetchProductMock.mockRejectedValueOnce(notFoundError)
+
+    renderInventoryRoutes('/inventory/session', {
+      initialize: (inventory) => {
+        inventory.setSelectedUser('Amélie')
+        inventory.setCountType(CountType.Count1)
+        inventory.setLocation({ ...reserveLocation })
+        inventory.clearSession()
+      },
+    })
+
+    const sessionPages = await screen.findAllByTestId('page-session')
+    const activeSessionPage = sessionPages[sessionPages.length - 1]
+    const input = within(activeSessionPage).getByLabelText('Scanner (douchette ou saisie)')
+
+    fireEvent.change(input, { target: { value: '999\n' } })
+
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('999'))
+
+    const manualForms = await within(activeSessionPage).findAllByTestId('manual-add-form')
+    const manualForm = manualForms[manualForms.length - 1]
+    const manualDialog = manualForm.closest('[role="dialog"]') as HTMLElement | null
+    const manualEanField = within(manualForm).getByLabelText('EAN') as HTMLInputElement
+    expect(manualEanField.value).toBe('999')
+
+    fireEvent.change(manualEanField, { target: { value: '0001' } })
+
+    fireEvent.submit(manualForm)
+
+    await waitFor(() => expect(manualDialog?.getAttribute('aria-hidden')).toBe('true'))
+
+    await within(activeSessionPage).findByText('Produit inconnu EAN 0001')
+  })
+
+  it('envoie le comptage finalisé lorsque le bouton est actionné', async () => {
+    renderInventoryRoutes('/inventory/session', {
+      initialize: (inventory) => {
+        inventory.setSelectedUser('Amélie')
+        inventory.setCountType(CountType.Count2)
+        inventory.setLocation({ ...reserveLocation })
+        inventory.clearSession()
+      },
+    })
+
+    const sessionPages = await screen.findAllByTestId('page-session')
+    const activeSessionPage = sessionPages[sessionPages.length - 1]
+    const input = within(activeSessionPage).getByLabelText('Scanner (douchette ou saisie)')
+    fireEvent.change(input, { target: { value: '123' } })
+
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('123'))
+    await within(activeSessionPage).findByText('Popcorn caramel')
+    const finishButton = await within(activeSessionPage).findByTestId('btn-complete-run')
+    expect(finishButton).toBeInTheDocument()
+
+    fireEvent.click(finishButton)
+
+    await waitFor(() => expect(completeInventoryRunMock).toHaveBeenCalledTimes(1))
+    const [locationId, payload] = completeInventoryRunMock.mock.calls[0]
+    expect(locationId).toBeTruthy()
+    expect(payload).toMatchObject({
+      runId: null,
+      countType: CountType.Count2,
+      operator: 'Amélie',
+    })
+    expect(payload.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          ean: '123',
+          isManual: false,
+        }),
+      ]),
+    )
   })
 
 })
