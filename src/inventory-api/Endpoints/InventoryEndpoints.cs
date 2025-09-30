@@ -28,6 +28,7 @@ internal static class InventoryEndpoints
         MapLocationsEndpoint(app);
         MapCompleteEndpoint(app);
         MapRestartEndpoint(app);
+        MapActiveRunLookupEndpoint(app); 
 
         return app;
     }
@@ -169,16 +170,17 @@ ORDER BY c.""CreatedAtUtc"" DESC;";
                 : "NULL::text";
 
             var sql = $@"WITH active_runs AS (
-    SELECT DISTINCT ON (cr.""LocationId"")
+    SELECT DISTINCT ON (cr.""LocationId"", cr.""CountType"", cr.""OperatorDisplayName"")
         cr.""LocationId"",
-        cr.""Id""          AS ""ActiveRunId"",
-        cr.""CountType""   AS ""ActiveCountType"",
-        cr.""StartedAtUtc"" AS ""ActiveStartedAtUtc"",
+        cr.""Id""            AS ""ActiveRunId"",
+        cr.""CountType""     AS ""ActiveCountType"",
+        cr.""StartedAtUtc""  AS ""ActiveStartedAtUtc"",
+        -- si tu as la détection conditionnelle de la colonne:
         {operatorDisplayNameProjection} AS ""BusyBy""
     FROM ""CountingRun"" cr
     WHERE cr.""CompletedAtUtc"" IS NULL
       AND (@CountType IS NULL OR cr.""CountType"" = @CountType)
-    ORDER BY cr.""LocationId"", cr.""StartedAtUtc"" DESC
+    ORDER BY cr.""LocationId"", cr.""CountType"", cr.""OperatorDisplayName"", cr.""StartedAtUtc"" DESC
 )
 SELECT
     l.""Id"",
@@ -301,23 +303,35 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
 
                 location.CountStatuses = statuses;
 
-                LocationCountStatusDto? active = null;
+                // Y a-t-il au moins un run ouvert sur la zone ?
+                var anyOpen = openRuns.Any(r => r.LocationId == location.Id);
+                location.IsBusy = anyOpen;
+
+                // Choix d'un run "actif" pour compat descendante (UI existante)
                 if (countType is { } requestedType)
                 {
-                    active = statuses.FirstOrDefault(
-                        state => state.Status == LocationCountStatus.InProgress && state.CountType == requestedType);
-                }
+                    var mostRecent = openRuns
+                        .Where(r => r.LocationId == location.Id && r.CountType == requestedType)
+                        .OrderByDescending(r => r.StartedAtUtc)
+                        .FirstOrDefault();
 
-                if (active is null && countType is null)
+                    location.ActiveRunId       = EndpointUtilities.SanitizeRunId(mostRecent?.RunId);
+                    location.ActiveCountType   = mostRecent?.CountType;
+                    location.ActiveStartedAtUtc= TimeUtil.ToUtcOffset(mostRecent?.StartedAtUtc);
+                    location.BusyBy            = mostRecent?.OperatorDisplayName;
+                }
+                else
                 {
-                    active = statuses.FirstOrDefault(state => state.Status == LocationCountStatus.InProgress);
-                }
+                    var mostRecent = openRuns
+                        .Where(r => r.LocationId == location.Id)
+                        .OrderByDescending(r => r.StartedAtUtc)
+                        .FirstOrDefault();
 
-                location.IsBusy = active is not null;
-                location.ActiveRunId = active?.RunId;
-                location.ActiveCountType = active?.CountType;
-                location.ActiveStartedAtUtc = active?.StartedAtUtc;
-                location.BusyBy = active?.OperatorDisplayName;
+                    location.ActiveRunId       = EndpointUtilities.SanitizeRunId(mostRecent?.RunId);
+                    location.ActiveCountType   = mostRecent?.CountType;
+                    location.ActiveStartedAtUtc= TimeUtil.ToUtcOffset(mostRecent?.StartedAtUtc);
+                    location.BusyBy            = mostRecent?.OperatorDisplayName;
+                }
             }
 
             return Results.Ok(locations);
@@ -717,6 +731,90 @@ WHERE ""LocationId"" = @LocationId
             return op;
         });
     }
+
+    private static void MapActiveRunLookupEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapGet("/api/inventories/{locationId:guid}/active-run", async (
+            Guid locationId,
+            int countType,
+            string operatorName,
+            Guid? sessionId,
+            IDbConnection connection,
+            CancellationToken cancellationToken) =>
+        {
+            if (countType is not (1 or 2 or 3))
+                return Results.BadRequest(new { message = "countType doit valoir 1, 2 ou 3." });
+
+            operatorName = operatorName?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(operatorName))
+                return Results.BadRequest(new { message = "operatorName est requis." });
+
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+            // Résoudre la session cible : paramètre explicite, sinon dernière session non complétée
+            Guid targetSessionId;
+            if (sessionId is { } sid)
+            {
+                targetSessionId = sid;
+            }
+            else
+            {
+                const string selectActiveSession = @"
+    SELECT ""Id""
+    FROM ""InventorySession""
+    WHERE ""CompletedAtUtc"" IS NULL
+    ORDER BY ""StartedAtUtc"" DESC
+    LIMIT 1;";
+                var resolved = await connection.QuerySingleOrDefaultAsync<Guid?>(
+                    new CommandDefinition(selectActiveSession, cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+                if (!resolved.HasValue)
+                    return Results.NotFound(new { message = "Aucune session active." });
+
+                targetSessionId = resolved.Value;
+            }
+
+            const string selectRunSql = @"
+    SELECT ""Id"" AS ""RunId"", ""StartedAtUtc""
+    FROM ""CountingRun""
+    WHERE ""InventorySessionId"" = @SessionId
+    AND ""LocationId""        = @LocationId
+    AND ""CountType""         = @CountType
+    AND COALESCE(""OperatorDisplayName"", '') = @Operator
+    AND ""CompletedAtUtc"" IS NULL
+    ORDER BY ""StartedAtUtc"" DESC
+    LIMIT 1;";
+
+    var run = await connection.QuerySingleOrDefaultAsync<(Guid RunId, DateTime StartedAtUtc)?>(
+        new CommandDefinition(
+            selectRunSql,
+            new { SessionId = targetSessionId, LocationId = locationId, CountType = (short)countType, Operator = operatorName },
+            cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            if (run is null)
+                return Results.NotFound(new { message = "Aucun run actif pour ces critères." });
+
+            return Results.Ok(new
+            {
+                SessionId = targetSessionId,
+                RunId = run.Value.RunId,
+                CountType = countType,
+                Operator = operatorName,
+                StartedAtUtc = TimeUtil.ToUtcOffset(run.Value.StartedAtUtc)
+            });
+        })
+        .WithName("GetActiveRunForOperator")
+        .WithTags("Inventories")
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status404NotFound)
+        .WithOpenApi(op =>
+        {
+            op.Summary = "Trouve le run ouvert pour une zone/type/opérateur (dans la session active par défaut).";
+            return op;
+        });
+    }
+
 
     private static string BuildUnknownSku(string ean)
     {
