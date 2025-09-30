@@ -1,6 +1,6 @@
 // Modifications : forcer l'inclusion de runId=null lors de la complétion sans run existant.
 import type { KeyboardEvent, ChangeEvent } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import { BarcodeFormat, DecodeHintType } from '@zxing/library'
@@ -116,10 +116,7 @@ export const InventorySessionPage = () => {
     }
   }, [countType, location, navigate, selectedUser])
 
-  const sortedItems = useMemo(
-    () => [...items].sort((a, b) => b.lastScanAt.localeCompare(a.lastScanAt)),
-    [items],
-  )
+  const displayedItems = items
 
   const searchProductByEan = useCallback(async (ean: string) => {
     try {
@@ -511,17 +508,20 @@ export const InventorySessionPage = () => {
           <h3 className="text-xl font-semibold text-slate-900 dark:text-white">Articles scannés</h3>
           <span className="text-sm text-slate-600 dark:text-slate-400">{items.length} références</span>
         </div>
-        {sortedItems.length === 0 && (
+        {displayedItems.length === 0 && (
           <EmptyState
             title="En attente de scan"
             description="Scannez un produit via la caméra ou la douchette pour l&apos;ajouter au comptage."
           />
         )}
         <ul className="flex flex-col gap-3">
-          {sortedItems.map((item) => (
+          {displayedItems.map((item) => (
             <li
-              key={item.product.ean}
+              key={item.id}
               className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/60"
+              data-testid="scanned-item"
+              data-item-id={item.id}
+              data-ean={item.product.ean}
             >
               <div>
                 <p className="text-lg font-semibold text-slate-900 dark:text-white">{item.product.name}</p>
@@ -551,7 +551,7 @@ export const InventorySessionPage = () => {
             </li>
           ))}
         </ul>
-        {sortedItems.length > 0 && (
+        {displayedItems.length > 0 && (
           <div className="flex justify-end">
             <Button
               data-testid="btn-complete-run"
