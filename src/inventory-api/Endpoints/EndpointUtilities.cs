@@ -27,33 +27,32 @@ internal static class EndpointUtilities
 
     public static async Task<bool> TableExistsAsync(IDbConnection connection, string tableName, CancellationToken cancellationToken)
     {
-        const string sql = @"SELECT 1
-FROM information_schema.tables
-WHERE table_schema = current_schema()
-  AND table_name = @TableName
-LIMIT 1;";
+        const string sql = @"SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.tables
+    WHERE LOWER(table_name) = LOWER(@TableName)
+      AND table_schema = ANY (current_schemas(TRUE))
+      AND table_type IN ('BASE TABLE', 'VIEW', 'FOREIGN TABLE', 'LOCAL TEMPORARY', 'GLOBAL TEMPORARY')
+);";
 
-        var result = await connection.ExecuteScalarAsync<int?>(
+        return await connection.ExecuteScalarAsync<bool>(
                 new CommandDefinition(sql, new { TableName = tableName }, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
-
-        return result.HasValue;
     }
 
     public static async Task<bool> ColumnExistsAsync(IDbConnection connection, string tableName, string columnName, CancellationToken cancellationToken)
     {
-        const string sql = @"SELECT 1
-FROM information_schema.columns
-WHERE table_schema = current_schema()
-  AND table_name = @TableName
-  AND column_name = @ColumnName
-LIMIT 1;";
+        const string sql = @"SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE LOWER(table_name) = LOWER(@TableName)
+      AND LOWER(column_name) = LOWER(@ColumnName)
+      AND table_schema = ANY (current_schemas(TRUE))
+);";
 
-        var result = await connection.ExecuteScalarAsync<int?>(
+        return await connection.ExecuteScalarAsync<bool>(
                 new CommandDefinition(sql, new { TableName = tableName, ColumnName = columnName }, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
-
-        return result.HasValue;
     }
 
     public static Guid? SanitizeRunId(Guid? runId)

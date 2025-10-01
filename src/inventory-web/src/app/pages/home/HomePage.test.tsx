@@ -36,6 +36,7 @@ describe('HomePage', () => {
       conflicts: 1,
       lastActivityUtc: null,
       openRunDetails: [],
+      completedRunDetails: [],
       conflictZones: [
         {
           locationId: 'loc-1',
@@ -83,5 +84,65 @@ describe('HomePage', () => {
     expect(await screen.findByText(/EAN 111/i)).toBeInTheDocument()
     expect(screen.getAllByText('Comptage 1').length).toBeGreaterThan(0)
     expect(screen.getAllByText('Comptage 2').length).toBeGreaterThan(0)
+  })
+
+  it('ouvre la modale des comptages en cours et terminés', async () => {
+    const summary: InventorySummary = {
+      activeSessions: 1,
+      openRuns: 1,
+      conflicts: 0,
+      lastActivityUtc: null,
+      openRunDetails: [
+        {
+          runId: 'run-1',
+          locationId: 'loc-1',
+          locationCode: 'B1',
+          locationLabel: 'Zone B1',
+          countType: 1,
+          operatorDisplayName: 'Alice',
+          startedAtUtc: new Date('2024-01-01T10:00:00Z').toISOString(),
+        },
+      ],
+      completedRunDetails: [
+        {
+          runId: 'run-2',
+          locationId: 'loc-2',
+          locationCode: 'S1',
+          locationLabel: 'Zone S1',
+          countType: 2,
+          operatorDisplayName: 'Bruno',
+          startedAtUtc: new Date('2023-12-31T09:00:00Z').toISOString(),
+          completedAtUtc: new Date('2023-12-31T10:00:00Z').toISOString(),
+        },
+      ],
+      conflictZones: [],
+    }
+
+    const locations: Location[] = []
+
+    mockedFetchSummary.mockResolvedValue(summary)
+    mockedFetchLocations.mockResolvedValue(locations)
+
+    render(
+      <ThemeProvider>
+        <MemoryRouter>
+          <HomePage />
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    await waitFor(() => {
+      const buttons = screen.getAllByRole('button', { name: /Comptages en cours/i })
+      expect(buttons.some((button) => !button.hasAttribute('disabled'))).toBe(true)
+    })
+    const cards = screen.getAllByRole('button', { name: /Comptages en cours/i })
+    const activeCard = cards.find((card) => !card.hasAttribute('disabled')) ?? cards[0]
+    fireEvent.click(activeCard)
+
+    const modalTitle = await screen.findByRole('heading', { level: 2, name: /Comptages en cours et terminés/i })
+    expect(modalTitle).toBeInTheDocument()
+    expect(screen.getByText(/Comptages terminés \(20 plus récents\)/i)).toBeInTheDocument()
+    expect(screen.getByText(/Opérateur : Alice/i)).toBeInTheDocument()
+    expect(screen.getByText(/Opérateur : Bruno/i)).toBeInTheDocument()
   })
 })
