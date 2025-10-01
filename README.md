@@ -44,37 +44,19 @@ Une fois les conteneurs démarrés :
 - API : http://localhost:8080/swagger
 - Front PWA : http://localhost:3000
 
-Les migrations FluentMigrator et le seed de démonstration (zones `B1` à `B20`, `S1` à `S19`, catalogue produit de démo et comptages pré-remplis) sont exécutés automatiquement au démarrage lorsque `AppSettings:SeedOnStartup` vaut `true` (activé par défaut en environnement `Development`).
+Les migrations FluentMigrator et le seed automatisé (zones `B1` à `B20` et `S1` à `S19`) sont exécutés automatiquement au démarrage lorsque `AppSettings:SeedOnStartup` vaut `true` (activé par défaut en environnement `Development`). Aucun produit, session ou comptage n'est désormais prérempli : seules les 39 zones standards et les 5 utilisateurs de démonstration définis dans la configuration sont créés.
 
-Le jeu de données démo comprend désormais :
-
-- Une session d'inventaire unique et stable (`aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee`) démarrée il y a environ une heure.
-- Les emplacements `B1` (`11111111-2222-4333-8444-b1b1b1b1b1b1`) et `B2` (`11111111-2222-4333-8444-b2b2b2b2b2b2`) créés si besoin puis réutilisés à l'identique.
-- Un comptage de type `1` en cours sur `B1` (run `11111111-2222-3333-4444-555555555555`) opéré par Amélie, démarré il y a dix minutes, avec deux lignes de comptage (`EAN 0000000000001` quantité `3`, `EAN 0000000000000` quantité `5`).
-- Un comptage de type `2` terminé sur `B2` (run `22222222-3333-4444-5555-666666666666`) réalisé par Bruno, clôturé neuf minutes après son lancement, comprenant deux lignes (`EAN 0000000000002` quantité `7`, `EAN 0000000000003` quantité `1`).
-- Un catalogue produit minimal de quatre références (`0000000000000` à `0000000000003`) réutilisables par les scénarios de tests.
-
-### Vérifications du seed démo
+### Vérifications rapides du seed
 
 ```sql
--- Résumé des runs ouverts
-SELECT R."Id"        AS "RunId",
-       R."InventorySessionId" AS "SessionId",
-       R."LocationId",
-       R."OperatorDisplayName",
-       R."StartedAtUtc",
-       R."CompletedAtUtc",
-       COUNT(L."Id") AS "LineCount"
-FROM "CountingRun" R
-LEFT JOIN "CountLine" L ON L."CountingRunId" = R."Id"
-GROUP BY R."Id", R."InventorySessionId", R."LocationId", R."OperatorDisplayName", R."StartedAtUtc", R."CompletedAtUtc"
-ORDER BY R."StartedAtUtc";
+-- Lister les zones créées automatiquement
+SELECT "Code", "Label"
+FROM "Location"
+ORDER BY "Code";
 
--- Détail des lignes d’un run connu
-SELECT L."Id", L."CountingRunId", L."ProductId", L."Quantity", L."CountedAtUtc"
-FROM "CountLine" L
-WHERE L."CountingRunId" = '11111111-2222-3333-4444-555555555555'
-ORDER BY L."CountedAtUtc", L."Id";
+-- Vérifier que seules les zones sont présentes
+SELECT COUNT(*) AS "ZoneCount"
+FROM "Location";
 ```
 
 ### Reseed dev
