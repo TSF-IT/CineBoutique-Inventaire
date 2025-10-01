@@ -9,10 +9,10 @@ namespace CineBoutique.Inventory.Infrastructure.Migrations
         public override void Up()
         {
             // 1) Sécuriser l’unicité du Code (idempotent)
-            Execute.Sql(@"
-CREATE UNIQUE INDEX IF NOT EXISTS ""IX_Location_Code""
-ON ""public"".""Location"" (""Code"");
-");
+            Execute.Sql("""
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_Location_Code"
+ON "public"."Location" ("Code");
+""");
 
             // 2) Générer les codes à insérer
             //   - B1..B20
@@ -36,10 +36,10 @@ ON ""public"".""Location"" (""Code"");
         public override void Down()
         {
             // Supprime uniquement ce que cette migration a ajouté
-            Execute.Sql(@"
-DELETE FROM ""public"".""Location""
-WHERE ""Code"" LIKE 'B%' OR ""Code"" LIKE 'S%';
-");
+            Execute.Sql("""
+DELETE FROM "public"."Location"
+WHERE "Code" LIKE 'B%' OR "Code" LIKE 'S%';
+""");
         }
 
         private void InsertLocationIfNotExists(string code)
@@ -50,12 +50,13 @@ WHERE ""Code"" LIKE 'B%' OR ""Code"" LIKE 'S%';
             // NB: on utilise uuid_generate_v4() pour la colonne Id.
             //     Idempotence via WHERE NOT EXISTS.
             //     On échappe les guillemets correctement avec verbatim string et interpolation simple.
-            var sql = $@"
-INSERT INTO ""public"".""Location"" (""Id"", ""Code"", ""Label"")
+            var sql = $"""
+INSERT INTO "public"."Location" ("Id", "Code", "Label")
 SELECT uuid_generate_v4(), '{code}', '{label}'
 WHERE NOT EXISTS (
-    SELECT 1 FROM ""public"".""Location"" WHERE ""Code"" = '{code}'
-);";
+    SELECT 1 FROM "public"."Location" WHERE "Code" = '{code}'
+);
+""";
 
             Execute.Sql(sql);
         }
