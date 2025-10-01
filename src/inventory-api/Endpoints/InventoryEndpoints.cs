@@ -618,6 +618,37 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                 }
             }
 
+            if (countType == 2 && hasOperatorDisplayNameColumn)
+            {
+                const string selectFirstRunOperatorSql = @"
+SELECT ""OperatorDisplayName""
+FROM ""CountingRun""
+WHERE ""LocationId"" = @LocationId
+  AND ""CountType"" = 1
+  AND ""CompletedAtUtc"" IS NOT NULL
+ORDER BY ""CompletedAtUtc"" DESC
+LIMIT 1;";
+
+                var firstRunOperator = await connection
+                    .ExecuteScalarAsync<string?>(
+                        new CommandDefinition(
+                            selectFirstRunOperatorSql,
+                            new { LocationId = locationId },
+                            transaction,
+                            cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+
+                if (!string.IsNullOrWhiteSpace(firstRunOperator) &&
+                    string.Equals(firstRunOperator.Trim(), operatorName, StringComparison.OrdinalIgnoreCase))
+                {
+                    await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                    return Results.Conflict(new
+                    {
+                        message = "Le deuxième comptage doit être réalisé par un opérateur différent du premier."
+                    });
+                }
+            }
+
             var now = DateTimeOffset.UtcNow;
 
             Guid countingRunId;
