@@ -86,10 +86,20 @@ public sealed class AuditLoggingTests : IAsyncLifetime
             await connection.ExecuteAsync(insertSessionSql, new { Id = sessionId, Name = "Session principale", StartedAtUtc = startedAt });
 
             const string insertRunSql = """
-INSERT INTO "CountingRun" ("Id", "InventorySessionId", "LocationId", "StartedAtUtc", "CountType")
-VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
+INSERT INTO "CountingRun" ("Id", "InventorySessionId", "LocationId", "StartedAtUtc", "CountType", "OperatorDisplayName")
+VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType, @Operator);
 """;
-            await connection.ExecuteAsync(insertRunSql, new { Id = runId, SessionId = sessionId, LocationId = locationId, StartedAtUtc = startedAt, CountType = 1 });
+            await connection.ExecuteAsync(
+                insertRunSql,
+                new
+                {
+                    Id = runId,
+                    SessionId = sessionId,
+                    LocationId = locationId,
+                    StartedAtUtc = startedAt,
+                    CountType = 1,
+                    Operator = "Amélie"
+                });
         }
 
         var response = await _client.PostAsync($"/api/inventories/{locationId}/restart?countType=1", null);
@@ -274,15 +284,22 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
 
-        const string cleanupSql = @"
-TRUNCATE TABLE ""CountLine"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""CountingRun"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""InventorySession"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""Location"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""Product"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""audit_logs"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""Audit"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""Conflict"" RESTART IDENTITY CASCADE;";
+        const string cleanupSql = """
+DO $do$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Audit') THEN
+        EXECUTE 'TRUNCATE TABLE ""Audit"" RESTART IDENTITY CASCADE;';
+    END IF;
+END $do$;
+
+TRUNCATE TABLE "CountLine" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "CountingRun" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "InventorySession" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "Location" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "Product" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "Conflict" RESTART IDENTITY CASCADE;
+""";
 
         await connection.ExecuteAsync(cleanupSql);
     }

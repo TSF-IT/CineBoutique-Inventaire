@@ -266,6 +266,23 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
         AddCandidate(trimmed);
 
+        var normalized = trimmed.TrimStart('0');
+        if (normalized.Length == 0 && trimmed.Length > 0)
+        {
+            normalized = "0";
+        }
+
+        if (normalized.Length > 0)
+        {
+            AddCandidate(normalized);
+
+            var targetLength = Math.Max(normalized.Length, trimmed.Length);
+            for (var length = normalized.Length + 1; length <= targetLength; length++)
+            {
+                AddCandidate(normalized.PadLeft(length, '0'));
+            }
+        }
+
         if (trimmed.Length is > 8 and < 13)
         {
             AddCandidate(trimmed.PadLeft(13, '0'));
