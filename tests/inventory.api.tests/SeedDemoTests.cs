@@ -136,7 +136,7 @@ WHERE ""Id"" = @RunId;";
 DO $do$
 BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Audit') THEN
-        EXECUTE 'TRUNCATE TABLE ""Audit"" RESTART IDENTITY CASCADE;';
+        EXECUTE 'TRUNCATE TABLE "Audit" RESTART IDENTITY CASCADE;';
     END IF;
 END $do$;
 
