@@ -98,7 +98,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
                 runId,
                 sessionId,
                 locationId,
-                countType: 1,
+                CountType: 1,
                 StartedAtUtc: startedAt,
                 CompletedAtUtc: null,
                 OperatorDisplayName: "Unknown"));
@@ -173,7 +173,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
                 runId,
                 sessionId,
                 locationId,
-                countType: 1,
+                CountType: 1,
                 StartedAtUtc: startedAt,
                 CompletedAtUtc: completedAt,
                 OperatorDisplayName: "Camille"));
