@@ -65,6 +65,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         Assert.Equal(0, payload.Conflicts);
         Assert.Null(payload.LastActivityUtc);
         Assert.Empty(payload.OpenRunDetails);
+        Assert.Empty(payload.CompletedRunDetails);
         Assert.Empty(payload.ConflictZones);
     }
 
@@ -139,6 +140,56 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         }
         Assert.Equal(startedAt, openRun.StartedAtUtc, TimeSpan.FromSeconds(1));
         Assert.Empty(payload.ConflictZones);
+    }
+
+    [Fact]
+    public async Task GetInventorySummary_ListsCompletedRunsWithOperator()
+    {
+        await ResetDatabaseAsync();
+
+        using var scope = _factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        var locationId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var runId = Guid.NewGuid();
+        var startedAt = DateTimeOffset.UtcNow.AddHours(-2);
+        var completedAt = startedAt.AddMinutes(45);
+
+        const string insertLocation = "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\") VALUES (@Id, 'ZC1', 'Zone C1');";
+        await connection.ExecuteAsync(insertLocation, new { Id = locationId });
+
+        const string insertSession = "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, 'Session', @StartedAt);";
+        await connection.ExecuteAsync(insertSession, new { Id = sessionId, StartedAt = startedAt });
+
+        await CountingRunSqlHelper.InsertAsync(
+            connection,
+            new CountingRunInsert(
+                runId,
+                sessionId,
+                locationId,
+                CountType: 1,
+                StartedAtUtc: startedAt,
+                CompletedAtUtc: completedAt,
+                OperatorDisplayName: "Chloé"));
+
+        var response = await _client.GetAsync("/api/inventories/summary");
+        response.EnsureSuccessStatusCode();
+
+        var payload = await response.Content.ReadFromJsonAsync<InventorySummaryDto>();
+        Assert.NotNull(payload);
+        Assert.Single(payload!.CompletedRunDetails);
+
+        var completedRun = payload.CompletedRunDetails[0];
+        Assert.Equal(runId, completedRun.RunId);
+        Assert.Equal(locationId, completedRun.LocationId);
+        Assert.Equal("ZC1", completedRun.LocationCode);
+        Assert.Equal("Zone C1", completedRun.LocationLabel);
+        Assert.Equal(1, completedRun.CountType);
+        Assert.Equal("Chloé", completedRun.OperatorDisplayName);
+        Assert.Equal(completedAt, completedRun.CompletedAtUtc, TimeSpan.FromMilliseconds(1));
     }
 
     [Fact]
@@ -247,7 +298,15 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         }
         finally
         {
-            await _factory.EnsureMigratedAsync();
+            const string restoreColumnSql = """
+ALTER TABLE "CountingRun"
+    ADD COLUMN IF NOT EXISTS "OperatorDisplayName" VARCHAR(200) NOT NULL DEFAULT 'Unknown';
+
+ALTER TABLE "CountingRun"
+    ALTER COLUMN "OperatorDisplayName" DROP DEFAULT;
+""";
+
+            await connection.ExecuteAsync(restoreColumnSql);
             await ResetDatabaseAsync();
         }
     }

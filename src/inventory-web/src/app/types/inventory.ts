@@ -12,6 +12,7 @@ export interface InventorySummary {
   conflicts: number
   lastActivityUtc: string | null
   openRunDetails: OpenRunSummary[]
+  completedRunDetails: CompletedRunSummary[]
   conflictZones: ConflictZoneSummary[]
 }
 
@@ -23,6 +24,17 @@ export interface OpenRunSummary {
   countType: CountType
   operatorDisplayName: string | null
   startedAtUtc: string
+}
+
+export interface CompletedRunSummary {
+  runId: string
+  locationId: string
+  locationCode: string
+  locationLabel: string
+  countType: CountType
+  operatorDisplayName: string | null
+  startedAtUtc: string
+  completedAtUtc: string
 }
 
 export interface ConflictZoneSummary {

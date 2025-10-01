@@ -250,6 +250,92 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task CompleteInventoryRun_AllowsThirdRunForInitialOperator_WhenConflictExists()
+    {
+        await ResetDatabaseAsync();
+        var locationId = await SeedLocationAsync("Z3", "Zone Z3");
+
+        var firstPayload = new CompleteInventoryRunRequest
+        {
+            CountType = 1,
+            Operator = "Chloé",
+            Items = new List<CompleteInventoryRunItemRequest>
+            {
+                new()
+                {
+                    Ean = "12345670",
+                    Quantity = 5,
+                    IsManual = true
+                }
+            }
+        };
+
+        var firstResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", firstPayload);
+        firstResponse.EnsureSuccessStatusCode();
+
+        var secondPayload = new CompleteInventoryRunRequest
+        {
+            CountType = 2,
+            Operator = "Bruno",
+            Items = new List<CompleteInventoryRunItemRequest>
+            {
+                new()
+                {
+                    Ean = "12345670",
+                    Quantity = 7,
+                    IsManual = true
+                }
+            }
+        };
+
+        var secondResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", secondPayload);
+        secondResponse.EnsureSuccessStatusCode();
+
+        var thirdPayload = new CompleteInventoryRunRequest
+        {
+            CountType = 3,
+            Operator = "Chloé",
+            Items = new List<CompleteInventoryRunItemRequest>
+            {
+                new()
+                {
+                    Ean = "12345670",
+                    Quantity = 6,
+                    IsManual = true
+                }
+            }
+        };
+
+        var thirdResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", thirdPayload);
+        thirdResponse.EnsureSuccessStatusCode();
+
+        var thirdResult = await thirdResponse.Content.ReadFromJsonAsync<CompleteInventoryRunResponse>();
+        Assert.NotNull(thirdResult);
+        Assert.Equal(3, thirdResult!.CountType);
+
+        using var scope = _factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        var hasOperatorColumn = await CountingRunSqlHelper.HasOperatorDisplayNameAsync(connection);
+        var selectSql = hasOperatorColumn
+            ? "SELECT \"Id\" AS RunId, \"CountType\", \"OperatorDisplayName\" AS Operator FROM \"CountingRun\" WHERE \"Id\" = @Id LIMIT 1;"
+            : "SELECT \"Id\" AS RunId, \"CountType\", NULL::text AS Operator FROM \"CountingRun\" WHERE \"Id\" = @Id LIMIT 1;";
+
+        var run = await connection.QuerySingleAsync<(Guid RunId, short CountType, string? Operator)>(selectSql, new { Id = thirdResult.RunId });
+        Assert.Equal((short)3, run.CountType);
+        if (hasOperatorColumn)
+        {
+            Assert.Equal("Chloé", run.Operator);
+        }
+        else
+        {
+            Assert.Null(run.Operator);
+        }
+    }
+
+    [Fact]
     public async Task CompleteInventoryRun_RejectsSecondRun_WhenOperatorMatchesFirst()
     {
         await ResetDatabaseAsync();
