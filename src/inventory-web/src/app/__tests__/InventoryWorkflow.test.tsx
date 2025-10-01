@@ -83,6 +83,7 @@ const {
     conflicts: 0,
     lastActivityUtc: null,
     openRunDetails: [],
+    completedRunDetails: [],
     conflictZones: [],
   }
   return {
@@ -319,6 +320,7 @@ describe('Workflow d\'inventaire', () => {
       conflicts: 1,
       lastActivityUtc: null,
       openRunDetails: [],
+      completedRunDetails: [],
       conflictZones: [
         {
           locationId: completedZone.id,
@@ -336,6 +338,74 @@ describe('Workflow d\'inventaire', () => {
     const conflictZoneCard = await screen.findByTestId(`zone-card-${completedZone.id}`)
     await waitFor(() => expect(within(conflictZoneCard).getByText('Conflit détecté')).toBeInTheDocument())
     expect(within(conflictZoneCard).queryByText('Aucun conflit')).not.toBeInTheDocument()
+  })
+
+  it('propose automatiquement le 3ᵉ comptage pour une zone en conflit', async () => {
+    const conflictZone: Location = {
+      id: 'zone-5',
+      code: 'ZC5',
+      label: 'Zone ZC5',
+      isBusy: false,
+      busyBy: null,
+      activeRunId: null,
+      activeCountType: null,
+      activeStartedAtUtc: null,
+      countStatuses: [
+        {
+          countType: CountType.Count1,
+          status: 'completed',
+          runId: 'run-21',
+          operatorDisplayName: 'Chloé',
+          startedAtUtc: new Date(),
+          completedAtUtc: new Date(),
+        },
+        {
+          countType: CountType.Count2,
+          status: 'completed',
+          runId: 'run-22',
+          operatorDisplayName: 'Bruno',
+          startedAtUtc: new Date(),
+          completedAtUtc: new Date(),
+        },
+      ],
+    }
+
+    fetchLocationsMock.mockResolvedValueOnce([
+      { ...reserveLocation },
+      conflictZone,
+    ])
+
+    fetchInventorySummaryMock.mockResolvedValueOnce({
+      activeSessions: 0,
+      openRuns: 0,
+      conflicts: 1,
+      lastActivityUtc: null,
+      openRunDetails: [],
+      completedRunDetails: [],
+      conflictZones: [
+        {
+          locationId: conflictZone.id,
+          locationCode: conflictZone.code,
+          locationLabel: conflictZone.label,
+          conflictLines: 3,
+        },
+      ],
+    })
+
+    renderInventoryRoutes('/inventory/start')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Amélie' }))
+
+    const conflictCard = await screen.findByTestId(`zone-card-${conflictZone.id}`)
+    const actionButton = within(conflictCard).getByTestId('btn-select-zone')
+    expect(actionButton).toBeEnabled()
+    expect(actionButton).toHaveTextContent('Lancer le 3ᵉ comptage')
+
+    fireEvent.click(actionButton)
+
+    const sessionPages = await screen.findAllByTestId('page-session')
+    const activeSession = sessionPages[sessionPages.length - 1]
+    await waitFor(() => expect(within(activeSession).getByText(/3 comptages/i)).toBeInTheDocument())
   })
 
   it('autorise la reprise de son propre comptage', async () => {
