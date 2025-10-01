@@ -618,6 +618,40 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                 }
             }
 
+            if (hasOperatorDisplayNameColumn && countType is 1 or 2)
+            {
+                const string selectCounterpartOperatorSql = @"SELECT ""OperatorDisplayName"" AS ""Operator""
+FROM ""CountingRun""
+WHERE ""LocationId"" = @LocationId
+  AND ""CountType"" IN (1, 2)
+  AND ""CountType"" <> @CurrentCountType
+  AND ""CompletedAtUtc"" IS NOT NULL
+ORDER BY ""CompletedAtUtc"" DESC
+LIMIT 1;";
+
+                var lastCounterpartOperator = await connection
+                    .QuerySingleOrDefaultAsync<string?>(
+                        new CommandDefinition(
+                            selectCounterpartOperatorSql,
+                            new
+                            {
+                                LocationId = locationId,
+                                CurrentCountType = (short)countType
+                            },
+                            transaction,
+                            cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+
+                if (!string.IsNullOrWhiteSpace(lastCounterpartOperator) &&
+                    string.Equals(lastCounterpartOperator.Trim(), operatorName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Results.Conflict(new
+                    {
+                        message = "Cet opérateur a déjà clôturé le dernier comptage de l'autre type pour cette zone."
+                    });
+                }
+            }
+
             var now = DateTimeOffset.UtcNow;
 
             Guid countingRunId;
@@ -814,7 +848,8 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
         .WithTags("Inventories")
         .Produces<CompleteInventoryRunResponse>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status400BadRequest)
-        .Produces(StatusCodes.Status404NotFound);
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status409Conflict);
     }
 
     private static void MapRestartEndpoint(IEndpointRouteBuilder app)

@@ -181,6 +181,68 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
         Assert.Equal(5m, line.Quantity);
     }
 
+    [Fact]
+    public async Task CompleteInventoryRun_RefusesSameOperator_WhenCounterpartRunClosedFirst()
+    {
+        await ResetDatabaseAsync();
+
+        using var scope = _factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        if (!await CountingRunSqlHelper.HasOperatorDisplayNameAsync(connection))
+        {
+            return;
+        }
+
+        var locationId = await SeedLocationAsync("S2", "Zone S2");
+        const string productEan = "13572468";
+        await SeedProductAsync("SKU-2468", "Produit test", productEan);
+
+        var firstPayload = new CompleteInventoryRunRequest
+        {
+            CountType = 2,
+            Operator = "Camille",
+            Items = new List<CompleteInventoryRunItemRequest>
+            {
+                new()
+                {
+                    Ean = productEan,
+                    Quantity = 1,
+                    IsManual = false
+                }
+            }
+        };
+
+        var firstResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", firstPayload);
+        firstResponse.EnsureSuccessStatusCode();
+
+        var secondPayload = new CompleteInventoryRunRequest
+        {
+            CountType = 1,
+            Operator = "Camille",
+            Items = new List<CompleteInventoryRunItemRequest>
+            {
+                new()
+                {
+                    Ean = productEan,
+                    Quantity = 2,
+                    IsManual = false
+                }
+            }
+        };
+
+        var secondResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", secondPayload);
+
+        Assert.Equal(HttpStatusCode.Conflict, secondResponse.StatusCode);
+
+        var error = await secondResponse.Content.ReadFromJsonAsync<Dictionary<string, string?>>();
+        Assert.NotNull(error);
+        Assert.True(error!.TryGetValue("message", out var message));
+        Assert.False(string.IsNullOrWhiteSpace(message));
+    }
+
     private async Task ResetDatabaseAsync()
     {
         using var scope = _factory.Services.CreateScope();
