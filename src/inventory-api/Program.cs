@@ -27,6 +27,7 @@ using Npgsql;
 using Serilog; // requis pour UseSerilog()
 using CineBoutique.Inventory.Api.Infrastructure.Health;
 using AppLog = CineBoutique.Inventory.Api.Hosting.Log;
+using Dapper;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -213,21 +214,15 @@ builder.Logging.AddSimpleConsole(options =>
 builder.Logging.SetMinimumLevel(LogLevel.Information);
 
 var app = builder.Build();
+var env = app.Environment;
 
-// --- FORWARDED HEADERS pour proxy (Nginx) ---
-app.UseForwardedHeaders(new ForwardedHeadersOptions
-{
-    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
-});
+app.Logger.LogInformation("ASPNETCORE_ENVIRONMENT = {Env}", env.EnvironmentName);
+var devLike = env.IsDevelopment() || env.IsEnvironment("CI") || 
+              string.Equals(env.EnvironmentName, "Docker", StringComparison.OrdinalIgnoreCase);
 
-if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("CI"))
+if (devLike)
 {
     app.UseDeveloperExceptionPage();
-    app.MapPost("/diagnostics/seed", async (InventoryDataSeeder seeder) =>
-    {
-        await seeder.SeedAsync();
-        return Results.NoContent();
-    });
 }
 else
 {
@@ -240,7 +235,7 @@ else
             {
                 Title = "Une erreur est survenue lors du traitement de votre requête.",
                 Status = StatusCodes.Status500InternalServerError,
-                Detail = app.Environment.IsDevelopment() ? feature?.Error.ToString() : null
+                Detail = null // on n’expose pas le détail hors dev-like
             };
 
             context.Response.StatusCode = problem.Status ?? StatusCodes.Status500InternalServerError;
@@ -249,6 +244,12 @@ else
         });
     });
 }
+
+// --- FORWARDED HEADERS pour proxy (Nginx) ---
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
 
 app.UseStatusCodePages();
 
@@ -332,6 +333,19 @@ if (useSerilog)
     app.UseSerilogRequestLogging();
 }
 
+app.Use(async (ctx, next) =>
+{
+    try
+    {
+        await next().ConfigureAwait(false);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Unhandled exception for {Method} {Path}", ctx.Request?.Method, ctx.Request?.Path);
+        throw; // laisse l’exception remonter à DeveloperExceptionPage / ExceptionHandler
+    }
+});
+
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -345,6 +359,32 @@ app.MapPost("/auth/pin", HandlePinLoginAsync).WithName("PinLogin").AllowAnonymou
 app.MapPost("/api/auth/pin", HandlePinLoginAsync).WithName("ApiPinLogin").AllowAnonymous();
 
 app.MapControllers();
+
+// Voir l'environnement et quelques flags runtime
+app.MapGet("/__debug/env", (IConfiguration cfg, IWebHostEnvironment e) =>
+{
+    return Results.Ok(new
+    {
+        Environment = e.EnvironmentName,
+        DetailedErrors = cfg["ASPNETCORE_DETAILEDERRORS"],
+        ApplyMigrations = cfg["APPLY_MIGRATIONS"],
+        DisableMigrations = cfg["DISABLE_MIGRATIONS"]
+    });
+}).AllowAnonymous();
+
+// Valider la chaîne de connexion effective et ping DB
+app.MapGet("/__debug/db", async (IDbConnection connection) =>
+{
+    try
+    {
+        var version = await connection.ExecuteScalarAsync<string>("select version();").ConfigureAwait(false);
+        return Results.Ok(new { ok = true, version });
+    }
+    catch (Exception ex)
+    {
+        return Results.Problem(detail: ex.ToString(), title: "db_ping_failed");
+    }
+}).AllowAnonymous();
 
 await app.RunAsync().ConfigureAwait(false);
 
