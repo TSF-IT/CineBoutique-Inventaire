@@ -9,7 +9,7 @@ import type {
 } from '../types/inventory'
 import http, { HttpError } from '@/lib/api/http'
 import { API_BASE } from '@/lib/api/config'
-import { areDevFixturesEnabled, cloneDevLocations } from './dev/fixtures'
+import { areDevFixturesEnabled, cloneDevLocations, findDevLocationById } from './dev/fixtures'
 
 const isHttpError = (value: unknown): value is HttpError =>
   typeof value === 'object' &&
@@ -54,6 +54,21 @@ const logDevFallback = (error: unknown, endpoint: string) => {
     `[DEV] Fallback fixtures pour ${endpoint} : ${details}. Activez VITE_DISABLE_DEV_FIXTURES=true pour désactiver cette aide.`,
     error,
   )
+}
+
+const generateUuid = (): string => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+
+  const template = 'xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx'
+  return template.replace(/[xy]/g, (char) => {
+    const random = Math.floor(Math.random() * 16)
+    if (char === 'x') {
+      return random.toString(16)
+    }
+    return ((random & 0x3) | 0x8).toString(16)
+  })
 }
 
 const UPPERCASE_LOCATION_KEY_MAP: Record<string, keyof Location> = {
@@ -232,6 +247,29 @@ export const completeInventoryRun = async (
   })
 
   if (!res.ok) {
+    if (res.status === 404 && areDevFixturesEnabled()) {
+      const devLocation = findDevLocationById(locationId)
+      if (devLocation) {
+        const fallbackError = Object.assign(new Error('HTTP 404'), { status: res.status, url })
+        logDevFallback(fallbackError, url)
+        const completionDate = new Date()
+        const runId =
+          typeof payload.runId === 'string' && payload.runId.trim().length > 0
+            ? payload.runId.trim()
+            : generateUuid()
+        const totalQuantity = payload.items.reduce((sum, item) => sum + item.quantity, 0)
+        return {
+          runId,
+          inventorySessionId: generateUuid(),
+          locationId: devLocation.id,
+          countType: payload.countType,
+          completedAtUtc: completionDate.toISOString(),
+          itemsCount: payload.items.length,
+          totalQuantity,
+        }
+      }
+    }
+
     let parsedBody: unknown = null
     let bodyText = ''
     let messageFromBody: string | null = null

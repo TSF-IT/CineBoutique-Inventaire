@@ -167,3 +167,6 @@ export const cloneDevLocations = (): Location[] =>
     })),
   }))
 
+export const findDevLocationById = (locationId: string): Location | undefined =>
+  DEV_LOCATIONS_FIXTURE.find((location) => location.id === locationId)
+
