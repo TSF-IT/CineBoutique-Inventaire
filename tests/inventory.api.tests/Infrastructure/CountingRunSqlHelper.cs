@@ -15,14 +15,23 @@ internal static class CountingRunSqlHelper
         IDbConnection connection,
         CancellationToken cancellationToken = default)
     {
-        const string sql = @"SELECT 1
-FROM information_schema.columns
-WHERE table_schema = ANY (current_schemas(false))
-  AND LOWER(table_name) = LOWER(@TableName)
-  AND LOWER(column_name) = LOWER(@ColumnName)
-LIMIT 1;";
+        const string sql = @"SELECT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_attribute a
+    WHERE a.attrelid = (
+        SELECT c.oid
+        FROM pg_catalog.pg_class c
+        WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f')
+          AND LOWER(c.relname) = LOWER(@TableName)
+          AND pg_catalog.pg_table_is_visible(c.oid)
+        LIMIT 1
+    )
+      AND LOWER(a.attname) = LOWER(@ColumnName)
+      AND a.attnum > 0
+      AND NOT a.attisdropped
+);";
 
-        var result = await connection.ExecuteScalarAsync<int?>(
+        return await connection.ExecuteScalarAsync<bool>(
                 new CommandDefinition(
                     sql,
                     new
@@ -32,8 +41,6 @@ LIMIT 1;";
                     },
                     cancellationToken: cancellationToken))
             .ConfigureAwait(false);
-
-        return result.HasValue;
     }
 
     public static async Task InsertAsync(
