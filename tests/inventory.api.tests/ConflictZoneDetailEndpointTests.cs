@@ -82,8 +82,8 @@ public sealed class ConflictZoneDetailEndpointTests : IAsyncLifetime
         await connection.ExecuteAsync(insertSession, new { Id = sessionId, StartedAt = createdAt });
 
         const string insertRun =
-            "INSERT INTO \"CountingRun\" (\"Id\", \"InventorySessionId\", \"LocationId\", \"CountType\", \"StartedAtUtc\", \"CompletedAtUtc\")\n" +
-            "VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAt, @CompletedAt);";
+            "INSERT INTO \"CountingRun\" (\"Id\", \"InventorySessionId\", \"LocationId\", \"CountType\", \"StartedAtUtc\", \"CompletedAtUtc\", \"OperatorDisplayName\")\n" +
+            "VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAt, @CompletedAt, @Operator);";
 
         await connection.ExecuteAsync(insertRun, new
         {
@@ -92,7 +92,8 @@ public sealed class ConflictZoneDetailEndpointTests : IAsyncLifetime
             LocationId = locationId,
             CountType = 1,
             StartedAt = createdAt,
-            CompletedAt = completedAtRun1
+            CompletedAt = completedAtRun1,
+            Operator = "Alice"
         });
 
         await connection.ExecuteAsync(insertRun, new
@@ -102,7 +103,8 @@ public sealed class ConflictZoneDetailEndpointTests : IAsyncLifetime
             LocationId = locationId,
             CountType = 2,
             StartedAt = createdAt.AddMinutes(15),
-            CompletedAt = completedAtRun2
+            CompletedAt = completedAtRun2,
+            Operator = "Bastien"
         });
 
         const string insertProduct = "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"Ean\", \"CreatedAtUtc\") VALUES (@Id, @Sku, @Name, @Ean, @CreatedAt);";

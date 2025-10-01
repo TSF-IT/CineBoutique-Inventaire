@@ -91,9 +91,9 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         await connection.ExecuteAsync(insertSession, new { Id = sessionId, StartedAt = startedAt });
 
         const string insertRun =
-            "INSERT INTO \"CountingRun\" (\"Id\", \"InventorySessionId\", \"LocationId\", \"StartedAtUtc\", \"CountType\")\n" +
-            "VALUES (@Id, @SessionId, @LocationId, @StartedAt, 1);";
-        await connection.ExecuteAsync(insertRun, new { Id = runId, SessionId = sessionId, LocationId = locationId, StartedAt = startedAt });
+            "INSERT INTO \"CountingRun\" (\"Id\", \"InventorySessionId\", \"LocationId\", \"StartedAtUtc\", \"CountType\", \"OperatorDisplayName\")\n" +
+            "VALUES (@Id, @SessionId, @LocationId, @StartedAt, 1, @Operator);";
+        await connection.ExecuteAsync(insertRun, new { Id = runId, SessionId = sessionId, LocationId = locationId, StartedAt = startedAt, Operator = "Unknown" });
 
         var productId = Guid.NewGuid();
         const string insertProduct = "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"CreatedAtUtc\") VALUES (@Id, 'SKU-1', 'Produit', @CreatedAt);";
@@ -121,7 +121,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         Assert.Equal("Z1", openRun.LocationCode);
         Assert.Equal("Zone 1", openRun.LocationLabel);
         Assert.Equal(1, openRun.CountType);
-        Assert.Null(openRun.OperatorDisplayName);
+        Assert.Equal("Unknown", openRun.OperatorDisplayName);
         Assert.Equal(startedAt, openRun.StartedAtUtc, TimeSpan.FromSeconds(1));
         Assert.Empty(payload.ConflictZones);
     }
@@ -153,15 +153,16 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         await connection.ExecuteAsync(insertSession, new { Id = sessionId, StartedAt = startedAt });
 
         const string insertRun =
-            "INSERT INTO \"CountingRun\" (\"Id\", \"InventorySessionId\", \"LocationId\", \"StartedAtUtc\", \"CompletedAtUtc\", \"CountType\")\n" +
-            "VALUES (@Id, @SessionId, @LocationId, @StartedAt, @CompletedAt, 1);";
+            "INSERT INTO \"CountingRun\" (\"Id\", \"InventorySessionId\", \"LocationId\", \"StartedAtUtc\", \"CompletedAtUtc\", \"CountType\", \"OperatorDisplayName\")\n" +
+            "VALUES (@Id, @SessionId, @LocationId, @StartedAt, @CompletedAt, 1, @Operator);";
         await connection.ExecuteAsync(insertRun, new
         {
             Id = runId,
             SessionId = sessionId,
             LocationId = locationId,
             StartedAt = startedAt,
-            CompletedAt = completedAt
+            CompletedAt = completedAt,
+            Operator = "Camille"
         });
 
         const string insertProduct = "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"CreatedAtUtc\") VALUES (@Id, 'SKU-2', 'Produit', @CreatedAt);";
@@ -273,15 +274,22 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
 
-        const string cleanupSql =
-            "TRUNCATE TABLE \"CountLine\" RESTART IDENTITY CASCADE;\n" +
-            "TRUNCATE TABLE \"CountingRun\" RESTART IDENTITY CASCADE;\n" +
-            "TRUNCATE TABLE \"InventorySession\" RESTART IDENTITY CASCADE;\n" +
-            "TRUNCATE TABLE \"Location\" RESTART IDENTITY CASCADE;\n" +
-            "TRUNCATE TABLE \"Product\" RESTART IDENTITY CASCADE;\n" +
-            "TRUNCATE TABLE \"audit_logs\" RESTART IDENTITY CASCADE;\n" +
-            "TRUNCATE TABLE \"Audit\" RESTART IDENTITY CASCADE;\n" +
-            "TRUNCATE TABLE \"Conflict\" RESTART IDENTITY CASCADE;";
+        const string cleanupSql = """
+DO $do$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Audit') THEN
+        EXECUTE 'TRUNCATE TABLE ""Audit"" RESTART IDENTITY CASCADE;';
+    END IF;
+END $do$;
+
+TRUNCATE TABLE "CountLine" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "CountingRun" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "InventorySession" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "Location" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "Product" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "Conflict" RESTART IDENTITY CASCADE;
+""";
 
         await connection.ExecuteAsync(cleanupSql);
     }
