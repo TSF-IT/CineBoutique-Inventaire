@@ -69,16 +69,13 @@ LIMIT 1;";
             return null;
         }
 
-        var versionChar = buffer[14];
+        var versionChar = char.ToLowerInvariant(buffer[14]);
         if (versionChar is < '1' or > '8')
         {
             return null;
         }
 
-        var variantChar = char.ToLowerInvariant(buffer[19]);
-        return variantChar is '8' or '9' or 'a' or 'b'
-            ? runId
-            : null;
+        return runId;
     }
 
     public static string? GetAuthenticatedUserName(HttpContext context)
