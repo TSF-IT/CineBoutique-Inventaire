@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { CompleteInventoryRunPayload } from './inventoryApi'
 
 const mockHttpModule = (implementation: (...args: unknown[]) => unknown) => {
   vi.doMock('@/lib/api/http', () => ({
@@ -121,7 +122,7 @@ describe('completeInventoryRun (dev fixtures)', () => {
 
     const { completeInventoryRun } = await import('./inventoryApi')
 
-    const payload = {
+    const payload: CompleteInventoryRunPayload = {
       runId: 'existing-run-id',
       countType: 1,
       operator: 'Testeur',
