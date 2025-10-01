@@ -307,9 +307,20 @@ VALUES (@Id, @Name, @StartedAtUtc, @CompletedAtUtc);";
             return false;
         }
 
-        const string insertSql = @"
+        var hasOperatorDisplayNameColumn = await ColumnExistsAsync(
+                connection,
+                tableName: "CountingRun",
+                columnName: "OperatorDisplayName",
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        var insertSql = hasOperatorDisplayNameColumn
+            ? @"
 INSERT INTO ""CountingRun"" (""Id"", ""InventorySessionId"", ""LocationId"", ""StartedAtUtc"", ""CompletedAtUtc"", ""CountType"", ""OperatorDisplayName"")
-VALUES (@Id, @InventorySessionId, @LocationId, @StartedAtUtc, @CompletedAtUtc, @CountType, @OperatorDisplayName);";
+VALUES (@Id, @InventorySessionId, @LocationId, @StartedAtUtc, @CompletedAtUtc, @CountType, @OperatorDisplayName);"
+            : @"
+INSERT INTO ""CountingRun"" (""Id"", ""InventorySessionId"", ""LocationId"", ""StartedAtUtc"", ""CompletedAtUtc"", ""CountType"")
+VALUES (@Id, @InventorySessionId, @LocationId, @StartedAtUtc, @CompletedAtUtc, @CountType);";
 
         await connection.ExecuteAsync(
                 new CommandDefinition(
@@ -329,6 +340,33 @@ VALUES (@Id, @InventorySessionId, @LocationId, @StartedAtUtc, @CompletedAtUtc, @
             .ConfigureAwait(false);
 
         return true;
+    }
+
+    private static async Task<bool> ColumnExistsAsync(
+        IDbConnection connection,
+        string tableName,
+        string columnName,
+        CancellationToken cancellationToken)
+    {
+        const string sql = @"SELECT 1
+FROM information_schema.columns
+WHERE table_schema = current_schema()
+  AND table_name = @Table
+  AND column_name = @Column
+LIMIT 1;";
+
+        var result = await connection.ExecuteScalarAsync<int?>(
+                new CommandDefinition(
+                    sql,
+                    new
+                    {
+                        Table = tableName,
+                        Column = columnName
+                    },
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return result.HasValue;
     }
 
     private static async Task<bool> EnsureCountLineAsync(

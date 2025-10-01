@@ -302,8 +302,16 @@ ORDER BY p.""Ean"";";
                 ? "cr.\"OperatorDisplayName\""
                 : "NULL::text";
 
+            var activeRunsDistinctColumns = hasOperatorDisplayNameColumn
+                ? "cr.\"LocationId\", cr.\"CountType\", cr.\"OperatorDisplayName\""
+                : "cr.\"LocationId\", cr.\"CountType\"";
+
+            var activeRunsOrderByColumns = hasOperatorDisplayNameColumn
+                ? "cr.\"LocationId\", cr.\"CountType\", cr.\"OperatorDisplayName\", cr.\"StartedAtUtc\" DESC"
+                : "cr.\"LocationId\", cr.\"CountType\", cr.\"StartedAtUtc\" DESC";
+
             var sql = $@"WITH active_runs AS (
-    SELECT DISTINCT ON (cr.""LocationId"", cr.""CountType"", cr.""OperatorDisplayName"")
+    SELECT DISTINCT ON ({activeRunsDistinctColumns})
         cr.""LocationId"",
         cr.""Id""            AS ""ActiveRunId"",
         cr.""CountType""     AS ""ActiveCountType"",
@@ -313,7 +321,7 @@ ORDER BY p.""Ean"";";
     FROM ""CountingRun"" cr
     WHERE cr.""CompletedAtUtc"" IS NULL
       AND (@CountType IS NULL OR cr.""CountType"" = @CountType)
-    ORDER BY cr.""LocationId"", cr.""CountType"", cr.""OperatorDisplayName"", cr.""StartedAtUtc"" DESC
+    ORDER BY {activeRunsOrderByColumns}
 )
 SELECT
     l.""Id"",
@@ -436,15 +444,20 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
 
                 location.CountStatuses = statuses;
 
-                // Y a-t-il au moins un run ouvert sur la zone ?
-                var anyOpen = openRuns.Any(r => r.LocationId == location.Id);
-                location.IsBusy = anyOpen;
+                var openRunsForLocation = openRuns
+                    .Where(r => r.LocationId == location.Id)
+                    .ToList();
 
-                // Choix d'un run "actif" pour compat descendante (UI existante)
+                // Y a-t-il un run ouvert correspondant au filtre éventuel ?
                 if (countType is { } requestedType)
                 {
-                    var mostRecent = openRuns
-                        .Where(r => r.LocationId == location.Id && r.CountType == requestedType)
+                    var runsForRequestedType = openRunsForLocation
+                        .Where(r => r.CountType == requestedType)
+                        .ToList();
+
+                    location.IsBusy = runsForRequestedType.Any();
+
+                    var mostRecent = runsForRequestedType
                         .OrderByDescending(r => r.StartedAtUtc)
                         .FirstOrDefault();
 
@@ -455,8 +468,9 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                 }
                 else
                 {
-                    var mostRecent = openRuns
-                        .Where(r => r.LocationId == location.Id)
+                    location.IsBusy = openRunsForLocation.Any();
+
+                    var mostRecent = openRunsForLocation
                         .OrderByDescending(r => r.StartedAtUtc)
                         .FirstOrDefault();
 

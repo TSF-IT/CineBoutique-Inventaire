@@ -24,6 +24,6 @@ public sealed class PostgresTestContainerFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        await Container.DisposeAsync().AsTask().ConfigureAwait(false);
+        await Container.DisposeAsync().ConfigureAwait(false);
     }
 }

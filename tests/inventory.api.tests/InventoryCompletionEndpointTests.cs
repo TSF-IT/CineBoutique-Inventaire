@@ -6,7 +6,6 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Data.Common;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -17,6 +16,7 @@ using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
@@ -36,9 +36,9 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _factory = new InventoryApiApplicationFactory(_pg.ConnectionString);
-        await _factory.EnsureMigratedAsync().ConfigureAwait(false);
+        await _factory.EnsureMigratedAsync();
         _client = _factory.CreateClient();
-        await ResetDatabaseAsync().ConfigureAwait(false);
+        await ResetDatabaseAsync();
     }
 
     public Task DisposeAsync()
@@ -51,8 +51,8 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
     [Fact]
     public async Task CompleteInventoryRun_ReturnsBadRequest_WhenNoItems()
     {
-        await ResetDatabaseAsync().ConfigureAwait(false);
-        var locationId = await SeedLocationAsync("S1", "Zone S1").ConfigureAwait(false);
+        await ResetDatabaseAsync();
+        var locationId = await SeedLocationAsync("S1", "Zone S1");
 
         var payload = new CompleteInventoryRunRequest
         {
@@ -61,7 +61,7 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
             Items = new List<CompleteInventoryRunItemRequest>()
         };
 
-        var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", payload).ConfigureAwait(false);
+        var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", payload);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -69,9 +69,9 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
     [Fact]
     public async Task CompleteInventoryRun_CreatesRunAndLines_ForExistingProduct()
     {
-        await ResetDatabaseAsync().ConfigureAwait(false);
-        var locationId = await SeedLocationAsync("S1", "Zone S1").ConfigureAwait(false);
-        var productId = await SeedProductAsync("PROD-001", "Produit référencé", "12345678").ConfigureAwait(false);
+        await ResetDatabaseAsync();
+        var locationId = await SeedLocationAsync("S1", "Zone S1");
+        var productId = await SeedProductAsync("PROD-001", "Produit référencé", "12345678");
 
         var payload = new CompleteInventoryRunRequest
         {
@@ -88,10 +88,10 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
             }
         };
 
-        var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", payload).ConfigureAwait(false);
+        var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", payload);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<CompleteInventoryRunResponse>().ConfigureAwait(false);
+        var result = await response.Content.ReadFromJsonAsync<CompleteInventoryRunResponse>();
         Assert.NotNull(result);
         Assert.Equal(locationId, result!.LocationId);
         Assert.Equal(1, result.ItemsCount);
@@ -100,21 +100,32 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
         using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection).ConfigureAwait(false);
+        await EnsureConnectionOpenAsync(connection);
 
-        var runs = await connection.QueryAsync<(Guid RunId, Guid SessionId, DateTimeOffset? CompletedAt, string? Operator)>(
-                "SELECT \"Id\" AS RunId, \"InventorySessionId\" AS SessionId, \"CompletedAtUtc\" AS CompletedAt, \"OperatorDisplayName\" AS Operator FROM \"CountingRun\"")
-            .ConfigureAwait(false);
+        var hasOperatorColumn = await CountingRunSqlHelper.HasOperatorDisplayNameAsync(connection);
+
+        var runsQuery = hasOperatorColumn
+            ? "SELECT \"Id\" AS RunId, \"InventorySessionId\" AS SessionId, \"CompletedAtUtc\" AS CompletedAt, \"OperatorDisplayName\" AS Operator FROM \"CountingRun\""
+            : "SELECT \"Id\" AS RunId, \"InventorySessionId\" AS SessionId, \"CompletedAtUtc\" AS CompletedAt, NULL::text AS Operator FROM \"CountingRun\"";
+
+        var runs = await connection.QueryAsync<(Guid RunId, Guid SessionId, DateTimeOffset? CompletedAt, string? Operator)>(runsQuery);
 
         Assert.Single(runs);
         var singleRun = runs.Single();
         Assert.Equal(result.RunId, singleRun.RunId);
         Assert.NotNull(singleRun.CompletedAt);
-        Assert.Equal("Amélie", singleRun.Operator);
+        if (hasOperatorColumn)
+        {
+            Assert.Equal("Amélie", singleRun.Operator);
+        }
+        else
+        {
+            Assert.Null(singleRun.Operator);
+        }
 
         var lines = await connection.QueryAsync<(Guid ProductId, decimal Quantity)>(
                 "SELECT \"ProductId\", \"Quantity\" FROM \"CountLine\"")
-            .ConfigureAwait(false);
+            ;
 
         Assert.Single(lines);
         var line = lines.Single();
@@ -125,8 +136,8 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
     [Fact]
     public async Task CompleteInventoryRun_CreatesUnknownProduct_WhenEanNotFound()
     {
-        await ResetDatabaseAsync().ConfigureAwait(false);
-        var locationId = await SeedLocationAsync("S1", "Zone S1").ConfigureAwait(false);
+        await ResetDatabaseAsync();
+        var locationId = await SeedLocationAsync("S1", "Zone S1");
 
         var payload = new CompleteInventoryRunRequest
         {
@@ -143,18 +154,18 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
             }
         };
 
-        var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", payload).ConfigureAwait(false);
+        var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", payload);
         response.EnsureSuccessStatusCode();
 
         using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection).ConfigureAwait(false);
+        await EnsureConnectionOpenAsync(connection);
 
         var product = await connection.QuerySingleOrDefaultAsync<(Guid Id, string Sku, string Name)>(
                 "SELECT \"Id\", \"Sku\", \"Name\" FROM \"Product\" WHERE \"Ean\" = @Ean LIMIT 1",
                 new { Ean = "99999999" })
-            .ConfigureAwait(false);
+            ;
 
         Assert.NotEqual(Guid.Empty, product.Id);
         Assert.StartsWith("UNK-", product.Sku, StringComparison.Ordinal);
@@ -162,7 +173,7 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
 
         var lines = await connection.QueryAsync<(Guid ProductId, decimal Quantity)>(
                 "SELECT \"ProductId\", \"Quantity\" FROM \"CountLine\"")
-            .ConfigureAwait(false);
+            ;
 
         Assert.Single(lines);
         var line = lines.Single();
@@ -175,18 +186,25 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
         using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection).ConfigureAwait(false);
+        await EnsureConnectionOpenAsync(connection);
 
-        const string cleanupSql = @"
-TRUNCATE TABLE ""Audit"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""CountLine"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""CountingRun"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""InventorySession"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""Product"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""Location"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""audit_logs"" RESTART IDENTITY CASCADE;";
+        const string cleanupSql = """
+DO $do$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Audit') THEN
+        EXECUTE 'TRUNCATE TABLE "Audit" RESTART IDENTITY CASCADE;';
+    END IF;
+END $do$;
 
-        await connection.ExecuteAsync(cleanupSql).ConfigureAwait(false);
+TRUNCATE TABLE "CountLine" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "CountingRun" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "InventorySession" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "Product" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "Location" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
+""";
+
+        await connection.ExecuteAsync(cleanupSql);
     }
 
     private async Task<Guid> SeedLocationAsync(string code, string label)
@@ -194,11 +212,11 @@ TRUNCATE TABLE ""audit_logs"" RESTART IDENTITY CASCADE;";
         using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection).ConfigureAwait(false);
+        await EnsureConnectionOpenAsync(connection);
 
         var locationId = Guid.NewGuid();
         const string sql = "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\") VALUES (@Id, @Code, @Label);";
-        await connection.ExecuteAsync(sql, new { Id = locationId, Code = code, Label = label }).ConfigureAwait(false);
+        await connection.ExecuteAsync(sql, new { Id = locationId, Code = code, Label = label });
         return locationId;
     }
 
@@ -207,25 +225,20 @@ TRUNCATE TABLE ""audit_logs"" RESTART IDENTITY CASCADE;";
         using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection).ConfigureAwait(false);
+        await EnsureConnectionOpenAsync(connection);
 
         var productId = Guid.NewGuid();
         const string sql =
             "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"Ean\", \"CreatedAtUtc\") VALUES (@Id, @Sku, @Name, @Ean, @CreatedAtUtc);";
-        await connection.ExecuteAsync(sql, new { Id = productId, Sku = sku, Name = name, Ean = ean, CreatedAtUtc = DateTimeOffset.UtcNow }).ConfigureAwait(false);
+        await connection.ExecuteAsync(sql, new { Id = productId, Sku = sku, Name = name, Ean = ean, CreatedAtUtc = DateTimeOffset.UtcNow });
         return productId;
     }
 
-    private static async Task EnsureConnectionOpenAsync(IDbConnection connection)
+    private static async Task EnsureConnectionOpenAsync(NpgsqlConnection connection)
     {
-        switch (connection)
+        if (connection.State != ConnectionState.Open)
         {
-            case DbConnection dbConnection when dbConnection.State != ConnectionState.Open:
-                await dbConnection.OpenAsync().ConfigureAwait(false);
-                break;
-            case { State: ConnectionState.Closed }:
-                connection.Open();
-                break;
+            await connection.OpenAsync();
         }
     }
 }

@@ -36,7 +36,7 @@ public sealed class ConflictZoneDetailEndpointTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _factory = new InventoryApiApplicationFactory(_pg.ConnectionString);
-        await _factory.EnsureMigratedAsync().ConfigureAwait(false);
+        await _factory.EnsureMigratedAsync();
         _client = _factory.CreateClient();
         await ResetDatabaseAsync();
     }
@@ -81,29 +81,27 @@ public sealed class ConflictZoneDetailEndpointTests : IAsyncLifetime
         const string insertSession = "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, 'Session', @StartedAt);";
         await connection.ExecuteAsync(insertSession, new { Id = sessionId, StartedAt = createdAt });
 
-        const string insertRun =
-            "INSERT INTO \"CountingRun\" (\"Id\", \"InventorySessionId\", \"LocationId\", \"CountType\", \"StartedAtUtc\", \"CompletedAtUtc\")\n" +
-            "VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAt, @CompletedAt);";
+        await CountingRunSqlHelper.InsertAsync(
+            connection,
+            new CountingRunInsert(
+                run1Id,
+                sessionId,
+                locationId,
+                CountType: 1,
+                StartedAtUtc: createdAt,
+                CompletedAtUtc: completedAtRun1,
+                OperatorDisplayName: "Alice"));
 
-        await connection.ExecuteAsync(insertRun, new
-        {
-            Id = run1Id,
-            SessionId = sessionId,
-            LocationId = locationId,
-            CountType = 1,
-            StartedAt = createdAt,
-            CompletedAt = completedAtRun1
-        });
-
-        await connection.ExecuteAsync(insertRun, new
-        {
-            Id = run2Id,
-            SessionId = sessionId,
-            LocationId = locationId,
-            CountType = 2,
-            StartedAt = createdAt.AddMinutes(15),
-            CompletedAt = completedAtRun2
-        });
+        await CountingRunSqlHelper.InsertAsync(
+            connection,
+            new CountingRunInsert(
+                run2Id,
+                sessionId,
+                locationId,
+                CountType: 2,
+                StartedAtUtc: createdAt.AddMinutes(15),
+                CompletedAtUtc: completedAtRun2,
+                OperatorDisplayName: "Bastien"));
 
         const string insertProduct = "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"Ean\", \"CreatedAtUtc\") VALUES (@Id, @Sku, @Name, @Ean, @CreatedAt);";
         await connection.ExecuteAsync(insertProduct, new { Id = product1Id, Sku = "SKU-1", Name = "Produit 1", Ean = "111", CreatedAt = createdAt });

@@ -85,10 +85,10 @@ test.describe("Ordre d'affichage des articles scannés", () => {
     const scannerInput = page.getByLabel('Scanner (douchette ou saisie)')
 
     await scannerInput.fill('001')
-    await expect(page.getByText('Produit 001')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('[data-testid="scanned-item"][data-ean="001"]')).toBeVisible({ timeout: 5000 })
 
     await scannerInput.fill('0000')
-    await expect(page.getByText('Produit 0000')).toBeVisible({ timeout: 5000 })
+    await expect(page.locator('[data-testid="scanned-item"][data-ean="0000"]')).toBeVisible({ timeout: 5000 })
 
     const firstRowEan = await page.getByTestId('scanned-item').nth(0).getAttribute('data-ean')
     const secondRowEan = await page.getByTestId('scanned-item').nth(1).getAttribute('data-ean')
