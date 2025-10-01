@@ -444,8 +444,10 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
 
                 location.CountStatuses = statuses;
 
-                // Y a-t-il au moins un run ouvert sur la zone ?
-                var anyOpen = openRuns.Any(r => r.LocationId == location.Id);
+                // Y a-t-il un run ouvert correspondant au filtre éventuel ?
+                var anyOpen = countType is { } requestedType
+                    ? openRuns.Any(r => r.LocationId == location.Id && r.CountType == requestedType)
+                    : openRuns.Any(r => r.LocationId == location.Id);
                 location.IsBusy = anyOpen;
 
                 // Choix d'un run "actif" pour compat descendante (UI existante)
