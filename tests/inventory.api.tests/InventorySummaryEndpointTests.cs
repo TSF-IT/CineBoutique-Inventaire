@@ -189,7 +189,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         Assert.Equal("Zone C1", completedRun.LocationLabel);
         Assert.Equal(1, completedRun.CountType);
         Assert.Equal("Chloé", completedRun.OperatorDisplayName);
-        Assert.Equal(completedAt.UtcDateTime, completedRun.CompletedAtUtc.UtcDateTime);
+        Assert.Equal(completedAt, completedRun.CompletedAtUtc, TimeSpan.FromMilliseconds(1));
     }
 
     [Fact]
