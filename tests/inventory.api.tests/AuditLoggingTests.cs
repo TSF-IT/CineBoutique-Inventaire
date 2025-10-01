@@ -91,7 +91,7 @@ public sealed class AuditLoggingTests : IAsyncLifetime
                     runId,
                     sessionId,
                     locationId,
-                    countType: 1,
+                    CountType: 1,
                     startedAt,
                     CompletedAtUtc: null,
                     OperatorDisplayName: "Amélie"));
