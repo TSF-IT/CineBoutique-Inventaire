@@ -225,6 +225,7 @@ describe('Workflow d\'inventaire', () => {
       conflicts: 0,
       lastActivityUtc: null,
       openRunDetails: [],
+      completedRunDetails: [],
       conflictZones: [],
     }))
     completeInventoryRunMock.mockReset()
