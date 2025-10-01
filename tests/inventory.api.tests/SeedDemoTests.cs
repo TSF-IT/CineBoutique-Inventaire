@@ -6,7 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
-using System.Data.Common;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -17,6 +17,7 @@ using CineBoutique.Inventory.Infrastructure.Database;
 using CineBoutique.Inventory.Infrastructure.Seeding;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
@@ -39,14 +40,14 @@ public sealed class SeedDemoTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _factory = new InventoryApiApplicationFactory(_pg.ConnectionString);
-        await _factory.EnsureMigratedAsync().ConfigureAwait(false);
+        await _factory.EnsureMigratedAsync();
 
-        await ResetDatabaseAsync().ConfigureAwait(false);
+        await ResetDatabaseAsync();
 
         using (var scope = _factory.Services.CreateScope())
         {
             var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
-            await seeder.SeedAsync().ConfigureAwait(false);
+            await seeder.SeedAsync();
         }
 
         _client = _factory.CreateClient();
@@ -62,10 +63,10 @@ public sealed class SeedDemoTests : IAsyncLifetime
     [Fact]
     public async Task LocationsEndpoint_ExposeSeededRun()
     {
-        var response = await _client.GetAsync("/api/locations?countType=1").ConfigureAwait(false);
+        var response = await _client.GetAsync("/api/locations?countType=1");
         response.EnsureSuccessStatusCode();
 
-        var payload = await response.Content.ReadFromJsonAsync<List<LocationListItemDto>>().ConfigureAwait(false);
+        var payload = await response.Content.ReadFromJsonAsync<List<LocationListItemDto>>();
         Assert.NotNull(payload);
 
         var b1 = payload!.FirstOrDefault(item => string.Equals(item.Code, "B1", StringComparison.OrdinalIgnoreCase));
@@ -73,7 +74,8 @@ public sealed class SeedDemoTests : IAsyncLifetime
 
         Assert.True(b1!.IsBusy);
         Assert.Equal(DemoRunB1Id, b1.ActiveRunId);
-        Assert.Equal(1, b1.ActiveCountType);
+        const short expectedCountType = 1;
+        Assert.Equal(expectedCountType, b1.ActiveCountType);
         Assert.Equal("Amélie", b1.BusyBy);
 
         var status = Assert.Single(b1.CountStatuses.Where(s => s.CountType == 1));
@@ -90,7 +92,7 @@ public sealed class SeedDemoTests : IAsyncLifetime
         using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection).ConfigureAwait(false);
+        await EnsureConnectionOpenAsync(connection);
 
         const string linesSql = @"
 SELECT cl.""CountingRunId"", cl.""Quantity"", cl.""CountedAtUtc"", p.""Ean""
@@ -99,7 +101,7 @@ JOIN ""Product"" p ON p.""Id"" = cl.""ProductId""
 WHERE cl.""CountingRunId"" = @RunId
 ORDER BY cl.""CountedAtUtc"", cl.""Id"";";
 
-        var lines = (await connection.QueryAsync<CountLineDetails>(linesSql, new { RunId = DemoRunB1Id }).ConfigureAwait(false))
+        var lines = (await connection.QueryAsync<CountLineDetails>(linesSql, new { RunId = DemoRunB1Id }))
             .ToList();
 
         Assert.Equal(2, lines.Count);
@@ -114,7 +116,7 @@ SELECT ""InventorySessionId"", ""LocationId"", ""CountType"", ""OperatorDisplayN
 FROM ""CountingRun""
 WHERE ""Id"" = @RunId;";
 
-        var run = await connection.QuerySingleAsync<RunSnapshot>(runSql, new { RunId = DemoRunB1Id }).ConfigureAwait(false);
+        var run = await connection.QuerySingleAsync<RunSnapshot>(runSql, new { RunId = DemoRunB1Id });
 
         Assert.Equal(DemoSessionId, run.InventorySessionId);
         Assert.Equal((short)1, run.CountType);
@@ -128,7 +130,7 @@ WHERE ""Id"" = @RunId;";
         using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection).ConfigureAwait(false);
+        await EnsureConnectionOpenAsync(connection);
 
         const string cleanupSql = @"
 TRUNCATE TABLE ""Audit"" RESTART IDENTITY CASCADE;
@@ -139,25 +141,22 @@ TRUNCATE TABLE ""Location"" RESTART IDENTITY CASCADE;
 TRUNCATE TABLE ""Product"" RESTART IDENTITY CASCADE;
 TRUNCATE TABLE ""audit_logs"" RESTART IDENTITY CASCADE;";
 
-        await connection.ExecuteAsync(cleanupSql).ConfigureAwait(false);
+        await connection.ExecuteAsync(cleanupSql);
     }
 
-    private static async Task EnsureConnectionOpenAsync(IDbConnection connection)
+    private static async Task EnsureConnectionOpenAsync(NpgsqlConnection connection)
     {
-        switch (connection)
+        if (connection.State != ConnectionState.Open)
         {
-            case DbConnection dbConnection when dbConnection.State != ConnectionState.Open:
-                await dbConnection.OpenAsync().ConfigureAwait(false);
-                break;
-            case { State: ConnectionState.Closed }:
-                connection.Open();
-                break;
+            await connection.OpenAsync();
         }
     }
 
-    private sealed record CountLineDetails(Guid CountingRunId, decimal Quantity, DateTimeOffset CountedAtUtc, string Ean);
+    [SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes", Justification = "Instantiated by Dapper during query materialization.")]
+    private sealed record class CountLineDetails(Guid CountingRunId, decimal Quantity, DateTimeOffset CountedAtUtc, string Ean);
 
-    private sealed record RunSnapshot(
+    [SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes", Justification = "Instantiated by Dapper during query materialization.")]
+    private sealed record class RunSnapshot(
         Guid InventorySessionId,
         Guid LocationId,
         short CountType,
