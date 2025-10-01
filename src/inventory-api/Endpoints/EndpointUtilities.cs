@@ -29,10 +29,10 @@ internal static class EndpointUtilities
     {
         const string sql = @"SELECT EXISTS (
     SELECT 1
-    FROM pg_catalog.pg_class c
-    WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f')
-      AND LOWER(c.relname) = LOWER(@TableName)
-      AND pg_catalog.pg_table_is_visible(c.oid)
+    FROM information_schema.tables
+    WHERE LOWER(table_name) = LOWER(@TableName)
+      AND table_schema = ANY (current_schemas(TRUE))
+      AND table_type IN ('BASE TABLE', 'VIEW', 'FOREIGN TABLE', 'LOCAL TEMPORARY', 'GLOBAL TEMPORARY')
 );";
 
         return await connection.ExecuteScalarAsync<bool>(
@@ -44,18 +44,10 @@ internal static class EndpointUtilities
     {
         const string sql = @"SELECT EXISTS (
     SELECT 1
-    FROM pg_catalog.pg_attribute a
-    WHERE a.attrelid = (
-        SELECT c.oid
-        FROM pg_catalog.pg_class c
-        WHERE c.relkind IN ('r', 'p', 'v', 'm', 'f')
-          AND LOWER(c.relname) = LOWER(@TableName)
-          AND pg_catalog.pg_table_is_visible(c.oid)
-        LIMIT 1
-    )
-      AND LOWER(a.attname) = LOWER(@ColumnName)
-      AND a.attnum > 0
-      AND NOT a.attisdropped
+    FROM information_schema.columns
+    WHERE LOWER(table_name) = LOWER(@TableName)
+      AND LOWER(column_name) = LOWER(@ColumnName)
+      AND table_schema = ANY (current_schemas(TRUE))
 );";
 
         return await connection.ExecuteScalarAsync<bool>(
