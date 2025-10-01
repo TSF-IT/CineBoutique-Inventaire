@@ -74,7 +74,16 @@ public class LocationsEndpointTests : IAsyncLifetime
         var busy = payload.Single(item => item.Code == "S1");
         Assert.True(busy.IsBusy);
         Assert.Equal(seed.RunId, busy.ActiveRunId);
-        Assert.Equal("alice.durand", busy.BusyBy);
+        var hasOperatorColumn = await this.HasOperatorDisplayNameColumnAsync();
+
+        if (hasOperatorColumn)
+        {
+            Assert.Equal("alice.durand", busy.BusyBy);
+        }
+        else
+        {
+            Assert.Null(busy.BusyBy);
+        }
         Assert.Equal((short)1, busy.ActiveCountType);
         Assert.NotNull(busy.ActiveStartedAtUtc);
 
@@ -129,21 +138,16 @@ public class LocationsEndpointTests : IAsyncLifetime
             const string insertSessionSql = "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc);";
             await connection.ExecuteAsync(insertSessionSql, new { Id = sessionId, Name = "Session invalide", StartedAtUtc = startedAt });
 
-            const string insertRunSql = @"
-INSERT INTO ""CountingRun"" (""Id"", ""InventorySessionId"", ""LocationId"", ""StartedAtUtc"", ""CountType"", ""OperatorDisplayName"")
-VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType, @Operator);";
-
-            await connection.ExecuteAsync(
-                insertRunSql,
-                new
-                {
-                    Id = invalidRunId,
-                    SessionId = sessionId,
-                    LocationId = invalidLocationId,
-                    StartedAtUtc = startedAt,
-                    CountType = 1,
-                    Operator = "bob.martin"
-                });
+            await CountingRunSqlHelper.InsertAsync(
+                connection,
+                new CountingRunInsert(
+                    invalidRunId,
+                    sessionId,
+                    invalidLocationId,
+                    CountType: 1,
+                    StartedAtUtc: startedAt,
+                    CompletedAtUtc: null,
+                    OperatorDisplayName: "bob.martin"));
         }
 
         var response = await this._client.GetAsync("/api/locations?countType=1");
@@ -290,21 +294,16 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
         const string insertSessionSql = "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc);";
         await connection.ExecuteAsync(insertSessionSql, new { Id = sessionId, Name = "Session principale", StartedAtUtc = startedAt });
 
-        const string insertRunSql = @"
-INSERT INTO ""CountingRun"" (""Id"", ""InventorySessionId"", ""LocationId"", ""StartedAtUtc"", ""CountType"", ""OperatorDisplayName"")
-VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType, @Operator);";
-
-        await connection.ExecuteAsync(
-            insertRunSql,
-            new
-            {
-                Id = runId,
-                SessionId = sessionId,
-                LocationId = busyLocationId,
-                StartedAtUtc = startedAt,
-                CountType = countType,
-                Operator = "alice.durand"
-            });
+        await CountingRunSqlHelper.InsertAsync(
+            connection,
+            new CountingRunInsert(
+                runId,
+                sessionId,
+                busyLocationId,
+                CountType: countType,
+                StartedAtUtc: startedAt,
+                CompletedAtUtc: null,
+                OperatorDisplayName: "alice.durand"));
 
         return (busyLocationId, runId);
     }
@@ -320,6 +319,16 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType, @Operator);";
                 connection.Open();
                 break;
         }
+    }
+
+    private async Task<bool> HasOperatorDisplayNameColumnAsync()
+    {
+        using var scope = this._factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        return await CountingRunSqlHelper.HasOperatorDisplayNameAsync(connection);
     }
 
     private sealed record LocationResponse

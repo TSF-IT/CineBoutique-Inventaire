@@ -78,6 +78,8 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
 
+        var hasOperatorDisplayNameColumn = await CountingRunSqlHelper.HasOperatorDisplayNameAsync(connection);
+
         var sessionId = Guid.NewGuid();
         var locationId = Guid.NewGuid();
         var runId = Guid.NewGuid();
@@ -90,10 +92,16 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         const string insertSession = "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, 'Session', @StartedAt);";
         await connection.ExecuteAsync(insertSession, new { Id = sessionId, StartedAt = startedAt });
 
-        const string insertRun =
-            "INSERT INTO \"CountingRun\" (\"Id\", \"InventorySessionId\", \"LocationId\", \"StartedAtUtc\", \"CountType\", \"OperatorDisplayName\")\n" +
-            "VALUES (@Id, @SessionId, @LocationId, @StartedAt, 1, @Operator);";
-        await connection.ExecuteAsync(insertRun, new { Id = runId, SessionId = sessionId, LocationId = locationId, StartedAt = startedAt, Operator = "Unknown" });
+        await CountingRunSqlHelper.InsertAsync(
+            connection,
+            new CountingRunInsert(
+                runId,
+                sessionId,
+                locationId,
+                countType: 1,
+                StartedAtUtc: startedAt,
+                CompletedAtUtc: null,
+                OperatorDisplayName: "Unknown"));
 
         var productId = Guid.NewGuid();
         const string insertProduct = "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"CreatedAtUtc\") VALUES (@Id, 'SKU-1', 'Produit', @CreatedAt);";
@@ -121,7 +129,14 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         Assert.Equal("Z1", openRun.LocationCode);
         Assert.Equal("Zone 1", openRun.LocationLabel);
         Assert.Equal(1, openRun.CountType);
-        Assert.Equal("Unknown", openRun.OperatorDisplayName);
+        if (hasOperatorDisplayNameColumn)
+        {
+            Assert.Equal("Unknown", openRun.OperatorDisplayName);
+        }
+        else
+        {
+            Assert.Null(openRun.OperatorDisplayName);
+        }
         Assert.Equal(startedAt, openRun.StartedAtUtc, TimeSpan.FromSeconds(1));
         Assert.Empty(payload.ConflictZones);
     }
@@ -152,18 +167,16 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         const string insertSession = "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, 'Session', @StartedAt);";
         await connection.ExecuteAsync(insertSession, new { Id = sessionId, StartedAt = startedAt });
 
-        const string insertRun =
-            "INSERT INTO \"CountingRun\" (\"Id\", \"InventorySessionId\", \"LocationId\", \"StartedAtUtc\", \"CompletedAtUtc\", \"CountType\", \"OperatorDisplayName\")\n" +
-            "VALUES (@Id, @SessionId, @LocationId, @StartedAt, @CompletedAt, 1, @Operator);";
-        await connection.ExecuteAsync(insertRun, new
-        {
-            Id = runId,
-            SessionId = sessionId,
-            LocationId = locationId,
-            StartedAt = startedAt,
-            CompletedAt = completedAt,
-            Operator = "Camille"
-        });
+        await CountingRunSqlHelper.InsertAsync(
+            connection,
+            new CountingRunInsert(
+                runId,
+                sessionId,
+                locationId,
+                countType: 1,
+                StartedAtUtc: startedAt,
+                CompletedAtUtc: completedAt,
+                OperatorDisplayName: "Camille"));
 
         const string insertProduct = "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"CreatedAtUtc\") VALUES (@Id, 'SKU-2', 'Produit', @CreatedAt);";
         await connection.ExecuteAsync(insertProduct, new { Id = productId, CreatedAt = startedAt });

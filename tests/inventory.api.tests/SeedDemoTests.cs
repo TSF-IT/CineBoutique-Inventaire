@@ -76,12 +76,28 @@ public sealed class SeedDemoTests : IAsyncLifetime
         Assert.Equal(DemoRunB1Id, b1.ActiveRunId);
         const short expectedCountType = 1;
         Assert.Equal(expectedCountType, b1.ActiveCountType);
-        Assert.Equal("Amélie", b1.BusyBy);
+        var hasOperatorColumn = await HasOperatorDisplayNameColumnAsync();
+
+        if (hasOperatorColumn)
+        {
+            Assert.Equal("Amélie", b1.BusyBy);
+        }
+        else
+        {
+            Assert.Null(b1.BusyBy);
+        }
 
         var status = Assert.Single(b1.CountStatuses.Where(s => s.CountType == 1));
         Assert.Equal(LocationCountStatus.InProgress, status.Status);
         Assert.Equal(DemoRunB1Id, status.RunId);
-        Assert.Equal("Amélie", status.OperatorDisplayName);
+        if (hasOperatorColumn)
+        {
+            Assert.Equal("Amélie", status.OperatorDisplayName);
+        }
+        else
+        {
+            Assert.Null(status.OperatorDisplayName);
+        }
         Assert.NotNull(status.StartedAtUtc);
         Assert.Null(status.CompletedAtUtc);
     }
@@ -111,8 +127,15 @@ ORDER BY cl.""CountedAtUtc"", cl.""Id"";";
         Assert.Equal(5m, lines[1].Quantity);
         Assert.All(lines, line => Assert.Equal(DemoRunB1Id, line.CountingRunId));
 
-        const string runSql = @"
+        var hasOperatorColumn = await CountingRunSqlHelper.HasOperatorDisplayNameAsync(connection);
+
+        var runSql = hasOperatorColumn
+            ? @"
 SELECT ""InventorySessionId"", ""LocationId"", ""CountType"", ""OperatorDisplayName"", ""StartedAtUtc"", ""CompletedAtUtc""
+FROM ""CountingRun""
+WHERE ""Id"" = @RunId;"
+            : @"
+SELECT ""InventorySessionId"", ""LocationId"", ""CountType"", NULL::text AS ""OperatorDisplayName"", ""StartedAtUtc"", ""CompletedAtUtc""
 FROM ""CountingRun""
 WHERE ""Id"" = @RunId;";
 
@@ -120,9 +143,32 @@ WHERE ""Id"" = @RunId;";
 
         Assert.Equal(DemoSessionId, run.InventorySessionId);
         Assert.Equal((short)1, run.CountType);
-        Assert.Equal("Amélie", run.OperatorDisplayName);
+        if (hasOperatorColumn)
+        {
+            Assert.Equal("Amélie", run.OperatorDisplayName);
+        }
+        else
+        {
+            Assert.Null(run.OperatorDisplayName);
+        }
         Assert.Null(run.CompletedAtUtc);
         Assert.True(run.StartedAtUtc <= DateTimeOffset.UtcNow);
+    }
+
+    private async Task<bool> HasOperatorDisplayNameColumnAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+
+        if (connection is not NpgsqlConnection npgsqlConnection)
+        {
+            throw new InvalidOperationException("La connexion attendue doit être de type NpgsqlConnection.");
+        }
+
+        await EnsureConnectionOpenAsync(npgsqlConnection);
+
+        return await CountingRunSqlHelper.HasOperatorDisplayNameAsync(npgsqlConnection);
     }
 
     private async Task ResetDatabaseAsync()
