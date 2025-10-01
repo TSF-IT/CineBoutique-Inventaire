@@ -444,17 +444,20 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
 
                 location.CountStatuses = statuses;
 
-                // Y a-t-il un run ouvert correspondant au filtre éventuel ?
-                var anyOpen = countType is { } requestedType
-                    ? openRuns.Any(r => r.LocationId == location.Id && r.CountType == requestedType)
-                    : openRuns.Any(r => r.LocationId == location.Id);
-                location.IsBusy = anyOpen;
+                var openRunsForLocation = openRuns
+                    .Where(r => r.LocationId == location.Id)
+                    .ToList();
 
-                // Choix d'un run "actif" pour compat descendante (UI existante)
+                // Y a-t-il un run ouvert correspondant au filtre éventuel ?
                 if (countType is { } requestedType)
                 {
-                    var mostRecent = openRuns
-                        .Where(r => r.LocationId == location.Id && r.CountType == requestedType)
+                    var runsForRequestedType = openRunsForLocation
+                        .Where(r => r.CountType == requestedType)
+                        .ToList();
+
+                    location.IsBusy = runsForRequestedType.Any();
+
+                    var mostRecent = runsForRequestedType
                         .OrderByDescending(r => r.StartedAtUtc)
                         .FirstOrDefault();
 
@@ -465,8 +468,9 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                 }
                 else
                 {
-                    var mostRecent = openRuns
-                        .Where(r => r.LocationId == location.Id)
+                    location.IsBusy = openRunsForLocation.Any();
+
+                    var mostRecent = openRunsForLocation
                         .OrderByDescending(r => r.StartedAtUtc)
                         .FirstOrDefault();
 
