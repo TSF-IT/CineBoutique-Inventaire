@@ -61,13 +61,27 @@ const IsoDateNullable = z.preprocess((value) => {
   return value
 }, z.date().nullable())
 
+const NullableUuid = z.preprocess((value) => {
+  if (value == null) {
+    return null
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (trimmed.length === 0 || trimmed.toLowerCase() === 'null') {
+      return null
+    }
+    return trimmed
+  }
+  return value
+}, z.string().uuid().nullable())
+
 export const LocationDto = z.object({
   id: z.string().uuid(),
   code: z.string(),
   label: z.string(),
   isBusy: z.boolean(),
   busyBy: z.string().nullable(),
-  activeRunId: z.string().uuid().nullable(),
+  activeRunId: NullableUuid,
   activeCountType: z.number().int().nullable(),
   activeStartedAtUtc: IsoDateNullable,
   countStatuses: z
@@ -75,7 +89,7 @@ export const LocationDto = z.object({
       z.object({
         countType: z.number().int(),
         status: z.enum(['not_started', 'in_progress', 'completed']),
-        runId: z.string().uuid().nullable(),
+        runId: NullableUuid,
         operatorDisplayName: z.string().nullable(),
         startedAtUtc: IsoDateNullable,
         completedAtUtc: IsoDateNullable,
