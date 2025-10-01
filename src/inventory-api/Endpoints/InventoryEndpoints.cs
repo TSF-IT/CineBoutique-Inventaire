@@ -302,8 +302,16 @@ ORDER BY p.""Ean"";";
                 ? "cr.\"OperatorDisplayName\""
                 : "NULL::text";
 
+            var activeRunsDistinctColumns = hasOperatorDisplayNameColumn
+                ? "cr.\"LocationId\", cr.\"CountType\", cr.\"OperatorDisplayName\""
+                : "cr.\"LocationId\", cr.\"CountType\"";
+
+            var activeRunsOrderByColumns = hasOperatorDisplayNameColumn
+                ? "cr.\"LocationId\", cr.\"CountType\", cr.\"OperatorDisplayName\", cr.\"StartedAtUtc\" DESC"
+                : "cr.\"LocationId\", cr.\"CountType\", cr.\"StartedAtUtc\" DESC";
+
             var sql = $@"WITH active_runs AS (
-    SELECT DISTINCT ON (cr.""LocationId"", cr.""CountType"", cr.""OperatorDisplayName"")
+    SELECT DISTINCT ON ({activeRunsDistinctColumns})
         cr.""LocationId"",
         cr.""Id""            AS ""ActiveRunId"",
         cr.""CountType""     AS ""ActiveCountType"",
@@ -313,7 +321,7 @@ ORDER BY p.""Ean"";";
     FROM ""CountingRun"" cr
     WHERE cr.""CompletedAtUtc"" IS NULL
       AND (@CountType IS NULL OR cr.""CountType"" = @CountType)
-    ORDER BY cr.""LocationId"", cr.""CountType"", cr.""OperatorDisplayName"", cr.""StartedAtUtc"" DESC
+    ORDER BY {activeRunsOrderByColumns}
 )
 SELECT
     l.""Id"",
