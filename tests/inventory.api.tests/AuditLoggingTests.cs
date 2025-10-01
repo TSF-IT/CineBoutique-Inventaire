@@ -85,21 +85,16 @@ public sealed class AuditLoggingTests : IAsyncLifetime
             const string insertSessionSql = "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc);";
             await connection.ExecuteAsync(insertSessionSql, new { Id = sessionId, Name = "Session principale", StartedAtUtc = startedAt });
 
-            const string insertRunSql = """
-INSERT INTO "CountingRun" ("Id", "InventorySessionId", "LocationId", "StartedAtUtc", "CountType", "OperatorDisplayName")
-VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType, @Operator);
-""";
-            await connection.ExecuteAsync(
-                insertRunSql,
-                new
-                {
-                    Id = runId,
-                    SessionId = sessionId,
-                    LocationId = locationId,
-                    StartedAtUtc = startedAt,
-                    CountType = 1,
-                    Operator = "Amélie"
-                });
+            await CountingRunSqlHelper.InsertAsync(
+                connection,
+                new CountingRunInsert(
+                    runId,
+                    sessionId,
+                    locationId,
+                    countType: 1,
+                    startedAt,
+                    CompletedAtUtc: null,
+                    OperatorDisplayName: "Amélie"));
         }
 
         var response = await _client.PostAsync($"/api/inventories/{locationId}/restart?countType=1", null);
