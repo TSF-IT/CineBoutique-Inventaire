@@ -70,13 +70,13 @@ LIMIT 1;";
         }
 
         var versionChar = buffer[14];
-        if (versionChar is < '1' or > '8')
+        if (!Uri.IsHexDigit(versionChar))
         {
             return null;
         }
 
-        var variantChar = char.ToLowerInvariant(buffer[19]);
-        return variantChar is '8' or '9' or 'a' or 'b'
+        var variantChar = buffer[19];
+        return Uri.IsHexDigit(variantChar)
             ? runId
             : null;
     }
