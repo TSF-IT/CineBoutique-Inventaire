@@ -49,7 +49,7 @@ public sealed class AuditLoggingTests : IAsyncLifetime
 
         _factory = new InventoryApiApplicationFactory(_pg.ConnectionString, configuration);
 
-        await _factory.EnsureMigratedAsync().ConfigureAwait(false);
+        await _factory.EnsureMigratedAsync();
 
         _client = _factory.CreateClient();
 
@@ -85,11 +85,16 @@ public sealed class AuditLoggingTests : IAsyncLifetime
             const string insertSessionSql = "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc);";
             await connection.ExecuteAsync(insertSessionSql, new { Id = sessionId, Name = "Session principale", StartedAtUtc = startedAt });
 
-            const string insertRunSql = """
-INSERT INTO "CountingRun" ("Id", "InventorySessionId", "LocationId", "StartedAtUtc", "CountType")
-VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
-""";
-            await connection.ExecuteAsync(insertRunSql, new { Id = runId, SessionId = sessionId, LocationId = locationId, StartedAtUtc = startedAt, CountType = 1 });
+            await CountingRunSqlHelper.InsertAsync(
+                connection,
+                new CountingRunInsert(
+                    runId,
+                    sessionId,
+                    locationId,
+                    CountType: 1,
+                    startedAt,
+                    CompletedAtUtc: null,
+                    OperatorDisplayName: "Amélie"));
         }
 
         var response = await _client.PostAsync($"/api/inventories/{locationId}/restart?countType=1", null);
@@ -272,19 +277,26 @@ VALUES (@Id, @SessionId, @LocationId, @StartedAtUtc, @CountType);
         using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection).ConfigureAwait(false);
+        await EnsureConnectionOpenAsync(connection);
 
-        const string cleanupSql = @"
-TRUNCATE TABLE ""CountLine"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""CountingRun"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""InventorySession"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""Location"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""Product"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""audit_logs"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""Audit"" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE ""Conflict"" RESTART IDENTITY CASCADE;";
+        const string cleanupSql = """
+DO $do$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Audit') THEN
+        EXECUTE 'TRUNCATE TABLE "Audit" RESTART IDENTITY CASCADE;';
+    END IF;
+END $do$;
 
-        await connection.ExecuteAsync(cleanupSql).ConfigureAwait(false);
+TRUNCATE TABLE "CountLine" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "CountingRun" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "InventorySession" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "Location" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "Product" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "Conflict" RESTART IDENTITY CASCADE;
+""";
+
+        await connection.ExecuteAsync(cleanupSql);
     }
 
     private async Task<IReadOnlyList<AuditLogEntry>> GetAuditLogsAsync()
@@ -292,10 +304,10 @@ TRUNCATE TABLE ""Conflict"" RESTART IDENTITY CASCADE;";
         using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection).ConfigureAwait(false);
+        await EnsureConnectionOpenAsync(connection);
 
         const string query = "SELECT \"id\" AS \"Id\", \"at\" AS \"At\", \"actor\" AS \"Actor\", \"category\" AS \"Category\", \"message\" AS \"Message\" FROM \"audit_logs\" ORDER BY \"at\" ASC;";
-        var rows = await connection.QueryAsync<AuditLogEntry>(query).ConfigureAwait(false);
+        var rows = await connection.QueryAsync<AuditLogEntry>(query);
         return rows.ToList();
     }
 
@@ -304,7 +316,7 @@ TRUNCATE TABLE ""Conflict"" RESTART IDENTITY CASCADE;";
         switch (connection)
         {
             case DbConnection dbConnection when dbConnection.State != ConnectionState.Open:
-                await dbConnection.OpenAsync().ConfigureAwait(false);
+                await dbConnection.OpenAsync();
                 break;
             case { State: ConnectionState.Closed }:
                 connection.Open();
