@@ -123,7 +123,7 @@ ORDER BY cl.""CountedAtUtc"", cl.""Id"";";
         Assert.Equal(2, lines.Count);
         Assert.Equal("0000000000001", lines[0].Ean);
         Assert.Equal(3m, lines[0].Quantity);
-        Assert.Equal("0000000000000", lines[1].Ean);
+        Assert.Equal("0000000000002", lines[1].Ean);
         Assert.Equal(5m, lines[1].Quantity);
         Assert.All(lines, line => Assert.Equal(DemoRunB1Id, line.CountingRunId));
 
