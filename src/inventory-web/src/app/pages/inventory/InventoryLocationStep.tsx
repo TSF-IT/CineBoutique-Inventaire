@@ -273,25 +273,28 @@ export const InventoryLocationStep = () => {
     return '•'
   }
 
-  const handleLocationSelection = (zone: Location) => {
-    if (isZoneCompleted(zone)) {
+  const handleLocationSelection = (zone: Location, options?: { targetCountType?: CountType | null }) => {
+    const targetCountType = options?.targetCountType ?? null
+    const forceThirdCount = targetCountType === CountType.Count3
+
+    if (!forceThirdCount && isZoneCompleted(zone)) {
       return
     }
 
     const statuses = getRelevantStatuses(zone)
     const activeStatus = statuses.find((status) => status.status === 'in_progress')
-    const nextSessionId = activeStatus?.runId ?? zone.activeRunId ?? null
+    const nextSessionId = forceThirdCount ? null : activeStatus?.runId ?? zone.activeRunId ?? null
     const isSameLocation = location?.id === zone.id
-    const isSameSession = isSameLocation && sessionId === nextSessionId
+    const isSameSession = !forceThirdCount && isSameLocation && sessionId === nextSessionId
 
-    if (!isSameSession) {
+    if (!isSameSession || forceThirdCount) {
       clearSession()
     }
 
-    setSessionId(nextSessionId ?? null)
-    setCountType(null)
     setLocation(zone)
-    navigate('/inventory/count-type')
+    setSessionId(nextSessionId ?? null)
+    setCountType(targetCountType ?? null)
+    navigate(forceThirdCount ? '/inventory/session' : '/inventory/count-type')
   }
 
   const errorPanel = useMemo(() => resolveErrorPanel(error), [error])
@@ -332,19 +335,6 @@ export const InventoryLocationStep = () => {
               const visibleStatuses = getVisibleStatuses(zone)
               const zoneCompleted = isZoneCompleted(zone)
               const isSelected = location?.id === zone.id
-              const statusSummary =
-                visibleStatuses.length > 0
-                  ? visibleStatuses.map((status) => describeCountStatus(status)).join(', ')
-                  : zoneCompleted
-                    ? 'Comptages terminés'
-                    : 'Aucun comptage en cours'
-              const toneClass = zoneCompleted
-                ? 'border-slate-200 bg-slate-50 text-slate-500 opacity-80 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400'
-                : isSelected
-                  ? 'border-brand-400 bg-brand-500/10 text-brand-700 dark:bg-brand-500/20 dark:text-brand-100'
-                  : 'border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200'
-              const displayName = getLocationDisplayName(zone.code, zone.label)
-              const shouldDisplayLabel = !isLocationLabelRedundant(zone.code, zone.label)
               const conflictStatus = (() => {
                 if (!conflictsLoaded) {
                   return null
@@ -356,6 +346,26 @@ export const InventoryLocationStep = () => {
                 )
                 return hasConflict ? 'conflict' : 'none'
               })()
+              const isConflictZone = conflictStatus === 'conflict'
+              const isZoneLocked = zoneCompleted && !isConflictZone
+              const statusSummary =
+                visibleStatuses.length > 0
+                  ? visibleStatuses.map((status) => describeCountStatus(status)).join(', ')
+                  : zoneCompleted
+                    ? 'Comptages terminés'
+                    : 'Aucun comptage en cours'
+              const toneClass = isZoneLocked
+                ? 'border-slate-200 bg-slate-50 text-slate-500 opacity-80 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400'
+                : isSelected
+                  ? 'border-brand-400 bg-brand-500/10 text-brand-700 dark:bg-brand-500/20 dark:text-brand-100'
+                  : 'border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200'
+              const displayName = getLocationDisplayName(zone.code, zone.label)
+              const shouldDisplayLabel = !isLocationLabelRedundant(zone.code, zone.label)
+              const buttonLabel = isConflictZone
+                ? 'Lancer le 3ᵉ comptage'
+                : zoneCompleted
+                  ? 'Zone terminée'
+                  : 'Choisir cette zone'
               return (
                 <div
                   key={zone.id}
@@ -394,13 +404,17 @@ export const InventoryLocationStep = () => {
                             ? `Zone ${displayName} – ${statusSummary}`
                             : `Zone ${displayName}`
                         }
-                        onClick={() => handleLocationSelection(zone)}
-                        disabled={zoneCompleted}
-                        aria-disabled={zoneCompleted}
-                        title={zoneCompleted ? 'Les deux comptages sont terminés' : undefined}
+                        onClick={() =>
+                          handleLocationSelection(zone, {
+                            targetCountType: isConflictZone ? CountType.Count3 : null,
+                          })
+                        }
+                        disabled={isZoneLocked}
+                        aria-disabled={isZoneLocked}
+                        title={isZoneLocked ? 'Les deux comptages sont terminés' : undefined}
                         className="self-start"
                       >
-                        {zoneCompleted ? 'Zone terminée' : 'Choisir cette zone'}
+                        {buttonLabel}
                       </Button>
                       {zoneCompleted && (
                         <div className="flex justify-start sm:justify-end">

@@ -138,6 +138,7 @@ export const fetchInventorySummary = async (): Promise<InventorySummary> => {
   const data = (await http(`${API_BASE}/inventories/summary`)) as Partial<InventorySummary> | null | undefined
 
   const openRunDetails = Array.isArray(data?.openRunDetails) ? data!.openRunDetails : []
+  const completedRunDetails = Array.isArray(data?.completedRunDetails) ? data!.completedRunDetails : []
   const conflictZones = Array.isArray(data?.conflictZones) ? data!.conflictZones : []
 
   return {
@@ -146,6 +147,7 @@ export const fetchInventorySummary = async (): Promise<InventorySummary> => {
     conflicts: data?.conflicts ?? 0,
     lastActivityUtc: data?.lastActivityUtc ?? null,
     openRunDetails,
+    completedRunDetails,
     conflictZones,
   }
 }

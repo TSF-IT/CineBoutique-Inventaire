@@ -9,8 +9,8 @@ import { ErrorPanel } from '../../components/ErrorPanel'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { Page } from '../../components/Page'
 import { SectionTitle } from '../../components/SectionTitle'
-import { SlidingPanel } from '../../components/SlidingPanel'
 import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
+import { RunsOverviewModal } from '../../components/Runs/RunsOverviewModal'
 import { useAsync } from '../../hooks/useAsync'
 import type { ConflictZoneSummary, InventorySummary, Location } from '../../types/inventory'
 import type { HttpError } from '@/lib/api/http'
@@ -33,30 +33,6 @@ const formatLastActivity = (value: string | null) => {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(date)
-}
-
-const formatDateTime = (value: string) => {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return 'Non disponible'
-  }
-  return new Intl.DateTimeFormat('fr-FR', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  }).format(date)
-}
-
-const describeCountType = (value: number) => {
-  switch (value) {
-    case 1:
-      return 'Premier passage'
-    case 2:
-      return 'Second passage'
-    case 3:
-      return 'Contrôle'
-    default:
-      return `Type ${value}`
-  }
 }
 
 const describeError = (error: unknown): { title: string; details?: string } | null => {
@@ -89,7 +65,7 @@ const describeError = (error: unknown): { title: string; details?: string } | nu
 
 export const HomePage = () => {
   const navigate = useNavigate()
-  const [openRunsPanelOpen, setOpenRunsPanelOpen] = useState(false)
+  const [runsModalOpen, setRunsModalOpen] = useState(false)
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
   const [selectedZone, setSelectedZone] = useState<ConflictZoneSummary | null>(null)
   const onError = useCallback((e: unknown) => {
@@ -131,6 +107,7 @@ export const HomePage = () => {
   const openRunsCount = displaySummary?.openRuns ?? 0
   const conflictCount = displaySummary?.conflicts ?? 0
   const openRunDetails = displaySummary?.openRunDetails ?? []
+  const completedRunDetails = displaySummary?.completedRunDetails ?? []
   const conflictZones = useMemo(() => displaySummary?.conflictZones ?? [], [displaySummary])
   const locations = locationsData ?? []
   const completedRuns = useMemo(() => {
@@ -149,14 +126,14 @@ export const HomePage = () => {
   const totalExpected = useMemo(() => locations.length * 2, [locations.length])
   const hasOpenRuns = openRunsCount > 0
   const hasConflicts = conflictCount > 0
-  const canShowOpenRunsPanel = hasOpenRuns && openRunDetails.length > 0
+  const canOpenRunsModal = openRunDetails.length > 0 || completedRunDetails.length > 0
   const canOpenConflicts = hasConflicts && conflictZones.length > 0
 
   const handleOpenRunsClick = useCallback(() => {
-    if (canShowOpenRunsPanel) {
-      setOpenRunsPanelOpen(true)
+    if (canOpenRunsModal) {
+      setRunsModalOpen(true)
     }
-  }, [canShowOpenRunsPanel])
+  }, [canOpenRunsModal])
 
   const openConflictModal = useCallback((zone: ConflictZoneSummary) => {
     setSelectedZone(zone)
@@ -192,10 +169,10 @@ export const HomePage = () => {
             <button
               type="button"
               onClick={handleOpenRunsClick}
-              disabled={!canShowOpenRunsPanel}
+              disabled={!canOpenRunsModal}
               className={clsx(
                 'flex flex-col rounded-2xl border border-brand-300 bg-brand-100/70 p-5 text-left transition dark:border-brand-500/30 dark:bg-brand-500/10',
-                canShowOpenRunsPanel
+                canOpenRunsModal
                   ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2'
                   : 'cursor-default'
               )}
@@ -211,7 +188,7 @@ export const HomePage = () => {
               >
                 {hasOpenRuns ? openRunsCount : 'Aucun comptage en cours'}
               </p>
-              {canShowOpenRunsPanel && (
+              {canOpenRunsModal && (
                 <p className="mt-1 text-xs text-brand-700/80 dark:text-brand-200/80">Touchez pour voir le détail</p>
               )}
               <p className="mt-3 text-xs text-brand-700/80 dark:text-brand-100/70">
@@ -306,27 +283,12 @@ export const HomePage = () => {
         </Link>
       </div>
 
-      <SlidingPanel open={openRunsPanelOpen} title="Comptages en cours" onClose={() => setOpenRunsPanelOpen(false)}>
-        {openRunDetails.length === 0 ? (
-          <p className="text-sm text-slate-600 dark:text-slate-300">Aucun comptage en cours.</p>
-        ) : (
-          <ul className="divide-y divide-slate-200 dark:divide-slate-800">
-            {openRunDetails.map((run) => {
-              const operator = run.operatorDisplayName?.trim() || '—'
-              return (
-                <li key={run.runId} className="py-3">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                    {run.locationCode} – {run.locationLabel}
-                  </p>
-                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                    {describeCountType(run.countType)} · {operator} · démarré {formatDateTime(run.startedAtUtc)}
-                  </p>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-      </SlidingPanel>
+      <RunsOverviewModal
+        open={runsModalOpen}
+        openRuns={openRunDetails}
+        completedRuns={completedRunDetails}
+        onClose={() => setRunsModalOpen(false)}
+      />
 
       <ConflictZoneModal open={conflictModalOpen} zone={selectedZone} onClose={handleConflictModalClose} />
     </Page>
