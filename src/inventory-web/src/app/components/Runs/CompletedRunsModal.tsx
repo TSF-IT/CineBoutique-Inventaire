@@ -1,10 +1,9 @@
 import type { MouseEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import type { CompletedRunSummary, OpenRunSummary } from '../../types/inventory'
+import type { CompletedRunSummary } from '../../types/inventory'
 
-interface RunsOverviewModalProps {
+interface CompletedRunsModalProps {
   open: boolean
-  openRuns: OpenRunSummary[]
   completedRuns: CompletedRunSummary[]
   onClose: () => void
 }
@@ -50,7 +49,7 @@ const formatOperator = (name: string | null | undefined) => {
   return trimmed && trimmed.length > 0 ? trimmed : '—'
 }
 
-export const RunsOverviewModal = ({ open, openRuns, completedRuns, onClose }: RunsOverviewModalProps) => {
+export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRunsModalProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -132,9 +131,7 @@ export const RunsOverviewModal = ({ open, openRuns, completedRuns, onClose }: Ru
     [onClose],
   )
 
-  const hasOpenRuns = openRuns.length > 0
   const hasCompletedRuns = completedRuns.length > 0
-
   const orderedCompletedRuns = useMemo(
     () => [...completedRuns].sort((a, b) => (a.completedAtUtc > b.completedAtUtc ? -1 : 1)),
     [completedRuns],
@@ -154,26 +151,24 @@ export const RunsOverviewModal = ({ open, openRuns, completedRuns, onClose }: Ru
         ref={containerRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="runs-overview-modal-title"
-        className="relative flex w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:bg-slate-900"
+        aria-labelledby="completed-runs-modal-title"
+        className="relative flex w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:bg-slate-900"
         tabIndex={-1}
       >
-        <header className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-700 dark:bg-slate-900/70">
+        <header className="flex items-start justify-between gap-4 border-b border-emerald-200 bg-emerald-50 px-5 py-4 dark:border-emerald-800/60 dark:bg-emerald-900/20">
           <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-brand-600 dark:text-brand-200">
-              Suivi des comptages
-            </p>
-            <h2 id="runs-overview-modal-title" className="mt-1 text-xl font-semibold text-slate-900 dark:text-white">
-              Comptages en cours et terminés
+            <p className="text-xs font-medium uppercase tracking-wide text-emerald-700 dark:text-emerald-200">Progrès</p>
+            <h2 id="completed-runs-modal-title" className="mt-1 text-xl font-semibold text-slate-900 dark:text-white">
+              Comptages terminés
             </h2>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              Visualisez les zones actives et les derniers comptages finalisés.
+              Consultez les 20 derniers comptages finalisés.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="shrink-0 rounded-full border border-slate-300 p-2 text-slate-600 transition hover:bg-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+            className="shrink-0 rounded-full border border-emerald-200 p-2 text-emerald-700 transition hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 dark:border-emerald-700 dark:text-emerald-200 dark:hover:bg-emerald-800/40"
             aria-label="Fermer"
           >
             <span aria-hidden="true">✕</span>
@@ -181,35 +176,11 @@ export const RunsOverviewModal = ({ open, openRuns, completedRuns, onClose }: Ru
         </header>
         <div className="flex-1 overflow-y-auto px-5 py-6">
           <section className="flex flex-col gap-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-brand-600 dark:text-brand-200">
-              Comptages en cours
-            </h3>
-            {hasOpenRuns ? (
-              <ul className="divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white/80 dark:divide-slate-800 dark:border-slate-700 dark:bg-slate-900/40">
-                {openRuns.map((run) => (
-                  <li key={run.runId} className="px-4 py-3">
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                      {run.locationCode} · {run.locationLabel}
-                    </p>
-                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                      {describeCountType(run.countType)} • Opérateur : {formatOperator(run.operatorDisplayName)} • Démarré le {formatDateTime(run.startedAtUtc)}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
-                Aucun comptage en cours.
-              </p>
-            )}
-          </section>
-
-          <section className="mt-6 flex flex-col gap-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-300">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-200">
               Comptages terminés (20 plus récents)
             </h3>
             {hasCompletedRuns ? (
-              <ul className="divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white/80 dark:divide-slate-800 dark:border-slate-700 dark:bg-slate-900/40">
+              <ul className="divide-y divide-emerald-100 rounded-2xl border border-emerald-200 bg-white/80 dark:divide-emerald-800/40 dark:border-emerald-800/60 dark:bg-emerald-900/20">
                 {orderedCompletedRuns.map((run) => (
                   <li key={run.runId} className="px-4 py-3">
                     <p className="text-sm font-semibold text-slate-900 dark:text-white">
@@ -222,7 +193,7 @@ export const RunsOverviewModal = ({ open, openRuns, completedRuns, onClose }: Ru
                 ))}
               </ul>
             ) : (
-              <p className="rounded-2xl border border-slate-200 bg-white/70 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+              <p className="rounded-2xl border border-emerald-200 bg-white/70 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-800/60 dark:bg-emerald-900/20 dark:text-emerald-200">
                 Aucun comptage terminé récemment.
               </p>
             )}
