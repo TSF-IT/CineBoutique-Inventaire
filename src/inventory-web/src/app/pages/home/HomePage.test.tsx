@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { HomePage } from './HomePage'
 import type { ConflictZoneDetail, InventorySummary, Location } from '../../types/inventory'
 import { fetchInventorySummary, fetchLocations, getConflictZoneDetail } from '../../api/inventoryApi'
@@ -86,7 +86,7 @@ describe('HomePage', () => {
     expect(screen.getAllByText('Comptage 2').length).toBeGreaterThan(0)
   })
 
-  it('ouvre la modale des comptages en cours et terminés', async () => {
+  it('ouvre les modales des comptages en cours et terminés', async () => {
     const summary: InventorySummary = {
       activeSessions: 1,
       openRuns: 1,
@@ -135,14 +135,38 @@ describe('HomePage', () => {
       const buttons = screen.getAllByRole('button', { name: /Comptages en cours/i })
       expect(buttons.some((button) => !button.hasAttribute('disabled'))).toBe(true)
     })
-    const cards = screen.getAllByRole('button', { name: /Comptages en cours/i })
-    const activeCard = cards.find((card) => !card.hasAttribute('disabled')) ?? cards[0]
-    fireEvent.click(activeCard)
 
-    const modalTitle = await screen.findByRole('heading', { level: 2, name: /Comptages en cours et terminés/i })
-    expect(modalTitle).toBeInTheDocument()
-    expect(screen.getByText(/Comptages terminés \(20 plus récents\)/i)).toBeInTheDocument()
+    const openRunsCards = screen.getAllByRole('button', { name: /Comptages en cours/i })
+    const openRunsCard = openRunsCards.find((button) => !button.hasAttribute('disabled')) ?? openRunsCards[0]
+    expect(openRunsCard).toBeDefined()
+    fireEvent.click(openRunsCard)
+
+    const openRunsModalTitle = await screen.findByRole('heading', { level: 2, name: /Comptages en cours/i })
+    expect(openRunsModalTitle).toBeInTheDocument()
+    const openRunsModal = await screen.findByRole('dialog', { name: /Comptages en cours/i })
     expect(screen.getByText(/Opérateur : Alice/i)).toBeInTheDocument()
+
+    const closeOpenRunsButton = within(openRunsModal).getByRole('button', { name: /Fermer/i })
+    fireEvent.click(closeOpenRunsButton)
+
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { level: 2, name: /Comptages en cours/i })).not.toBeInTheDocument()
+    })
+
+    await waitFor(() => {
+      const buttons = screen.getAllByRole('button', { name: /Comptages terminés/i })
+      expect(buttons.some((button) => !button.hasAttribute('disabled'))).toBe(true)
+    })
+
+    const completedRunsCards = screen.getAllByRole('button', { name: /Comptages terminés/i })
+    const completedRunsCard = completedRunsCards.find((button) => !button.hasAttribute('disabled')) ?? completedRunsCards[0]
+    expect(completedRunsCard).toBeDefined()
+    fireEvent.click(completedRunsCard)
+
+    const completedRunsModalTitle = await screen.findByRole('heading', { level: 2, name: /Comptages terminés/i })
+    expect(completedRunsModalTitle).toBeInTheDocument()
+    const completedRunsModal = await screen.findByRole('dialog', { name: /Comptages terminés/i })
+    expect(screen.getByText(/Comptages terminés \(20 plus récents\)/i)).toBeInTheDocument()
     expect(screen.getByText(/Opérateur : Bruno/i)).toBeInTheDocument()
   })
 })
