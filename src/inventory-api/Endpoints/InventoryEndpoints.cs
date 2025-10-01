@@ -122,6 +122,39 @@ ORDER BY cr.""StartedAtUtc"" DESC;";
                 })
                 .ToList();
 
+            var completedRunsSql = $@"SELECT
+    cr.""Id""          AS ""RunId"",
+    cr.""LocationId"",
+    l.""Code""         AS ""LocationCode"",
+    l.""Label""        AS ""LocationLabel"",
+    cr.""CountType"",
+    {operatorDisplayNameProjection} AS ""OperatorDisplayName"",
+    cr.""StartedAtUtc"",
+    cr.""CompletedAtUtc""
+FROM ""CountingRun"" cr
+JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
+WHERE cr.""CompletedAtUtc"" IS NOT NULL
+ORDER BY cr.""CompletedAtUtc"" DESC
+LIMIT 20;";
+
+            var completedRunRows = (await connection
+                    .QueryAsync<CompletedRunSummaryRow>(new CommandDefinition(completedRunsSql, cancellationToken: cancellationToken))
+                    .ConfigureAwait(false)).ToList();
+
+            summary.CompletedRunDetails = completedRunRows
+                .Select(row => new CompletedRunSummaryDto
+                {
+                    RunId = row.RunId,
+                    LocationId = row.LocationId,
+                    LocationCode = row.LocationCode,
+                    LocationLabel = row.LocationLabel,
+                    CountType = row.CountType,
+                    OperatorDisplayName = row.OperatorDisplayName,
+                    StartedAtUtc = TimeUtil.ToUtcOffset(row.StartedAtUtc),
+                    CompletedAtUtc = TimeUtil.ToUtcOffset(row.CompletedAtUtc)
+                })
+                .ToList();
+
             var conflictZoneRows = (await connection
                     .QueryAsync<ConflictZoneSummaryRow>(
                         new CommandDefinition(
