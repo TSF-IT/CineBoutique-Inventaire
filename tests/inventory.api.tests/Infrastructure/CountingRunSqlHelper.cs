@@ -15,14 +15,15 @@ internal static class CountingRunSqlHelper
         IDbConnection connection,
         CancellationToken cancellationToken = default)
     {
-        const string sql = @"SELECT 1
-FROM information_schema.columns
-WHERE table_schema = current_schema()
-  AND table_name = @TableName
-  AND column_name = @ColumnName
-LIMIT 1;";
+        const string sql = @"SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE LOWER(table_name) = LOWER(@TableName)
+      AND LOWER(column_name) = LOWER(@ColumnName)
+      AND table_schema = ANY (current_schemas(TRUE))
+);";
 
-        var result = await connection.ExecuteScalarAsync<int?>(
+        return await connection.ExecuteScalarAsync<bool>(
                 new CommandDefinition(
                     sql,
                     new
@@ -32,8 +33,6 @@ LIMIT 1;";
                     },
                     cancellationToken: cancellationToken))
             .ConfigureAwait(false);
-
-        return result.HasValue;
     }
 
     public static async Task InsertAsync(

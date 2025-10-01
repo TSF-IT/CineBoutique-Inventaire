@@ -39,6 +39,25 @@ internal sealed class OpenRunSummaryRow
     public DateTime StartedAtUtc { get; set; }
 }
 
+internal sealed class CompletedRunSummaryRow
+{
+    public Guid RunId { get; set; }
+
+    public Guid LocationId { get; set; }
+
+    public string LocationCode { get; set; } = string.Empty;
+
+    public string LocationLabel { get; set; } = string.Empty;
+
+    public short CountType { get; set; }
+
+    public string? OperatorDisplayName { get; set; }
+
+    public DateTime StartedAtUtc { get; set; }
+
+    public DateTime CompletedAtUtc { get; set; }
+}
+
 internal sealed class ConflictZoneSummaryRow
 {
     public Guid LocationId { get; set; }
