@@ -23,6 +23,7 @@ const fetchInventorySummaryMock = vi.hoisted(() =>
           startedAtUtc: '2025-01-01T10:00:00Z',
         },
       ],
+      completedRunDetails: [],
       conflictZones: [
         {
           locationId: 'loc-1',
@@ -142,6 +143,7 @@ describe('HomePage', () => {
       conflicts: 0,
       lastActivityUtc: null,
       openRunDetails: [],
+      completedRunDetails: [],
       conflictZones: [],
     })
     fetchLocationsMock.mockResolvedValueOnce([])
