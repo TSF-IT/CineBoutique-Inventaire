@@ -620,12 +620,13 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
 
             if (countType == 2 && hasOperatorDisplayNameColumn)
             {
-                const string selectFirstRunOperatorSql = @"SELECT \"OperatorDisplayName\"
-FROM \"CountingRun\"
-WHERE \"LocationId\" = @LocationId
-  AND \"CountType\" = 1
-  AND \"CompletedAtUtc\" IS NOT NULL
-ORDER BY \"CompletedAtUtc\" DESC
+                const string selectFirstRunOperatorSql = @"
+SELECT ""OperatorDisplayName""
+FROM ""CountingRun""
+WHERE ""LocationId"" = @LocationId
+  AND ""CountType"" = 1
+  AND ""CompletedAtUtc"" IS NOT NULL
+ORDER BY ""CompletedAtUtc"" DESC
 LIMIT 1;";
 
                 var firstRunOperator = await connection
