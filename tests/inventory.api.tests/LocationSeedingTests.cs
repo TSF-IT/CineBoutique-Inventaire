@@ -157,5 +157,9 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
         return codes;
     }
 
+    [System.Diagnostics.CodeAnalysis.SuppressMessage(
+        "Performance",
+        "CA1812:Avoid uninstantiated internal classes",
+        Justification = "Instancié via la réflexion de Dapper lors du mapping des résultats.")]
     private sealed record LocationRow(string Code, string Label);
 }
