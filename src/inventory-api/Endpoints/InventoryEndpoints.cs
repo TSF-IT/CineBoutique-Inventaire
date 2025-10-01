@@ -16,8 +16,13 @@ using Microsoft.AspNetCore.OpenApi;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging; 
 
 namespace CineBoutique.Inventory.Api.Endpoints;
+
+// Type marqueur non statique, uniquement pour la catégorisation des logs
+internal sealed class InventoryEndpointsMarker { }
 
 internal static class InventoryEndpoints
 {
@@ -39,7 +44,7 @@ internal static class InventoryEndpoints
     {
         app.MapGet("/api/inventories/summary", async (
             IDbConnection connection,
-            ILogger<InventoryEndpoints> logger,
+            [FromServices] ILogger<InventoryEndpointsMarker> logger,
             CancellationToken cancellationToken) =>
         {
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -78,7 +83,7 @@ internal static class InventoryEndpoints
     ) AS ""LastActivityUtc"";";
 
             var summary = await connection
-                .QuerySingleAsync<InventorySummaryDto>(new CommandDefinition(summarySql, cancellationToken: cancellationToken))
+                .QueryFirstOrDefaultAsync<InventorySummaryDto>(new CommandDefinition(summarySql, cancellationToken: cancellationToken))
                 .ConfigureAwait(false);
 
             var hasOperatorDisplayNameColumn = await EndpointUtilities.ColumnExistsAsync(connection, "CountingRun", "OperatorDisplayName", cancellationToken).ConfigureAwait(false);
@@ -167,7 +172,7 @@ ORDER BY l.""Code"";",
         app.MapGet("/api/conflicts/{locationId:guid}", async (
             Guid locationId,
             IDbConnection connection,
-            ILogger<InventoryEndpoints> logger,
+            [FromServices] ILogger<InventoryEndpointsMarker> logger,
             CancellationToken cancellationToken) =>
         {
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -443,10 +448,10 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                         .OrderByDescending(r => r.StartedAtUtc)
                         .FirstOrDefault();
 
-                    location.ActiveRunId       = EndpointUtilities.SanitizeRunId(mostRecent?.RunId);
-                    location.ActiveCountType   = mostRecent?.CountType;
-                    location.ActiveStartedAtUtc= TimeUtil.ToUtcOffset(mostRecent?.StartedAtUtc);
-                    location.BusyBy            = mostRecent?.OperatorDisplayName;
+                    location.ActiveRunId = EndpointUtilities.SanitizeRunId(mostRecent?.RunId);
+                    location.ActiveCountType = mostRecent?.CountType;
+                    location.ActiveStartedAtUtc = TimeUtil.ToUtcOffset(mostRecent?.StartedAtUtc);
+                    location.BusyBy = mostRecent?.OperatorDisplayName;
                 }
                 else
                 {
@@ -455,10 +460,10 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                         .OrderByDescending(r => r.StartedAtUtc)
                         .FirstOrDefault();
 
-                    location.ActiveRunId       = EndpointUtilities.SanitizeRunId(mostRecent?.RunId);
-                    location.ActiveCountType   = mostRecent?.CountType;
-                    location.ActiveStartedAtUtc= TimeUtil.ToUtcOffset(mostRecent?.StartedAtUtc);
-                    location.BusyBy            = mostRecent?.OperatorDisplayName;
+                    location.ActiveRunId = EndpointUtilities.SanitizeRunId(mostRecent?.RunId);
+                    location.ActiveCountType = mostRecent?.CountType;
+                    location.ActiveStartedAtUtc = TimeUtil.ToUtcOffset(mostRecent?.StartedAtUtc);
+                    location.BusyBy = mostRecent?.OperatorDisplayName;
                 }
             }
 
@@ -913,11 +918,11 @@ WHERE ""LocationId"" = @LocationId
     ORDER BY ""StartedAtUtc"" DESC
     LIMIT 1;";
 
-    var run = await connection.QuerySingleOrDefaultAsync<(Guid RunId, DateTime StartedAtUtc)?>(
-        new CommandDefinition(
-            selectRunSql,
-            new { SessionId = targetSessionId, LocationId = locationId, CountType = (short)countType, Operator = operatorName },
-            cancellationToken: cancellationToken)).ConfigureAwait(false);
+            var run = await connection.QuerySingleOrDefaultAsync<(Guid RunId, DateTime StartedAtUtc)?>(
+                new CommandDefinition(
+                    selectRunSql,
+                    new { SessionId = targetSessionId, LocationId = locationId, CountType = (short)countType, Operator = operatorName },
+                    cancellationToken: cancellationToken)).ConfigureAwait(false);
 
             if (run is null)
                 return Results.NotFound(new { message = "Aucun run actif pour ces critères." });
