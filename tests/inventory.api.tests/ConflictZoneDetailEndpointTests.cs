@@ -36,7 +36,7 @@ public sealed class ConflictZoneDetailEndpointTests : IAsyncLifetime
     public async Task InitializeAsync()
     {
         _factory = new InventoryApiApplicationFactory(_pg.ConnectionString);
-        await _factory.EnsureMigratedAsync().ConfigureAwait(false);
+        await _factory.EnsureMigratedAsync();
         _client = _factory.CreateClient();
         await ResetDatabaseAsync();
     }

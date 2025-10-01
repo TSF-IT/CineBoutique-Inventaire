@@ -36,7 +36,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
     {
         _factory = new InventoryApiApplicationFactory(_pg.ConnectionString);
 
-        await _factory.EnsureMigratedAsync().ConfigureAwait(false);
+        await _factory.EnsureMigratedAsync();
 
         _client = _factory.CreateClient();
 
