@@ -10,7 +10,8 @@ import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { Page } from '../../components/Page'
 import { SectionTitle } from '../../components/SectionTitle'
 import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
-import { RunsOverviewModal } from '../../components/Runs/RunsOverviewModal'
+import { CompletedRunsModal } from '../../components/Runs/CompletedRunsModal'
+import { OpenRunsModal } from '../../components/Runs/OpenRunsModal'
 import { useAsync } from '../../hooks/useAsync'
 import type { ConflictZoneSummary, InventorySummary, Location } from '../../types/inventory'
 import type { HttpError } from '@/lib/api/http'
@@ -20,20 +21,6 @@ const isHttpError = (value: unknown): value is HttpError =>
   value !== null &&
   typeof (value as { status?: unknown }).status === 'number' &&
   typeof (value as { url?: unknown }).url === 'string'
-
-const formatLastActivity = (value: string | null) => {
-  if (!value) {
-    return 'Non disponible'
-  }
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return 'Non disponible'
-  }
-  return new Intl.DateTimeFormat('fr-FR', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date)
-}
 
 const describeError = (error: unknown): { title: string; details?: string } | null => {
   if (!error) {
@@ -65,7 +52,8 @@ const describeError = (error: unknown): { title: string; details?: string } | nu
 
 export const HomePage = () => {
   const navigate = useNavigate()
-  const [runsModalOpen, setRunsModalOpen] = useState(false)
+  const [openRunsModalOpen, setOpenRunsModalOpen] = useState(false)
+  const [completedRunsModalOpen, setCompletedRunsModalOpen] = useState(false)
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
   const [selectedZone, setSelectedZone] = useState<ConflictZoneSummary | null>(null)
   const onError = useCallback((e: unknown) => {
@@ -109,7 +97,7 @@ export const HomePage = () => {
   const openRunDetails = displaySummary?.openRunDetails ?? []
   const completedRunDetails = displaySummary?.completedRunDetails ?? []
   const conflictZones = useMemo(() => displaySummary?.conflictZones ?? [], [displaySummary])
-  const locations = locationsData ?? []
+  const locations = useMemo(() => locationsData ?? [], [locationsData])
   const completedRuns = useMemo(() => {
     return locations.reduce((acc, location) => {
       const statuses = location.countStatuses ?? []
@@ -126,14 +114,21 @@ export const HomePage = () => {
   const totalExpected = useMemo(() => locations.length * 2, [locations.length])
   const hasOpenRuns = openRunsCount > 0
   const hasConflicts = conflictCount > 0
-  const canOpenRunsModal = openRunDetails.length > 0 || completedRunDetails.length > 0
+  const canOpenOpenRunsModal = openRunDetails.length > 0
+  const canOpenCompletedRunsModal = completedRunDetails.length > 0
   const canOpenConflicts = hasConflicts && conflictZones.length > 0
 
   const handleOpenRunsClick = useCallback(() => {
-    if (canOpenRunsModal) {
-      setRunsModalOpen(true)
+    if (canOpenOpenRunsModal) {
+      setOpenRunsModalOpen(true)
     }
-  }, [canOpenRunsModal])
+  }, [canOpenOpenRunsModal])
+
+  const handleOpenCompletedRunsClick = useCallback(() => {
+    if (canOpenCompletedRunsModal) {
+      setCompletedRunsModalOpen(true)
+    }
+  }, [canOpenCompletedRunsModal])
 
   const openConflictModal = useCallback((zone: ConflictZoneSummary) => {
     setSelectedZone(zone)
@@ -169,10 +164,10 @@ export const HomePage = () => {
             <button
               type="button"
               onClick={handleOpenRunsClick}
-              disabled={!canOpenRunsModal}
+              disabled={!canOpenOpenRunsModal}
               className={clsx(
                 'flex flex-col rounded-2xl border border-brand-300 bg-brand-100/70 p-5 text-left transition dark:border-brand-500/30 dark:bg-brand-500/10',
-                canOpenRunsModal
+                canOpenOpenRunsModal
                   ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2'
                   : 'cursor-default'
               )}
@@ -188,12 +183,9 @@ export const HomePage = () => {
               >
                 {hasOpenRuns ? openRunsCount : 'Aucun comptage en cours'}
               </p>
-              {canOpenRunsModal && (
+              {canOpenOpenRunsModal && (
                 <p className="mt-1 text-xs text-brand-700/80 dark:text-brand-200/80">Touchez pour voir le détail</p>
               )}
-              <p className="mt-3 text-xs text-brand-700/80 dark:text-brand-100/70">
-                Comptages terminés : {completedRuns} / {totalExpected || 0}
-              </p>
             </button>
             <div
               className={clsx(
@@ -253,12 +245,35 @@ export const HomePage = () => {
                 )}
               </div>
             </div>
-            <div className="rounded-2xl border border-slate-300 bg-slate-100/70 p-5 dark:border-slate-600/60 dark:bg-slate-900/40">
-              <p className="text-sm uppercase text-slate-600 dark:text-slate-300">Dernière activité</p>
-              <p className="mt-2 text-lg font-semibold text-slate-800 dark:text-white">
-                {formatLastActivity(displaySummary.lastActivityUtc)}
+            <button
+              type="button"
+              onClick={handleOpenCompletedRunsClick}
+              disabled={!canOpenCompletedRunsModal}
+              className={clsx(
+                'flex flex-col rounded-2xl border border-emerald-300 bg-emerald-100/70 p-5 text-left transition dark:border-emerald-500/40 dark:bg-emerald-500/10',
+                canOpenCompletedRunsModal
+                  ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2'
+                  : 'cursor-default'
+              )}
+            >
+              <p className="text-sm uppercase text-emerald-700 dark:text-emerald-200">Comptages terminés</p>
+              <p
+                className={clsx(
+                  'mt-2 font-semibold',
+                  completedRuns > 0
+                    ? 'text-4xl text-emerald-800 dark:text-emerald-100'
+                    : 'text-lg text-emerald-700 dark:text-emerald-200'
+                )}
+              >
+                {completedRuns > 0 ? completedRuns : 'Aucun comptage terminé'}
               </p>
-            </div>
+              {canOpenCompletedRunsModal && (
+                <p className="mt-1 text-xs text-emerald-700/80 dark:text-emerald-200/80">Touchez pour voir le détail</p>
+              )}
+              <p className="mt-3 text-xs text-emerald-700/80 dark:text-emerald-200/70">
+                Progression : {completedRuns} / {totalExpected || 0}
+              </p>
+            </button>
           </div>
         )}
         {!combinedLoading && !errorDetails && !displaySummary && (
@@ -283,11 +298,12 @@ export const HomePage = () => {
         </Link>
       </div>
 
-      <RunsOverviewModal
-        open={runsModalOpen}
-        openRuns={openRunDetails}
+      <OpenRunsModal open={openRunsModalOpen} openRuns={openRunDetails} onClose={() => setOpenRunsModalOpen(false)} />
+
+      <CompletedRunsModal
+        open={completedRunsModalOpen}
         completedRuns={completedRunDetails}
-        onClose={() => setRunsModalOpen(false)}
+        onClose={() => setCompletedRunsModalOpen(false)}
       />
 
       <ConflictZoneModal open={conflictModalOpen} zone={selectedZone} onClose={handleConflictModalClose} />
