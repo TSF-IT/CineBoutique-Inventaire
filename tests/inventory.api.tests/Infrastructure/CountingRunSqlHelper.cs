@@ -17,7 +17,7 @@ internal static class CountingRunSqlHelper
     {
         const string sql = @"SELECT 1
 FROM information_schema.columns
-WHERE table_schema = current_schema()
+WHERE table_schema = ANY (current_schemas(false))
   AND LOWER(table_name) = LOWER(@TableName)
   AND LOWER(column_name) = LOWER(@ColumnName)
 LIMIT 1;";
