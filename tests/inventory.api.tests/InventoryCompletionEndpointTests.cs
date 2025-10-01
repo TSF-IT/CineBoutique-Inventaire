@@ -181,6 +181,133 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
         Assert.Equal(5m, line.Quantity);
     }
 
+    [Fact]
+    public async Task CompleteInventoryRun_CreatesConflict_WhenSecondRunDiffers()
+    {
+        await ResetDatabaseAsync();
+        var locationId = await SeedLocationAsync("Z1", "Zone Z1");
+
+        var firstPayload = new CompleteInventoryRunRequest
+        {
+            CountType = 1,
+            Operator = "Yann",
+            Items = new List<CompleteInventoryRunItemRequest>
+            {
+                new()
+                {
+                    Ean = "32165498",
+                    Quantity = 10,
+                    IsManual = false
+                }
+            }
+        };
+
+        var firstResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", firstPayload);
+        firstResponse.EnsureSuccessStatusCode();
+
+        var secondPayload = new CompleteInventoryRunRequest
+        {
+            CountType = 2,
+            Operator = "Zoé",
+            Items = new List<CompleteInventoryRunItemRequest>
+            {
+                new()
+                {
+                    Ean = "32165498",
+                    Quantity = 4,
+                    IsManual = false
+                }
+            }
+        };
+
+        var secondResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", secondPayload);
+        secondResponse.EnsureSuccessStatusCode();
+
+        using var scope = _factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        var conflicts = (await connection.QueryAsync<(Guid ConflictId, Guid LocationId, short CountType)>(
+                "SELECT c.\"Id\" AS \"ConflictId\", cr.\"LocationId\" AS \"LocationId\", cr.\"CountType\" AS \"CountType\"\n" +
+                "FROM \"Conflict\" c\n" +
+                "JOIN \"CountLine\" cl ON cl.\"Id\" = c.\"CountLineId\"\n" +
+                "JOIN \"CountingRun\" cr ON cr.\"Id\" = cl.\"CountingRunId\";"))
+            .ToList();
+
+        Assert.Single(conflicts);
+        var conflict = conflicts[0];
+        Assert.Equal(locationId, conflict.LocationId);
+        Assert.True(conflict.CountType is 1 or 2, "Le conflit doit provenir d'un des deux premiers comptages.");
+
+        var summaryResponse = await _client.GetAsync("/api/inventories/summary");
+        summaryResponse.EnsureSuccessStatusCode();
+        var summary = await summaryResponse.Content.ReadFromJsonAsync<InventorySummaryDto>();
+        Assert.NotNull(summary);
+        Assert.Equal(1, summary!.Conflicts);
+        Assert.Single(summary.ConflictZones);
+        Assert.Equal(locationId, summary.ConflictZones[0].LocationId);
+    }
+
+    [Fact]
+    public async Task CompleteInventoryRun_RejectsSecondRun_WhenOperatorMatchesFirst()
+    {
+        await ResetDatabaseAsync();
+        var locationId = await SeedLocationAsync("Z2", "Zone Z2");
+
+        var firstPayload = new CompleteInventoryRunRequest
+        {
+            CountType = 1,
+            Operator = "Chloé",
+            Items = new List<CompleteInventoryRunItemRequest>
+            {
+                new()
+                {
+                    Ean = "78945612",
+                    Quantity = 3,
+                    IsManual = false
+                }
+            }
+        };
+
+        var firstResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", firstPayload);
+        firstResponse.EnsureSuccessStatusCode();
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+            await using var connection = connectionFactory.CreateConnection();
+            await EnsureConnectionOpenAsync(connection);
+            var hasOperatorColumn = await CountingRunSqlHelper.HasOperatorDisplayNameAsync(connection);
+            Assert.True(hasOperatorColumn, "La colonne OperatorDisplayName est requise pour ce test.");
+        }
+
+        var secondPayload = new CompleteInventoryRunRequest
+        {
+            CountType = 2,
+            Operator = "Chloé",
+            Items = new List<CompleteInventoryRunItemRequest>
+            {
+                new()
+                {
+                    Ean = "78945612",
+                    Quantity = 3,
+                    IsManual = false
+                }
+            }
+        };
+
+        var secondResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", secondPayload);
+
+        Assert.Equal(HttpStatusCode.Conflict, secondResponse.StatusCode);
+
+        var error = await secondResponse.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+        Assert.NotNull(error);
+        Assert.Equal(
+            "Le deuxième comptage doit être réalisé par un opérateur différent du premier.",
+            error!.GetValueOrDefault("message"));
+    }
+
     private async Task ResetDatabaseAsync()
     {
         using var scope = _factory.Services.CreateScope();
