@@ -30,7 +30,7 @@ internal static class EndpointUtilities
         const string sql = @"SELECT 1
 FROM information_schema.tables
 WHERE table_schema = current_schema()
-  AND table_name = @TableName
+  AND LOWER(table_name) = LOWER(@TableName)
 LIMIT 1;";
 
         var result = await connection.ExecuteScalarAsync<int?>(
@@ -45,7 +45,7 @@ LIMIT 1;";
         const string sql = @"SELECT 1
 FROM information_schema.columns
 WHERE table_schema = current_schema()
-  AND table_name = @TableName
+  AND LOWER(table_name) = LOWER(@TableName)
   AND LOWER(column_name) = LOWER(@ColumnName)
 LIMIT 1;";
 
