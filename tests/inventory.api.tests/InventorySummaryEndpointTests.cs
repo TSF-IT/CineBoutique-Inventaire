@@ -298,7 +298,15 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         }
         finally
         {
-            await _factory.EnsureMigratedAsync();
+            const string restoreColumnSql = """
+ALTER TABLE "CountingRun"
+    ADD COLUMN IF NOT EXISTS "OperatorDisplayName" VARCHAR(200) NOT NULL DEFAULT 'Unknown';
+
+ALTER TABLE "CountingRun"
+    ALTER COLUMN "OperatorDisplayName" DROP DEFAULT;
+""";
+
+            await connection.ExecuteAsync(restoreColumnSql);
             await ResetDatabaseAsync();
         }
     }
