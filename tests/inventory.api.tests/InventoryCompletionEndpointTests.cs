@@ -102,15 +102,26 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
 
-        var runs = await connection.QueryAsync<(Guid RunId, Guid SessionId, DateTimeOffset? CompletedAt, string? Operator)>(
-                "SELECT \"Id\" AS RunId, \"InventorySessionId\" AS SessionId, \"CompletedAtUtc\" AS CompletedAt, \"OperatorDisplayName\" AS Operator FROM \"CountingRun\"")
-            ;
+        var hasOperatorColumn = await CountingRunSqlHelper.HasOperatorDisplayNameAsync(connection);
+
+        var runsQuery = hasOperatorColumn
+            ? "SELECT \"Id\" AS RunId, \"InventorySessionId\" AS SessionId, \"CompletedAtUtc\" AS CompletedAt, \"OperatorDisplayName\" AS Operator FROM \"CountingRun\""
+            : "SELECT \"Id\" AS RunId, \"InventorySessionId\" AS SessionId, \"CompletedAtUtc\" AS CompletedAt, NULL::text AS Operator FROM \"CountingRun\"";
+
+        var runs = await connection.QueryAsync<(Guid RunId, Guid SessionId, DateTimeOffset? CompletedAt, string? Operator)>(runsQuery);
 
         Assert.Single(runs);
         var singleRun = runs.Single();
         Assert.Equal(result.RunId, singleRun.RunId);
         Assert.NotNull(singleRun.CompletedAt);
-        Assert.Equal("Amélie", singleRun.Operator);
+        if (hasOperatorColumn)
+        {
+            Assert.Equal("Amélie", singleRun.Operator);
+        }
+        else
+        {
+            Assert.Null(singleRun.Operator);
+        }
 
         var lines = await connection.QueryAsync<(Guid ProductId, decimal Quantity)>(
                 "SELECT \"ProductId\", \"Quantity\" FROM \"CountLine\"")
