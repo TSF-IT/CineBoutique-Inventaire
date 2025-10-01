@@ -10,11 +10,9 @@ namespace CineBoutique.Inventory.Infrastructure.Seeding;
 
 public sealed class InventoryDataSeeder
 {
-    private const string InsertLocationSql = """
-INSERT INTO ""Location"" (""Code"", ""Label"")
+    private const string InsertLocationSql = @"INSERT INTO ""Location"" (""Code"", ""Label"")
 SELECT @Code, @Label
-WHERE NOT EXISTS (SELECT 1 FROM ""Location"" WHERE ""Code"" = @Code);
-""";
+WHERE NOT EXISTS (SELECT 1 FROM ""Location"" WHERE ""Code"" = @Code);";
 
     private static readonly IReadOnlyList<LocationSeed> LocationSeeds = BuildLocationSeeds();
 
