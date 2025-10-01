@@ -43,7 +43,7 @@ public class LocationsEndpointTests : IAsyncLifetime
     {
         this._factory = new InventoryApiApplicationFactory(this._pg.ConnectionString);
 
-        await this._factory.EnsureMigratedAsync().ConfigureAwait(false);
+        await this._factory.EnsureMigratedAsync();
 
         this._client = this._factory.CreateClient();
 
