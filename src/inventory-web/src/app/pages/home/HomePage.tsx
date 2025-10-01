@@ -97,7 +97,7 @@ export const HomePage = () => {
   const openRunDetails = displaySummary?.openRunDetails ?? []
   const completedRunDetails = displaySummary?.completedRunDetails ?? []
   const conflictZones = useMemo(() => displaySummary?.conflictZones ?? [], [displaySummary])
-  const locations = locationsData ?? []
+  const locations = useMemo(() => locationsData ?? [], [locationsData])
   const completedRuns = useMemo(() => {
     return locations.reduce((acc, location) => {
       const statuses = location.countStatuses ?? []
