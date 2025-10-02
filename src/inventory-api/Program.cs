@@ -290,7 +290,9 @@ if (applyMigrations && !disableMigrations)
 
             break;
         }
-        catch (Exception ex) when (attempt < maxAttempts && ex is NpgsqlException or TimeoutException or InvalidOperationException)
+        catch (Exception ex) when (
+            attempt < maxAttempts &&
+            ex is NpgsqlException or TimeoutException or InvalidOperationException)
         {
             AppLog.MigrationRetry(app.Logger, attempt, maxAttempts, ex);
             await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
@@ -314,7 +316,7 @@ if (seedOnStartup)
     await using var connection = connectionFactory.CreateConnection();
     await connection.OpenAsync().ConfigureAwait(false);
 
-    const string tableExistsSql = "select to_regclass('""Shop""');";
+    const string tableExistsSql = "select to_regclass('"Shop"');";
     var tableExists = await connection.ExecuteScalarAsync<string?>(tableExistsSql).ConfigureAwait(false);
 
     if (tableExists is null)
