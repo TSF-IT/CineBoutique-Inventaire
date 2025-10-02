@@ -1,6 +1,5 @@
 import { Outlet } from 'react-router-dom'
 import { Page } from '../../components/Page'
-import { ThemeToggle } from '../../components/ThemeToggle'
 
 export const AdminLayout = () => (
   <Page className="gap-6">
@@ -12,10 +11,9 @@ export const AdminLayout = () => (
           Gérer librement les zones d&apos;inventaire et leurs libellés.
         </p>
       </div>
-      <div className="flex flex-col items-end gap-2 sm:items-center">
-        <ThemeToggle />
-        <p className="text-xs text-slate-500 dark:text-slate-400">Accès ouvert pour l&apos;édition des zones.</p>
-      </div>
+      <p className="text-xs text-slate-500 dark:text-slate-400 sm:text-right">
+        Accès ouvert pour l&apos;édition des zones.
+      </p>
     </header>
     <Outlet />
   </Page>
