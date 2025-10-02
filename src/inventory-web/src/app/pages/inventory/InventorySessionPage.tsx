@@ -131,6 +131,7 @@ export const InventorySessionPage = () => {
   const [recentScans, setRecentScans] = useState<string[]>([])
   const manualLookupIdRef = useRef(0)
   const lastSearchedInputRef = useRef<string | null>(null)
+  const previousItemCountRef = useRef(items.length)
 
   useEffect(() => {
     if (!selectedUser) {
@@ -540,7 +541,14 @@ export const InventorySessionPage = () => {
   ])
 
   useEffect(() => {
+    const previousCount = previousItemCountRef.current
+    previousItemCountRef.current = items.length
+
     if (!existingRunId || items.length > 0) {
+      return
+    }
+
+    if (previousCount === 0) {
       return
     }
 
