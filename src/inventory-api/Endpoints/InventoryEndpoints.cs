@@ -31,6 +31,7 @@ internal static class InventoryEndpoints
         ArgumentNullException.ThrowIfNull(app);
 
         MapSummaryEndpoint(app);
+        MapCompletedRunDetailEndpoint(app);
         MapLocationsEndpoint(app);
         MapCompleteEndpoint(app);
         MapRestartEndpoint(app);
@@ -196,6 +197,100 @@ ORDER BY l.""Code"";",
         {
             op.Summary = "Récupère un résumé des inventaires en cours.";
             op.Description = "Fournit un aperçu synthétique incluant les comptages en cours, les conflits à résoudre et la dernière activité.";
+            return op;
+        });
+    }
+
+    private static void MapCompletedRunDetailEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapGet("/api/inventories/runs/{runId:guid}", async (
+            Guid runId,
+            IDbConnection connection,
+            CancellationToken cancellationToken) =>
+        {
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+            var hasOperatorDisplayNameColumn = await EndpointUtilities
+                .ColumnExistsAsync(connection, "CountingRun", "OperatorDisplayName", cancellationToken)
+                .ConfigureAwait(false);
+
+            var operatorDisplayNameProjection = hasOperatorDisplayNameColumn
+                ? "cr.\"OperatorDisplayName\""
+                : "NULL::text";
+
+            var runSql = $@"SELECT
+    cr.""Id""           AS ""RunId"",
+    cr.""LocationId"",
+    l.""Code""          AS ""LocationCode"",
+    l.""Label""         AS ""LocationLabel"",
+    cr.""CountType"",
+    {operatorDisplayNameProjection} AS ""OperatorDisplayName"",
+    cr.""StartedAtUtc"",
+    cr.""CompletedAtUtc""
+FROM ""CountingRun"" cr
+JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
+WHERE cr.""Id"" = @RunId
+  AND cr.""CompletedAtUtc"" IS NOT NULL
+LIMIT 1;";
+
+            var runRow = await connection
+                .QuerySingleOrDefaultAsync<CompletedRunDetailRow>(
+                    new CommandDefinition(runSql, new { RunId = runId }, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (runRow is null)
+            {
+                return Results.NotFound();
+            }
+
+            const string linesSql = @"SELECT
+    cl.""ProductId"" AS ""ProductId"",
+    p.""Sku""        AS ""Sku"",
+    p.""Name""       AS ""Name"",
+    p.""Ean""        AS ""Ean"",
+    cl.""Quantity""  AS ""Quantity""
+FROM ""CountLine"" cl
+JOIN ""Product"" p ON p.""Id"" = cl.""ProductId""
+WHERE cl.""CountingRunId"" = @RunId
+ORDER BY COALESCE(p.""Ean"", p.""Sku""), p.""Name"";";
+
+            var lineRows = (await connection
+                    .QueryAsync<CompletedRunLineRow>(
+                        new CommandDefinition(linesSql, new { RunId = runId }, cancellationToken: cancellationToken))
+                    .ConfigureAwait(false)).ToList();
+
+            var payload = new CompletedRunDetailDto
+            {
+                RunId = runRow.RunId,
+                LocationId = runRow.LocationId,
+                LocationCode = runRow.LocationCode,
+                LocationLabel = runRow.LocationLabel,
+                CountType = runRow.CountType,
+                OperatorDisplayName = runRow.OperatorDisplayName,
+                StartedAtUtc = TimeUtil.ToUtcOffset(runRow.StartedAtUtc),
+                CompletedAtUtc = TimeUtil.ToUtcOffset(runRow.CompletedAtUtc),
+                Items = lineRows
+                    .Select(row => new CompletedRunDetailItemDto
+                    {
+                        ProductId = row.ProductId,
+                        Sku = row.Sku,
+                        Name = row.Name,
+                        Ean = row.Ean,
+                        Quantity = row.Quantity
+                    })
+                    .ToList()
+            };
+
+            return Results.Ok(payload);
+        })
+        .WithName("GetCompletedRunDetail")
+        .WithTags("Inventories")
+        .Produces<CompletedRunDetailDto>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status404NotFound)
+        .WithOpenApi(op =>
+        {
+            op.Summary = "Récupère le détail d’un comptage terminé.";
+            op.Description = "Retourne la liste des lignes scannées pour un comptage clôturé.";
             return op;
         });
     }
