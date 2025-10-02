@@ -7,6 +7,8 @@ import { BarcodeFormat, DecodeHintType } from '@zxing/library'
 import {
   completeInventoryRun,
   fetchProductByEan,
+  releaseInventoryRun,
+  startInventoryRun,
   type CompleteInventoryRunPayload,
 } from '../../api/inventoryApi'
 import { BarcodeScanner } from '../../components/BarcodeScanner'
@@ -79,6 +81,29 @@ const ZXING_IMAGE_HINTS = (() => {
   return hints
 })()
 
+const resolveLifecycleErrorMessage = (error: unknown, fallback: string): string => {
+  if (isHttpError(error)) {
+    const problem = error.problem as { message?: unknown; detail?: unknown; title?: unknown } | undefined
+    const candidates = [problem?.message, problem?.detail, problem?.title]
+    const message = candidates.find(
+      (value): value is string => typeof value === 'string' && value.trim().length > 0,
+    )
+    if (message) {
+      return message.trim()
+    }
+    return buildHttpMessage(fallback, error)
+  }
+
+  if (error instanceof Error) {
+    const trimmed = error.message.trim()
+    if (trimmed.length > 0) {
+      return trimmed
+    }
+  }
+
+  return fallback
+}
+
 export const InventorySessionPage = () => {
   const navigate = useNavigate()
   const {
@@ -90,6 +115,7 @@ export const InventorySessionPage = () => {
     setQuantity,
     removeItem,
     sessionId,
+    setSessionId,
     clearSession,
   } = useInventory()
   const [useCamera, setUseCamera] = useState(false)
@@ -131,6 +157,76 @@ export const InventorySessionPage = () => {
     }
   }, [])
 
+  const trimmedOperator = selectedUser?.trim() ?? ''
+  const existingRunId = typeof sessionId === 'string' ? sessionId.trim() : ''
+  const locationId = typeof location?.id === 'string' ? location.id.trim() : ''
+  const isValidCountType =
+    countType === CountType.Count1 || countType === CountType.Count2 || countType === CountType.Count3
+
+  const ensureActiveRun = useCallback(async () => {
+    if (items.length > 0) {
+      return existingRunId || null
+    }
+
+    if (existingRunId) {
+      return existingRunId
+    }
+
+    if (!isValidCountType) {
+      throw new Error('Sélectionnez le type de comptage avant de scanner.')
+    }
+
+    if (!locationId) {
+      throw new Error('Sélectionnez une zone avant de scanner.')
+    }
+
+    if (trimmedOperator.length === 0) {
+      throw new Error("Indiquez l'opérateur avant de démarrer le comptage.")
+    }
+
+    const response = await startInventoryRun(locationId, {
+      countType: countType as 1 | 2 | 3,
+      operator: trimmedOperator,
+    })
+
+    const sanitizedRunId = typeof response.runId === 'string' ? response.runId.trim() : ''
+    if (sanitizedRunId) {
+      setSessionId(sanitizedRunId)
+      return sanitizedRunId
+    }
+
+    return null
+  }, [
+    countType,
+    existingRunId,
+    isValidCountType,
+    items.length,
+    locationId,
+    setSessionId,
+    startInventoryRun,
+    trimmedOperator,
+  ])
+
+  const addProductToSession = useCallback(
+    async (product: Product, options?: { isManual?: boolean }) => {
+      if (items.length === 0) {
+        try {
+          await ensureActiveRun()
+        } catch (error) {
+          const message = resolveLifecycleErrorMessage(error, 'Impossible de démarrer le comptage.')
+          setStatus(null)
+          setErrorMessage(message)
+          return false
+        }
+      }
+
+      setErrorMessage(null)
+      addOrIncrementItem(product, options)
+      return true
+    },
+    [addOrIncrementItem, ensureActiveRun, items.length, setErrorMessage, setStatus],
+  )
+
   const handleDetected = useCallback(
     async (rawValue: string) => {
       const value = rawValue.trim()
@@ -151,8 +247,10 @@ export const InventorySessionPage = () => {
 
       if (result.status === 'found') {
         const product: Product = result.product
-        addOrIncrementItem(product)
-        setStatus(`${product.name} ajouté`)
+        const added = await addProductToSession(product)
+        if (added) {
+          setStatus(`${product.name} ajouté`)
+        }
         return
       }
 
@@ -170,7 +268,7 @@ export const InventorySessionPage = () => {
         setErrorMessage('Impossible de récupérer le produit. Réessayez ou ajoutez-le manuellement.')
       }
     },
-    [addOrIncrementItem, searchProductByEan],
+    [addProductToSession, searchProductByEan],
   )
 
   const trimmedScanValue = scanValue.trim()
@@ -204,10 +302,14 @@ export const InventorySessionPage = () => {
 
         if (result.status === 'found') {
           const product: Product = result.product
-          addOrIncrementItem(product)
-          setStatus(`${product.name} ajouté`)
-          setScanValue('')
-          setInputLookupStatus('found')
+          const added = await addProductToSession(product)
+          if (added) {
+            setStatus(`${product.name} ajouté`)
+            setScanValue('')
+            setInputLookupStatus('found')
+          } else {
+            setInputLookupStatus('error')
+          }
         } else if (result.status === 'not-found') {
           setStatus(null)
           setManualEan(trimmedScanValue)
@@ -228,7 +330,7 @@ export const InventorySessionPage = () => {
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [addOrIncrementItem, searchProductByEan, trimmedScanValue])
+  }, [addProductToSession, searchProductByEan, trimmedScanValue])
 
   const handleImagePicked = useCallback(
     async (file: File) => {
@@ -322,7 +424,7 @@ export const InventorySessionPage = () => {
     [handleDetected],
   )
 
-  const handleManualAdd = useCallback(() => {
+  const handleManualAdd = useCallback(async () => {
     const sanitizedEan = manualCandidateEan.trim()
     if (!sanitizedEan) {
       setErrorMessage('Indiquez un EAN pour ajouter le produit à la session.')
@@ -338,20 +440,18 @@ export const InventorySessionPage = () => {
       name: `Produit inconnu EAN ${sanitizedEan}`,
     }
 
-    setErrorMessage(null)
-    addOrIncrementItem(product, { isManual: true })
+    const added = await addProductToSession(product, { isManual: true })
+    if (!added) {
+      return
+    }
+
     setStatus(`${product.name} ajouté manuellement`)
     setManualEan('')
     setScanValue('')
     setInputLookupStatus('idle')
     inputRef.current?.focus()
-  }, [addOrIncrementItem, manualCandidateEan])
+  }, [addProductToSession, manualCandidateEan])
 
-  const trimmedOperator = selectedUser?.trim() ?? ''
-  const existingRunId = typeof sessionId === 'string' ? sessionId.trim() : ''
-  const locationId = typeof location?.id === 'string' ? location.id.trim() : ''
-  const isValidCountType =
-    countType === CountType.Count1 || countType === CountType.Count2 || countType === CountType.Count3
   const canCompleteRun =
     locationId.length > 0 &&
     isValidCountType &&
@@ -439,6 +539,35 @@ export const InventorySessionPage = () => {
     trimmedOperator,
   ])
 
+  useEffect(() => {
+    if (!existingRunId || items.length > 0) {
+      return
+    }
+
+    if (!locationId || trimmedOperator.length === 0) {
+      return
+    }
+
+    let cancelled = false
+
+    void (async () => {
+      try {
+        await releaseInventoryRun(locationId, existingRunId, trimmedOperator)
+        if (!cancelled) {
+          setSessionId(null)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setErrorMessage(resolveLifecycleErrorMessage(error, 'Impossible de libérer le comptage.'))
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [existingRunId, items.length, locationId, setErrorMessage, setSessionId, trimmedOperator])
+
   const handleCompletionModalOk = () => {
     completionDialogRef.current?.close()
     navigate('/', { replace: true })
@@ -479,7 +608,7 @@ export const InventorySessionPage = () => {
           <Button
             variant="ghost"
             onClick={() => {
-              handleManualAdd()
+              void handleManualAdd()
             }}
             data-testid="btn-open-manual"
             disabled={!manualCandidateEan || inputLookupStatus !== 'not-found'}
