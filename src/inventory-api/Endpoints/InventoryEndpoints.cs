@@ -33,7 +33,9 @@ internal static class InventoryEndpoints
         MapSummaryEndpoint(app);
         MapCompletedRunDetailEndpoint(app);
         MapLocationsEndpoint(app);
+        MapStartEndpoint(app);
         MapCompleteEndpoint(app);
+        MapAbortEndpoint(app);
         MapRestartEndpoint(app);
         MapActiveRunLookupEndpoint(app);
         MapConflictZoneDetailEndpoint(app);
@@ -634,6 +636,198 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
         });
     }
 
+    private static void MapStartEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapPost("/api/inventories/{locationId:guid}/start", async (
+            Guid locationId,
+            StartInventoryRunRequest request,
+            IDbConnection connection,
+            CancellationToken cancellationToken) =>
+        {
+            if (request is null)
+            {
+                return Results.BadRequest(new { message = "Le corps de la requête est requis." });
+            }
+
+            if (request.CountType is not (1 or 2 or 3))
+            {
+                return Results.BadRequest(new { message = "Le type de comptage doit valoir 1, 2 ou 3." });
+            }
+
+            var operatorName = request.Operator?.Trim();
+            if (string.IsNullOrWhiteSpace(operatorName))
+            {
+                return Results.BadRequest(new { message = "L'opérateur réalisant le comptage est requis." });
+            }
+
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+            var hasOperatorDisplayNameColumn = await EndpointUtilities
+                .ColumnExistsAsync(connection, "CountingRun", "OperatorDisplayName", cancellationToken)
+                .ConfigureAwait(false);
+
+            const string selectLocationSql =
+                "SELECT \"Id\", \"Code\", \"Label\" FROM \"Location\" WHERE \"Id\" = @LocationId LIMIT 1;";
+
+            var location = await connection
+                .QuerySingleOrDefaultAsync<LocationMetadataRow>(
+                    new CommandDefinition(selectLocationSql, new { LocationId = locationId }, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (location is null)
+            {
+                return Results.NotFound(new { message = "La zone demandée est introuvable." });
+            }
+
+            var selectActiveSql = hasOperatorDisplayNameColumn
+                ? @"SELECT
+    ""Id""                AS ""RunId"",
+    ""InventorySessionId"" AS ""InventorySessionId"",
+    ""StartedAtUtc""       AS ""StartedAtUtc"",
+    ""OperatorDisplayName"" AS ""OperatorDisplayName""
+FROM ""CountingRun""
+WHERE ""LocationId"" = @LocationId
+  AND ""CountType"" = @CountType
+  AND ""CompletedAtUtc"" IS NULL
+ORDER BY ""StartedAtUtc"" DESC
+LIMIT 1;"
+                : @"SELECT
+    ""Id""                AS ""RunId"",
+    ""InventorySessionId"" AS ""InventorySessionId"",
+    ""StartedAtUtc""       AS ""StartedAtUtc"",
+    NULL::text              AS ""OperatorDisplayName""
+FROM ""CountingRun""
+WHERE ""LocationId"" = @LocationId
+  AND ""CountType"" = @CountType
+  AND ""CompletedAtUtc"" IS NULL
+ORDER BY ""StartedAtUtc"" DESC
+LIMIT 1;";
+
+            var existingRun = await connection
+                .QuerySingleOrDefaultAsync<(Guid RunId, Guid InventorySessionId, DateTime StartedAtUtc, string? OperatorDisplayName)?>(
+                    new CommandDefinition(
+                        selectActiveSql,
+                        new { LocationId = locationId, CountType = request.CountType },
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (existingRun is { } active)
+            {
+                if (hasOperatorDisplayNameColumn)
+                {
+                    var existingOperator = active.OperatorDisplayName?.Trim();
+                    if (!string.IsNullOrWhiteSpace(existingOperator) &&
+                        !string.Equals(existingOperator, operatorName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return Results.Conflict(new
+                        {
+                            message = $"Comptage déjà en cours par {existingOperator}."
+                        });
+                    }
+                }
+
+                return Results.Ok(new StartInventoryRunResponse
+                {
+                    RunId = active.RunId,
+                    InventorySessionId = active.InventorySessionId,
+                    LocationId = locationId,
+                    CountType = request.CountType,
+                    OperatorDisplayName = active.OperatorDisplayName,
+                    StartedAtUtc = TimeUtil.ToUtcOffset(active.StartedAtUtc)
+                });
+            }
+
+            if (connection is not DbConnection dbConnection)
+            {
+                return Results.Problem(
+                    "La connexion à la base de données n'est pas compatible avec les transactions.",
+                    statusCode: StatusCodes.Status500InternalServerError);
+            }
+
+            await using var transaction = await dbConnection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+            var now = DateTimeOffset.UtcNow;
+
+            const string insertSessionSql =
+                "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc);";
+
+            var sessionId = Guid.NewGuid();
+            await connection
+                .ExecuteAsync(
+                    new CommandDefinition(
+                        insertSessionSql,
+                        new
+                        {
+                            Id = sessionId,
+                            Name = $"Session zone {location.Code}",
+                            StartedAtUtc = now
+                        },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            var runId = Guid.NewGuid();
+
+            var insertRunSql = hasOperatorDisplayNameColumn
+                ? @"INSERT INTO ""CountingRun"" (""Id"", ""InventorySessionId"", ""LocationId"", ""CountType"", ""StartedAtUtc"", ""OperatorDisplayName"")
+VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc, @Operator);"
+                : @"INSERT INTO ""CountingRun"" (""Id"", ""InventorySessionId"", ""LocationId"", ""CountType"", ""StartedAtUtc"")
+VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc);";
+
+            object insertParameters = hasOperatorDisplayNameColumn
+                ? new
+                {
+                    Id = runId,
+                    SessionId = sessionId,
+                    LocationId = locationId,
+                    CountType = request.CountType,
+                    StartedAtUtc = now,
+                    Operator = operatorName
+                }
+                : new
+                {
+                    Id = runId,
+                    SessionId = sessionId,
+                    LocationId = locationId,
+                    CountType = request.CountType,
+                    StartedAtUtc = now
+                };
+
+            await connection
+                .ExecuteAsync(
+                    new CommandDefinition(
+                        insertRunSql,
+                        insertParameters,
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+            return Results.Ok(new StartInventoryRunResponse
+            {
+                RunId = runId,
+                InventorySessionId = sessionId,
+                LocationId = locationId,
+                CountType = request.CountType,
+                OperatorDisplayName = hasOperatorDisplayNameColumn ? operatorName : null,
+                StartedAtUtc = now
+            });
+        })
+        .WithName("StartInventoryRun")
+        .WithTags("Inventories")
+        .Produces<StartInventoryRunResponse>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status409Conflict)
+        .WithOpenApi(op =>
+        {
+            op.Summary = "Démarre un comptage sur une zone donnée.";
+            op.Description = "Crée ou reprend un run actif pour une zone, un type de comptage et un opérateur.";
+            return op;
+        });
+    }
+
     private static void MapCompleteEndpoint(IEndpointRouteBuilder app)
     {
         app.MapPost("/api/inventories/{locationId:guid}/complete", async (
@@ -974,6 +1168,158 @@ LIMIT 1;";
         .Produces<CompleteInventoryRunResponse>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status404NotFound);
+    }
+
+    private static void MapAbortEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapDelete("/api/inventories/{locationId:guid}/runs/{runId:guid}", async (
+            Guid locationId,
+            Guid runId,
+            string operatorName,
+            IDbConnection connection,
+            CancellationToken cancellationToken) =>
+        {
+            operatorName = operatorName?.Trim() ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(operatorName))
+            {
+                return Results.BadRequest(new { message = "operatorName est requis." });
+            }
+
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+            var hasOperatorDisplayNameColumn = await EndpointUtilities
+                .ColumnExistsAsync(connection, "CountingRun", "OperatorDisplayName", cancellationToken)
+                .ConfigureAwait(false);
+
+            var selectRunSql = hasOperatorDisplayNameColumn
+                ? @"SELECT
+    ""InventorySessionId"" AS ""InventorySessionId"",
+    ""OperatorDisplayName"" AS ""OperatorDisplayName""
+FROM ""CountingRun""
+WHERE ""Id"" = @RunId
+  AND ""LocationId"" = @LocationId
+  AND ""CompletedAtUtc"" IS NULL
+LIMIT 1;"
+                : @"SELECT
+    ""InventorySessionId"" AS ""InventorySessionId"",
+    NULL::text              AS ""OperatorDisplayName""
+FROM ""CountingRun""
+WHERE ""Id"" = @RunId
+  AND ""LocationId"" = @LocationId
+  AND ""CompletedAtUtc"" IS NULL
+LIMIT 1;";
+
+            var run = await connection
+                .QuerySingleOrDefaultAsync<(Guid InventorySessionId, string? OperatorDisplayName)?>(
+                    new CommandDefinition(
+                        selectRunSql,
+                        new { RunId = runId, LocationId = locationId },
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (run is null)
+            {
+                return Results.NotFound(new { message = "Aucun comptage actif pour les critères fournis." });
+            }
+
+            if (hasOperatorDisplayNameColumn)
+            {
+                var existingOperator = run.Value.OperatorDisplayName?.Trim();
+                if (!string.IsNullOrWhiteSpace(existingOperator) &&
+                    !string.Equals(existingOperator, operatorName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Results.Conflict(new
+                    {
+                        message = $"Comptage détenu par {existingOperator}."
+                    });
+                }
+            }
+
+            if (connection is not DbConnection dbConnection)
+            {
+                return Results.Problem(
+                    "La connexion à la base de données n'est pas compatible avec les transactions.",
+                    statusCode: StatusCodes.Status500InternalServerError);
+            }
+
+            await using var transaction = await dbConnection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+            const string countLinesSql =
+                "SELECT COUNT(*)::int FROM \"CountLine\" WHERE \"CountingRunId\" = @RunId";
+
+            var lineCount = await connection
+                .ExecuteScalarAsync<int>(
+                    new CommandDefinition(countLinesSql, new { RunId = runId }, transaction, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (lineCount > 0)
+            {
+                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                return Results.Conflict(new
+                {
+                    message = "Impossible de libérer un comptage contenant des lignes enregistrées."
+                });
+            }
+
+            const string deleteRunSql = "DELETE FROM \"CountingRun\" WHERE \"Id\" = @RunId;";
+            await connection
+                .ExecuteAsync(
+                    new CommandDefinition(deleteRunSql, new { RunId = runId }, transaction, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            const string countSessionRunsSql =
+                "SELECT COUNT(*)::int FROM \"CountingRun\" WHERE \"InventorySessionId\" = @SessionId;";
+
+            var remainingRuns = await connection
+                .ExecuteScalarAsync<int>(
+                    new CommandDefinition(
+                        countSessionRunsSql,
+                        new { SessionId = run.Value.InventorySessionId },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (remainingRuns == 0)
+            {
+                const string deleteSessionSql = "DELETE FROM \"InventorySession\" WHERE \"Id\" = @SessionId;";
+                await connection
+                    .ExecuteAsync(
+                        new CommandDefinition(
+                            deleteSessionSql,
+                            new { SessionId = run.Value.InventorySessionId },
+                            transaction,
+                            cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+            }
+
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+            return Results.NoContent();
+        })
+        .WithName("AbortInventoryRun")
+        .WithTags("Inventories")
+        .Produces(StatusCodes.Status204NoContent)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status409Conflict)
+        .WithOpenApi(op =>
+        {
+            op.Summary = "Libère un comptage en cours sans le finaliser.";
+            op.Description = "Supprime le run actif lorsqu'aucune ligne n'a été enregistrée, ce qui libère la zone.";
+            op.Parameters ??= new List<OpenApiParameter>();
+            if (!op.Parameters.Any(parameter => string.Equals(parameter.Name, "operatorName", StringComparison.Ordinal)))
+            {
+                op.Parameters.Add(new OpenApiParameter
+                {
+                    Name = "operatorName",
+                    In = ParameterLocation.Query,
+                    Description = "Nom de l'opérateur qui libère le comptage.",
+                    Required = true,
+                    Schema = new OpenApiSchema { Type = "string" }
+                });
+            }
+            return op;
+        });
     }
 
     private static void MapRestartEndpoint(IEndpointRouteBuilder app)
