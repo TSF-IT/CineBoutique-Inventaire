@@ -88,6 +88,26 @@ test.describe('Scanner avec BarcodeDetector', () => {
       })
     }, { ean: simulatedEan })
 
+    await page.route('**/api/inventories/**/start', async (route, request) => {
+      if (request.method() !== 'POST') {
+        await route.fallback()
+        return
+      }
+
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          runId: '00000000-0000-4000-8000-000000000010',
+          inventorySessionId: '00000000-0000-4000-8000-000000000011',
+          locationId: mockLocations[0].id,
+          countType: 1,
+          operatorDisplayName: 'Amélie',
+          startedAtUtc: new Date().toISOString(),
+        }),
+      })
+    })
+
     await page.route('**/api/locations**', async (route, request) => {
       if (request.method() === 'GET') {
         await route.fulfill({
