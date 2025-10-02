@@ -20,6 +20,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.Net.Http.Headers;
 using Npgsql;
@@ -27,6 +28,8 @@ using Serilog; // requis pour UseSerilog()
 using CineBoutique.Inventory.Api.Infrastructure.Health;
 using AppLog = CineBoutique.Inventory.Api.Hosting.Log;
 using Dapper;
+
+const string DefaultShopName = "CinéBoutique Paris";
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -500,8 +503,6 @@ LIMIT 1;";
 
     return Results.Ok(response);
 }
-
-const string DefaultShopName = "CinéBoutique Paris";
 
 internal sealed record LoginUserRow(
     Guid Id,

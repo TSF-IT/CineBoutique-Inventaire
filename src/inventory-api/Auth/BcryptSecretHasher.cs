@@ -10,7 +10,7 @@ public sealed class BcryptSecretHasher : ISecretHasher
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(secret);
 
-        return BCrypt.Net.BCrypt.EnhancedHashPassword(secret, hashType: HashType.SHA384, workFactor: WorkFactor);
+        return BCrypt.Net.BCrypt.EnhancedHashPassword(secret, HashType.SHA384, WorkFactor);
     }
 
     public bool Verify(string secret, string hash)
@@ -20,6 +20,6 @@ public sealed class BcryptSecretHasher : ISecretHasher
             return false;
         }
 
-        return BCrypt.Net.BCrypt.EnhancedVerify(secret, hash, hashType: HashType.SHA384);
+        return BCrypt.Net.BCrypt.EnhancedVerify(secret, hash, HashType.SHA384);
     }
 }
