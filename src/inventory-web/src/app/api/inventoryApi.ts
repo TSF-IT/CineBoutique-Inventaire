@@ -250,6 +250,20 @@ export interface CompleteInventoryRunPayload {
   items: CompleteInventoryRunItem[]
 }
 
+export interface StartInventoryRunPayload {
+  countType: 1 | 2 | 3
+  operator: string
+}
+
+export interface StartInventoryRunResponse {
+  runId: string
+  inventorySessionId: string
+  locationId: string
+  countType: number
+  operatorDisplayName: string | null
+  startedAtUtc: string
+}
+
 export interface CompleteInventoryRunResponse {
   runId: string
   inventorySessionId: string
@@ -258,6 +272,18 @@ export interface CompleteInventoryRunResponse {
   completedAtUtc: string
   itemsCount: number
   totalQuantity: number
+}
+
+export const startInventoryRun = async (
+  locationId: string,
+  payload: StartInventoryRunPayload,
+): Promise<StartInventoryRunResponse> => {
+  const url = `${API_BASE}/inventories/${encodeURIComponent(locationId)}/start`
+  return (await http(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })) as StartInventoryRunResponse
 }
 
 export const completeInventoryRun = async (
@@ -363,4 +389,46 @@ export const restartInventoryRun = async (locationId: string, countType: CountTy
   await http(`${API_BASE}/inventories/${locationId}/restart?${searchParams.toString()}`, {
     method: 'POST',
   })
+}
+
+export const releaseInventoryRun = async (locationId: string, runId: string, operator: string): Promise<void> => {
+  const searchParams = new URLSearchParams({ operatorName: operator })
+  const url = `${API_BASE}/inventories/${encodeURIComponent(locationId)}/runs/${encodeURIComponent(runId)}?${searchParams.toString()}`
+  const res = await fetch(url, { method: 'DELETE' })
+  if (!res.ok) {
+    let problem: unknown
+    let messageFromBody: string | null = null
+    try {
+      const contentType = res.headers.get('content-type') ?? ''
+      if (contentType.toLowerCase().includes('application/json')) {
+        problem = await res.json()
+        if (problem && typeof problem === 'object') {
+          const candidate = (problem as { message?: unknown }).message
+          if (typeof candidate === 'string' && candidate.trim().length > 0) {
+            messageFromBody = candidate.trim()
+          }
+        }
+      } else {
+        const bodyText = await res.text()
+        if (bodyText.trim().length > 0) {
+          messageFromBody = bodyText.trim()
+        }
+      }
+    } catch {
+      // lecture best effort
+    }
+
+    let message = `Impossible de libérer le comptage (HTTP ${res.status}).`
+    if (res.status === 404) {
+      message = messageFromBody ?? 'Comptage introuvable.'
+    } else if (res.status === 409) {
+      message = messageFromBody ?? 'Comptage déjà détenu par un autre opérateur.'
+    } else if (res.status === 400) {
+      message = messageFromBody ?? 'Requête invalide.'
+    } else if (messageFromBody) {
+      message = messageFromBody
+    }
+
+    throw Object.assign(new Error(message), { status: res.status, url, problem })
+  }
 }
