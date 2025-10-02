@@ -33,6 +33,15 @@ internal static class Log
     internal static void SeedOnStartup(ILogger logger, bool seed) =>
         _seedOnStartup(logger, seed, null);
 
+    private static readonly Action<ILogger, Exception?> _seedSkipped =
+        LoggerMessage.Define(
+            LogLevel.Information,
+            new EventId(1005, nameof(SeedSkipped)),
+            "Seed skipped because migrations are disabled.");
+
+    internal static void SeedSkipped(ILogger logger) =>
+        _seedSkipped(logger, null);
+
     private static readonly Action<ILogger, int, int, Exception?> _migrationRetry =
         LoggerMessage.Define<int, int>(
             LogLevel.Warning,

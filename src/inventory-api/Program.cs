@@ -307,9 +307,16 @@ AppLog.SeedOnStartup(app.Logger, seedOnStartup);
 
 if (seedOnStartup)
 {
-    using var scope = app.Services.CreateScope();
-    var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
-    await seeder.SeedAsync().ConfigureAwait(false);
+    if (disableMigrations)
+    {
+        AppLog.SeedSkipped(app.Logger);
+    }
+    else
+    {
+        using var scope = app.Services.CreateScope();
+        var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
+        await seeder.SeedAsync().ConfigureAwait(false);
+    }
 }
 
 if (app.Environment.IsDevelopment())
