@@ -12,6 +12,7 @@ import { InventorySessionPage } from '../pages/inventory/InventorySessionPage'
 import { useInventory } from '../contexts/InventoryContext'
 import { CountType } from '../types/inventory'
 import type { InventorySummary, Location, CompleteInventoryRunPayload } from '../types/inventory'
+import type { StartInventoryRunPayload, StartInventoryRunResponse } from '../api/inventoryApi'
 import type { HttpError } from '../../lib/api/http'
 
 const {
@@ -19,6 +20,8 @@ const {
   fetchProductMock,
   fetchInventorySummaryMock,
   completeInventoryRunMock,
+  startInventoryRunMock,
+  releaseInventoryRunMock,
   reserveLocation,
 } = vi.hoisted(() => {
   const reserveLocation: Location = {
@@ -111,6 +114,19 @@ const {
         itemsCount: 1,
         totalQuantity: 1,
       }),
+    startInventoryRunMock: vi
+      .fn<
+        (locationId: string, payload: StartInventoryRunPayload) => Promise<StartInventoryRunResponse>
+      >()
+      .mockResolvedValue({
+        runId: 'run-lock-1',
+        inventorySessionId: 'session-lock-1',
+        locationId: reserveLocation.id,
+        countType: 1,
+        operatorDisplayName: 'Amélie',
+        startedAtUtc: new Date().toISOString(),
+      }),
+    releaseInventoryRunMock: vi.fn(async () => {}),
     reserveLocation,
   }
 })
@@ -123,6 +139,8 @@ vi.mock('../api/inventoryApi', async (importOriginal) => {
     fetchProductByEan: fetchProductMock,
     fetchInventorySummary: fetchInventorySummaryMock,
     completeInventoryRun: completeInventoryRunMock,
+    startInventoryRun: startInventoryRunMock,
+    releaseInventoryRun: releaseInventoryRunMock,
   }
 })
 
@@ -238,6 +256,17 @@ describe('Workflow d\'inventaire', () => {
       itemsCount: 1,
       totalQuantity: 1,
     }))
+    startInventoryRunMock.mockReset()
+    startInventoryRunMock.mockImplementation(async () => ({
+      runId: 'run-lock-1',
+      inventorySessionId: 'session-lock-1',
+      locationId: reserveLocation.id,
+      countType: 1,
+      operatorDisplayName: 'Amélie',
+      startedAtUtc: new Date().toISOString(),
+    }))
+    releaseInventoryRunMock.mockReset()
+    releaseInventoryRunMock.mockResolvedValue()
   })
 
   it('permet de sélectionner utilisateur, zone et type en respectant les statuts', async () => {
@@ -555,6 +584,95 @@ describe('Workflow d\'inventaire', () => {
     fireEvent.click(manualButton)
 
     await within(activeSessionPage).findByText('Produit inconnu EAN 99999999')
+    await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
+    expect(startInventoryRunMock).toHaveBeenCalledWith(
+      reserveLocation.id,
+      expect.objectContaining({ countType: 1, operator: 'Amélie' }),
+    )
+  })
+
+  it('démarre un run serveur lors du premier scan', async () => {
+    renderInventoryRoutes('/inventory/session', {
+      initialize: (inventory) => {
+        inventory.setSelectedUser('Amélie')
+        inventory.setCountType(CountType.Count1)
+        inventory.setLocation({ ...reserveLocation })
+        inventory.clearSession()
+      },
+    })
+
+    const sessionPages = await screen.findAllByTestId('page-session')
+    const activeSessionPage = sessionPages[sessionPages.length - 1]
+    const input = within(activeSessionPage).getByLabelText('Scanner (douchette ou saisie)')
+
+    fireEvent.change(input, { target: { value: '123456' } })
+
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('123456'))
+    await within(activeSessionPage).findByText('Popcorn caramel')
+
+    await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
+    const calls = startInventoryRunMock.mock.calls
+    const lastCall = calls[calls.length - 1]
+    expect(lastCall).toBeDefined()
+    const [locationId, payload] = lastCall!
+    expect(locationId).toBe(reserveLocation.id)
+    expect(payload).toMatchObject({ countType: 1, operator: 'Amélie' })
+  })
+
+  it("ne libère pas le run immédiatement après l'avoir démarré", async () => {
+    renderInventoryRoutes('/inventory/session', {
+      initialize: (inventory) => {
+        inventory.setSelectedUser('Amélie')
+        inventory.setCountType(CountType.Count1)
+        inventory.setLocation({ ...reserveLocation })
+        inventory.clearSession()
+      },
+    })
+
+    const sessionPages = await screen.findAllByTestId('page-session')
+    const activeSessionPage = sessionPages[sessionPages.length - 1]
+    const input = within(activeSessionPage).getByLabelText('Scanner (douchette ou saisie)')
+
+    fireEvent.change(input, { target: { value: '123456' } })
+
+    await within(activeSessionPage).findByText('Popcorn caramel')
+    await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
+
+    await waitFor(() => {
+      expect(releaseInventoryRunMock).not.toHaveBeenCalled()
+    })
+  })
+
+  it('libère automatiquement la zone lorsque tous les articles sont supprimés', async () => {
+    renderInventoryRoutes('/inventory/session', {
+      initialize: (inventory) => {
+        inventory.setSelectedUser('Amélie')
+        inventory.setCountType(CountType.Count1)
+        inventory.setLocation({ ...reserveLocation })
+        inventory.setSessionId('run-lock-1')
+        inventory.addOrIncrementItem({ ean: '1234567890123', name: 'Popcorn caramel' })
+      },
+    })
+
+    const sessionPages = await screen.findAllByTestId('page-session')
+    const activeSessionPage = sessionPages[sessionPages.length - 1]
+
+    const initialItem = await within(activeSessionPage).findByTestId('scanned-item')
+    expect(initialItem).toBeInTheDocument()
+
+    const removeButton = within(initialItem).getByRole('button', { name: 'Retirer' })
+    fireEvent.click(removeButton)
+
+    await waitFor(() => expect(within(activeSessionPage).queryByTestId('scanned-item')).not.toBeInTheDocument())
+    await waitFor(() =>
+      expect(releaseInventoryRunMock).toHaveBeenCalledWith(
+        reserveLocation.id,
+        'run-lock-1',
+        'Amélie',
+      ),
+    )
+
+    expect(within(activeSessionPage).queryByText(/Session existante/)).not.toBeInTheDocument()
   })
 
   it("conserve l'ordre d'insertion des articles lors des ajustements de quantité", async () => {
@@ -616,6 +734,7 @@ describe('Workflow d\'inventaire', () => {
 
     await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('123'))
     await within(activeSessionPage).findByText('Popcorn caramel')
+    await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
     const finishButton = await within(activeSessionPage).findByTestId('btn-complete-run')
     expect(finishButton).toBeInTheDocument()
 
@@ -627,7 +746,7 @@ describe('Workflow d\'inventaire', () => {
     expect(payload).toBeTruthy()
     expect(locationId).toBeTruthy()
     expect(payload).toMatchObject({
-      runId: null,
+      runId: 'run-lock-1',
       countType: CountType.Count2,
       operator: 'Amélie',
     })

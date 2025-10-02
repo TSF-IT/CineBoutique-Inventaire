@@ -164,3 +164,82 @@ describe('completeInventoryRun (dev fixtures)', () => {
   })
 })
 
+describe('startInventoryRun', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    vi.doUnmock('@/lib/api/http')
+    vi.restoreAllMocks()
+  })
+
+  it('envoie la requête POST attendue', async () => {
+    const httpMock = vi.fn().mockResolvedValue({
+      runId: 'run-1',
+      inventorySessionId: 'session-1',
+      locationId: 'loc-1',
+      countType: 1,
+      operatorDisplayName: 'Amélie',
+      startedAtUtc: new Date().toISOString(),
+    })
+    mockHttpModule(httpMock)
+
+    const { startInventoryRun } = await import('./inventoryApi')
+
+    const result = await startInventoryRun('loc-1', { countType: 1, operator: 'Amélie' })
+
+    expect(result).toMatchObject({ runId: 'run-1', countType: 1 })
+    expect(httpMock).toHaveBeenCalledWith(
+      expect.stringContaining('/inventories/loc-1/start'),
+      expect.objectContaining({ method: 'POST' }),
+    )
+  })
+})
+
+describe('releaseInventoryRun', () => {
+  const originalFetch = global.fetch
+
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    global.fetch = originalFetch
+    vi.restoreAllMocks()
+  })
+
+  it('retourne void quand le backend répond 204', async () => {
+    const response = new Response(null, { status: 204 })
+    const fetchMock = vi.fn().mockResolvedValue(response)
+    global.fetch = fetchMock as typeof global.fetch
+
+    const { releaseInventoryRun } = await import('./inventoryApi')
+
+    await expect(releaseInventoryRun('loc-1', 'run-1', 'Amélie')).resolves.toBeUndefined()
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/inventories/loc-1/runs/run-1'),
+      expect.objectContaining({ method: 'DELETE' }),
+    )
+  })
+
+  it('remonte le message de conflit retourné par le backend', async () => {
+    const payload = JSON.stringify({ message: 'Comptage détenu par Paul.' })
+    const response = new Response(payload, {
+      status: 409,
+      headers: { 'Content-Type': 'application/json' },
+    })
+    const fetchMock = vi.fn().mockResolvedValue(response)
+    global.fetch = fetchMock as typeof global.fetch
+
+    const { releaseInventoryRun } = await import('./inventoryApi')
+
+    await expect(releaseInventoryRun('loc-1', 'run-1', 'Amélie')).rejects.toMatchObject({
+      message: 'Comptage détenu par Paul.',
+      status: 409,
+    })
+  })
+})
+
