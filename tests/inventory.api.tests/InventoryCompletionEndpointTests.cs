@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Infrastructure.Database;
+using CineBoutique.Inventory.Infrastructure.Seeding;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -418,6 +419,9 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
 """;
 
         await connection.ExecuteAsync(cleanupSql);
+
+        var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
+        await seeder.SeedAsync();
     }
 
     private async Task<Guid> SeedLocationAsync(string code, string label)

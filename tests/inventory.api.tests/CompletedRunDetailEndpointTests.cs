@@ -15,6 +15,7 @@ using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Infrastructure.Database;
+using CineBoutique.Inventory.Infrastructure.Seeding;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -179,6 +180,9 @@ public sealed class CompletedRunDetailEndpointTests : IAsyncLifetime
             "TRUNCATE TABLE \"Product\" RESTART IDENTITY CASCADE;";
 
         await connection.ExecuteAsync(cleanupSql);
+
+        var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
+        await seeder.SeedAsync();
     }
 
     private static async Task EnsureConnectionOpenAsync(IDbConnection connection)

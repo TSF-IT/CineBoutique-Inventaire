@@ -222,7 +222,7 @@ WHERE "ShopId" = @ShopId AND upper("Code") = upper(@Code);
         }
     }
 
-    private static Task UpsertUserAsync(
+    private static async Task UpsertUserAsync(
         IDbConnection connection,
         IDbTransaction transaction,
         Guid shopId,
@@ -230,27 +230,51 @@ WHERE "ShopId" = @ShopId AND upper("Code") = upper(@Code);
         string displayName,
         bool isAdmin,
         CancellationToken cancellationToken)
-        => connection.ExecuteAsync(
-            new CommandDefinition(
-                UpsertShopUserSql,
-                new
-                {
-                    ShopId = shopId,
-                    Login = login,
-                    DisplayName = displayName,
-                    IsAdmin = isAdmin
-                },
-                transaction,
-                cancellationToken: cancellationToken));
+    {
+        var normalizedLogin = login.Trim();
+        var normalizedDisplayName = displayName.Trim();
+        var parameters = new
+        {
+            ShopId = shopId,
+            Login = normalizedLogin,
+            LoginLower = normalizedLogin.ToLowerInvariant(),
+            DisplayName = normalizedDisplayName,
+            IsAdmin = isAdmin
+        };
 
-    private const string UpsertShopUserSql = """
+        var insertedId = await connection.ExecuteScalarAsync<Guid?>(
+                new CommandDefinition(
+                    InsertShopUserSql,
+                    parameters,
+                    transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        if (insertedId is null)
+        {
+            await connection.ExecuteAsync(
+                    new CommandDefinition(
+                        UpdateShopUserSql,
+                        parameters,
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+        }
+    }
+
+    private const string InsertShopUserSql = """
 INSERT INTO "ShopUser" ("ShopId", "Login", "DisplayName", "IsAdmin", "Secret_Hash", "Disabled")
 VALUES (@ShopId, @Login, @DisplayName, @IsAdmin, NULL, FALSE)
-ON CONFLICT ON CONSTRAINT "UQ_ShopUser_Login" DO UPDATE
-SET "DisplayName" = EXCLUDED."DisplayName",
-    "IsAdmin" = EXCLUDED."IsAdmin",
-    "Disabled" = FALSE,
-    "Secret_Hash" = COALESCE("ShopUser"."Secret_Hash", EXCLUDED."Secret_Hash");
+ON CONFLICT DO NOTHING
+RETURNING "Id";
+""";
+
+    private const string UpdateShopUserSql = """
+UPDATE "ShopUser"
+SET "DisplayName" = @DisplayName,
+    "IsAdmin" = @IsAdmin,
+    "Disabled" = FALSE
+WHERE "ShopId" = @ShopId AND lower("Login") = @LoginLower;
 """;
 
     private static Task BackfillCountingRunOwnersAsync(

@@ -138,6 +138,9 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
 """;
 
         await connection.ExecuteAsync(cleanupSql);
+
+        var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
+        await seeder.SeedAsync();
     }
 
     private static HashSet<string> BuildExpectedCodes()

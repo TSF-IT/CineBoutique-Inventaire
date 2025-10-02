@@ -307,14 +307,22 @@ AppLog.SeedOnStartup(app.Logger, seedOnStartup);
 
 if (seedOnStartup)
 {
-    if (disableMigrations)
+    using var scope = app.Services.CreateScope();
+    var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
+    var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+
+    await using var connection = connectionFactory.CreateConnection();
+    await connection.OpenAsync().ConfigureAwait(false);
+
+    const string tableExistsSql = "select to_regclass('""Shop""');";
+    var tableExists = await connection.ExecuteScalarAsync<string?>(tableExistsSql).ConfigureAwait(false);
+
+    if (tableExists is null)
     {
         AppLog.SeedSkipped(app.Logger);
     }
     else
     {
-        using var scope = app.Services.CreateScope();
-        var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
         await seeder.SeedAsync().ConfigureAwait(false);
     }
 }
