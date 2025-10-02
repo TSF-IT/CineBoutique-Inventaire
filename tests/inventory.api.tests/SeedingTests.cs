@@ -75,10 +75,12 @@ public sealed class SeedingTests : IAsyncLifetime
         await using var connection = connectionFactory.CreateConnection();
         await connection.OpenAsync();
 
-        const string sql = @"SELECT s.\"Name\" AS ShopName, l.\"Code\" AS Code
-FROM \"Location\" l
-JOIN \"Shop\" s ON s.\"Id\" = l.\"ShopId\"
-WHERE s.\"Name\" <> 'CinéBoutique Paris'";
+        const string sql = """
+SELECT s."Name" AS ShopName, l."Code" AS Code
+FROM "Location" l
+JOIN "Shop" s ON s."Id" = l."ShopId"
+WHERE s."Name" <> 'CinéBoutique Paris'
+""";
 
         var rows = await connection.QueryAsync<(string ShopName, string Code)>(sql);
         var grouped = rows.GroupBy(r => r.ShopName);
@@ -101,10 +103,12 @@ WHERE s.\"Name\" <> 'CinéBoutique Paris'";
         await using var connection = connectionFactory.CreateConnection();
         await connection.OpenAsync();
 
-        const string sql = @"SELECT s.\"Name\" AS ShopName, su.\"DisplayName\" AS DisplayName, su.\"IsAdmin\" AS IsAdmin
-FROM \"ShopUser\" su
-JOIN \"Shop\" s ON s.\"Id\" = su.\"ShopId\"
-WHERE lower(su.\"Login\") = 'administrateur';";
+        const string sql = """
+SELECT s."Name" AS ShopName, su."DisplayName" AS DisplayName, su."IsAdmin" AS IsAdmin
+FROM "ShopUser" su
+JOIN "Shop" s ON s."Id" = su."ShopId"
+WHERE lower(su."Login") = 'administrateur';
+""";
 
         var admins = await connection.QueryAsync<(string ShopName, string DisplayName, bool IsAdmin)>(sql);
         Assert.Equal(5, admins.Count());
@@ -226,10 +230,12 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
         await using var connection = connectionFactory.CreateConnection();
         await connection.OpenAsync();
 
-        const string sql = @"SELECT COUNT(*)::int
-FROM \"ShopUser\" su
-JOIN \"Shop\" s ON s.\"Id\" = su.\"ShopId\"
-WHERE s.\"Name\" = @ShopName;";
+        const string sql = """
+SELECT COUNT(*)::int
+FROM "ShopUser" su
+JOIN "Shop" s ON s."Id" = su."ShopId"
+WHERE s."Name" = @ShopName;
+""";
 
         return await connection.ExecuteScalarAsync<int>(sql, new { ShopName = shopName });
     }

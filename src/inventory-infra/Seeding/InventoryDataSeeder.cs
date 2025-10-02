@@ -76,12 +76,20 @@ public sealed class InventoryDataSeeder
         CancellationToken cancellationToken)
     {
         var result = new Dictionary<string, Guid>(StringComparer.Ordinal);
+        const string selectShopSql = """
+SELECT "Id" FROM "Shop" WHERE lower("Name") = lower(@Name) LIMIT 1;
+""";
+        const string insertShopSql = """
+INSERT INTO "Shop" ("Name") VALUES (@Name)
+ON CONFLICT ON CONSTRAINT "UQ_Shop_LowerName" DO NOTHING
+RETURNING "Id";
+""";
 
         foreach (var name in SeedShopNames)
         {
             var existing = await connection.ExecuteScalarAsync<Guid?>(
                     new CommandDefinition(
-                        @"SELECT \"Id\" FROM \"Shop\" WHERE lower(\"Name\") = lower(@Name) LIMIT 1;",
+                        selectShopSql,
                         new { Name = name },
                         transaction,
                         cancellationToken: cancellationToken))
@@ -95,9 +103,7 @@ public sealed class InventoryDataSeeder
 
             var inserted = await connection.ExecuteScalarAsync<Guid?>(
                     new CommandDefinition(
-                        @"INSERT INTO \"Shop\" (\"Name\") VALUES (@Name)
-ON CONFLICT ON CONSTRAINT \"UQ_Shop_LowerName\" DO NOTHING
-RETURNING \"Id\";",
+                        insertShopSql,
                         new { Name = name },
                         transaction,
                         cancellationToken: cancellationToken))
@@ -111,7 +117,7 @@ RETURNING \"Id\";",
 
             var fallback = await connection.ExecuteScalarAsync<Guid>(
                     new CommandDefinition(
-                        @"SELECT \"Id\" FROM \"Shop\" WHERE lower(\"Name\") = lower(@Name) LIMIT 1;",
+                        selectShopSql,
                         new { Name = name },
                         transaction,
                         cancellationToken: cancellationToken))
@@ -130,7 +136,9 @@ RETURNING \"Id\";",
         CancellationToken cancellationToken)
         => connection.ExecuteAsync(
             new CommandDefinition(
-                "UPDATE \"Location\" SET \"ShopId\" = @ShopId WHERE \"ShopId\" IS NULL;",
+                """
+UPDATE "Location" SET "ShopId" = @ShopId WHERE "ShopId" IS NULL;
+""",
                 new { ShopId = parisShopId },
                 transaction,
                 cancellationToken: cancellationToken));
@@ -141,6 +149,13 @@ RETURNING \"Id\";",
         IReadOnlyDictionary<string, Guid> shops,
         CancellationToken cancellationToken)
     {
+        const string upsertLocationSql = """
+INSERT INTO "Location" ("ShopId", "Code", "Label")
+VALUES (@ShopId, @Code, @Label)
+ON CONFLICT ON CONSTRAINT "UQ_Location_Shop_Code" DO UPDATE
+SET "Label" = EXCLUDED."Label";
+""";
+
         foreach (var (name, id) in shops)
         {
             if (string.Equals(name, DefaultShopName, StringComparison.Ordinal))
@@ -155,10 +170,7 @@ RETURNING \"Id\";",
 
                 await connection.ExecuteAsync(
                         new CommandDefinition(
-                            @"INSERT INTO \"Location\" (\"ShopId\", \"Code\", \"Label\")
-VALUES (@ShopId, @Code, @Label)
-ON CONFLICT ON CONSTRAINT \"UQ_Location_Shop_Code\" DO UPDATE
-SET \"Label\" = EXCLUDED.\"Label\";",
+                            upsertLocationSql,
                             new
                             {
                                 ShopId = id,
@@ -206,13 +218,7 @@ SET \"Label\" = EXCLUDED.\"Label\";",
         CancellationToken cancellationToken)
         => connection.ExecuteAsync(
             new CommandDefinition(
-                @"INSERT INTO \"ShopUser\" (\"ShopId\", \"Login\", \"DisplayName\", \"IsAdmin\", \"Secret_Hash\", \"Disabled\")
-VALUES (@ShopId, @Login, @DisplayName, @IsAdmin, NULL, FALSE)
-ON CONFLICT ON CONSTRAINT \"UQ_ShopUser_Login\" DO UPDATE
-SET \"DisplayName\" = EXCLUDED.\"DisplayName\",
-    \"IsAdmin\" = EXCLUDED.\"IsAdmin\",
-    \"Disabled\" = FALSE,
-    \"Secret_Hash\" = COALESCE(\"ShopUser\".\"Secret_Hash\", EXCLUDED.\"Secret_Hash\");",
+                UpsertShopUserSql,
                 new
                 {
                     ShopId = shopId,
@@ -223,20 +229,32 @@ SET \"DisplayName\" = EXCLUDED.\"DisplayName\",
                 transaction,
                 cancellationToken: cancellationToken));
 
+    private const string UpsertShopUserSql = """
+INSERT INTO "ShopUser" ("ShopId", "Login", "DisplayName", "IsAdmin", "Secret_Hash", "Disabled")
+VALUES (@ShopId, @Login, @DisplayName, @IsAdmin, NULL, FALSE)
+ON CONFLICT ON CONSTRAINT "UQ_ShopUser_Login" DO UPDATE
+SET "DisplayName" = EXCLUDED."DisplayName",
+    "IsAdmin" = EXCLUDED."IsAdmin",
+    "Disabled" = FALSE,
+    "Secret_Hash" = COALESCE("ShopUser"."Secret_Hash", EXCLUDED."Secret_Hash");
+""";
+
     private static Task BackfillCountingRunOwnersAsync(
         IDbConnection connection,
         IDbTransaction transaction,
         CancellationToken cancellationToken)
         => connection.ExecuteAsync(
             new CommandDefinition(
-                @"UPDATE \"CountingRun\" cr
-SET \"OwnerUserId\" = su.\"Id\"
-FROM \"Location\" l
-JOIN \"ShopUser\" su ON su.\"ShopId\" = l.\"ShopId\" AND su.\"DisplayName\" = btrim(cr.\"OperatorDisplayName\") AND su.\"Disabled\" = FALSE
-WHERE l.\"Id\" = cr.\"LocationId\"
-  AND cr.\"OwnerUserId\" IS NULL
-  AND cr.\"OperatorDisplayName\" IS NOT NULL
-  AND btrim(cr.\"OperatorDisplayName\") <> '';",
+                """
+UPDATE "CountingRun" cr
+SET "OwnerUserId" = su."Id"
+FROM "Location" l
+JOIN "ShopUser" su ON su."ShopId" = l."ShopId" AND su."DisplayName" = btrim(cr."OperatorDisplayName") AND su."Disabled" = FALSE
+WHERE l."Id" = cr."LocationId"
+  AND cr."OwnerUserId" IS NULL
+  AND cr."OperatorDisplayName" IS NOT NULL
+  AND btrim(cr."OperatorDisplayName") <> '';
+""",
                 transaction: transaction,
                 cancellationToken: cancellationToken));
 }
