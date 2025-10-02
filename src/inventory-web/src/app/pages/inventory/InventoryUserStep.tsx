@@ -4,19 +4,24 @@ import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Card } from '../../components/Card'
 import { useInventory } from '../../contexts/InventoryContext'
-import { INVENTORY_OPERATORS } from '../../utils/users'
+import { useOperators } from '../../contexts/OperatorsContext'
+import { sortOperatorNames } from '../../utils/operators'
 
 export const InventoryUserStep = () => {
   const navigate = useNavigate()
   const { selectedUser, setSelectedUser } = useInventory()
+  const { operators } = useOperators()
   const [search, setSearch] = useState('')
 
+  const sortedOperators = useMemo(() => sortOperatorNames(operators), [operators])
+
   const filteredOperators = useMemo(() => {
-    if (!search.trim()) {
-      return INVENTORY_OPERATORS
+    const normalizedQuery = search.trim().toLowerCase()
+    if (!normalizedQuery) {
+      return sortedOperators
     }
-    return INVENTORY_OPERATORS.filter((operator) => operator.toLowerCase().includes(search.toLowerCase()))
-  }, [search])
+    return sortedOperators.filter((operator) => operator.name.toLowerCase().includes(normalizedQuery))
+  }, [search, sortedOperators])
 
   const handleSelect = (operator: string) => {
     if (operator !== selectedUser) {
@@ -41,19 +46,19 @@ export const InventoryUserStep = () => {
         />
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {filteredOperators.map((operator) => {
-            const isSelected = selectedUser === operator
+            const isSelected = selectedUser === operator.name
             return (
               <button
-                key={operator}
+                key={operator.id}
                 type="button"
-                onClick={() => handleSelect(operator)}
+                onClick={() => handleSelect(operator.name)}
                 className={`rounded-2xl border px-4 py-4 text-center text-sm font-semibold transition-all ${
                   isSelected
                     ? 'border-brand-400 bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-100'
                     : 'border-slate-200 bg-white text-slate-700 hover:border-brand-400/40 hover:bg-brand-50 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200'
                 }`}
               >
-                {operator}
+                {operator.name}
               </button>
             )
           })}
