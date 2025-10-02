@@ -774,7 +774,7 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc, @Operator);"
                 : @"INSERT INTO ""CountingRun"" (""Id"", ""InventorySessionId"", ""LocationId"", ""CountType"", ""StartedAtUtc"")
 VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc);";
 
-            var insertParameters = hasOperatorDisplayNameColumn
+            object insertParameters = hasOperatorDisplayNameColumn
                 ? new
                 {
                     Id = runId,
