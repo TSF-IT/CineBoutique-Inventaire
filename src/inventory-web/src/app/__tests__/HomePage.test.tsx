@@ -1,5 +1,5 @@
 // Modifications : ajout d'un mock des zones pour vérifier le compteur de comptages terminés.
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { describe, expect, it, vi } from 'vitest'
 import { ThemeProvider } from '../../theme/ThemeProvider'
@@ -123,13 +123,19 @@ describe('HomePage', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /État de l/i })).toBeInTheDocument()
-      expect(screen.getAllByText('Comptages en cours')[0]).toBeInTheDocument()
-      expect(screen.getByText('1')).toBeInTheDocument()
-      expect(screen.getByText('Conflits')).toBeInTheDocument()
-      expect(screen.getByText('2')).toBeInTheDocument()
-      expect(screen.getByText('Touchez pour voir le détail')).toBeInTheDocument()
-      expect(screen.getByText('Touchez une zone pour voir le détail')).toBeInTheDocument()
-      expect(screen.getByText('Comptages terminés : 2 / 4')).toBeInTheDocument()
+
+      const runningButton = screen.getByRole('button', { name: /Comptages en cours/i })
+      expect(within(runningButton).getByText('1')).toBeInTheDocument()
+      expect(within(runningButton).getByText(/Touchez pour voir le détail/i)).toBeInTheDocument()
+
+      const conflictsCard = screen.getByText('Conflits').closest('div')
+      expect(conflictsCard).not.toBeNull()
+      if (conflictsCard) {
+        expect(within(conflictsCard).getByText('2')).toBeInTheDocument()
+        expect(within(conflictsCard).getByText(/Touchez une zone pour voir le détail/i)).toBeInTheDocument()
+      }
+
+      expect(screen.getByText(/Progression\s*:\s*2\s*\/\s*4/)).toBeInTheDocument()
     })
 
     expect(screen.getByRole('button', { name: 'Débuter un inventaire' })).toBeInTheDocument()
@@ -156,10 +162,8 @@ describe('HomePage', () => {
       </ThemeProvider>,
     )
 
-    await waitFor(() => {
-      expect(screen.getByText('Aucun comptage en cours')).toBeInTheDocument()
-      expect(screen.getByText('Aucun conflit')).toBeInTheDocument()
-      expect(screen.getByText('Comptages terminés : 0 / 0')).toBeInTheDocument()
-    })
+    expect(await screen.findByText('Aucun comptage en cours')).toBeInTheDocument()
+    expect(await screen.findByText('Aucun conflit')).toBeInTheDocument()
+    expect(await screen.findByText(/Progression\s*:\s*0\s*\/\s*0/)).toBeInTheDocument()
   })
 })

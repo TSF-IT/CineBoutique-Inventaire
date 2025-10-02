@@ -27,8 +27,3 @@ export const updateLocation = async (
   return data as Location
 }
 
-export const deleteLocation = async (id: string): Promise<void> => {
-  await http(`${API_BASE}/locations/${id}`, {
-    method: 'DELETE',
-  })
-}
