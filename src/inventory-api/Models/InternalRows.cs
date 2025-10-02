@@ -58,6 +58,38 @@ internal sealed class CompletedRunSummaryRow
     public DateTime CompletedAtUtc { get; set; }
 }
 
+internal sealed class CompletedRunDetailRow
+{
+    public Guid RunId { get; set; }
+
+    public Guid LocationId { get; set; }
+
+    public string LocationCode { get; set; } = string.Empty;
+
+    public string LocationLabel { get; set; } = string.Empty;
+
+    public short CountType { get; set; }
+
+    public string? OperatorDisplayName { get; set; }
+
+    public DateTime StartedAtUtc { get; set; }
+
+    public DateTime CompletedAtUtc { get; set; }
+}
+
+internal sealed class CompletedRunLineRow
+{
+    public Guid ProductId { get; set; }
+
+    public string Sku { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
+
+    public string? Ean { get; set; }
+
+    public decimal Quantity { get; set; }
+}
+
 internal sealed class ConflictZoneSummaryRow
 {
     public Guid LocationId { get; set; }

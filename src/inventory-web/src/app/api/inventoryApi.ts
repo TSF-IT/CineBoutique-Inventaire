@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { CountType, LocationsSchema } from '../types/inventory'
+import type { CompletedRunDetail } from '../types/inventory'
 import type {
   ConflictZoneDetail,
   ConflictZoneSummary,
@@ -165,6 +166,33 @@ export const getConflictZoneDetail = async (
     signal,
   })
   return data as ConflictZoneDetail
+}
+
+export const getCompletedRunDetail = async (runId: string): Promise<CompletedRunDetail> => {
+  const data = (await http(`${API_BASE}/inventories/runs/${encodeURIComponent(runId)}`)) as
+    | Partial<CompletedRunDetail>
+    | null
+    | undefined
+
+  const items = Array.isArray(data?.items) ? data!.items : []
+
+  return {
+    runId: data?.runId ?? runId,
+    locationId: data?.locationId ?? '',
+    locationCode: data?.locationCode ?? '',
+    locationLabel: data?.locationLabel ?? '',
+    countType: (data?.countType as CountType) ?? CountType.Count1,
+    operatorDisplayName: data?.operatorDisplayName ?? null,
+    startedAtUtc: data?.startedAtUtc ?? '',
+    completedAtUtc: data?.completedAtUtc ?? '',
+    items: items.map((item) => ({
+      productId: item?.productId ?? '',
+      sku: item?.sku ?? '',
+      name: item?.name ?? '',
+      ean: typeof item?.ean === 'string' && item.ean.trim().length > 0 ? item.ean : null,
+      quantity: typeof item?.quantity === 'number' ? item.quantity : Number(item?.quantity ?? 0),
+    })),
+  }
 }
 
 export const fetchLocations = async (options?: { countType?: CountType }): Promise<Location[]> => {

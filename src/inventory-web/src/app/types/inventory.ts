@@ -37,6 +37,26 @@ export interface CompletedRunSummary {
   completedAtUtc: string
 }
 
+export interface CompletedRunDetailItem {
+  productId: string
+  sku: string
+  name: string
+  ean: string | null
+  quantity: number
+}
+
+export interface CompletedRunDetail {
+  runId: string
+  locationId: string
+  locationCode: string
+  locationLabel: string
+  countType: CountType
+  operatorDisplayName: string | null
+  startedAtUtc: string
+  completedAtUtc: string
+  items: CompletedRunDetailItem[]
+}
+
 export interface ConflictZoneSummary {
   locationId: string
   locationCode: string
