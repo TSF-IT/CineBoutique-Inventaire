@@ -20,5 +20,6 @@
     <PackageReference Include="FluentMigrator.Runner" />
     <PackageReference Include="FluentMigrator.Runner.Postgres" />
     <PackageReference Include="Npgsql" />
+    <PackageReference Include="System.Collections.Immutable" />
   </ItemGroup>
 </Project>

@@ -4,7 +4,7 @@ Ce dépôt monorepo regroupe l'ensemble des composants nécessaires à la future
 
 ## Structure
 
-- `src/inventory-api` : projet ASP.NET Core minimal API exposant les endpoints d'inventaire et gérant l'authentification par PIN/JWT.
+- `src/inventory-api` : projet ASP.NET Core minimal API exposant les endpoints d'inventaire et gérant l'authentification ShopUser + JWT.
 - `src/inventory-infra` : infrastructure et accès aux données (FluentMigrator, Dapper, seeding de démonstration).
 - `src/inventory-domain` : bibliothèque pour les règles métier.
 - `src/inventory-shared` : contrats et DTO partagés.
@@ -44,7 +44,7 @@ Une fois les conteneurs démarrés :
 - API : http://localhost:8080/swagger
 - Front PWA : http://localhost:3000
 
-Les migrations FluentMigrator et le seed automatisé (zones `B1` à `B20` et `S1` à `S19`) sont exécutés automatiquement au démarrage lorsque `AppSettings:SeedOnStartup` vaut `true` (activé par défaut en environnement `Development`). Aucun produit, session ou comptage n'est désormais prérempli : seules les 39 zones standards et les 5 utilisateurs de démonstration définis dans la configuration sont créés.
+Les migrations FluentMigrator et le seed automatisé sont exécutés lorsque `AppSettings:SeedOnStartup` vaut `true` (activé par défaut en environnement `Development`). Le seed crée systématiquement les 5 boutiques (`CinéBoutique Paris`, `CinéBoutique Bordeaux`, `CinéBoutique Montpellier`, `CinéBoutique Marseille`, `CinéBoutique Bruxelles`), rattache toutes les zones existantes à Paris, ajoute les zones de démonstration `A` à `E` pour chaque boutique hors Paris et provisionne les comptes `ShopUser` (Administrateur + Utilisateur 1..N). Aucun produit, session ou comptage n'est injecté par défaut.
 
 ### Vérifications rapides du seed
 
@@ -57,6 +57,16 @@ ORDER BY "Code";
 -- Vérifier que seules les zones sont présentes
 SELECT COUNT(*) AS "ZoneCount"
 FROM "Location";
+
+-- Vérifier les boutiques actives
+SELECT "Name" FROM "Shop" ORDER BY "Name";
+
+-- Vérifier les comptes administrateurs provisionnés
+SELECT s."Name" AS "Shop", su."Login", su."DisplayName"
+FROM "ShopUser" su
+JOIN "Shop" s ON s."Id" = su."ShopId"
+WHERE lower(su."Login") = 'administrateur'
+ORDER BY s."Name";
 ```
 
 ### Reseed dev
@@ -85,22 +95,20 @@ curl http://localhost:8080/ready
 curl http://localhost:8080/api/locations
 ```
 
-Les utilisateurs de test sont définis dans `src/inventory-api/appsettings.Development.json` :
+Les comptes de démonstration sont provisionnés automatiquement : chaque boutique dispose d'un compte `administrateur` (DisplayName "Administrateur", `IsAdmin=true`) et de comptes `utilisateur1` à `utilisateur5` pour Paris (`utilisateur4` pour les autres boutiques). En environnement `Development` et `CI`, les comptes dont `Secret_Hash` est nul peuvent se connecter sans secret.
 
-- Amélie — PIN `1111`
-- Bruno — PIN `2222`
-- Camille — PIN `3333`
-- David — PIN `4444`
-- Elisa — PIN `5555`
+Pour obtenir un JWT, appelez `POST /api/auth/login` avec un corps `{ "login": "administrateur", "secret": "votreSecret" }`. Les entêtes optionnels `X-Shop-Id` ou `X-Shop-Name` permettent de cibler une autre boutique ; sans précision l'API utilise `CinéBoutique Paris`.
 
-L'endpoint `POST /auth/pin` retourne un JWT court si le PIN est valide. Les endpoints principaux actuellement exposés sont :
+Les endpoints principaux actuellement exposés sont :
 
 - `GET /health` : liveness simple.
 - `GET /ready` : vérifie l'accès à PostgreSQL (`SELECT 1`).
 - `GET /locations` : liste les zones d'inventaire et l'état d'occupation courant (filtrable par type de comptage).
 - `GET /api/products/{code}` : recherche par SKU ou code EAN-8/EAN-13.
 - `POST /api/products` : création manuelle d'un produit (SKU, nom, EAN optionnel).
-- `POST /auth/pin` : authentification par PIN/JWT (utilisateurs définis dans la configuration).
+- `POST /api/auth/login` : authentification ShopUser (login + secret Argon2/bcrypt, secret facultatif en dev/CI si absent).
+- `GET /api/shops` / `POST /api/shops` / `PUT /api/shops/{id}` / `DELETE /api/shops/{id}` : administration des boutiques (suppression soumise à l'absence de zones/utilisateurs).
+- `GET /api/shops/{shopId}/users` / `POST` / `PUT` / `DELETE` : gestion des comptes ShopUser (suppression logique via `Disabled=true`).
 - `POST /api/inventories/{locationId}/restart` : clôture les runs actifs d'une zone pour redémarrer un comptage.
 - `POST /api/inventories/{locationId}/complete` : clôture un comptage en enregistrant les quantités scannées (produits connus ou inconnus).
 - `GET /api/inventories/summary` : retourne l'état agrégé des inventaires (sessions actives, runs ouverts, zones en conflit).
@@ -148,7 +156,7 @@ La réponse contient l'identifiant du run clôturé ainsi que les agrégats util
 
 - Chaîne de connexion PostgreSQL : `ConnectionStrings:Default` (surchargée dans Docker via variable d'environnement `ConnectionStrings__Default`).
 - Paramètres généraux : `AppSettings` (ex. `SeedOnStartup`).
-- Authentification : `Authentication` (issuer, audience, secret JWT, durée, utilisateurs PIN).
+- Authentification : `Authentication` (issuer, audience, secret JWT, durée). Les comptes sont stockés dans la table `ShopUser` (hash Argon2/bcrypt).
 
 ## Scripts utiles
 
@@ -196,7 +204,7 @@ Les icônes et logos ne sont plus versionnés afin de permettre l'export GitHub 
 Une fois connecté au conteneur PostgreSQL (`docker exec -it cineboutique-inventaire-db-1 psql -U postgres -d cineboutique`), les commandes suivantes permettent de valider l'état de la base :
 
 - `\dx` pour vérifier que les extensions `uuid-ossp` et `pgcrypto` sont bien installées.
-- `\dt` pour lister les tables créées par la migration (`Product`, `Location`, `InventorySession`, `CountingRun`, `CountLine`, `Conflict`, `Audit`).
+- `\dt` pour lister les tables créées par la migration (`Shop`, `ShopUser`, `Location`, `InventorySession`, `CountingRun`, `CountLine`, `Product`, `Conflict`, `Audit`).
 - `SELECT COUNT(*) FROM "Location";` afin de confirmer la présence des 39 emplacements (`B1` à `B20`, `S1` à `S19`).
 
 ## Gestion centralisée des packages NuGet

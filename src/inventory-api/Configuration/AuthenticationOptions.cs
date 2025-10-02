@@ -10,5 +10,4 @@ public sealed class AuthenticationOptions
 
     public int TokenLifetimeMinutes { get; set; } = 30;
 
-    public IReadOnlyList<PinUserOptions> Users { get; set; } = Array.Empty<PinUserOptions>();
 }

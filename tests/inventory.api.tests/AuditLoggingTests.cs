@@ -39,12 +39,11 @@ public sealed class AuditLoggingTests : IAsyncLifetime
     {
         var configuration = new Dictionary<string, string?>
         {
-            ["Authentication:Users:0:Name"] = "Amélie",
-            ["Authentication:Users:0:Pin"] = "1111",
             ["Authentication:Issuer"] = "CineBoutique.Inventory",
             ["Authentication:Audience"] = "CineBoutique.Inventory",
             ["Authentication:Secret"] = "ChangeMe-Secret-Key-For-Inventory-Api-123",
-            ["Authentication:TokenLifetimeMinutes"] = "30"
+            ["Authentication:TokenLifetimeMinutes"] = "30",
+            ["AppSettings:SeedOnStartup"] = "true"
         };
 
         _factory = new InventoryApiApplicationFactory(_pg.ConnectionString, configuration);
@@ -239,35 +238,35 @@ public sealed class AuditLoggingTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task PinLogin_Success_WritesAuditLog()
+    public async Task Login_Success_WritesAuditLog()
     {
         await ResetDatabaseAsync();
 
-        var response = await _client.PostAsJsonAsync("/auth/pin", new PinAuthenticationRequest { Pin = "1111" });
+        var response = await _client.PostAsJsonAsync("/api/auth/login", new LoginRequest { Login = "administrateur" });
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var auditLogs = await GetAuditLogsAsync();
         Assert.Single(auditLogs);
 
         var entry = auditLogs.Single();
-        Assert.Equal("auth.pin.success", entry.Category);
-        Assert.Equal("Amélie", entry.Actor);
+        Assert.Equal("auth.login.success", entry.Category);
+        Assert.Equal("Administrateur", entry.Actor);
         Assert.Contains("s'est connecté", entry.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public async Task PinLogin_InvalidPin_WritesAuditLog()
+    public async Task Login_InvalidUser_WritesAuditLog()
     {
         await ResetDatabaseAsync();
 
-        var response = await _client.PostAsJsonAsync("/auth/pin", new PinAuthenticationRequest { Pin = "9999" });
+        var response = await _client.PostAsJsonAsync("/api/auth/login", new LoginRequest { Login = "inconnu" });
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
 
         var auditLogs = await GetAuditLogsAsync();
         Assert.Single(auditLogs);
 
         var entry = auditLogs.Single();
-        Assert.Equal("auth.pin.failure", entry.Category);
+        Assert.Equal("auth.login.failure", entry.Category);
         Assert.Null(entry.Actor);
         Assert.Contains("refusée", entry.Message, StringComparison.OrdinalIgnoreCase);
     }

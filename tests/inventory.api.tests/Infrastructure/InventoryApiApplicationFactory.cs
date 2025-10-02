@@ -35,7 +35,8 @@ public class InventoryApiApplicationFactory : WebApplicationFactory<Program>
                 ["ConnectionStrings:Default"] = _connectionString,
                 ["DISABLE_SERILOG"] = "true",
                 ["DISABLE_MIGRATIONS"] = "true",
-                ["ASPNETCORE_ENVIRONMENT"] = TestEnvironments.Ci
+                ["ASPNETCORE_ENVIRONMENT"] = TestEnvironments.Ci,
+                ["AppSettings:SeedOnStartup"] = "true"
             };
 
             if (_additionalConfiguration is not null)
@@ -64,7 +65,8 @@ public class InventoryApiApplicationFactory : WebApplicationFactory<Program>
             {
                 ["ConnectionStrings:Default"] = _connectionString,
                 ["DISABLE_SERILOG"] = "true",
-                ["DISABLE_MIGRATIONS"] = "true"
+                ["DISABLE_MIGRATIONS"] = "true",
+                ["AppSettings:SeedOnStartup"] = "true"
             };
 
             if (_additionalConfiguration is not null)

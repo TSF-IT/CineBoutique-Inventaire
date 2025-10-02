@@ -20,7 +20,6 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.Net.Http.Headers;
 using Npgsql;
@@ -150,6 +149,7 @@ builder.Services.AddScoped<IAuditLogger, DbAuditLogger>();
 builder.Services.AddScoped<CineBoutique.Inventory.Domain.Auditing.IAuditLogger, DomainAuditBridgeLogger>();
 
 builder.Services.AddSingleton<ITokenService, JwtTokenService>();
+builder.Services.AddSingleton<ISecretHasher, BcryptSecretHasher>();
 
 builder.Services
     .AddAuthentication(options =>
@@ -353,10 +353,10 @@ app.MapHealthEndpoints();
 app.MapDiagnosticsEndpoints();
 app.MapInventoryEndpoints();
 app.MapProductEndpoints();
+app.MapShopEndpoints();
+app.MapShopUserEndpoints();
 
-// ===== ALIAS D'AUTH PIN =====
-app.MapPost("/auth/pin", HandlePinLoginAsync).WithName("PinLogin").AllowAnonymous();
-app.MapPost("/api/auth/pin", HandlePinLoginAsync).WithName("ApiPinLogin").AllowAnonymous();
+app.MapPost("/api/auth/login", HandleLoginAsync).WithName("ApiLogin").AllowAnonymous();
 
 app.MapControllers();
 
@@ -390,39 +390,128 @@ await app.RunAsync().ConfigureAwait(false);
 
 // =================== Handlers & helpers ===================
 
-// Handler partagé pour /auth/pin et /api/auth/pin
-static async Task<IResult> HandlePinLoginAsync(
-    PinAuthenticationRequest request,
+static async Task<IResult> HandleLoginAsync(
+    LoginRequest request,
+    HttpContext httpContext,
+    IDbConnection connection,
     ITokenService tokenService,
-    IOptions<AuthenticationOptions> options,
+    ISecretHasher secretHasher,
     IAuditLogger auditLogger,
+    IWebHostEnvironment environment,
     CancellationToken cancellationToken)
 {
-    if (request is null || string.IsNullOrWhiteSpace(request.Pin))
+    if (request is null || string.IsNullOrWhiteSpace(request.Login))
     {
         var timestamp = EndpointUtilities.FormatTimestamp(DateTimeOffset.UtcNow);
-        await auditLogger.LogAsync($"Tentative de connexion admin rejetée : code PIN absent le {timestamp} UTC.", null, "auth.pin.failure", cancellationToken).ConfigureAwait(false);
-        return Results.BadRequest(new { message = "Le code PIN est requis." });
+        await auditLogger.LogAsync($"Tentative de connexion rejetée : login absent le {timestamp} UTC.", null, "auth.login.failure", cancellationToken).ConfigureAwait(false);
+        return Results.BadRequest(new { message = "Le login est requis." });
     }
 
-    var providedPin = request.Pin.Trim();
-    var user = options.Value.Users.FirstOrDefault(u => string.Equals(u.Pin, providedPin, StringComparison.Ordinal));
-    if (user is null)
+    await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+    var login = request.Login.Trim();
+    var loginLower = login.ToLowerInvariant();
+
+    var allowSecretlessLogin = environment.IsDevelopment()
+        || environment.IsEnvironment("CI")
+        || environment.IsEnvironment("Testing");
+
+    Guid? requestedShopId = null;
+    if (httpContext.Request.Headers.TryGetValue("X-Shop-Id", out var shopIdValues) && shopIdValues.Count > 0)
+    {
+        if (Guid.TryParse(shopIdValues[0], out var parsed))
+        {
+            requestedShopId = parsed;
+        }
+        else
+        {
+            return Results.BadRequest(new { message = "L'identifiant de boutique est invalide." });
+        }
+    }
+
+    string requestedShopName = DefaultShopName;
+    if (httpContext.Request.Headers.TryGetValue("X-Shop-Name", out var shopNameValues) && shopNameValues.Count > 0 && !string.IsNullOrWhiteSpace(shopNameValues[0]))
+    {
+        requestedShopName = shopNameValues[0].Trim();
+    }
+
+    const string sql = @"SELECT
+    su.""Id""            AS ""Id"",
+    su.""ShopId""        AS ""ShopId"",
+    s.""Name""           AS ""ShopName"",
+    su.""Login""         AS ""Login"",
+    su.""DisplayName""    AS ""DisplayName"",
+    su.""IsAdmin""        AS ""IsAdmin"",
+    su.""Secret_Hash""    AS ""SecretHash"",
+    su.""Disabled""       AS ""Disabled""
+FROM ""ShopUser"" su
+JOIN ""Shop"" s ON s.""Id"" = su.""ShopId""
+WHERE lower(su.""Login"") = @Login
+  AND ((@ShopId IS NOT NULL AND su.""ShopId"" = @ShopId) OR (@ShopId IS NULL AND lower(s.""Name"") = lower(@ShopName)))
+LIMIT 1;";
+
+    var row = await connection.QuerySingleOrDefaultAsync<LoginUserRow>(
+            new CommandDefinition(sql, new { Login = loginLower, ShopId = requestedShopId, ShopName = requestedShopName }, cancellationToken: cancellationToken))
+        .ConfigureAwait(false);
+
+    if (row is null)
     {
         var timestamp = EndpointUtilities.FormatTimestamp(DateTimeOffset.UtcNow);
-        await auditLogger.LogAsync($"Tentative de connexion admin refusée (PIN inconnu) le {timestamp} UTC.", null, "auth.pin.failure", cancellationToken).ConfigureAwait(false);
+        await auditLogger.LogAsync($"Tentative de connexion refusée pour le login '{login}' le {timestamp} UTC.", null, "auth.login.failure", cancellationToken).ConfigureAwait(false);
         return Results.Unauthorized();
     }
 
-    var tokenResult = tokenService.GenerateToken(user.Name);
-    var response = new PinAuthenticationResponse(user.Name, tokenResult.AccessToken, tokenResult.ExpiresAtUtc);
+    if (row.Disabled)
+    {
+        var timestamp = EndpointUtilities.FormatTimestamp(DateTimeOffset.UtcNow);
+        await auditLogger.LogAsync($"Connexion refusée pour {row.DisplayName} (compte désactivé) le {timestamp} UTC.", row.DisplayName, "auth.login.failure", cancellationToken).ConfigureAwait(false);
+        return Results.Unauthorized();
+    }
+
+    if (!string.IsNullOrWhiteSpace(row.SecretHash))
+    {
+        if (string.IsNullOrWhiteSpace(request.Secret))
+        {
+            return Results.BadRequest(new { message = "Le secret est requis pour ce compte." });
+        }
+
+        if (!secretHasher.Verify(request.Secret!, row.SecretHash!))
+        {
+            var timestamp = EndpointUtilities.FormatTimestamp(DateTimeOffset.UtcNow);
+            await auditLogger.LogAsync($"Connexion refusée pour {row.DisplayName} (secret invalide) le {timestamp} UTC.", row.DisplayName, "auth.login.failure", cancellationToken).ConfigureAwait(false);
+            return Results.Unauthorized();
+        }
+    }
+    else if (!allowSecretlessLogin)
+    {
+        var timestamp = EndpointUtilities.FormatTimestamp(DateTimeOffset.UtcNow);
+        await auditLogger.LogAsync($"Connexion refusée pour {row.DisplayName} (secret requis) le {timestamp} UTC.", row.DisplayName, "auth.login.failure", cancellationToken).ConfigureAwait(false);
+        return Results.Unauthorized();
+    }
+
+    var identity = new ShopUserIdentity(row.Id, row.ShopId, row.ShopName, row.DisplayName, row.Login, row.IsAdmin);
+    var token = tokenService.GenerateToken(identity);
+
+    var response = new LoginResponse(row.Id, row.ShopId, row.ShopName, row.DisplayName, row.IsAdmin, token.AccessToken, token.ExpiresAtUtc);
 
     var successTimestamp = EndpointUtilities.FormatTimestamp(DateTimeOffset.UtcNow);
-    var actor = EndpointUtilities.FormatActorLabel(user.Name);
-    await auditLogger.LogAsync($"{actor} s'est connecté avec succès le {successTimestamp} UTC.", user.Name, "auth.pin.success", cancellationToken).ConfigureAwait(false);
+    var actor = EndpointUtilities.FormatActorLabel(row.DisplayName);
+    await auditLogger.LogAsync($"{actor} s'est connecté avec succès le {successTimestamp} UTC.", row.DisplayName, "auth.login.success", cancellationToken).ConfigureAwait(false);
 
     return Results.Ok(response);
 }
+
+private const string DefaultShopName = "CinéBoutique Paris";
+
+private sealed record LoginUserRow(
+    Guid Id,
+    Guid ShopId,
+    string ShopName,
+    string Login,
+    string DisplayName,
+    bool IsAdmin,
+    string? SecretHash,
+    bool Disabled);
 
 public partial class Program { }
 

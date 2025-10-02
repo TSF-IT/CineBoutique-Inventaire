@@ -33,3 +33,5 @@ Cette commande lance `scripts/test-codex.sh` qui gère automatiquement l'environ
 - **Sans Docker** : compilation et tests Domain uniquement, afin de prouver que le SDK .NET est disponible et fonctionnel malgré la limitation de l'environnement.
 
 Ces scénarios évitent l'erreur « SDK .NET indisponible » et fournissent un retour fiable sur l'état de la solution, quel que soit l'environnement.
+
+> ℹ️ Les tests d'API exécutent désormais `POST /api/auth/login` avec le compte administrateur de `CinéBoutique Paris`. Comme en environnement de développement, l'absence de secret (`Secret_Hash` nul) est autorisée en CI.

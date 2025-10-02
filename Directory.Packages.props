@@ -19,6 +19,7 @@
     <PackageVersion Include="AspNetCore.HealthChecks.NpgSql" Version="8.0.2" />
     <PackageVersion Include="Dapper" Version="2.1.35" />
     <PackageVersion Include="Npgsql" Version="8.0.3" />
+    <PackageVersion Include="System.Collections.Immutable" Version="8.0.0" />
 
     <!-- Migrations -->
     <PackageVersion Include="FluentMigrator.Runner" Version="5.3.2" />
@@ -26,6 +27,7 @@
 
     <!-- Authentication -->
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
+    <PackageVersion Include="BCrypt.Net-Next" Version="4.0.3" />
 
     <!-- Documentation -->
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="8.0.8" />

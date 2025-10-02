@@ -18,9 +18,9 @@ public sealed class JwtTokenService : ITokenService
         _authenticationOptions = authenticationOptions.Value;
     }
 
-    public TokenResult GenerateToken(string userName)
+    public TokenResult GenerateToken(ShopUserIdentity identity)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(userName);
+        ArgumentNullException.ThrowIfNull(identity);
 
         if (string.IsNullOrWhiteSpace(_authenticationOptions.Secret))
         {
@@ -34,7 +34,13 @@ public sealed class JwtTokenService : ITokenService
 
         var claims = new List<Claim>
         {
-            new(ClaimTypes.Name, userName)
+            new(JwtRegisteredClaimNames.Sub, identity.UserId.ToString()),
+            new(ClaimTypes.Name, identity.DisplayName),
+            new(JwtRegisteredClaimNames.Name, identity.DisplayName),
+            new("login", identity.Login),
+            new("shop", identity.ShopName),
+            new("shop_id", identity.ShopId.ToString()),
+            new("is_admin", identity.IsAdmin ? "true" : "false")
         };
 
         var descriptor = new SecurityTokenDescriptor
