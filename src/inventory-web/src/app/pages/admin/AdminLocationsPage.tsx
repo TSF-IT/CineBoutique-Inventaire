@@ -1,125 +1,405 @@
-import { useCallback, useState } from 'react'
-import { createLocation, deleteLocation, updateLocation } from '../../api/adminApi'
+import { useCallback, useMemo, useState } from 'react'
+import { createLocation, updateLocation } from '../../api/adminApi'
 import { fetchLocations } from '../../api/inventoryApi'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Card } from '../../components/Card'
 import { EmptyState } from '../../components/EmptyState'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
-import { SwipeActionItem } from '../../components/SwipeActionItem'
 import { useAsync } from '../../hooks/useAsync'
 import type { Location } from '../../types/inventory'
+import { useOperators } from '../../contexts/OperatorsContext'
+import { sortOperatorNames } from '../../utils/operators'
 
-export const AdminLocationsPage = () => {
-  const { data, loading, error, execute, setData } = useAsync(fetchLocations, [], { initialValue: [] })
-  const [newLocationName, setNewLocationName] = useState('')
-  const [creating, setCreating] = useState(false)
-  const [feedback, setFeedback] = useState<string | null>(null)
+type FeedbackState = { type: 'success' | 'error'; message: string } | null
 
-  const handleCreate = useCallback(
-    async (event: React.FormEvent<HTMLFormElement>) => {
-      event.preventDefault()
-      if (!newLocationName.trim()) {
-        setFeedback('Saisissez un nom de zone avant de valider.')
-        return
-      }
-      setCreating(true)
-      setFeedback(null)
-      try {
-        const location = await createLocation({ label: newLocationName.trim() })
-        setData((prev) => ([...(prev ?? []), location]))
-        setNewLocationName('')
-        setFeedback('Zone créée avec succès.')
-      } catch {
-        setFeedback('Impossible de créer la zone. Réessayez.')
-      } finally {
-        setCreating(false)
-      }
-    },
-    [newLocationName, setData],
-  )
+const formatBusyStatus = (location: Location) => {
+  if (!location.isBusy) {
+    return 'Libre'
+  }
+  return location.busyBy ? `Occupée par ${location.busyBy}` : 'Occupée'
+}
 
-  const handleRename = async (location: Location) => {
-    const nextName = window.prompt('Nouveau libellé de zone', location.label)
-    if (!nextName || nextName.trim() === location.label) {
+const LocationListItem = ({
+  location,
+  onSave,
+}: {
+  location: Location
+  onSave: (id: string, payload: { code: string; label: string }) => Promise<void>
+}) => {
+  const [isEditing, setIsEditing] = useState(false)
+  const [code, setCode] = useState(location.code)
+  const [label, setLabel] = useState(location.label)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const resetForm = () => {
+    setCode(location.code)
+    setLabel(location.label)
+    setError(null)
+  }
+
+  const handleCancel = () => {
+    resetForm()
+    setIsEditing(false)
+  }
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setError(null)
+
+    const nextCode = code.trim()
+    const nextLabel = label.trim()
+
+    if (!nextCode) {
+      setError('Le code est requis.')
       return
     }
+
+    if (!nextLabel) {
+      setError('Le libellé est requis.')
+      return
+    }
+
+    if (nextCode === location.code && nextLabel === location.label) {
+      setIsEditing(false)
+      return
+    }
+
+    setSaving(true)
     try {
-      const updated = await updateLocation(location.id, { label: nextName.trim() })
-      setData((prev) => prev?.map((item) => (item.id === updated.id ? updated : item)) ?? [])
-      setFeedback('Zone renommée.')
-    } catch {
-      setFeedback('Impossible de renommer cette zone.')
+      await onSave(location.id, { code: nextCode, label: nextLabel })
+      setIsEditing(false)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'La mise à jour a échoué.'
+      setError(message)
+    } finally {
+      setSaving(false)
     }
   }
 
-  const handleDelete = async (location: Location) => {
-    if (!window.confirm(`Supprimer la zone ${location.label} ?`)) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
+      {isEditing ? (
+        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+          <div className="flex flex-col gap-4 sm:flex-row">
+            <Input
+              label="Code"
+              name={`code-${location.id}`}
+              value={code}
+              onChange={(event) => setCode(event.target.value.toUpperCase())}
+              containerClassName="sm:w-32"
+              maxLength={12}
+              autoComplete="off"
+            />
+            <Input
+              label="Libellé"
+              name={`label-${location.id}`}
+              value={label}
+              onChange={(event) => setLabel(event.target.value)}
+              containerClassName="flex-1"
+              autoComplete="off"
+            />
+          </div>
+          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button type="submit" className="py-3" disabled={saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
+            <Button type="button" variant="ghost" onClick={handleCancel} disabled={saving}>
+              Annuler
+            </Button>
+          </div>
+        </form>
+      ) : (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-widest text-brand-500">{location.code}</p>
+            <p className="text-lg font-semibold text-slate-900 dark:text-white">{location.label}</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400">{formatBusyStatus(location)}</p>
+          </div>
+          <Button variant="secondary" onClick={() => setIsEditing(true)}>
+            Modifier
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const OperatorListItem = ({
+  operator,
+  onRename,
+}: {
+  operator: { id: string; name: string }
+  onRename: (id: string, name: string) => Promise<void>
+}) => {
+  const [isEditing, setIsEditing] = useState(false)
+  const [name, setName] = useState(operator.name)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleCancel = () => {
+    setName(operator.name)
+    setError(null)
+    setIsEditing(false)
+  }
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setError(null)
+
+    const nextName = name.trim()
+    if (!nextName) {
+      setError("Le nom de l’opérateur est requis.")
       return
     }
+
+    if (nextName === operator.name) {
+      setIsEditing(false)
+      return
+    }
+
+    setSaving(true)
     try {
-      await deleteLocation(location.id)
-      setData((prev) => prev?.filter((item) => item.id !== location.id) ?? [])
-      setFeedback('Zone supprimée.')
-    } catch {
-      setFeedback('Suppression impossible. Retentez plus tard.')
+      await onRename(operator.id, nextName)
+      setIsEditing(false)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Impossible de mettre à jour cet opérateur.'
+      setError(message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
+      {isEditing ? (
+        <form className="flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={handleSubmit}>
+          <Input
+            label="Nom affiché"
+            name={`operator-${operator.id}`}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            containerClassName="flex-1"
+            autoComplete="off"
+          />
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button type="submit" className="py-3" disabled={saving}>
+              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
+            <Button type="button" variant="ghost" onClick={handleCancel} disabled={saving}>
+              Annuler
+            </Button>
+          </div>
+          {error && <p className="text-sm text-red-600 dark:text-red-400 sm:basis-full">{error}</p>}
+        </form>
+      ) : (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-base font-semibold text-slate-900 dark:text-white">{operator.name}</p>
+          <Button variant="secondary" onClick={() => setIsEditing(true)}>
+            Renommer
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export const AdminLocationsPage = () => {
+  const { data, loading, error, execute, setData } = useAsync(fetchLocations, [], { initialValue: [] })
+  const { operators, addOperator, updateOperator } = useOperators()
+
+  const [newOperatorName, setNewOperatorName] = useState('')
+  const [operatorFeedback, setOperatorFeedback] = useState<FeedbackState>(null)
+
+  const [newLocationCode, setNewLocationCode] = useState('')
+  const [newLocationLabel, setNewLocationLabel] = useState('')
+  const [creatingLocation, setCreatingLocation] = useState(false)
+  const [locationFeedback, setLocationFeedback] = useState<FeedbackState>(null)
+
+  const orderedOperators = useMemo(() => sortOperatorNames(operators), [operators])
+  const sortedLocations = useMemo(() => [...(data ?? [])].sort((a, b) => a.code.localeCompare(b.code)), [data])
+
+  const handleAddOperator = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setOperatorFeedback(null)
+    try {
+      addOperator(newOperatorName)
+      setNewOperatorName('')
+      setOperatorFeedback({ type: 'success', message: 'Opérateur ajouté.' })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Impossible d’ajouter cet opérateur.'
+      setOperatorFeedback({ type: 'error', message })
+    }
+  }
+
+  const handleRenameOperator = async (id: string, name: string) => {
+    setOperatorFeedback(null)
+    try {
+      updateOperator(id, name)
+      setOperatorFeedback({ type: 'success', message: 'Opérateur mis à jour.' })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Impossible de renommer cet opérateur.'
+      setOperatorFeedback({ type: 'error', message })
+      throw new Error(message)
+    }
+  }
+
+  const handleCreateLocation = useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      setLocationFeedback(null)
+
+      const code = newLocationCode.trim().toUpperCase()
+      const label = newLocationLabel.trim()
+
+      if (!code || !label) {
+        setLocationFeedback({ type: 'error', message: 'Code et libellé sont requis.' })
+        return
+      }
+
+      setCreatingLocation(true)
+      try {
+        const created = await createLocation({ code, label })
+        setData((prev) => ([...(prev ?? []), created]))
+        setNewLocationCode('')
+        setNewLocationLabel('')
+        setLocationFeedback({ type: 'success', message: 'Zone créée avec succès.' })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Impossible de créer la zone. Réessayez.'
+        setLocationFeedback({ type: 'error', message })
+      } finally {
+        setCreatingLocation(false)
+      }
+    },
+    [newLocationCode, newLocationLabel, setData],
+  )
+
+  const handleUpdateLocation = async (id: string, payload: { code: string; label: string }) => {
+    setLocationFeedback(null)
+    try {
+      const updated = await updateLocation(id, payload)
+      setData((prev) => prev?.map((item) => (item.id === updated.id ? updated : item)) ?? [])
+      setLocationFeedback({ type: 'success', message: 'Zone mise à jour.' })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Impossible de mettre à jour cette zone.'
+      setLocationFeedback({ type: 'error', message })
+      throw new Error(message)
     }
   }
 
   return (
     <div className="flex flex-col gap-6">
       <Card className="flex flex-col gap-4">
-        <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Ajouter une zone</h2>
-        <form className="flex flex-col gap-4 sm:flex-row" onSubmit={handleCreate}>
+        <div className="flex flex-col gap-1">
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Opérateurs</h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Gérez la liste proposée lors du démarrage d’un comptage.
+          </p>
+        </div>
+        <form
+          data-testid="operator-create-form"
+          className="flex flex-col gap-4 sm:flex-row"
+          onSubmit={handleAddOperator}
+        >
+          <Input
+            label="Nom affiché"
+            name="newOperatorName"
+            placeholder="Ex. Alex, Léa"
+            value={newOperatorName}
+            onChange={(event) => setNewOperatorName(event.target.value)}
+            containerClassName="flex-1"
+          />
+          <Button type="submit" className="py-3">
+            Ajouter
+          </Button>
+        </form>
+        {operatorFeedback && (
+          <p
+            className={`text-sm ${
+              operatorFeedback.type === 'success'
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-red-600 dark:text-red-400'
+            }`}
+          >
+            {operatorFeedback.message}
+          </p>
+        )}
+        <div className="flex flex-col gap-3">
+          {orderedOperators.length === 0 && (
+            <EmptyState
+              title="Aucun opérateur"
+              description="Ajoutez un premier nom pour le proposer dans l’assistant d’inventaire."
+            />
+          )}
+          {orderedOperators.map((operator) => (
+            <OperatorListItem key={operator.id} operator={operator} onRename={handleRenameOperator} />
+          ))}
+        </div>
+      </Card>
+
+      <Card className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Zones</h2>
+            <Button variant="ghost" onClick={() => execute()}>
+              Actualiser
+            </Button>
+          </div>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            Ajustez les codes visibles sur les étiquettes et leurs libellés.
+          </p>
+        </div>
+        <form
+          data-testid="location-create-form"
+          className="flex flex-col gap-4 sm:flex-row"
+          onSubmit={handleCreateLocation}
+        >
+          <Input
+            label="Code"
+            name="newLocationCode"
+            placeholder="Ex. A01"
+            value={newLocationCode}
+            onChange={(event) => setNewLocationCode(event.target.value.toUpperCase())}
+            containerClassName="sm:w-32"
+            maxLength={12}
+            autoComplete="off"
+          />
           <Input
             label="Libellé"
             name="newLocationLabel"
             placeholder="Ex. Réserve, Comptoir"
-            value={newLocationName}
-            onChange={(event) => setNewLocationName(event.target.value)}
+            value={newLocationLabel}
+            onChange={(event) => setNewLocationLabel(event.target.value)}
             containerClassName="flex-1"
+            autoComplete="off"
           />
-          <Button type="submit" disabled={creating} className="py-3">
-            {creating ? 'Création…' : 'Ajouter'}
+          <Button type="submit" disabled={creatingLocation} className="py-3">
+            {creatingLocation ? 'Création…' : 'Ajouter'}
           </Button>
         </form>
-        {feedback && <p className="text-sm text-slate-600 dark:text-slate-400">{feedback}</p>}
-      </Card>
-
-      <Card className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Zones existantes</h2>
-          <Button variant="ghost" onClick={() => execute()}>
-            Actualiser
-          </Button>
-        </div>
+        {locationFeedback && (
+          <p
+            className={`text-sm ${
+              locationFeedback.type === 'success'
+                ? 'text-emerald-600 dark:text-emerald-400'
+                : 'text-red-600 dark:text-red-400'
+            }`}
+          >
+            {locationFeedback.message}
+          </p>
+        )}
         {loading && <LoadingIndicator label="Chargement des zones" />}
         {Boolean(error) && <EmptyState title="Erreur" description="Les zones n&apos;ont pas pu être chargées." />}
-        {!loading && !error && data && (
+        {!loading && !error && (
           <div className="flex flex-col gap-3">
-            {data.map((locationItem) => (
-              <SwipeActionItem
-                key={locationItem.id}
-                onEdit={() => handleRename(locationItem)}
-                onDelete={() => handleDelete(locationItem)}
-              >
-                <div>
-                  {locationItem.code && (
-                    <p className="text-sm font-semibold uppercase tracking-widest text-brand-500">
-                      {locationItem.code}
-                    </p>
-                  )}
-                  <p className="text-lg font-semibold text-slate-900 dark:text-white">{locationItem.label}</p>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
-                    {locationItem.isBusy
-                      ? `Occupée${locationItem.busyBy ? ` par ${locationItem.busyBy}` : ''}`
-                      : 'Libre'}
-                  </p>
-                </div>
-              </SwipeActionItem>
-            ))}
-            {data.length === 0 && (
+            {sortedLocations.length === 0 ? (
               <EmptyState title="Aucune zone" description="Ajoutez votre première zone pour démarrer." />
+            ) : (
+              sortedLocations.map((locationItem) => (
+                <LocationListItem key={locationItem.id} location={locationItem} onSave={handleUpdateLocation} />
+              ))
             )}
           </div>
         )}
