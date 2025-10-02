@@ -126,7 +126,9 @@ export const InventorySessionPage = () => {
   const [inputLookupStatus, setInputLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not-found' | 'error'>('idle')
   const [completionLoading, setCompletionLoading] = useState(false)
   const completionDialogRef = useRef<HTMLDialogElement | null>(null)
+  const completionConfirmationDialogRef = useRef<HTMLDialogElement | null>(null)
   const completionOkButtonRef = useRef<HTMLButtonElement | null>(null)
+  const completionConfirmButtonRef = useRef<HTMLButtonElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [recentScans, setRecentScans] = useState<string[]>([])
   const manualLookupIdRef = useRef(0)
@@ -540,6 +542,32 @@ export const InventorySessionPage = () => {
     trimmedOperator,
   ])
 
+  const handleOpenCompletionConfirmation = useCallback(() => {
+    const dialog = completionConfirmationDialogRef.current
+    if (dialog && typeof dialog.showModal === 'function') {
+      dialog.showModal()
+      requestAnimationFrame(() => {
+        completionConfirmButtonRef.current?.focus()
+      })
+      return
+    }
+
+    if (window.confirm(
+      'Cette action est définitive : une fois validé, ce comptage ne pourra plus être modifié. Confirmez-vous la clôture du comptage ?',
+    )) {
+      void handleCompleteRun()
+    }
+  }, [handleCompleteRun])
+
+  const handleCancelCompletionConfirmation = useCallback(() => {
+    completionConfirmationDialogRef.current?.close()
+  }, [])
+
+  const handleConfirmCompletionConfirmation = useCallback(() => {
+    completionConfirmationDialogRef.current?.close()
+    void handleCompleteRun()
+  }, [handleCompleteRun])
+
   useEffect(() => {
     const previousCount = previousItemCountRef.current
     previousItemCountRef.current = items.length
@@ -695,15 +723,38 @@ export const InventorySessionPage = () => {
               className="py-3"
               disabled={!canCompleteRun}
               aria-disabled={!canCompleteRun}
-              onClick={() => {
-                void handleCompleteRun()
-              }}
+              onClick={handleOpenCompletionConfirmation}
             >
               {completionLoading ? 'Enregistrement…' : 'Terminer ce comptage'}
             </Button>
           </div>
         )}
       </Card>
+      <dialog
+        ref={completionConfirmationDialogRef}
+        aria-modal="true"
+        className="max-w-lg rounded-2xl border border-slate-300 bg-white p-6 text-slate-900 shadow-xl backdrop:bg-black/40 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+      >
+        <div className="space-y-4">
+          <p className="text-lg font-semibold">Confirmer la clôture du comptage</p>
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            Cette action est définitive&nbsp;: une fois validé, ce comptage ne pourra plus être modifié. Êtes-vous certain de vouloir terminer ce comptage&nbsp;?
+          </p>
+        </div>
+        <div className="mt-6 flex justify-end gap-3">
+          <Button type="button" variant="secondary" onClick={handleCancelCompletionConfirmation}>
+            Annuler
+          </Button>
+          <Button
+            ref={completionConfirmButtonRef}
+            type="button"
+            onClick={handleConfirmCompletionConfirmation}
+            data-testid="btn-confirm-complete"
+          >
+            Confirmer la clôture
+          </Button>
+        </div>
+      </dialog>
       <dialog
         ref={completionDialogRef}
         id="complete-inventory-modal"
