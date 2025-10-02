@@ -12,6 +12,7 @@ import { InventorySessionPage } from '../pages/inventory/InventorySessionPage'
 import { useInventory } from '../contexts/InventoryContext'
 import { CountType } from '../types/inventory'
 import type { InventorySummary, Location, CompleteInventoryRunPayload } from '../types/inventory'
+import type { StartInventoryRunPayload, StartInventoryRunResponse } from '../api/inventoryApi'
 import type { HttpError } from '../../lib/api/http'
 
 const {
@@ -113,14 +114,18 @@ const {
         itemsCount: 1,
         totalQuantity: 1,
       }),
-    startInventoryRunMock: vi.fn(async () => ({
-      runId: 'run-lock-1',
-      inventorySessionId: 'session-lock-1',
-      locationId: reserveLocation.id,
-      countType: 1,
-      operatorDisplayName: 'Amélie',
-      startedAtUtc: new Date().toISOString(),
-    })),
+    startInventoryRunMock: vi
+      .fn<
+        (locationId: string, payload: StartInventoryRunPayload) => Promise<StartInventoryRunResponse>
+      >()
+      .mockResolvedValue({
+        runId: 'run-lock-1',
+        inventorySessionId: 'session-lock-1',
+        locationId: reserveLocation.id,
+        countType: 1,
+        operatorDisplayName: 'Amélie',
+        startedAtUtc: new Date().toISOString(),
+      }),
     releaseInventoryRunMock: vi.fn(async () => {}),
     reserveLocation,
   }

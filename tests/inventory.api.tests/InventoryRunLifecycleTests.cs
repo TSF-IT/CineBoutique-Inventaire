@@ -173,8 +173,28 @@ public sealed class InventoryRunLifecycleTests : IAsyncLifetime
     private async Task ResetDatabaseAsync()
     {
         using var scope = _factory.Services.CreateScope();
-        var database = scope.ServiceProvider.GetRequiredService<IDatabaseMigrator>();
-        await database.ResetDatabaseAsync();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        const string cleanupSql = """
+DO $do$
+BEGIN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Audit') THEN
+        EXECUTE 'TRUNCATE TABLE "Audit" RESTART IDENTITY CASCADE;';
+    END IF;
+END $do$;
+
+TRUNCATE TABLE "CountLine" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "CountingRun" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "InventorySession" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "Location" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "Product" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "Conflict" RESTART IDENTITY CASCADE;
+""";
+
+        await connection.ExecuteAsync(cleanupSql);
     }
 
     private static async Task EnsureConnectionOpenAsync(IDbConnection connection)
