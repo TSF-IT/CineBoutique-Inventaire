@@ -316,7 +316,7 @@ if (seedOnStartup)
     await using var connection = connectionFactory.CreateConnection();
     await connection.OpenAsync().ConfigureAwait(false);
 
-    const string tableExistsSql = "select to_regclass('"Shop"');";
+    const string tableExistsSql = @"select to_regclass('""Shop""');";
     var tableExists = await connection.ExecuteScalarAsync<string?>(tableExistsSql).ConfigureAwait(false);
 
     if (tableExists is null)
