@@ -81,7 +81,7 @@ SELECT "Id" FROM "Shop" WHERE lower("Name") = lower(@Name) LIMIT 1;
 """;
         const string insertShopSql = """
 INSERT INTO "Shop" ("Name") VALUES (@Name)
-ON CONFLICT ON CONSTRAINT "UQ_Shop_LowerName" DO NOTHING
+ON CONFLICT DO NOTHING
 RETURNING "Id";
 """;
 
@@ -149,11 +149,15 @@ UPDATE "Location" SET "ShopId" = @ShopId WHERE "ShopId" IS NULL;
         IReadOnlyDictionary<string, Guid> shops,
         CancellationToken cancellationToken)
     {
-        const string upsertLocationSql = """
+        const string insertLocationSql = """
 INSERT INTO "Location" ("ShopId", "Code", "Label")
 VALUES (@ShopId, @Code, @Label)
-ON CONFLICT ON CONSTRAINT "UQ_Location_Shop_Code" DO UPDATE
-SET "Label" = EXCLUDED."Label";
+ON CONFLICT DO NOTHING;
+""";
+        const string updateLocationSql = """
+UPDATE "Location"
+SET "Label" = @Label
+WHERE "ShopId" = @ShopId AND upper("Code") = upper(@Code);
 """;
 
         foreach (var (name, id) in shops)
@@ -168,15 +172,25 @@ SET "Label" = EXCLUDED."Label";
                 var normalizedCode = code.ToUpperInvariant();
                 var label = $"Zone {normalizedCode}";
 
+                var parameters = new
+                {
+                    ShopId = id,
+                    Code = normalizedCode,
+                    Label = label
+                };
+
                 await connection.ExecuteAsync(
                         new CommandDefinition(
-                            upsertLocationSql,
-                            new
-                            {
-                                ShopId = id,
-                                Code = normalizedCode,
-                                Label = label
-                            },
+                            insertLocationSql,
+                            parameters,
+                            transaction,
+                            cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+
+                await connection.ExecuteAsync(
+                        new CommandDefinition(
+                            updateLocationSql,
+                            parameters,
                             transaction,
                             cancellationToken: cancellationToken))
                     .ConfigureAwait(false);
