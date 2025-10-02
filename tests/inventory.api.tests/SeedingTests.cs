@@ -14,10 +14,11 @@ using Xunit;
 namespace CineBoutique.Inventory.Api.Tests;
 
 [Collection(TestCollections.Postgres)]
-public sealed class SeedingTests : IAsyncLifetime
+public sealed class SeedingTests : IAsyncLifetime, IDisposable
 {
     private readonly PostgresTestContainerFixture _pg;
-    private InventoryApiApplicationFactory _factory = default!;
+    private InventoryApiApplicationFactory? _factory;
+    private static readonly string[] DemoZoneCodes = { "A", "B", "C", "D", "E" };
 
     public SeedingTests(PostgresTestContainerFixture pg)
     {
@@ -35,45 +36,51 @@ public sealed class SeedingTests : IAsyncLifetime
         };
 
         _factory = new InventoryApiApplicationFactory(_pg.ConnectionString, configuration);
-        await _factory.EnsureMigratedAsync();
-        await ResetDatabaseAsync();
+        await _factory.EnsureMigratedAsync().ConfigureAwait(false);
+        await ResetDatabaseAsync().ConfigureAwait(false);
     }
 
     public Task DisposeAsync()
     {
-        _factory.Dispose();
+        _factory?.Dispose();
         return Task.CompletedTask;
     }
 
-    [Fact]
-    public async Task Seed_Shops_Idempotent()
+    public void Dispose()
     {
-        await ResetDatabaseAsync();
-
-        await SeedAsync();
-        await SeedAsync();
-
-        using var scope = _factory.Services.CreateScope();
-        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-        await using var connection = connectionFactory.CreateConnection();
-        await connection.OpenAsync();
-
-        var shops = await connection.QueryAsync<(Guid Id, string Name)>("SELECT \"Id\", \"Name\" FROM \"Shop\";");
-
-        Assert.Equal(5, shops.Count());
-        Assert.Equal(5, shops.Select(s => s.Name.ToLowerInvariant()).Distinct().Count());
+        _factory?.Dispose();
+        GC.SuppressFinalize(this);
     }
 
     [Fact]
-    public async Task Seed_Zones_Demo_NonParis()
+    public async Task SeedShopsIsIdempotentAsync()
     {
-        await ResetDatabaseAsync();
-        await SeedAsync();
+        await ResetDatabaseAsync().ConfigureAwait(false);
 
-        using var scope = _factory.Services.CreateScope();
+        await SeedAsync().ConfigureAwait(false);
+        await SeedAsync().ConfigureAwait(false);
+
+        using var scope = GetFactory().Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
-        await connection.OpenAsync();
+        await connection.OpenAsync().ConfigureAwait(false);
+
+        var shops = await connection.QueryAsync<(Guid Id, string Name)>("SELECT \"Id\", \"Name\" FROM \"Shop\";").ConfigureAwait(false);
+
+        Assert.Equal(5, shops.Count());
+        Assert.Equal(5, shops.Select(s => s.Name.ToUpperInvariant()).Distinct().Count());
+    }
+
+    [Fact]
+    public async Task SeedZonesDemoNonParisAsync()
+    {
+        await ResetDatabaseAsync().ConfigureAwait(false);
+        await SeedAsync().ConfigureAwait(false);
+
+        using var scope = GetFactory().Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await connection.OpenAsync().ConfigureAwait(false);
 
         const string sql = """
 SELECT s."Name" AS ShopName, l."Code" AS Code
@@ -82,26 +89,26 @@ JOIN "Shop" s ON s."Id" = l."ShopId"
 WHERE s."Name" <> 'CinéBoutique Paris'
 """;
 
-        var rows = await connection.QueryAsync<(string ShopName, string Code)>(sql);
+        var rows = await connection.QueryAsync<(string ShopName, string Code)>(sql).ConfigureAwait(false);
         var grouped = rows.GroupBy(r => r.ShopName);
 
         foreach (var group in grouped)
         {
             var codes = group.Select(r => r.Code).OrderBy(c => c).ToArray();
-            Assert.Equal(new[] { "A", "B", "C", "D", "E" }, codes);
+            Assert.Equal(DemoZoneCodes, codes);
         }
     }
 
     [Fact]
-    public async Task ShopUser_Mandatory_Administrateur()
+    public async Task ShopUserMandatoryAdministrateurAsync()
     {
-        await ResetDatabaseAsync();
-        await SeedAsync();
+        await ResetDatabaseAsync().ConfigureAwait(false);
+        await SeedAsync().ConfigureAwait(false);
 
-        using var scope = _factory.Services.CreateScope();
+        using var scope = GetFactory().Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
-        await connection.OpenAsync();
+        await connection.OpenAsync().ConfigureAwait(false);
 
         const string sql = """
 SELECT s."Name" AS ShopName, su."DisplayName" AS DisplayName, su."IsAdmin" AS IsAdmin
@@ -110,7 +117,7 @@ JOIN "Shop" s ON s."Id" = su."ShopId"
 WHERE lower(su."Login") = 'administrateur';
 """;
 
-        var admins = await connection.QueryAsync<(string ShopName, string DisplayName, bool IsAdmin)>(sql);
+        var admins = await connection.QueryAsync<(string ShopName, string DisplayName, bool IsAdmin)>(sql).ConfigureAwait(false);
         Assert.Equal(5, admins.Count());
 
         foreach (var admin in admins)
@@ -121,78 +128,86 @@ WHERE lower(su."Login") = 'administrateur';
     }
 
     [Fact]
-    public async Task ShopUser_Paris_Has_6_Total()
+    public async Task ShopUserParisHasSixTotalAsync()
     {
-        await ResetDatabaseAsync();
-        await SeedAsync();
+        await ResetDatabaseAsync().ConfigureAwait(false);
+        await SeedAsync().ConfigureAwait(false);
 
-        var count = await CountUsersAsync("CinéBoutique Paris");
+        var count = await CountUsersAsync("CinéBoutique Paris").ConfigureAwait(false);
         Assert.Equal(6, count);
     }
 
     [Fact]
-    public async Task ShopUser_Others_Have_5_Total()
+    public async Task ShopUserOthersHaveFiveTotalAsync()
     {
-        await ResetDatabaseAsync();
-        await SeedAsync();
+        await ResetDatabaseAsync().ConfigureAwait(false);
+        await SeedAsync().ConfigureAwait(false);
 
-        foreach (var shop in new[] { "CinéBoutique Bordeaux", "CinéBoutique Montpellier", "CinéBoutique Marseille", "CinéBoutique Bruxelles" })
+        var shops = new[]
         {
-            var count = await CountUsersAsync(shop);
+            "CinéBoutique Bordeaux",
+            "CinéBoutique Montpellier",
+            "CinéBoutique Marseille",
+            "CinéBoutique Bruxelles"
+        };
+
+        foreach (var shop in shops)
+        {
+            var count = await CountUsersAsync(shop).ConfigureAwait(false);
             Assert.Equal(5, count);
         }
     }
 
     [Fact]
-    public async Task ShopUser_Login_Unique_Per_Shop()
+    public async Task ShopUserLoginUniquePerShopAsync()
     {
-        await ResetDatabaseAsync();
-        await SeedAsync();
+        await ResetDatabaseAsync().ConfigureAwait(false);
+        await SeedAsync().ConfigureAwait(false);
 
-        using var scope = _factory.Services.CreateScope();
+        using var scope = GetFactory().Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
-        await connection.OpenAsync();
+        await connection.OpenAsync().ConfigureAwait(false);
 
-        var parisId = await connection.ExecuteScalarAsync<Guid>("SELECT \"Id\" FROM \"Shop\" WHERE \"Name\" = 'CinéBoutique Paris' LIMIT 1;");
+        var parisId = await connection.ExecuteScalarAsync<Guid>("SELECT \"Id\" FROM \"Shop\" WHERE \"Name\" = 'CinéBoutique Paris' LIMIT 1;").ConfigureAwait(false);
 
         await Assert.ThrowsAsync<PostgresException>(async () =>
         {
             await connection.ExecuteAsync(
                 "INSERT INTO \"ShopUser\" (\"ShopId\", \"Login\", \"DisplayName\", \"IsAdmin\") VALUES (@ShopId, 'administrateur', 'Dup', FALSE);",
-                new { ShopId = parisId });
-        });
+                new { ShopId = parisId }).ConfigureAwait(false);
+        }).ConfigureAwait(false);
     }
 
     [Fact]
-    public async Task Location_Code_Unique_Per_Shop()
+    public async Task LocationCodeUniquePerShopAsync()
     {
-        await ResetDatabaseAsync();
-        await SeedAsync();
+        await ResetDatabaseAsync().ConfigureAwait(false);
+        await SeedAsync().ConfigureAwait(false);
 
-        using var scope = _factory.Services.CreateScope();
+        using var scope = GetFactory().Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
-        await connection.OpenAsync();
+        await connection.OpenAsync().ConfigureAwait(false);
 
-        var parisId = await connection.ExecuteScalarAsync<Guid>("SELECT \"Id\" FROM \"Shop\" WHERE \"Name\" = 'CinéBoutique Paris' LIMIT 1;");
-        var bordeauxId = await connection.ExecuteScalarAsync<Guid>("SELECT \"Id\" FROM \"Shop\" WHERE \"Name\" = 'CinéBoutique Bordeaux' LIMIT 1;");
+        var parisId = await connection.ExecuteScalarAsync<Guid>("SELECT \"Id\" FROM \"Shop\" WHERE \"Name\" = 'CinéBoutique Paris' LIMIT 1;").ConfigureAwait(false);
+        var bordeauxId = await connection.ExecuteScalarAsync<Guid>("SELECT \"Id\" FROM \"Shop\" WHERE \"Name\" = 'CinéBoutique Bordeaux' LIMIT 1;").ConfigureAwait(false);
 
-        await connection.ExecuteAsync("INSERT INTO \"Location\" (\"ShopId\", \"Code\", \"Label\") VALUES (@ShopId, 'Z1', 'Zone Z1');", new { ShopId = parisId });
-        await connection.ExecuteAsync("INSERT INTO \"Location\" (\"ShopId\", \"Code\", \"Label\") VALUES (@ShopId, 'Z1', 'Zone Z1');", new { ShopId = bordeauxId });
+        await connection.ExecuteAsync("INSERT INTO \"Location\" (\"ShopId\", \"Code\", \"Label\") VALUES (@ShopId, 'Z1', 'Zone Z1');", new { ShopId = parisId }).ConfigureAwait(false);
+        await connection.ExecuteAsync("INSERT INTO \"Location\" (\"ShopId\", \"Code\", \"Label\") VALUES (@ShopId, 'Z1', 'Zone Z1');", new { ShopId = bordeauxId }).ConfigureAwait(false);
 
         await Assert.ThrowsAsync<PostgresException>(async () =>
         {
-            await connection.ExecuteAsync("INSERT INTO \"Location\" (\"ShopId\", \"Code\", \"Label\") VALUES (@ShopId, 'Z1', 'Autre Z1');", new { ShopId = parisId });
-        });
+            await connection.ExecuteAsync("INSERT INTO \"Location\" (\"ShopId\", \"Code\", \"Label\") VALUES (@ShopId, 'Z1', 'Autre Z1');", new { ShopId = parisId }).ConfigureAwait(false);
+        }).ConfigureAwait(false);
     }
 
     private async Task ResetDatabaseAsync()
     {
-        using var scope = _factory.Services.CreateScope();
+        using var scope = GetFactory().Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
-        await connection.OpenAsync();
+        await connection.OpenAsync().ConfigureAwait(false);
 
         const string cleanupSql = """
 DO $do$
@@ -213,22 +228,22 @@ TRUNCATE TABLE "Shop" RESTART IDENTITY CASCADE;
 TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
 """;
 
-        await connection.ExecuteAsync(cleanupSql);
+        await connection.ExecuteAsync(cleanupSql).ConfigureAwait(false);
     }
 
     private async Task SeedAsync()
     {
-        using var scope = _factory.Services.CreateScope();
+        using var scope = GetFactory().Services.CreateScope();
         var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
-        await seeder.SeedAsync();
+        await seeder.SeedAsync().ConfigureAwait(false);
     }
 
     private async Task<int> CountUsersAsync(string shopName)
     {
-        using var scope = _factory.Services.CreateScope();
+        using var scope = GetFactory().Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
         await using var connection = connectionFactory.CreateConnection();
-        await connection.OpenAsync();
+        await connection.OpenAsync().ConfigureAwait(false);
 
         const string sql = """
 SELECT COUNT(*)::int
@@ -237,6 +252,11 @@ JOIN "Shop" s ON s."Id" = su."ShopId"
 WHERE s."Name" = @ShopName;
 """;
 
-        return await connection.ExecuteScalarAsync<int>(sql, new { ShopName = shopName });
+        return await connection.ExecuteScalarAsync<int>(sql, new { ShopName = shopName }).ConfigureAwait(false);
+    }
+
+    private InventoryApiApplicationFactory GetFactory()
+    {
+        return _factory ?? throw new InvalidOperationException("Factory not initialized.");
     }
 }
