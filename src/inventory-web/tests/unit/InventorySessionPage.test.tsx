@@ -19,10 +19,14 @@ vi.mock('../../src/app/components/BarcodeScanner', () => ({
 }))
 
 const fetchProductByEanMock = vi.fn()
+const startInventoryRunMock = vi.fn()
+const releaseInventoryRunMock = vi.fn()
 
 vi.mock('../../src/app/api/inventoryApi', () => ({
   fetchProductByEan: (...args: unknown[]) => fetchProductByEanMock(...args),
   completeInventoryRun: vi.fn(),
+  startInventoryRun: (...args: unknown[]) => startInventoryRunMock(...args),
+  releaseInventoryRun: (...args: unknown[]) => releaseInventoryRunMock(...args),
 }))
 
 vi.mock('../../src/app/contexts/InventoryContext', () => ({
@@ -62,6 +66,17 @@ describe('InventorySessionPage - ajout manuel', () => {
     fetchProductByEanMock.mockReset()
     addOrIncrementItemMock.mockReset()
     mockNavigate.mockReset()
+    startInventoryRunMock.mockReset()
+    startInventoryRunMock.mockResolvedValue({
+      runId: 'mock-run',
+      inventorySessionId: 'mock-session',
+      locationId: '11111111-1111-4111-8111-111111111111',
+      countType: 1,
+      operatorDisplayName: 'Alice',
+      startedAtUtc: new Date().toISOString(),
+    })
+    releaseInventoryRunMock.mockReset()
+    releaseInventoryRunMock.mockResolvedValue(undefined)
   })
 
   it("ajoute immédiatement un produit inconnu lorsqu’un code non référencé est validé manuellement", async () => {
@@ -76,26 +91,25 @@ describe('InventorySessionPage - ajout manuel', () => {
     render(<InventorySessionPage />)
 
     const input = screen.getByLabelText(/Scanner/)
-    fireEvent.change(input, { target: { value: '12345678\n' } })
+    fireEvent.change(input, { target: { value: '12345678' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
 
     await waitFor(() => {
-      expect(fetchProductByEanMock).toHaveBeenCalled()
+      expect(screen.getByRole('button', { name: 'Ajouter manuellement' })).not.toBeDisabled()
     })
 
-    const manualButton = screen.getByRole('button', { name: 'Ajouter manuellement' })
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter manuellement' }))
+
     await waitFor(() => {
-      expect(manualButton).not.toBeDisabled()
+      expect(startInventoryRunMock).toHaveBeenCalled()
+      expect(addOrIncrementItemMock).toHaveBeenCalledWith(
+        {
+          ean: '12345678',
+          name: 'Produit inconnu EAN 12345678',
+        },
+        { isManual: true },
+      )
     })
-
-    fireEvent.click(manualButton)
-
-    expect(addOrIncrementItemMock).toHaveBeenCalledWith(
-      {
-        ean: '12345678',
-        name: 'Produit inconnu EAN 12345678',
-      },
-      { isManual: true },
-    )
     expect((input as HTMLInputElement).value).toBe('')
   })
 })
