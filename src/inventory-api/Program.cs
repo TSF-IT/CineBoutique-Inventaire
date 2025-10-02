@@ -501,9 +501,9 @@ LIMIT 1;";
     return Results.Ok(response);
 }
 
-private const string DefaultShopName = "CinéBoutique Paris";
+const string DefaultShopName = "CinéBoutique Paris";
 
-private sealed record LoginUserRow(
+internal sealed record LoginUserRow(
     Guid Id,
     Guid ShopId,
     string ShopName,
