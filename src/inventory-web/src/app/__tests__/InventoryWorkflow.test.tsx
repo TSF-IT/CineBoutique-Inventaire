@@ -606,9 +606,36 @@ describe('Workflow d\'inventaire', () => {
     await within(activeSessionPage).findByText('Popcorn caramel')
 
     await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
-    const [locationId, payload] = startInventoryRunMock.mock.calls.at(-1)!
+    const calls = startInventoryRunMock.mock.calls
+    const lastCall = calls[calls.length - 1]
+    expect(lastCall).toBeDefined()
+    const [locationId, payload] = lastCall!
     expect(locationId).toBe(reserveLocation.id)
     expect(payload).toMatchObject({ countType: 1, operator: 'Amélie' })
+  })
+
+  it("ne libère pas le run immédiatement après l'avoir démarré", async () => {
+    renderInventoryRoutes('/inventory/session', {
+      initialize: (inventory) => {
+        inventory.setSelectedUser('Amélie')
+        inventory.setCountType(CountType.Count1)
+        inventory.setLocation({ ...reserveLocation })
+        inventory.clearSession()
+      },
+    })
+
+    const sessionPages = await screen.findAllByTestId('page-session')
+    const activeSessionPage = sessionPages[sessionPages.length - 1]
+    const input = within(activeSessionPage).getByLabelText('Scanner (douchette ou saisie)')
+
+    fireEvent.change(input, { target: { value: '123456' } })
+
+    await within(activeSessionPage).findByText('Popcorn caramel')
+    await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
+
+    await waitFor(() => {
+      expect(releaseInventoryRunMock).not.toHaveBeenCalled()
+    })
   })
 
   it('libère automatiquement la zone lorsque tous les articles sont supprimés', async () => {
