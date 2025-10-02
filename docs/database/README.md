@@ -56,7 +56,7 @@ erDiagram
         GUID Id PK
         GUID CountingRunId FK
         GUID ProductId FK
-        DECIMAL(18,3) Quantity
+        DECIMAL_P18S3 Quantity
         DATETIMEOFFSET CountedAtUtc
     }
     CONFLICT {
@@ -89,6 +89,8 @@ erDiagram
     PRODUCT ||--o{ COUNT_LINE : "FK"
     COUNT_LINE ||--o{ CONFLICT : "FK"
 ```
+
+> ℹ️ `DECIMAL_P18S3` correspond à une colonne `DECIMAL(18,3)` dans PostgreSQL. La notation a été ajustée pour rester compatible avec Mermaid.
 
 ## Synthèse des contraintes
 
