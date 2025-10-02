@@ -62,7 +62,9 @@ public sealed class SeedingTests : IAsyncLifetime, IDisposable
 
         using var scope = GetFactory().Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        #pragma warning disable CA2007 // DisposeAsync n'expose pas ConfigureAwait
         await using var connection = connectionFactory.CreateConnection();
+        #pragma warning restore CA2007
         await connection.OpenAsync().ConfigureAwait(true);
 
         var shops = await connection.QueryAsync<(Guid Id, string Name)>("SELECT \"Id\", \"Name\" FROM \"Shop\";").ConfigureAwait(true);
@@ -79,7 +81,9 @@ public sealed class SeedingTests : IAsyncLifetime, IDisposable
 
         using var scope = GetFactory().Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        #pragma warning disable CA2007 // DisposeAsync n'expose pas ConfigureAwait
         await using var connection = connectionFactory.CreateConnection();
+        #pragma warning restore CA2007
         await connection.OpenAsync().ConfigureAwait(true);
 
         const string sql = """
@@ -107,7 +111,9 @@ WHERE s."Name" <> 'CinéBoutique Paris'
 
         using var scope = GetFactory().Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        #pragma warning disable CA2007 // DisposeAsync n'expose pas ConfigureAwait
         await using var connection = connectionFactory.CreateConnection();
+        #pragma warning restore CA2007
         await connection.OpenAsync().ConfigureAwait(true);
 
         const string sql = """
@@ -166,7 +172,9 @@ WHERE lower(su."Login") = 'administrateur';
 
         using var scope = GetFactory().Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        #pragma warning disable CA2007 // DisposeAsync n'expose pas ConfigureAwait
         await using var connection = connectionFactory.CreateConnection();
+        #pragma warning restore CA2007
         await connection.OpenAsync().ConfigureAwait(true);
 
         var parisId = await connection.ExecuteScalarAsync<Guid>("SELECT \"Id\" FROM \"Shop\" WHERE \"Name\" = 'CinéBoutique Paris' LIMIT 1;").ConfigureAwait(true);
@@ -187,7 +195,9 @@ WHERE lower(su."Login") = 'administrateur';
 
         using var scope = GetFactory().Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        #pragma warning disable CA2007 // DisposeAsync n'expose pas ConfigureAwait
         await using var connection = connectionFactory.CreateConnection();
+        #pragma warning restore CA2007
         await connection.OpenAsync().ConfigureAwait(true);
 
         var parisId = await connection.ExecuteScalarAsync<Guid>("SELECT \"Id\" FROM \"Shop\" WHERE \"Name\" = 'CinéBoutique Paris' LIMIT 1;").ConfigureAwait(true);
@@ -206,7 +216,9 @@ WHERE lower(su."Login") = 'administrateur';
     {
         using var scope = GetFactory().Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        #pragma warning disable CA2007 // DisposeAsync n'expose pas ConfigureAwait
         await using var connection = connectionFactory.CreateConnection();
+        #pragma warning restore CA2007
         await connection.OpenAsync().ConfigureAwait(true);
 
         const string cleanupSql = """
@@ -242,7 +254,9 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
     {
         using var scope = GetFactory().Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        #pragma warning disable CA2007 // DisposeAsync n'expose pas ConfigureAwait
         await using var connection = connectionFactory.CreateConnection();
+        #pragma warning restore CA2007
         await connection.OpenAsync().ConfigureAwait(true);
 
         const string sql = """
