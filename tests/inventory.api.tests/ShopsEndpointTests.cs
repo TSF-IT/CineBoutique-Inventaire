@@ -252,7 +252,7 @@ TRUNCATE TABLE "Conflict" RESTART IDENTITY CASCADE;
 """;
 
         await connection.ExecuteAsync(cleanupSql);
-        _client.DefaultRequestHeaders.Authorization = null;
+        _client.ClearAuth();
     }
 
     private async Task<IReadOnlyList<AuditLogRow>> GetAuditLogsAsync()
