@@ -36,7 +36,7 @@ public sealed class DbAuditLogger : IAuditLogger
                 return;
             }
 
-            var trimmedActor = string.IsNullOrWhiteSpace(actor) ? null : actor.Trim();
+            var normalizedActor = string.IsNullOrWhiteSpace(actor) ? "anonymous" : actor.Trim();
             var trimmedCategory = string.IsNullOrWhiteSpace(category) ? null : category.Trim();
 
             await using var connection = new NpgsqlConnection(_connectionString);
@@ -51,7 +51,7 @@ public sealed class DbAuditLogger : IAuditLogger
             await connection.ExecuteAsync(
                 new CommandDefinition(
                     sql,
-                    new { Message = message, Actor = trimmedActor, Category = trimmedCategory },
+                    new { Message = message, Actor = normalizedActor, Category = trimmedCategory },
                     cancellationToken: cancellationToken)).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -60,7 +60,7 @@ public sealed class DbAuditLogger : IAuditLogger
                 ex,
                 "Audit log failed for category {Category} by {Actor} with message {Message}",
                 category ?? "(none)",
-                actor ?? "(unknown)",
+                string.IsNullOrWhiteSpace(actor) ? "anonymous" : actor,
                 string.IsNullOrWhiteSpace(message) ? "(empty)" : message);
         }
     }
