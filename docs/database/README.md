@@ -8,6 +8,7 @@ Ce document synthétise la structure actuelle de la base PostgreSQL gérée par 
 erDiagram
     SHOP ||--o{ LOCATION : "possède"
     SHOP ||--o{ SHOP_USER : "emploie"
+    SHOP_USER ||--o{ COUNTING_RUN : "peut effectuer"
     LOCATION ||--o{ COUNTING_RUN : "accueille"
     INVENTORY_SESSION ||--o{ COUNTING_RUN : "planifie"
     COUNTING_RUN ||--o{ COUNT_LINE : "enregistre"
@@ -65,6 +66,7 @@ erDiagram
         GUID Id PK
         GUID InventorySessionId FK
         GUID LocationId FK
+        GUID OwnerUserId FK
         DATETIMEOFFSET StartedAtUtc
         DATETIMEOFFSET CompletedAtUtc
         INT16 CountType
@@ -104,6 +106,7 @@ erDiagram
     SHOP ||--o{ LOCATION : "FK"
     INVENTORY_SESSION ||--o{ COUNTING_RUN : "FK"
     LOCATION ||--o{ COUNTING_RUN : "FK"
+    SHOP_USER ||--o{ COUNTING_RUN : "FK"
     COUNTING_RUN ||--o{ COUNT_LINE : "FK"
     PRODUCT ||--o{ COUNT_LINE : "FK"
     COUNT_LINE ||--o{ CONFLICT : "FK"
@@ -121,7 +124,7 @@ erDiagram
 | `Product` | `Id` | Index uniques sur `Sku` et `Ean`. |
 | `Location` | `Id` | Index unique `UQ_Location_Shop_Code` (`ShopId`, `UPPER(Code)`). |
 | `InventorySession` | `Id` | — |
-| `CountingRun` | `Id` | Index partiel `IX_CountingRun_Location_CountType_Open`, index unique `ux_countingrun_active_triplet`. |
+| `CountingRun` | `Id` | Index partiel `IX_CountingRun_Location_CountType_Open`, index unique `ux_countingrun_active_triplet`, FK `FK_CountingRun_OwnerUser`. |
 | `CountLine` | `Id` | FK vers `CountingRun` et `Product`. |
 | `Conflict` | `Id` | FK vers `CountLine`. |
 | `Audit` | `Id` | Index composé `IX_Audit_Entity` (`EntityName`, `EntityId`). |
