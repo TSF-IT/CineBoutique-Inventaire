@@ -1,9 +1,10 @@
 // Modifications : ajout d'un mock des zones pour vérifier le compteur de comptages terminés.
 import { render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ThemeProvider } from '../../theme/ThemeProvider'
 import { HomePage } from '../pages/home/HomePage'
+import { ShopProvider } from '@/state/ShopContext'
 import type { InventorySummary, Location } from '../types/inventory'
 
 const fetchInventorySummaryMock = vi.hoisted(() =>
@@ -112,12 +113,18 @@ vi.mock('../api/inventoryApi', async (importOriginal) => {
 })
 
 describe('HomePage', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
   it("affiche les indicateurs et le bouton d'accès", async () => {
     render(
       <ThemeProvider>
-        <MemoryRouter>
-          <HomePage />
-        </MemoryRouter>
+        <ShopProvider>
+          <MemoryRouter>
+            <HomePage />
+          </MemoryRouter>
+        </ShopProvider>
       </ThemeProvider>,
     )
 
@@ -156,9 +163,11 @@ describe('HomePage', () => {
 
     render(
       <ThemeProvider>
-        <MemoryRouter>
-          <HomePage />
-        </MemoryRouter>
+        <ShopProvider>
+          <MemoryRouter>
+            <HomePage />
+          </MemoryRouter>
+        </ShopProvider>
       </ThemeProvider>,
     )
 
