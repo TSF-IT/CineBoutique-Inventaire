@@ -316,10 +316,10 @@ if (seedOnStartup)
     await using var connection = connectionFactory.CreateConnection();
     await connection.OpenAsync().ConfigureAwait(false);
 
-    const string tableExistsSql = @"select to_regclass('""Shop""');";
-    var tableExists = await connection.ExecuteScalarAsync<string?>(tableExistsSql).ConfigureAwait(false);
+    const string tableExistsSql = @"select exists(select 1 from pg_class where relname = 'Shop' and relkind = 'r');";
+    var tableExists = await connection.ExecuteScalarAsync<bool>(tableExistsSql).ConfigureAwait(false);
 
-    if (tableExists is null)
+    if (!tableExists)
     {
         AppLog.SeedSkipped(app.Logger);
     }
