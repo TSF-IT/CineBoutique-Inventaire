@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { HomePage } from './HomePage'
+import { ShopProvider } from '@/state/ShopContext'
 import type { ConflictZoneDetail, InventorySummary, Location } from '../../types/inventory'
 import { fetchInventorySummary, fetchLocations, getConflictZoneDetail } from '../../api/inventoryApi'
 import { ThemeProvider } from '../../../theme/ThemeProvider'
@@ -20,6 +21,7 @@ const {
 
 describe('HomePage', () => {
   beforeEach(() => {
+    localStorage.clear()
     mockedFetchSummary.mockReset()
     mockedFetchLocations.mockReset()
     mockedGetDetail.mockReset()
@@ -64,9 +66,11 @@ describe('HomePage', () => {
 
     render(
       <ThemeProvider>
-        <MemoryRouter>
-          <HomePage />
-        </MemoryRouter>
+        <ShopProvider>
+          <MemoryRouter>
+            <HomePage />
+          </MemoryRouter>
+        </ShopProvider>
       </ThemeProvider>,
     )
 
@@ -125,9 +129,11 @@ describe('HomePage', () => {
 
     render(
       <ThemeProvider>
-        <MemoryRouter>
-          <HomePage />
-        </MemoryRouter>
+        <ShopProvider>
+          <MemoryRouter>
+            <HomePage />
+          </MemoryRouter>
+        </ShopProvider>
       </ThemeProvider>,
     )
 

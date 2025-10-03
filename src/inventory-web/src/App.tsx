@@ -1,5 +1,4 @@
-import type { ReactNode } from 'react'
-import { BrowserRouter, Navigate, useLocation, useRoutes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppProviders } from './app/providers/AppProviders'
 import { HomePage } from './app/pages/home/HomePage'
 import { InventoryLayout } from './app/pages/inventory/InventoryLayout'
@@ -14,10 +13,10 @@ import { ScanSimulationPage } from './app/pages/debug/ScanSimulationPage'
 import { LoadingIndicator } from './app/components/LoadingIndicator'
 import { SelectShopPage } from './app/pages/select-shop/SelectShopPage'
 import { useShop } from '@/state/ShopContext'
+import { RequireShop } from '@/router/RequireShop'
 
-const ShopGate = ({ children }: { children: ReactNode }) => {
+const BypassSelect = () => {
   const { shop, isLoaded } = useShop()
-  const location = useLocation()
 
   if (!isLoaded) {
     return (
@@ -27,53 +26,39 @@ const ShopGate = ({ children }: { children: ReactNode }) => {
     )
   }
 
-  if (!shop) {
-    return <Navigate to="/select-shop" replace state={{ from: location.pathname }} />
+  if (shop) {
+    return <Navigate to="/" replace />
   }
 
-  return <>{children}</>
+  return <SelectShopPage />
 }
 
 export const AppRoutes = () => {
   const isScanSimMode = import.meta.env.MODE === 'scan-sim' || import.meta.env.VITE_SCAN_SIM === '1'
 
-  const routing = useRoutes([
-    { path: '/select-shop', element: <SelectShopPage /> },
-    { path: '/', element: <ShopGate><HomePage /></ShopGate> },
-    {
-      path: '/inventory',
-      element: (
-        <ShopGate>
-          <InventoryLayout />
-        </ShopGate>
-      ),
-      children: [
-        { index: true, element: <Navigate to="start" replace /> },
-        { path: 'start', element: <InventoryUserStep /> },
-        { path: 'location', element: <InventoryLocationStep /> },
-        { path: 'count-type', element: <InventoryCountTypeStep /> },
-        { path: 'session', element: <InventorySessionPage /> },
-      ],
-    },
-    {
-      path: '/admin',
-      element: (
-        <ShopGate>
-          <AdminLayout />
-        </ShopGate>
-      ),
-      children: [
-        { index: true, element: <AdminLocationsPage /> },
-      ],
-    },
-    { path: '*', element: <Navigate to="/" replace /> },
-  ])
-
   if (isScanSimMode) {
     return <ScanSimulationPage />
   }
 
-  return routing
+  return (
+    <Routes>
+      <Route path="/select-shop" element={<BypassSelect />} />
+      <Route path="/" element={<RequireShop />}>
+        <Route index element={<HomePage />} />
+        <Route path="inventory" element={<InventoryLayout />}>
+          <Route index element={<Navigate to="start" replace />} />
+          <Route path="start" element={<InventoryUserStep />} />
+          <Route path="location" element={<InventoryLocationStep />} />
+          <Route path="count-type" element={<InventoryCountTypeStep />} />
+          <Route path="session" element={<InventorySessionPage />} />
+        </Route>
+        <Route path="admin" element={<AdminLayout />}>
+          <Route index element={<AdminLocationsPage />} />
+        </Route>
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  )
 }
 
 export const App = () => (
