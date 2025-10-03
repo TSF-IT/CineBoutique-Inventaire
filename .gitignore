@@ -45,5 +45,6 @@ coverage/
 TestResults/
 
 # Misc
+.dotnet/
 .DS_Store
 Thumbs.db
