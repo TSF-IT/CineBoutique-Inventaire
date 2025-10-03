@@ -100,6 +100,8 @@ exposés sont :
 - `POST /api/auth/login` : authentification boutique + login + secret (JWT).
 - `POST /api/inventories/{locationId}/restart` : clôture les runs actifs d'une zone pour redémarrer un comptage.
 - `POST /api/inventories/{locationId}/complete` : clôture un comptage en enregistrant les quantités scannées (produits connus ou inconnus).
+- `GET/POST/PUT/DELETE /api/shops` : gestion des boutiques (suppression refusée si des utilisateurs ou zones y sont rattachés).
+- `GET/POST/PUT/DELETE /api/shops/{shopId}/users` : gestion des comptes d'une boutique (DELETE réalise une désactivation logique).
 - `GET /api/inventories/summary` : retourne l'état agrégé des inventaires (sessions actives, runs ouverts, zones en conflit).
 - `GET /api/conflicts/{locationId}` : expose le comparatif Comptage 1 / Comptage 2 pour une zone en conflit (EAN, quantités et delta).
 
