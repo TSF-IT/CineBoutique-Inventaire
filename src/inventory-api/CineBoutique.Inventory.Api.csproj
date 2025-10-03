@@ -17,6 +17,7 @@
     <PackageReference Include="BCrypt.Net-Next" />
     <PackageReference Include="Dapper" />
     <PackageReference Include="Isopoh.Cryptography.Argon2" />
+    <PackageReference Include="FluentValidation.AspNetCore" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="FluentMigrator.Runner" />
     <PackageReference Include="FluentMigrator.Runner.Postgres" />
