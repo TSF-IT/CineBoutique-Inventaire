@@ -11,7 +11,7 @@ namespace CineBoutique.Inventory.Api.Tests.Infrastructure;
 public sealed class SoftOperatorMiddlewareTests
 {
     [Fact]
-    public async Task InvokeAsync_WithValidHeaders_ShouldStoreOperatorContext()
+    public async Task InvokeAsyncWithValidHeadersStoresOperatorContext()
     {
         // Arrange
         var context = new DefaultHttpContext();
@@ -30,7 +30,7 @@ public sealed class SoftOperatorMiddlewareTests
         var middleware = new SoftOperatorMiddleware(next, NullLogger<SoftOperatorMiddleware>.Instance);
 
         // Act
-        await middleware.InvokeAsync(context).ConfigureAwait(false);
+        await middleware.InvokeAsync(context);
 
         // Assert
         nextCalled.Should().BeTrue();
@@ -41,7 +41,7 @@ public sealed class SoftOperatorMiddlewareTests
     }
 
     [Fact]
-    public async Task InvokeAsync_WithInvalidOperatorId_ShouldIgnoreHeaders()
+    public async Task InvokeAsyncWithInvalidOperatorIdIgnoresHeaders()
     {
         // Arrange
         var context = new DefaultHttpContext();
@@ -52,7 +52,7 @@ public sealed class SoftOperatorMiddlewareTests
         var middleware = new SoftOperatorMiddleware(_ => Task.CompletedTask, NullLogger<SoftOperatorMiddleware>.Instance);
 
         // Act
-        await middleware.InvokeAsync(context).ConfigureAwait(false);
+        await middleware.InvokeAsync(context);
 
         // Assert
         context.Items.Should().NotContainKey(SoftOperatorMiddleware.OperatorContextItemKey);

@@ -10,7 +10,7 @@ namespace CineBoutique.Inventory.Api.Tests.Endpoints;
 public sealed class EndpointUtilitiesTests
 {
     [Fact]
-    public void GetOperatorContext_WhenContextDoesNotContainEntry_ReturnsNull()
+    public void GetOperatorContextWhenContextDoesNotContainEntryReturnsNull()
     {
         var httpContext = new DefaultHttpContext();
 
@@ -20,7 +20,7 @@ public sealed class EndpointUtilitiesTests
     }
 
     [Fact]
-    public void GetOperatorContext_WhenContextContainsEntry_ReturnsOperatorContext()
+    public void GetOperatorContextWhenContextContainsEntryReturnsOperatorContext()
     {
         var httpContext = new DefaultHttpContext();
         var expected = new SoftOperatorMiddleware.OperatorContext(Guid.NewGuid(), "Op", "session-1");
@@ -32,7 +32,7 @@ public sealed class EndpointUtilitiesTests
     }
 
     [Fact]
-    public void ComposeAuditActor_WithNoActorInformation_ReturnsNull()
+    public void ComposeAuditActorWithNoActorInformationReturnsNull()
     {
         var result = EndpointUtilities.ComposeAuditActor(null, operatorContext: null);
 
@@ -40,7 +40,7 @@ public sealed class EndpointUtilitiesTests
     }
 
     [Fact]
-    public void ComposeAuditActor_WithUserOnly_ReturnsTrimmedUserName()
+    public void ComposeAuditActorWithUserOnlyReturnsTrimmedUserName()
     {
         var result = EndpointUtilities.ComposeAuditActor("  john  ", operatorContext: null);
 
@@ -48,7 +48,7 @@ public sealed class EndpointUtilitiesTests
     }
 
     [Fact]
-    public void ComposeAuditActor_WithOperatorOnly_ReturnsFormattedOperator()
+    public void ComposeAuditActorWithOperatorOnlyReturnsFormattedOperator()
     {
         var operatorId = Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
         var context = new SoftOperatorMiddleware.OperatorContext(operatorId, "Alice", "session-99");
@@ -59,7 +59,7 @@ public sealed class EndpointUtilitiesTests
     }
 
     [Fact]
-    public void ComposeAuditActor_WithUserAndOperator_ReturnsCombinedLabel()
+    public void ComposeAuditActorWithUserAndOperatorReturnsCombinedLabel()
     {
         var operatorId = Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-ffffffffffff");
         var context = new SoftOperatorMiddleware.OperatorContext(operatorId, null, null);
