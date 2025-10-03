@@ -313,7 +313,7 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
 
     private static void AssertNonParisShopsHaveDemoLocations(
         IEnumerable<LocationRow> locations,
-        IReadOnlyDictionary<string, Guid> shopIdByName)
+        Dictionary<string, Guid> shopIdByName)
     {
         foreach (var shopName in ExpectedShopNames.Where(name => !string.Equals(name, ParisShopName, StringComparison.OrdinalIgnoreCase)))
         {
