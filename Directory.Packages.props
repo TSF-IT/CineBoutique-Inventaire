@@ -19,6 +19,7 @@
     <PackageVersion Include="AspNetCore.HealthChecks.NpgSql" Version="8.0.2" />
     <PackageVersion Include="Dapper" Version="2.1.35" />
     <PackageVersion Include="Npgsql" Version="8.0.3" />
+    <PackageVersion Include="FluentValidation.AspNetCore" Version="11.3.1" />
 
     <!-- Migrations -->
     <PackageVersion Include="FluentMigrator.Runner" Version="5.3.2" />
