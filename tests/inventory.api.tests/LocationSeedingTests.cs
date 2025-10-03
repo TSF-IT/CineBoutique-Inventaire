@@ -27,14 +27,24 @@ public sealed class LocationSeedingTests : IAsyncLifetime
     private readonly PostgresTestContainerFixture _pg;
     private InventoryApiApplicationFactory _factory = default!;
 
+    private const string ParisShopName = "CinéBoutique Paris";
+
     private static readonly string[] ExpectedShopNames =
     {
         "CinéBoutique Bordeaux",
         "CinéBoutique Bruxelles",
         "CinéBoutique Marseille",
         "CinéBoutique Montpellier",
-        "CinéBoutique Paris"
+        ParisShopName
     };
+
+    private static readonly HashSet<string> ExpectedParisCodes = BuildExpectedParisCodes();
+
+    private static readonly HashSet<string> ExpectedDemoCodes =
+        new(new[] { "A", "B", "C", "D", "E" }, StringComparer.OrdinalIgnoreCase);
+
+    private static readonly int ExpectedTotalLocationCount =
+        ExpectedParisCodes.Count + (ExpectedShopNames.Length - 1) * ExpectedDemoCodes.Count;
 
     public LocationSeedingTests(PostgresTestContainerFixture pg)
     {
@@ -70,18 +80,33 @@ public sealed class LocationSeedingTests : IAsyncLifetime
                 "SELECT \"Code\", \"Label\", \"ShopId\" FROM \"Location\" ORDER BY \"Code\";"))
             .ToList();
 
-        var parisShopId = await connection.ExecuteScalarAsync<Guid>(
-            "SELECT \"Id\" FROM \"Shop\" WHERE LOWER(\"Name\") = LOWER(@Name) LIMIT 1;",
-            new { Name = "CinéBoutique Paris" });
+        var shops = (await connection.QueryAsync<ShopRow>(
+                "SELECT \"Id\", \"Name\" FROM \"Shop\";"))
+            .ToList();
 
-        Assert.Equal(39, locations.Count);
+        var shopIdByName = shops.ToDictionary(shop => shop.Name, shop => shop.Id, StringComparer.OrdinalIgnoreCase);
 
-        var expectedCodes = BuildExpectedCodes();
+        Assert.Equal(ExpectedTotalLocationCount, locations.Count);
+
         Assert.True(
-            expectedCodes.SetEquals(locations.Select(location => location.Code)),
-            "Les 39 codes attendus doivent être présents dans la base de données.");
-        Assert.All(locations, location => Assert.Equal($"Zone {location.Code}", location.Label));
-        Assert.All(locations, location => Assert.Equal(parisShopId, location.ShopId));
+            shopIdByName.TryGetValue(ParisShopName, out var parisShopId),
+            "Le magasin de Paris doit être présent dans la base.");
+
+        var parisLocations = locations.Where(location => location.ShopId == parisShopId).ToList();
+        Assert.Equal(ExpectedParisCodes.Count, parisLocations.Count);
+
+        var actualParisCodes = new HashSet<string>(
+            parisLocations.Select(location => location.Code),
+            StringComparer.OrdinalIgnoreCase);
+        Assert.True(
+            ExpectedParisCodes.SetEquals(actualParisCodes),
+            "Les zones attendues doivent être présentes pour le magasin de Paris.");
+
+        Assert.All(
+            locations,
+            location => Assert.Equal($"Zone {location.Code.ToUpperInvariant()}", location.Label));
+
+        AssertNonParisShopsHaveDemoLocations(locations, shopIdByName);
     }
 
     [Fact]
@@ -99,10 +124,10 @@ public sealed class LocationSeedingTests : IAsyncLifetime
         await using var connection = await connectionFactory.CreateOpenConnectionAsync(CancellationToken.None);
 
         var count = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM \"Location\";");
-        Assert.Equal(39, count);
+        Assert.Equal(ExpectedTotalLocationCount, count);
 
-        var duplicateCodes = await connection.QueryAsync<string>(
-            "SELECT \"Code\" FROM \"Location\" GROUP BY \"Code\" HAVING COUNT(*) > 1;");
+        var duplicateCodes = await connection.QueryAsync<int>(
+            "SELECT 1 FROM \"Location\" GROUP BY \"ShopId\", UPPER(\"Code\") HAVING COUNT(*) > 1;");
         Assert.Empty(duplicateCodes);
 
         var shopCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM \"Shop\";");
@@ -111,6 +136,16 @@ public sealed class LocationSeedingTests : IAsyncLifetime
         var duplicateShops = await connection.QueryAsync<string>(
             "SELECT LOWER(\"Name\") FROM \"Shop\" GROUP BY LOWER(\"Name\") HAVING COUNT(*) > 1;");
         Assert.Empty(duplicateShops);
+
+        var locations = (await connection.QueryAsync<LocationRow>(
+                "SELECT \"Code\", \"Label\", \"ShopId\" FROM \"Location\";"))
+            .ToList();
+        var shops = (await connection.QueryAsync<ShopRow>(
+                "SELECT \"Id\", \"Name\" FROM \"Shop\";"))
+            .ToList();
+        var shopIdByName = shops.ToDictionary(shop => shop.Name, shop => shop.Id, StringComparer.OrdinalIgnoreCase);
+
+        AssertNonParisShopsHaveDemoLocations(locations, shopIdByName);
     }
 
     [Fact]
@@ -130,10 +165,12 @@ public sealed class LocationSeedingTests : IAsyncLifetime
         Assert.NotNull(payload);
 
         var locations = payload!;
-        Assert.Equal(39, locations.Count);
+        Assert.Equal(ExpectedTotalLocationCount, locations.Count);
 
-        var expectedCodes = BuildExpectedCodes();
-        Assert.True(expectedCodes.SetEquals(locations.Select(item => item.Code)), "Tous les codes de zones doivent être présents.");
+        var expectedCodes = BuildExpectedUniqueCodes();
+        Assert.True(
+            expectedCodes.SetEquals(locations.Select(item => item.Code)),
+            "Tous les codes de zones doivent être présents.");
         Assert.All(locations, item => Assert.False(item.IsBusy));
     }
 
@@ -250,7 +287,7 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
         await connection.ExecuteAsync(cleanupSql);
     }
 
-    private static HashSet<string> BuildExpectedCodes()
+    private static HashSet<string> BuildExpectedParisCodes()
     {
         var codes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -265,6 +302,34 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
         }
 
         return codes;
+    }
+
+    private static HashSet<string> BuildExpectedUniqueCodes()
+    {
+        var codes = new HashSet<string>(ExpectedParisCodes, StringComparer.OrdinalIgnoreCase);
+        codes.UnionWith(ExpectedDemoCodes);
+        return codes;
+    }
+
+    private static void AssertNonParisShopsHaveDemoLocations(
+        IEnumerable<LocationRow> locations,
+        IReadOnlyDictionary<string, Guid> shopIdByName)
+    {
+        foreach (var shopName in ExpectedShopNames.Where(name => !string.Equals(name, ParisShopName, StringComparison.OrdinalIgnoreCase)))
+        {
+            Assert.True(
+                shopIdByName.TryGetValue(shopName, out var shopId),
+                $"Le magasin {shopName} doit être présent dans la base.");
+
+            var shopCodes = new HashSet<string>(
+                locations.Where(location => location.ShopId == shopId).Select(location => location.Code),
+                StringComparer.OrdinalIgnoreCase);
+
+            Assert.Equal(ExpectedDemoCodes.Count, shopCodes.Count);
+            Assert.True(
+                ExpectedDemoCodes.SetEquals(shopCodes),
+                $"Le magasin {shopName} doit contenir les zones de démonstration A..E.");
+        }
     }
 
     [System.Diagnostics.CodeAnalysis.SuppressMessage(
