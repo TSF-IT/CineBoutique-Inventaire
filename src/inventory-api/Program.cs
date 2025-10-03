@@ -15,7 +15,6 @@ using CineBoutique.Inventory.Infrastructure.Seeding;
 using FluentValidation.AspNetCore;
 using FluentMigrator.Runner;
 using FluentMigrator.Runner.Processors;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -23,7 +22,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Microsoft.IdentityModel.Tokens;
 using Microsoft.Net.Http.Headers;
 using Npgsql;
 using Serilog; // requis pour UseSerilog()
@@ -98,21 +96,7 @@ builder.Services
 
 builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<ProcessorOptions>>().Value);
 
-var authenticationSection = builder.Configuration.GetSection("Authentication");
-var authenticationOptions = authenticationSection.Get<AuthenticationOptions>()
-    ?? throw new InvalidOperationException("La section de configuration 'Authentication' est manquante.");
-
-if (string.IsNullOrWhiteSpace(authenticationOptions.Secret))
-{
-    throw new InvalidOperationException("Le secret d'authentification JWT doit être configuré.");
-}
-
-if (authenticationOptions.TokenLifetimeMinutes <= 0)
-{
-    throw new InvalidOperationException("La durée de vie du token JWT doit être supérieure à zéro.");
-}
-
-builder.Services.Configure<AuthenticationOptions>(authenticationSection);
+builder.Services.Configure<AuthenticationOptions>(builder.Configuration.GetSection("Authentication"));
 
 // Infrastructure + seeder
 builder.Services.AddInventoryInfrastructure(builder.Configuration);
@@ -157,29 +141,6 @@ builder.Services.AddSingleton<ITokenService, JwtTokenService>();
 builder.Services.AddScoped<IShopUserAuthenticationService, ShopUserAuthenticationService>();
 builder.Services.AddScoped<IShopService, ShopService>();
 builder.Services.AddScoped<IShopUserService, ShopUserService>();
-
-builder.Services
-    .AddAuthentication(options =>
-    {
-        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-    })
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidIssuer = authenticationOptions.Issuer,
-            ValidateAudience = true,
-            ValidAudience = authenticationOptions.Audience,
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.Zero,
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(authenticationOptions.Secret))
-        };
-    });
-
-builder.Services.AddAuthorization();
 
 const string PublicApiCorsPolicy = "PublicApi";
 const string DevCorsPolicy = "AllowDev";
@@ -352,9 +313,6 @@ app.Use(async (ctx, next) =>
         throw; // laisse l’exception remonter à DeveloperExceptionPage / ExceptionHandler
     }
 });
-
-app.UseAuthentication();
-app.UseAuthorization();
 
 app.MapHealthEndpoints();
 app.MapDiagnosticsEndpoints();
