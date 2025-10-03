@@ -1,0 +1,153 @@
+using CineBoutique.Inventory.Api.Models;
+using CineBoutique.Inventory.Api.Services.Exceptions;
+using CineBoutique.Inventory.Infrastructure.Database;
+using Dapper;
+using Npgsql;
+
+namespace CineBoutique.Inventory.Api.Services;
+
+public sealed class ShopService : IShopService
+{
+    private readonly IDbConnectionFactory _connectionFactory;
+
+    public ShopService(IDbConnectionFactory connectionFactory)
+    {
+        _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
+    }
+
+    public async Task<IReadOnlyList<ShopDto>> GetAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        const string sql = """
+        SELECT "Id", "Name"
+        FROM "Shop"
+        ORDER BY LOWER("Name");
+        """;
+
+        var shops = await connection.QueryAsync<ShopDto>(
+            new CommandDefinition(sql, cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        return shops.ToList();
+    }
+
+    public async Task<ShopDto> CreateAsync(CreateShopRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var trimmedName = request.Name.Trim();
+
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            const string sql = """
+            INSERT INTO "Shop" ("Name")
+            VALUES (@Name)
+            RETURNING "Id", "Name";
+            """;
+
+            var created = await connection.QuerySingleAsync<ShopDto>(
+                    new CommandDefinition(sql, new { Name = trimmedName }, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            return created;
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+        {
+            throw new ShopConflictException($"Une boutique nommée '{trimmedName}' existe déjà.");
+        }
+    }
+
+    public async Task<ShopDto> UpdateAsync(UpdateShopRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var trimmedName = request.Name.Trim();
+
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            const string sql = """
+            UPDATE "Shop"
+            SET "Name" = @Name
+            WHERE "Id" = @Id
+            RETURNING "Id", "Name";
+            """;
+
+            var updated = await connection.QuerySingleOrDefaultAsync<ShopDto>(
+                    new CommandDefinition(sql, new { request.Id, Name = trimmedName }, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (updated is null)
+            {
+                throw new ShopNotFoundException();
+            }
+
+            return updated;
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+        {
+            throw new ShopConflictException($"Une boutique nommée '{trimmedName}' existe déjà.");
+        }
+    }
+
+    public async Task<ShopDto> DeleteAsync(DeleteShopRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            const string selectSql = """
+            SELECT "Id", "Name"
+            FROM "Shop"
+            WHERE "Id" = @Id
+            FOR UPDATE;
+            """;
+
+            var existing = await connection.QuerySingleOrDefaultAsync<ShopDto>(
+                    new CommandDefinition(selectSql, new { request.Id }, transaction, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (existing is null)
+            {
+                throw new ShopNotFoundException();
+            }
+
+            const string occupancySql = """
+            SELECT
+                (SELECT COUNT(*) FROM "Location" WHERE "ShopId" = @Id) AS LocationCount,
+                (SELECT COUNT(*) FROM "ShopUser" WHERE "ShopId" = @Id) AS UserCount;
+            """;
+
+            var occupancy = await connection.QuerySingleAsync<ShopOccupancy>(
+                    new CommandDefinition(occupancySql, new { request.Id }, transaction, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (occupancy.LocationCount > 0 || occupancy.UserCount > 0)
+            {
+                throw new ShopNotEmptyException();
+            }
+
+            const string deleteSql = "DELETE FROM \"Shop\" WHERE \"Id\" = @Id;";
+            await connection.ExecuteAsync(
+                    new CommandDefinition(deleteSql, new { request.Id }, transaction, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+            return existing;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private readonly record struct ShopOccupancy(long LocationCount, long UserCount);
+}
