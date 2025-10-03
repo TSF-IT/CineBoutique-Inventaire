@@ -11,11 +11,9 @@ using System.Data;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Threading;
 using System.Threading.Tasks;
-using BCrypt.Net;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Infrastructure.Database;
@@ -29,10 +27,6 @@ namespace CineBoutique.Inventory.Api.Tests;
 [Collection(TestCollections.Postgres)]
 public sealed class ShopsEndpointTests : IAsyncLifetime
 {
-    private const string AdminLogin = "admin.test";
-    private const string AdminDisplayName = "Administrateur Test";
-    private const string AdminSecret = "Secret123!";
-
     private readonly PostgresTestContainerFixture _pg;
     private InventoryApiApplicationFactory _factory = default!;
     private HttpClient _client = default!;
@@ -61,8 +55,6 @@ public sealed class ShopsEndpointTests : IAsyncLifetime
     {
         await ResetDatabaseAsync();
         var adminShopId = await SeedShopAsync("Boutique Admin");
-        await SeedShopUserAsync(adminShopId, AdminLogin, AdminDisplayName, isAdmin: true, secret: AdminSecret);
-        await AuthenticateAsync(adminShopId, AdminLogin, AdminSecret);
         await ClearAuditLogsAsync();
 
         var lyonShopId = await SeedShopAsync("CinéBoutique Lyon");
@@ -85,9 +77,6 @@ public sealed class ShopsEndpointTests : IAsyncLifetime
     public async Task CreateShop_PersistsShopAndWritesAudit()
     {
         await ResetDatabaseAsync();
-        var adminShopId = await SeedShopAsync("Boutique Admin");
-        await SeedShopUserAsync(adminShopId, AdminLogin, AdminDisplayName, isAdmin: true, secret: AdminSecret);
-        await AuthenticateAsync(adminShopId, AdminLogin, AdminSecret);
         await ClearAuditLogsAsync();
 
         var response = await _client.PostAsJsonAsync(
@@ -104,16 +93,13 @@ public sealed class ShopsEndpointTests : IAsyncLifetime
         var entry = Assert.Single(auditLogs);
         Assert.Equal("shops.create.success", entry.Category);
         Assert.Contains("CinéBoutique Lille", entry.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(AdminDisplayName, entry.Actor);
+        Assert.Equal("anonymous", entry.Actor);
     }
 
     [Fact]
     public async Task CreateShop_WithExistingName_ReturnsConflict()
     {
         await ResetDatabaseAsync();
-        var adminShopId = await SeedShopAsync("Boutique Admin");
-        await SeedShopUserAsync(adminShopId, AdminLogin, AdminDisplayName, isAdmin: true, secret: AdminSecret);
-        await AuthenticateAsync(adminShopId, AdminLogin, AdminSecret);
         await ClearAuditLogsAsync();
 
         await SeedShopAsync("CinéBoutique Nice");
@@ -134,9 +120,6 @@ public sealed class ShopsEndpointTests : IAsyncLifetime
     public async Task UpdateShop_RenamesShopAndWritesAudit()
     {
         await ResetDatabaseAsync();
-        var adminShopId = await SeedShopAsync("Boutique Admin");
-        await SeedShopUserAsync(adminShopId, AdminLogin, AdminDisplayName, isAdmin: true, secret: AdminSecret);
-        await AuthenticateAsync(adminShopId, AdminLogin, AdminSecret);
         await ClearAuditLogsAsync();
 
         var targetShopId = await SeedShopAsync("CinéBoutique Nice");
@@ -165,9 +148,6 @@ public sealed class ShopsEndpointTests : IAsyncLifetime
     public async Task DeleteShop_WhenEmpty_RemovesShopAndWritesAudit()
     {
         await ResetDatabaseAsync();
-        var adminShopId = await SeedShopAsync("Boutique Admin");
-        await SeedShopUserAsync(adminShopId, AdminLogin, AdminDisplayName, isAdmin: true, secret: AdminSecret);
-        await AuthenticateAsync(adminShopId, AdminLogin, AdminSecret);
         await ClearAuditLogsAsync();
 
         var removableShopId = await SeedShopAsync("CinéBoutique Caen");
@@ -194,9 +174,6 @@ public sealed class ShopsEndpointTests : IAsyncLifetime
     public async Task DeleteShop_WithLinkedLocation_ReturnsConflict()
     {
         await ResetDatabaseAsync();
-        var adminShopId = await SeedShopAsync("Boutique Admin");
-        await SeedShopUserAsync(adminShopId, AdminLogin, AdminDisplayName, isAdmin: true, secret: AdminSecret);
-        await AuthenticateAsync(adminShopId, AdminLogin, AdminSecret);
         await ClearAuditLogsAsync();
 
         var targetShopId = await SeedShopAsync("CinéBoutique Reims");
@@ -220,25 +197,6 @@ public sealed class ShopsEndpointTests : IAsyncLifetime
         Assert.Empty(auditLogs);
     }
 
-    private async Task AuthenticateAsync(Guid shopId, string login, string secret)
-    {
-        var response = await _client.PostAsJsonAsync(
-            "/api/auth/login",
-            new LoginRequest
-            {
-                ShopId = shopId,
-                Login = login,
-                Secret = secret
-            });
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var payload = await response.Content.ReadFromJsonAsync<LoginResponse>();
-        Assert.NotNull(payload);
-
-        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", payload!.AccessToken);
-    }
-
     private async Task<Guid> SeedShopAsync(string name)
     {
         using var scope = _factory.Services.CreateScope();
@@ -250,31 +208,6 @@ public sealed class ShopsEndpointTests : IAsyncLifetime
         const string sql = "INSERT INTO \"Shop\" (\"Id\", \"Name\") VALUES (@Id, @Name);";
         await connection.ExecuteAsync(sql, new { Id = id, Name = name });
         return id;
-    }
-
-    private async Task SeedShopUserAsync(Guid shopId, string login, string displayName, bool isAdmin, string secret)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-        await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection);
-
-        const string sql = """
-        INSERT INTO "ShopUser" ("Id", "ShopId", "Login", "DisplayName", "IsAdmin", "Secret_Hash", "Disabled")
-        VALUES (@Id, @ShopId, @Login, @DisplayName, @IsAdmin, @SecretHash, FALSE);
-        """;
-
-        await connection.ExecuteAsync(
-            sql,
-            new
-            {
-                Id = Guid.NewGuid(),
-                ShopId = shopId,
-                Login = login,
-                DisplayName = displayName,
-                IsAdmin = isAdmin,
-                SecretHash = BCrypt.Net.BCrypt.HashPassword(secret)
-            });
     }
 
     private async Task SeedLocationAsync(Guid shopId, string code, string label)
