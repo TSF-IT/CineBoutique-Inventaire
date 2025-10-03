@@ -81,8 +81,7 @@ describe('CompletedRunsModal', () => {
         value: originalCreateObjectURL,
       })
     } else {
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- nettoyage test
-      delete (URL as { createObjectURL?: unknown }).createObjectURL
+      Reflect.deleteProperty(URL as { createObjectURL?: unknown }, 'createObjectURL')
     }
 
     if (originalRevokeObjectURL) {
@@ -92,8 +91,7 @@ describe('CompletedRunsModal', () => {
         value: originalRevokeObjectURL,
       })
     } else {
-      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- nettoyage test
-      delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL
+      Reflect.deleteProperty(URL as { revokeObjectURL?: unknown }, 'revokeObjectURL')
     }
   })
 
