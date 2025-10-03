@@ -13,8 +13,17 @@ const mockLocations = [
   },
 ]
 
+const testShop = {
+  id: '00000000-0000-4000-8000-0000000000f1',
+  name: 'Cinéma test',
+}
+
 test.describe('Scanner fallback', () => {
   test.beforeEach(async ({ page }) => {
+    await page.addInitScript(({ key, value }) => {
+      window.localStorage.setItem(key, value)
+    }, { key: 'cb.shop', value: JSON.stringify(testShop) })
+
     await page.addInitScript(() => {
       Object.defineProperty(window, 'isSecureContext', {
         configurable: true,
