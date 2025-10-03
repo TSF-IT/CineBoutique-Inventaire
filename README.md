@@ -85,22 +85,19 @@ curl http://localhost:8080/ready
 curl http://localhost:8080/api/locations
 ```
 
-Les utilisateurs de test sont définis dans `src/inventory-api/appsettings.Development.json` :
+Les comptes de démonstration sont initialisés par le seeder (`InventoryDataSeeder`). En développement et sur CI, les secrets sont
+laissés vides : un login suffit (par exemple `administrateur` ou `utilisateur1`). En production, chaque compte doit disposer d'un
+secret haché (Argon2id ou bcrypt).
 
-- Amélie — PIN `1111`
-- Bruno — PIN `2222`
-- Camille — PIN `3333`
-- David — PIN `4444`
-- Elisa — PIN `5555`
-
-L'endpoint `POST /auth/pin` retourne un JWT court si le PIN est valide. Les endpoints principaux actuellement exposés sont :
+L'endpoint `POST /api/auth/login` retourne un JWT court si le couple login/secret est valide. Les endpoints principaux actuellent
+exposés sont :
 
 - `GET /health` : liveness simple.
 - `GET /ready` : vérifie l'accès à PostgreSQL (`SELECT 1`).
 - `GET /locations` : liste les zones d'inventaire et l'état d'occupation courant (filtrable par type de comptage).
 - `GET /api/products/{code}` : recherche par SKU ou code EAN-8/EAN-13.
 - `POST /api/products` : création manuelle d'un produit (SKU, nom, EAN optionnel).
-- `POST /auth/pin` : authentification par PIN/JWT (utilisateurs définis dans la configuration).
+- `POST /api/auth/login` : authentification boutique + login + secret (JWT).
 - `POST /api/inventories/{locationId}/restart` : clôture les runs actifs d'une zone pour redémarrer un comptage.
 - `POST /api/inventories/{locationId}/complete` : clôture un comptage en enregistrant les quantités scannées (produits connus ou inconnus).
 - `GET /api/inventories/summary` : retourne l'état agrégé des inventaires (sessions actives, runs ouverts, zones en conflit).
