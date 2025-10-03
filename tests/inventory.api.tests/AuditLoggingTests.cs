@@ -9,11 +9,14 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
+using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
+using System.Security.Claims;
+using CineBoutique.Inventory.Api.Auth;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Infrastructure.Database;
@@ -39,8 +42,6 @@ public sealed class AuditLoggingTests : IAsyncLifetime
     {
         var configuration = new Dictionary<string, string?>
         {
-            ["Authentication:Users:0:Name"] = "Amélie",
-            ["Authentication:Users:0:Pin"] = "1111",
             ["Authentication:Issuer"] = "CineBoutique.Inventory",
             ["Authentication:Audience"] = "CineBoutique.Inventory",
             ["Authentication:Secret"] = "ChangeMe-Secret-Key-For-Inventory-Api-123",
@@ -239,37 +240,191 @@ public sealed class AuditLoggingTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task PinLogin_Success_WritesAuditLog()
+    public async Task Login_Success_WritesAuditLog()
     {
         await ResetDatabaseAsync();
 
-        var response = await _client.PostAsJsonAsync("/auth/pin", new PinAuthenticationRequest { Pin = "1111" });
+        var shopId = await SeedShopAsync("CinéBoutique Paris");
+        var secret = "Secret123!";
+        var secretHash = BCrypt.Net.BCrypt.HashPassword(secret);
+        await SeedShopUserAsync(shopId, "administrateur", "Amélie", isAdmin: true, secretHash);
+
+        var response = await _client.PostAsJsonAsync(
+            "/api/auth/login",
+            new LoginRequest
+            {
+                ShopId = shopId,
+                Login = "administrateur",
+                Secret = secret
+            });
+
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        var auditLogs = await GetAuditLogsAsync();
-        Assert.Single(auditLogs);
+        var payload = await response.Content.ReadFromJsonAsync<LoginResponse>();
+        Assert.NotNull(payload);
+        Assert.Equal(shopId, payload!.ShopId);
+        Assert.True(payload.IsAdmin);
+        Assert.Equal("Amélie", payload.UserName);
 
-        var entry = auditLogs.Single();
-        Assert.Equal("auth.pin.success", entry.Category);
+        var auditLogs = await GetAuditLogsAsync();
+        var entry = Assert.Single(auditLogs);
+        Assert.Equal("auth.login.success", entry.Category);
         Assert.Equal("Amélie", entry.Actor);
         Assert.Contains("s'est connecté", entry.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("administrateur", entry.Message, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
-    public async Task PinLogin_InvalidPin_WritesAuditLog()
+    public async Task Login_ReturnsTokenWithShopAndAdminClaims()
     {
         await ResetDatabaseAsync();
 
-        var response = await _client.PostAsJsonAsync("/auth/pin", new PinAuthenticationRequest { Pin = "9999" });
+        var shopId = await SeedShopAsync("CinéBoutique Paris");
+        var secret = "Secret123!";
+        var secretHash = BCrypt.Net.BCrypt.HashPassword(secret);
+        await SeedShopUserAsync(shopId, "administrateur", "Amélie", isAdmin: true, secretHash);
+
+        var response = await _client.PostAsJsonAsync(
+            "/api/auth/login",
+            new LoginRequest
+            {
+                ShopId = shopId,
+                Login = "administrateur",
+                Secret = secret
+            });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var payload = await response.Content.ReadFromJsonAsync<LoginResponse>();
+        Assert.NotNull(payload);
+
+        var handler = new JwtSecurityTokenHandler();
+        var token = handler.ReadJwtToken(payload!.AccessToken);
+
+        Assert.Contains(token.Claims, claim => claim.Type == AuthClaimTypes.ShopId && Guid.Parse(claim.Value) == shopId);
+        Assert.Contains(token.Claims, claim => claim.Type == AuthClaimTypes.IsAdmin && string.Equals(claim.Value, "true", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(token.Claims, claim => claim.Type == AuthClaimTypes.Login && claim.Value == "administrateur");
+        Assert.Contains(token.Claims, claim => claim.Type == ClaimTypes.Name && claim.Value == "Amélie");
+    }
+
+    [Fact]
+    public async Task Login_InvalidSecret_WritesAuditLog()
+    {
+        await ResetDatabaseAsync();
+
+        var shopId = await SeedShopAsync("CinéBoutique Paris");
+        var secretHash = BCrypt.Net.BCrypt.HashPassword("Secret123!");
+        await SeedShopUserAsync(shopId, "administrateur", "Amélie", isAdmin: true, secretHash);
+
+        var response = await _client.PostAsJsonAsync(
+            "/api/auth/login",
+            new LoginRequest
+            {
+                ShopId = shopId,
+                Login = "administrateur",
+                Secret = "BadSecret"
+            });
+
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
 
         var auditLogs = await GetAuditLogsAsync();
-        Assert.Single(auditLogs);
-
-        var entry = auditLogs.Single();
-        Assert.Equal("auth.pin.failure", entry.Category);
+        var entry = Assert.Single(auditLogs);
+        Assert.Equal("auth.login.failure", entry.Category);
         Assert.Null(entry.Actor);
         Assert.Contains("refusée", entry.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("administrateur", entry.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Login_DisabledUser_IsRejected()
+    {
+        await ResetDatabaseAsync();
+
+        var shopId = await SeedShopAsync("CinéBoutique Paris");
+        var secret = "Secret123!";
+        var secretHash = BCrypt.Net.BCrypt.HashPassword(secret);
+        await SeedShopUserAsync(shopId, "administrateur", "Amélie", isAdmin: true, secretHash, disabled: true);
+
+        var response = await _client.PostAsJsonAsync(
+            "/api/auth/login",
+            new LoginRequest
+            {
+                ShopId = shopId,
+                Login = "administrateur",
+                Secret = secret
+            });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+
+        var auditLogs = await GetAuditLogsAsync();
+        var entry = Assert.Single(auditLogs);
+        Assert.Equal("auth.login.failure", entry.Category);
+        Assert.Null(entry.Actor);
+        Assert.Contains("désactivé", entry.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Login_WithoutSecret_WhenHashMissing_SucceedsInCi()
+    {
+        await ResetDatabaseAsync();
+
+        var shopId = await SeedShopAsync("CinéBoutique Paris");
+        await SeedShopUserAsync(shopId, "utilisateur1", "Utilisateur 1", isAdmin: false, secretHash: string.Empty);
+
+        var response = await _client.PostAsJsonAsync(
+            "/api/auth/login",
+            new LoginRequest
+            {
+                ShopId = shopId,
+                Login = "utilisateur1"
+            });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var payload = await response.Content.ReadFromJsonAsync<LoginResponse>();
+        Assert.NotNull(payload);
+        Assert.False(payload!.IsAdmin);
+        Assert.Equal("Utilisateur 1", payload.UserName);
+
+        var auditLogs = await GetAuditLogsAsync();
+        var entry = Assert.Single(auditLogs);
+        Assert.Equal("auth.login.success", entry.Category);
+        Assert.Equal("Utilisateur 1", entry.Actor);
+    }
+
+    private async Task<Guid> SeedShopAsync(string name)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        var shopId = Guid.NewGuid();
+        const string insertShopSql = "INSERT INTO \"Shop\" (\"Id\", \"Name\") VALUES (@Id, @Name);";
+        await connection.ExecuteAsync(insertShopSql, new { Id = shopId, Name = name });
+        return shopId;
+    }
+
+    private async Task SeedShopUserAsync(Guid shopId, string login, string displayName, bool isAdmin, string secretHash, bool disabled = false)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        const string insertUserSql = "INSERT INTO \"ShopUser\" (\"Id\", \"ShopId\", \"Login\", \"DisplayName\", \"IsAdmin\", \"Secret_Hash\", \"Disabled\") VALUES (@Id, @ShopId, @Login, @DisplayName, @IsAdmin, @SecretHash, @Disabled);";
+        await connection.ExecuteAsync(
+            insertUserSql,
+            new
+            {
+                Id = Guid.NewGuid(),
+                ShopId = shopId,
+                Login = login,
+                DisplayName = displayName,
+                IsAdmin = isAdmin,
+                SecretHash = secretHash,
+                Disabled = disabled
+            });
     }
 
     private async Task ResetDatabaseAsync()

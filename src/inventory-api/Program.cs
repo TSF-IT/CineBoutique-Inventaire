@@ -6,7 +6,6 @@ using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Hosting;
-using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Infrastructure.Database;
 using CineBoutique.Inventory.Infrastructure.DependencyInjection;
 using CineBoutique.Inventory.Infrastructure.Migrations;
@@ -150,6 +149,7 @@ builder.Services.AddScoped<IAuditLogger, DbAuditLogger>();
 builder.Services.AddScoped<CineBoutique.Inventory.Domain.Auditing.IAuditLogger, DomainAuditBridgeLogger>();
 
 builder.Services.AddSingleton<ITokenService, JwtTokenService>();
+builder.Services.AddScoped<IShopUserAuthenticationService, ShopUserAuthenticationService>();
 
 builder.Services
     .AddAuthentication(options =>
@@ -354,10 +354,6 @@ app.MapDiagnosticsEndpoints();
 app.MapInventoryEndpoints();
 app.MapProductEndpoints();
 
-// ===== ALIAS D'AUTH PIN =====
-app.MapPost("/auth/pin", HandlePinLoginAsync).WithName("PinLogin").AllowAnonymous();
-app.MapPost("/api/auth/pin", HandlePinLoginAsync).WithName("ApiPinLogin").AllowAnonymous();
-
 app.MapControllers();
 
 // Voir l'environnement et quelques flags runtime
@@ -387,42 +383,6 @@ app.MapGet("/__debug/db", async (IDbConnection connection) =>
 }).AllowAnonymous();
 
 await app.RunAsync().ConfigureAwait(false);
-
-// =================== Handlers & helpers ===================
-
-// Handler partagé pour /auth/pin et /api/auth/pin
-static async Task<IResult> HandlePinLoginAsync(
-    PinAuthenticationRequest request,
-    ITokenService tokenService,
-    IOptions<AuthenticationOptions> options,
-    IAuditLogger auditLogger,
-    CancellationToken cancellationToken)
-{
-    if (request is null || string.IsNullOrWhiteSpace(request.Pin))
-    {
-        var timestamp = EndpointUtilities.FormatTimestamp(DateTimeOffset.UtcNow);
-        await auditLogger.LogAsync($"Tentative de connexion admin rejetée : code PIN absent le {timestamp} UTC.", null, "auth.pin.failure", cancellationToken).ConfigureAwait(false);
-        return Results.BadRequest(new { message = "Le code PIN est requis." });
-    }
-
-    var providedPin = request.Pin.Trim();
-    var user = options.Value.Users.FirstOrDefault(u => string.Equals(u.Pin, providedPin, StringComparison.Ordinal));
-    if (user is null)
-    {
-        var timestamp = EndpointUtilities.FormatTimestamp(DateTimeOffset.UtcNow);
-        await auditLogger.LogAsync($"Tentative de connexion admin refusée (PIN inconnu) le {timestamp} UTC.", null, "auth.pin.failure", cancellationToken).ConfigureAwait(false);
-        return Results.Unauthorized();
-    }
-
-    var tokenResult = tokenService.GenerateToken(user.Name);
-    var response = new PinAuthenticationResponse(user.Name, tokenResult.AccessToken, tokenResult.ExpiresAtUtc);
-
-    var successTimestamp = EndpointUtilities.FormatTimestamp(DateTimeOffset.UtcNow);
-    var actor = EndpointUtilities.FormatActorLabel(user.Name);
-    await auditLogger.LogAsync($"{actor} s'est connecté avec succès le {successTimestamp} UTC.", user.Name, "auth.pin.success", cancellationToken).ConfigureAwait(false);
-
-    return Results.Ok(response);
-}
 
 public partial class Program { }
 
