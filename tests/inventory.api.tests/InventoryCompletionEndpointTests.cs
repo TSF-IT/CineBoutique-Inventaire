@@ -414,6 +414,7 @@ TRUNCATE TABLE "CountingRun" RESTART IDENTITY CASCADE;
 TRUNCATE TABLE "InventorySession" RESTART IDENTITY CASCADE;
 TRUNCATE TABLE "Product" RESTART IDENTITY CASCADE;
 TRUNCATE TABLE "Location" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "Shop" RESTART IDENTITY CASCADE;
 TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
 """;
 
@@ -427,9 +428,18 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
 
+        const string ensureShopSql =
+            "INSERT INTO \"Shop\" (\"Name\") VALUES (@Name) ON CONFLICT DO NOTHING;";
+        const string selectShopSql =
+            "SELECT \"Id\" FROM \"Shop\" WHERE LOWER(\"Name\") = LOWER(@Name) LIMIT 1;";
+
+        await connection.ExecuteAsync(ensureShopSql, new { Name = "CinéBoutique Paris" });
+        var shopId = await connection.ExecuteScalarAsync<Guid>(selectShopSql, new { Name = "CinéBoutique Paris" });
+
         var locationId = Guid.NewGuid();
-        const string sql = "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\") VALUES (@Id, @Code, @Label);";
-        await connection.ExecuteAsync(sql, new { Id = locationId, Code = code, Label = label });
+        const string sql =
+            "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\", \"ShopId\") VALUES (@Id, @Code, @Label, @ShopId);";
+        await connection.ExecuteAsync(sql, new { Id = locationId, Code = code, Label = label, ShopId = shopId });
         return locationId;
     }
 

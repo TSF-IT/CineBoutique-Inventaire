@@ -10,10 +10,20 @@ namespace CineBoutique.Inventory.Infrastructure.Seeding;
 
 public sealed class InventoryDataSeeder
 {
-    private const string InsertLocationSql = @"INSERT INTO ""Location"" (""Code"", ""Label"")
-SELECT @Code, @Label
-WHERE NOT EXISTS (SELECT 1 FROM ""Location"" WHERE ""Code"" = @Code);";
+    private const string DefaultShopName = "CinéBoutique Paris";
 
+    private const string InsertShopSql = @"INSERT INTO ""Shop"" (""Name"")
+VALUES (@Name)
+ON CONFLICT DO NOTHING
+RETURNING ""Id"";";
+
+    private const string SelectShopIdSql = @"SELECT ""Id"" FROM ""Shop"" WHERE LOWER(""Name"") = LOWER(@Name) LIMIT 1;";
+
+    private const string InsertLocationSql = @"INSERT INTO ""Location"" (""Code"", ""Label"", ""ShopId"")
+SELECT @Code, @Label, @ShopId
+WHERE NOT EXISTS (SELECT 1 FROM ""Location"" WHERE ""Code"" = @Code AND ""ShopId"" = @ShopId);";
+
+    private static readonly IReadOnlyList<ShopSeed> ShopSeeds = BuildShopSeeds();
     private static readonly IReadOnlyList<LocationSeed> LocationSeeds = BuildLocationSeeds();
 
     private readonly IDbConnectionFactory _connectionFactory;
@@ -33,7 +43,11 @@ WHERE NOT EXISTS (SELECT 1 FROM ""Location"" WHERE ""Code"" = @Code);";
 
         try
         {
-            var insertedCount = 0;
+            var insertedShopCount = await EnsureShopsAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+            var parisShopId = await GetShopIdAsync(connection, transaction, DefaultShopName, cancellationToken)
+                .ConfigureAwait(false);
+
+            var insertedLocationCount = 0;
 
             foreach (var seed in LocationSeeds)
             {
@@ -43,7 +57,8 @@ WHERE NOT EXISTS (SELECT 1 FROM ""Location"" WHERE ""Code"" = @Code);";
                             new
                             {
                                 seed.Code,
-                                seed.Label
+                                seed.Label,
+                                ShopId = parisShopId
                             },
                             transaction,
                             cancellationToken: cancellationToken))
@@ -51,22 +66,100 @@ WHERE NOT EXISTS (SELECT 1 FROM ""Location"" WHERE ""Code"" = @Code);";
 
                 if (affectedRows > 0)
                 {
-                    insertedCount += affectedRows;
+                    insertedLocationCount += affectedRows;
                 }
             }
 
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
 
             _logger.LogInformation(
-                "Seed zones terminé. {InsertedCount} nouvelles zones ont été créées (opération idempotente).",
-                insertedCount);
+                "Seed terminé. {InsertedShopCount} magasins et {InsertedLocationCount} zones créés (idempotent).",
+                insertedShopCount,
+                insertedLocationCount);
         }
         catch (Exception ex)
         {
             await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-            _logger.LogError(ex, "Échec de l'initialisation des zones d'inventaire.");
+            _logger.LogError(ex, "Échec de l'initialisation des magasins/zones d'inventaire.");
             throw;
         }
+    }
+
+    private async Task<int> EnsureShopsAsync(
+        System.Data.IDbConnection connection,
+        System.Data.IDbTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var insertedCount = 0;
+
+        foreach (var shopSeed in ShopSeeds)
+        {
+            var insertedId = await connection.ExecuteScalarAsync<Guid?>(
+                    new CommandDefinition(
+                        InsertShopSql,
+                        new
+                        {
+                            shopSeed.Name
+                        },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (insertedId.HasValue)
+            {
+                insertedCount++;
+            }
+        }
+
+        return insertedCount;
+    }
+
+    private static async Task<Guid> GetShopIdAsync(
+        System.Data.IDbConnection connection,
+        System.Data.IDbTransaction transaction,
+        string name,
+        CancellationToken cancellationToken)
+    {
+        var existingId = await connection.ExecuteScalarAsync<Guid?>(
+                new CommandDefinition(
+                    SelectShopIdSql,
+                    new
+                    {
+                        Name = name
+                    },
+                    transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        if (existingId.HasValue)
+        {
+            return existingId.Value;
+        }
+
+        var insertedId = await connection.ExecuteScalarAsync<Guid>(
+                new CommandDefinition(
+                    InsertShopSql,
+                    new
+                    {
+                        Name = name
+                    },
+                    transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return insertedId;
+    }
+
+    private static IReadOnlyList<ShopSeed> BuildShopSeeds()
+    {
+        return new List<ShopSeed>
+        {
+            new(DefaultShopName),
+            new("CinéBoutique Bordeaux"),
+            new("CinéBoutique Montpellier"),
+            new("CinéBoutique Marseille"),
+            new("CinéBoutique Bruxelles")
+        };
     }
 
     private static IReadOnlyList<LocationSeed> BuildLocationSeeds()
@@ -87,6 +180,8 @@ WHERE NOT EXISTS (SELECT 1 FROM ""Location"" WHERE ""Code"" = @Code);";
 
         return seeds;
     }
+
+    private sealed record ShopSeed(string Name);
 
     private sealed record LocationSeed(string Code, string Label);
 }
