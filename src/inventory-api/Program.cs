@@ -6,10 +6,13 @@ using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Hosting;
+using CineBoutique.Inventory.Api.Services;
+using FluentValidation;
 using CineBoutique.Inventory.Infrastructure.Database;
 using CineBoutique.Inventory.Infrastructure.DependencyInjection;
 using CineBoutique.Inventory.Infrastructure.Migrations;
 using CineBoutique.Inventory.Infrastructure.Seeding;
+using FluentValidation.AspNetCore;
 using FluentMigrator.Runner;
 using FluentMigrator.Runner.Processors;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -129,6 +132,8 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 builder.Services.AddControllers();
+builder.Services.AddFluentValidationAutoValidation();
+builder.Services.AddValidatorsFromAssemblyContaining<CineBoutique.Inventory.Api.Validators.CreateShopRequestValidator>();
 
 // --- Health checks (liveness + readiness) ---
 builder.Services
@@ -150,6 +155,8 @@ builder.Services.AddScoped<CineBoutique.Inventory.Domain.Auditing.IAuditLogger, 
 
 builder.Services.AddSingleton<ITokenService, JwtTokenService>();
 builder.Services.AddScoped<IShopUserAuthenticationService, ShopUserAuthenticationService>();
+builder.Services.AddScoped<IShopService, ShopService>();
+builder.Services.AddScoped<IShopUserService, ShopUserService>();
 
 builder.Services
     .AddAuthentication(options =>
