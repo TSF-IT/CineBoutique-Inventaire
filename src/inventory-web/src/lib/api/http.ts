@@ -1,4 +1,6 @@
 // src/lib/api/http.ts
+import { loadShop } from '@/lib/shopStorage'
+
 export interface HttpError extends Error {
   status: number
   url: string
@@ -24,8 +26,17 @@ const buildHttpError = (
     problem,
   })
 
-export async function http(input: string, init?: RequestInit) {
-  const res = await fetch(input, init)
+export async function http(input: string, init: RequestInit = {}) {
+  const headers = new Headers(init.headers)
+  const shop = loadShop()
+  if (shop?.id) {
+    headers.set('X-Shop-Id', shop.id)
+  }
+
+  const res = await fetch(input, {
+    ...init,
+    headers,
+  })
   if (!res.ok) {
     const bodyText = await res.text().catch(() => '')
     const err: HttpError = buildHttpError(`HTTP ${res.status}`, res, bodyText, (() => {
