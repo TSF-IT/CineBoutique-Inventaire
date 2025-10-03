@@ -7,10 +7,17 @@ import { Page } from '@/app/components/Page'
 import { LoadingIndicator } from '@/app/components/LoadingIndicator'
 import { Button } from '@/app/components/ui/Button'
 import clsx from 'clsx'
+import type { HttpError } from '@/lib/api/http'
 
 const DEFAULT_ERROR_MESSAGE = "Impossible de charger les boutiques."
 
 type LoadingState = 'idle' | 'loading' | 'error'
+
+const isHttpError = (value: unknown): value is HttpError =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof (value as { status?: unknown }).status === 'number' &&
+  typeof (value as { url?: unknown }).url === 'string'
 
 export const SelectShopPage = () => {
   const { shop, setShop } = useShop()
@@ -54,6 +61,26 @@ export const SelectShopPage = () => {
         if (error instanceof TypeError) {
           setErrorMessage('Connexion impossible. Vérifiez votre réseau puis réessayez.')
           return
+        }
+        if (isHttpError(error)) {
+          if (error.status === 401) {
+            setErrorMessage(
+              'Accès non autorisé. Connectez-vous pour récupérer la liste des boutiques puis réessayez.',
+            )
+            return
+          }
+          if (error.status === 403) {
+            setErrorMessage(
+              'Vous ne disposez pas des droits nécessaires pour consulter ces boutiques. Contactez votre administrateur.',
+            )
+            return
+          }
+          if (error.status >= 500) {
+            setErrorMessage(
+              "Le service boutiques est momentanément indisponible. Patientez quelques instants avant de réessayer.",
+            )
+            return
+          }
         }
         setErrorMessage(error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE)
       })
