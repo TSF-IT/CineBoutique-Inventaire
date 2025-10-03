@@ -4,7 +4,9 @@ import type { Shop } from '@/types/shop'
 import { SelectShopPage } from './SelectShopPage'
 import { ThemeProvider } from '@/theme/ThemeProvider'
 
-const fetchShopsMock = vi.hoisted(() => vi.fn<[AbortSignal?], Promise<Shop[]>>())
+const fetchShopsMock = vi.hoisted(() =>
+  vi.fn<(signal?: AbortSignal) => Promise<Shop[]>>()
+)
 const useShopMock = vi.hoisted(() => vi.fn())
 const navigateMock = vi.hoisted(() => vi.fn())
 
