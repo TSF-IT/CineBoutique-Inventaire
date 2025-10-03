@@ -197,6 +197,7 @@ public sealed class ShopsEndpointTests : IAsyncLifetime
         var adminShopId = await SeedShopAsync("Boutique Admin");
         await SeedShopUserAsync(adminShopId, AdminLogin, AdminDisplayName, isAdmin: true, secret: AdminSecret);
         await AuthenticateAsync(adminShopId, AdminLogin, AdminSecret);
+        await ClearAuditLogsAsync();
 
         var targetShopId = await SeedShopAsync("CinéBoutique Reims");
         await SeedLocationAsync(targetShopId, "R1", "Zone R1");
