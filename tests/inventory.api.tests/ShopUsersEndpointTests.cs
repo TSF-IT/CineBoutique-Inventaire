@@ -11,7 +11,6 @@ using System.Data;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
-using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,10 +28,6 @@ namespace CineBoutique.Inventory.Api.Tests;
 [Collection(TestCollections.Postgres)]
 public sealed class ShopUsersEndpointTests : IAsyncLifetime
 {
-    private const string AdminLogin = "admin.test";
-    private const string AdminDisplayName = "Administrateur Test";
-    private const string AdminSecret = "Secret123!";
-
     private readonly PostgresTestContainerFixture _pg;
     private InventoryApiApplicationFactory _factory = default!;
     private HttpClient _client = default!;
@@ -60,9 +55,6 @@ public sealed class ShopUsersEndpointTests : IAsyncLifetime
     public async Task GetShopUsers_ReturnsUsersForShop()
     {
         await ResetDatabaseAsync();
-        var adminShopId = await SeedShopAsync("Boutique Admin");
-        await SeedShopUserAsync(adminShopId, AdminLogin, AdminDisplayName, isAdmin: true, secret: AdminSecret);
-        await AuthenticateAsync(adminShopId, AdminLogin, AdminSecret);
         await ClearAuditLogsAsync();
 
         var targetShopId = await SeedShopAsync("CinéBoutique Tours");
@@ -84,9 +76,6 @@ public sealed class ShopUsersEndpointTests : IAsyncLifetime
     public async Task CreateShopUser_PersistsUserAndWritesAudit()
     {
         await ResetDatabaseAsync();
-        var adminShopId = await SeedShopAsync("Boutique Admin");
-        await SeedShopUserAsync(adminShopId, AdminLogin, AdminDisplayName, isAdmin: true, secret: AdminSecret);
-        await AuthenticateAsync(adminShopId, AdminLogin, AdminSecret);
         await ClearAuditLogsAsync();
 
         var targetShopId = await SeedShopAsync("CinéBoutique Dijon");
@@ -122,9 +111,6 @@ public sealed class ShopUsersEndpointTests : IAsyncLifetime
     public async Task CreateShopUser_WithDuplicateLogin_ReturnsConflict()
     {
         await ResetDatabaseAsync();
-        var adminShopId = await SeedShopAsync("Boutique Admin");
-        await SeedShopUserAsync(adminShopId, AdminLogin, AdminDisplayName, isAdmin: true, secret: AdminSecret);
-        await AuthenticateAsync(adminShopId, AdminLogin, AdminSecret);
         await ClearAuditLogsAsync();
 
         var targetShopId = await SeedShopAsync("CinéBoutique Brest");
@@ -154,9 +140,6 @@ public sealed class ShopUsersEndpointTests : IAsyncLifetime
     public async Task UpdateShopUser_UpdatesFieldsAndWritesAudit()
     {
         await ResetDatabaseAsync();
-        var adminShopId = await SeedShopAsync("Boutique Admin");
-        await SeedShopUserAsync(adminShopId, AdminLogin, AdminDisplayName, isAdmin: true, secret: AdminSecret);
-        await AuthenticateAsync(adminShopId, AdminLogin, AdminSecret);
         await ClearAuditLogsAsync();
 
         var targetShopId = await SeedShopAsync("CinéBoutique Metz");
@@ -194,9 +177,6 @@ public sealed class ShopUsersEndpointTests : IAsyncLifetime
     public async Task DeleteShopUser_SoftDisablesUserAndWritesAudit()
     {
         await ResetDatabaseAsync();
-        var adminShopId = await SeedShopAsync("Boutique Admin");
-        await SeedShopUserAsync(adminShopId, AdminLogin, AdminDisplayName, isAdmin: true, secret: AdminSecret);
-        await AuthenticateAsync(adminShopId, AdminLogin, AdminSecret);
         await ClearAuditLogsAsync();
 
         var targetShopId = await SeedShopAsync("CinéBoutique Pau");
@@ -229,9 +209,6 @@ public sealed class ShopUsersEndpointTests : IAsyncLifetime
     public async Task DeleteShopUser_WhenUserMissing_ReturnsNotFound()
     {
         await ResetDatabaseAsync();
-        var adminShopId = await SeedShopAsync("Boutique Admin");
-        await SeedShopUserAsync(adminShopId, AdminLogin, AdminDisplayName, isAdmin: true, secret: AdminSecret);
-        await AuthenticateAsync(adminShopId, AdminLogin, AdminSecret);
         await ClearAuditLogsAsync();
 
         var targetShopId = await SeedShopAsync("CinéBoutique Nîmes");
@@ -251,25 +228,6 @@ public sealed class ShopUsersEndpointTests : IAsyncLifetime
 
         var auditLogs = await GetAuditLogsAsync();
         Assert.Empty(auditLogs);
-    }
-
-    private async Task AuthenticateAsync(Guid shopId, string login, string secret)
-    {
-        var response = await _client.PostAsJsonAsync(
-            "/api/auth/login",
-            new LoginRequest
-            {
-                ShopId = shopId,
-                Login = login,
-                Secret = secret
-            });
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-
-        var payload = await response.Content.ReadFromJsonAsync<LoginResponse>();
-        Assert.NotNull(payload);
-
-        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", payload!.AccessToken);
     }
 
     private async Task<Guid> SeedShopAsync(string name)

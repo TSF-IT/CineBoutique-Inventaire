@@ -79,13 +79,19 @@ internal static class EndpointUtilities
 
     public static string? GetAuthenticatedUserName(HttpContext context)
     {
-        if (context?.User?.Identity is { IsAuthenticated: true, Name: { Length: > 0 } name })
+        if (context is null)
         {
-            return name.Trim();
+            return null;
         }
 
-        var fallback = context?.User?.Identity?.Name;
-        return string.IsNullOrWhiteSpace(fallback) ? null : fallback.Trim();
+        var identity = context.User?.Identity;
+        if (identity is null)
+        {
+            return null;
+        }
+
+        var name = identity.Name;
+        return string.IsNullOrWhiteSpace(name) ? null : name.Trim();
     }
 
     public static string FormatActorLabel(string? userName) =>
