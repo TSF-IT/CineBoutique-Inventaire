@@ -15,6 +15,7 @@ import { OpenRunsModal } from '../../components/Runs/OpenRunsModal'
 import { useAsync } from '../../hooks/useAsync'
 import type { ConflictZoneSummary, InventorySummary, Location } from '../../types/inventory'
 import type { HttpError } from '@/lib/api/http'
+import { useShop } from '@/state/ShopContext'
 
 const isHttpError = (value: unknown): value is HttpError =>
   typeof value === 'object' &&
@@ -52,6 +53,7 @@ const describeError = (error: unknown): { title: string; details?: string } | nu
 
 export const HomePage = () => {
   const navigate = useNavigate()
+  const { setShop } = useShop()
   const [openRunsModalOpen, setOpenRunsModalOpen] = useState(false)
   const [completedRunsModalOpen, setCompletedRunsModalOpen] = useState(false)
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
@@ -85,6 +87,11 @@ export const HomePage = () => {
     void executeSummary()
     void executeLocations()
   }, [executeSummary, executeLocations])
+
+  const handleChangeShop = useCallback(() => {
+    setShop(null)
+    navigate('/select-shop')
+  }, [navigate, setShop])
 
   const combinedError = summaryError ?? locationsError
   const combinedLoading = summaryLoading || locationsLoading
@@ -142,15 +149,20 @@ export const HomePage = () => {
 
   return (
     <Page>
-      <header className="flex flex-col gap-4">
-        <p className="text-sm uppercase tracking-[0.3em] text-brand-600 dark:text-brand-200">CinéBoutique</p>
-        <h1 className="text-4xl font-black leading-tight text-slate-900 dark:text-white sm:text-5xl">
-          Inventaire simplifié
-        </h1>
-        <p className="max-w-xl text-base text-slate-600 dark:text-slate-300">
-          Lancez un comptage en quelques gestes, scannez les produits depuis la caméra ou une douchette Bluetooth et
-          assurez un suivi fiable de vos zones.
-        </p>
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-4">
+          <p className="text-sm uppercase tracking-[0.3em] text-brand-600 dark:text-brand-200">CinéBoutique</p>
+          <h1 className="text-4xl font-black leading-tight text-slate-900 dark:text-white sm:text-5xl">
+            Inventaire simplifié
+          </h1>
+          <p className="max-w-xl text-base text-slate-600 dark:text-slate-300">
+            Lancez un comptage en quelques gestes, scannez les produits depuis la caméra ou une douchette Bluetooth et
+            assurez un suivi fiable de vos zones.
+          </p>
+        </div>
+        <Button variant="secondary" onClick={handleChangeShop} className="self-start">
+          Changer de boutique
+        </Button>
       </header>
 
       <Card className="flex flex-col gap-4">
