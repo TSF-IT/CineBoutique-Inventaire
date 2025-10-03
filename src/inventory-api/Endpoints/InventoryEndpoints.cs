@@ -1150,7 +1150,7 @@ LIMIT 1;";
                 TotalQuantity = aggregatedItems.Sum(item => item.Quantity),
             };
 
-            var actor = EndpointUtilities.FormatActorLabel(operatorName);
+            var actor = EndpointUtilities.FormatActorLabel(httpContext);
             var timestamp = EndpointUtilities.FormatTimestamp(now);
             var zoneDescription = string.IsNullOrWhiteSpace(location.Code)
                 ? location.Label
@@ -1359,7 +1359,7 @@ WHERE ""LocationId"" = @LocationId
                 .ConfigureAwait(false);
 
             var userName = EndpointUtilities.GetAuthenticatedUserName(httpContext);
-            var actor = EndpointUtilities.FormatActorLabel(userName);
+            var actor = EndpointUtilities.FormatActorLabel(httpContext);
             var timestamp = EndpointUtilities.FormatTimestamp(now);
             var zoneDescription = locationInfo is not null
                 ? $"la zone {locationInfo.Code} – {locationInfo.Label}"

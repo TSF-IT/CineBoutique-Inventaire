@@ -120,7 +120,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     cancellationToken: cancellationToken)).ConfigureAwait(false);
 
             var userName = EndpointUtilities.GetAuthenticatedUserName(httpContext);
-            var actor = EndpointUtilities.FormatActorLabel(userName);
+            var actor = EndpointUtilities.FormatActorLabel(httpContext);
             var timestamp = EndpointUtilities.FormatTimestamp(now);
             var eanLabel = string.IsNullOrWhiteSpace(createdProduct.Ean) ? "non renseigné" : createdProduct.Ean;
             var creationMessage = $"{actor} a créé le produit \"{createdProduct.Name}\" (SKU {createdProduct.Sku}, EAN {eanLabel}) le {timestamp} UTC.";
@@ -155,7 +155,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             {
                 var nowInvalid = DateTimeOffset.UtcNow;
                 var invalidUser = EndpointUtilities.GetAuthenticatedUserName(httpContext);
-                var invalidActor = EndpointUtilities.FormatActorLabel(invalidUser);
+                var invalidActor = EndpointUtilities.FormatActorLabel(httpContext);
                 var invalidTimestamp = EndpointUtilities.FormatTimestamp(nowInvalid);
                 var invalidMessage = $"{invalidActor} a tenté de scanner un code produit vide le {invalidTimestamp} UTC.";
                 await auditLogger.LogAsync(invalidMessage, invalidUser, "products.scan.invalid", cancellationToken).ConfigureAwait(false);
@@ -200,7 +200,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
             var now = DateTimeOffset.UtcNow;
             var userName = EndpointUtilities.GetAuthenticatedUserName(httpContext);
-            var actor = EndpointUtilities.FormatActorLabel(userName);
+            var actor = EndpointUtilities.FormatActorLabel(httpContext);
             var timestamp = EndpointUtilities.FormatTimestamp(now);
 
             if (product is not null)
@@ -240,7 +240,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
     {
         var now = DateTimeOffset.UtcNow;
         var userName = EndpointUtilities.GetAuthenticatedUserName(httpContext);
-        var actor = EndpointUtilities.FormatActorLabel(userName);
+        var actor = EndpointUtilities.FormatActorLabel(httpContext);
         var timestamp = EndpointUtilities.FormatTimestamp(now);
         var message = $"{actor} a tenté de créer un produit {details} le {timestamp} UTC.";
         await auditLogger.LogAsync(message, userName, category, cancellationToken).ConfigureAwait(false);
