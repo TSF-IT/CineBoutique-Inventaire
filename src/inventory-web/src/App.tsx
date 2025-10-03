@@ -1,4 +1,5 @@
-import { BrowserRouter, Navigate, useRoutes } from 'react-router-dom'
+import type { ReactNode } from 'react'
+import { BrowserRouter, Navigate, useLocation, useRoutes } from 'react-router-dom'
 import { AppProviders } from './app/providers/AppProviders'
 import { HomePage } from './app/pages/home/HomePage'
 import { InventoryLayout } from './app/pages/inventory/InventoryLayout'
@@ -10,15 +11,42 @@ import { AdminLayout } from './app/pages/admin/AdminLayout'
 import { AdminLocationsPage } from './app/pages/admin/AdminLocationsPage'
 import { AppErrorBoundary } from './app/components/AppErrorBoundary'
 import { ScanSimulationPage } from './app/pages/debug/ScanSimulationPage'
+import { LoadingIndicator } from './app/components/LoadingIndicator'
+import { SelectShopPage } from './app/pages/select-shop/SelectShopPage'
+import { useShop } from '@/state/ShopContext'
 
-const RouterView = () => {
+const ShopGate = ({ children }: { children: ReactNode }) => {
+  const { shop, isLoaded } = useShop()
+  const location = useLocation()
+
+  if (!isLoaded) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10 dark:bg-slate-950">
+        <LoadingIndicator label="Chargement de votre boutique…" />
+      </div>
+    )
+  }
+
+  if (!shop) {
+    return <Navigate to="/select-shop" replace state={{ from: location.pathname }} />
+  }
+
+  return <>{children}</>
+}
+
+export const AppRoutes = () => {
   const isScanSimMode = import.meta.env.MODE === 'scan-sim' || import.meta.env.VITE_SCAN_SIM === '1'
 
   const routing = useRoutes([
-    { path: '/', element: <HomePage /> },
+    { path: '/select-shop', element: <SelectShopPage /> },
+    { path: '/', element: <ShopGate><HomePage /></ShopGate> },
     {
       path: '/inventory',
-      element: <InventoryLayout />,
+      element: (
+        <ShopGate>
+          <InventoryLayout />
+        </ShopGate>
+      ),
       children: [
         { index: true, element: <Navigate to="start" replace /> },
         { path: 'start', element: <InventoryUserStep /> },
@@ -29,7 +57,11 @@ const RouterView = () => {
     },
     {
       path: '/admin',
-      element: <AdminLayout />,
+      element: (
+        <ShopGate>
+          <AdminLayout />
+        </ShopGate>
+      ),
       children: [
         { index: true, element: <AdminLocationsPage /> },
       ],
@@ -49,7 +81,7 @@ export const App = () => (
     <AppErrorBoundary>
       {/* Migration React Router v6 → v7 : https://reactrouter.com/upgrading/v6 */}
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <RouterView />
+        <AppRoutes />
       </BrowserRouter>
     </AppErrorBoundary>
   </AppProviders>
