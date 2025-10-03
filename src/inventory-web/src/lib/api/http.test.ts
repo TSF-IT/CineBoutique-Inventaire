@@ -15,6 +15,7 @@ const mockResponse = (body: string, options: { status?: number; headers?: Record
 
 afterEach(() => {
   vi.restoreAllMocks()
+  localStorage.clear()
 })
 
 describe('http helper', () => {
@@ -26,6 +27,21 @@ describe('http helper', () => {
     const result = await http(RESPONSE_URL)
 
     expect(result).toEqual({ foo: 'bar' })
+  })
+
+  it('ajoute le header X-Shop-Id quand une boutique est sélectionnée', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockResponse(JSON.stringify({ foo: 'bar' }), { headers: { 'Content-Type': 'application/json' } }),
+    )
+
+    localStorage.setItem('cb.shop', JSON.stringify({ id: 'shop-123', name: 'Shop démo' }))
+
+    await http(RESPONSE_URL)
+
+    const [, init] = fetchSpy.mock.calls[0] ?? []
+    const headers = init?.headers as Headers | undefined
+
+    expect(headers?.get('X-Shop-Id')).toBe('shop-123')
   })
 
   it('lève une HttpError quand le content-type est non JSON', async () => {

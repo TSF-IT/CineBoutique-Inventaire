@@ -206,7 +206,6 @@ export const InventorySessionPage = () => {
     items.length,
     locationId,
     setSessionId,
-    startInventoryRun,
     trimmedOperator,
   ])
 
