@@ -1,63 +1,96 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SLN="CineBoutique.Inventory.sln"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SLN_PATH="$ROOT_DIR/CineBoutique.Inventory.sln"
+TEST_PROJECT_PATH="$ROOT_DIR/tests/inventory.domain.tests"
+DOTNET_ROOT="$ROOT_DIR/.dotnet"
+DOTNET_INSTALL_SCRIPT="$DOTNET_ROOT/dotnet-install.sh"
+SDK_VERSION="${SDK_VERSION:-}"
 
-# Détecte Docker (nécessaire aux API tests avec Testcontainers)
-has_docker() {
-  command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1
+log() {
+  echo "[codex] $*"
 }
 
-run_full_suite_in_container() {
-  docker build -t cineboutique-dotnet-sdk:8 .codex
-  docker run --rm \
-    -v "$(pwd):/workspace" \
-    -v /var/run/docker.sock:/var/run/docker.sock \
-    -w /workspace \
-    cineboutique-dotnet-sdk:8 \
-    bash -lc "
-      dotnet --info && \
-      dotnet restore \"$SLN\" && \
-      dotnet build   \"$SLN\" -c Release --no-restore && \
-      dotnet test    \"$SLN\" -c Release --no-build --logger 'trx;LogFileName=test-results.trx'
-    "
+parse_sdk_version() {
+  if [[ -n "$SDK_VERSION" ]]; then
+    return
+  fi
+
+  if [[ -f "$ROOT_DIR/global.json" ]]; then
+    local parsed_version
+    parsed_version=$(grep -m1 -oE '"version"\s*:\s*"([^"]+)"' "$ROOT_DIR/global.json" | sed 's/.*"//;s/"$//') || true
+    if [[ -n "$parsed_version" ]]; then
+      SDK_VERSION="$parsed_version"
+      return
+    fi
+  fi
+
+  SDK_VERSION="8.0.100"
 }
 
-run_domain_suite_in_container() {
-  docker build -t cineboutique-dotnet-sdk:8 .codex
-  docker run --rm \
-    -v "$(pwd):/workspace" \
-    -w /workspace \
-    cineboutique-dotnet-sdk:8 \
-    bash -lc "
-      dotnet --info && \
-      dotnet restore \"$SLN\" && \
-      dotnet build   \"$SLN\" -c Release --no-restore && \
-      dotnet test    tests/inventory.domain.tests -c Release --no-build --logger 'trx;LogFileName=test-results.trx'
-    "
+install_local_sdk() {
+  mkdir -p "$DOTNET_ROOT"
+
+  if [[ ! -f "$DOTNET_INSTALL_SCRIPT" ]]; then
+    log "Téléchargement du script d'installation du SDK .NET…"
+    curl -sSL https://dot.net/v1/dotnet-install.sh -o "$DOTNET_INSTALL_SCRIPT"
+    chmod +x "$DOTNET_INSTALL_SCRIPT"
+  fi
+
+  log "Installation du SDK .NET $SDK_VERSION dans $DOTNET_ROOT…"
+  if ! "$DOTNET_INSTALL_SCRIPT" --version "$SDK_VERSION" --install-dir "$DOTNET_ROOT" --no-path; then
+    local major minor channel
+    IFS='.' read -r major minor _ <<< "$SDK_VERSION"
+    channel="$major.$minor"
+    log "Version $SDK_VERSION indisponible, tentative avec le canal $channel.x…"
+    "$DOTNET_INSTALL_SCRIPT" --channel "$channel" --install-dir "$DOTNET_ROOT" --no-path
+  fi
+
+  export DOTNET_ROOT
+  export PATH="$DOTNET_ROOT:$PATH"
 }
 
-# 3A. Si Docker dispo -> on lance tout via conteneur SDK + socket Docker
-if has_docker; then
-  echo "[codex] Docker détecté : exécution complète (API + Domain) dans un conteneur SDK .NET 8…"
-  run_full_suite_in_container
-  exit $?
-fi
+ensure_local_sdk() {
+  parse_sdk_version
 
-# 3B. Si Docker indisponible -> au moins prouver que le SDK .NET s’exécute et valider build + tests sans Testcontainers
-echo '[codex] Docker indisponible : on effectue restore/build + tests *sans* API (Domain uniquement).'
-if dotnet --info; then
-  dotnet restore "$SLN"
-  dotnet build   "$SLN" -c Release --no-restore
-  dotnet test tests/inventory.domain.tests -c Release --no-build --logger "trx;LogFileName=test-results.trx"
-  exit $?
-fi
+  if command -v dotnet >/dev/null 2>&1; then
+    local current_version
+    current_version=$(dotnet --version 2>/dev/null || echo "")
+    if [[ -n "$current_version" ]]; then
+      local current_major="${current_version%%.*}"
+      local required_major="${SDK_VERSION%%.*}"
+      if [[ "$current_major" == "$required_major" ]]; then
+        log "SDK .NET détecté localement ($current_version)."
+        return
+      fi
+      log "SDK .NET détecté ($current_version) mais incompatible, installation de la version $SDK_VERSION…"
+    fi
+  else
+    log "Aucun SDK .NET détecté, installation de la version $SDK_VERSION…"
+  fi
 
-echo "[codex] SDK .NET introuvable : fallback Docker léger…"
-if command -v docker >/dev/null 2>&1; then
-  run_domain_suite_in_container
-  exit $?
-fi
+  install_local_sdk
+}
 
-echo "[codex] Aucun SDK .NET local ni Docker disponible pour exécuter les tests." >&2
-exit 1
+run_tests() {
+  log "Vérification du SDK .NET…"
+  dotnet --info
+
+  log "Restore de la solution…"
+  dotnet restore "$SLN_PATH"
+
+  log "Build Release de la solution…"
+  dotnet build "$SLN_PATH" -c Release --no-restore
+
+  log "Exécution des tests Domain…"
+  dotnet test "$TEST_PROJECT_PATH" -c Release --no-build --logger "trx;LogFileName=test-results.trx"
+}
+
+main() {
+  ensure_local_sdk
+  run_tests
+  log "Tests Domain terminés avec succès."
+}
+
+main "$@"
