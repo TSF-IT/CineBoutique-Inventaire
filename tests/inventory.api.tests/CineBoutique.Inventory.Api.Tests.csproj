@@ -14,9 +14,11 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Azure.Core" />
+    <PackageReference Include="BCrypt.Net-Next" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Isopoh.Cryptography.Argon2" />
     <PackageReference Include="FluentAssertions" />
 
     <!-- Testcontainers v3 (nouveaux IDs de package) -->
