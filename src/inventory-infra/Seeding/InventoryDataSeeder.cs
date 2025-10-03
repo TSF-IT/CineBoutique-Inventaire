@@ -28,8 +28,18 @@ WHERE NOT EXISTS (
     WHERE ""ShopId"" = @ShopId
       AND UPPER(""Code"") = UPPER(@Code));";
 
+    private const string InsertShopUserSql = @"INSERT INTO ""ShopUser"" (""ShopId"", ""Login"", ""DisplayName"", ""IsAdmin"", ""Secret_Hash"", ""Disabled"")
+SELECT @ShopId, @Login, @DisplayName, @IsAdmin, @SecretHash, @Disabled
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM ""ShopUser""
+    WHERE ""ShopId"" = @ShopId
+      AND LOWER(""Login"") = LOWER(@Login));";
+
     private static readonly IReadOnlyList<ShopSeed> ShopSeeds = BuildShopSeeds();
     private static readonly IReadOnlyList<LocationSeed> LocationSeeds = BuildLocationSeeds();
+    private static readonly IReadOnlyDictionary<string, IReadOnlyList<ShopUserSeed>> ShopUserSeeds =
+        BuildShopUserSeeds();
 
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<InventoryDataSeeder> _logger;
@@ -91,12 +101,20 @@ WHERE NOT EXISTS (
                 }
             }
 
+            var insertedUserCount = await EnsureShopUsersAsync(
+                    connection,
+                    transaction,
+                    shopIds,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
 
             _logger.LogInformation(
-                "Seed terminé. {InsertedShopCount} magasins et {InsertedLocationCount} zones créés (idempotent).",
+                "Seed terminé. {InsertedShopCount} magasins, {InsertedLocationCount} zones et {InsertedUserCount} comptes utilisateurs créés (idempotent).",
                 insertedShopCount,
-                insertedLocationCount);
+                insertedLocationCount,
+                insertedUserCount);
         }
         catch (Exception ex)
         {
@@ -171,6 +189,49 @@ WHERE NOT EXISTS (
         return insertedId;
     }
 
+    private static async Task<int> EnsureShopUsersAsync(
+        System.Data.IDbConnection connection,
+        System.Data.IDbTransaction transaction,
+        IReadOnlyDictionary<string, Guid> shopIds,
+        CancellationToken cancellationToken)
+    {
+        var insertedCount = 0;
+
+        foreach (var (shopName, userSeeds) in ShopUserSeeds)
+        {
+            if (!shopIds.TryGetValue(shopName, out var shopId))
+            {
+                continue;
+            }
+
+            foreach (var userSeed in userSeeds)
+            {
+                var affectedRows = await connection.ExecuteAsync(
+                        new CommandDefinition(
+                            InsertShopUserSql,
+                            new
+                            {
+                                ShopId = shopId,
+                                userSeed.Login,
+                                userSeed.DisplayName,
+                                userSeed.IsAdmin,
+                                SecretHash = userSeed.SecretHash ?? string.Empty,
+                                userSeed.Disabled
+                            },
+                            transaction,
+                            cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+
+                if (affectedRows > 0)
+                {
+                    insertedCount += affectedRows;
+                }
+            }
+        }
+
+        return insertedCount;
+    }
+
     private static IReadOnlyList<ShopSeed> BuildShopSeeds()
     {
         return new List<ShopSeed>
@@ -213,7 +274,39 @@ WHERE NOT EXISTS (
         return seeds;
     }
 
+    private static IReadOnlyDictionary<string, IReadOnlyList<ShopUserSeed>> BuildShopUserSeeds()
+    {
+        var seeds = new Dictionary<string, IReadOnlyList<ShopUserSeed>>(StringComparer.OrdinalIgnoreCase)
+        {
+            [DefaultShopName] = BuildUserSeeds(5)
+        };
+
+        foreach (var shopSeed in ShopSeeds.Where(seed => !string.Equals(seed.Name, DefaultShopName, StringComparison.OrdinalIgnoreCase)))
+        {
+            seeds[shopSeed.Name] = BuildUserSeeds(4);
+        }
+
+        return seeds;
+    }
+
+    private static IReadOnlyList<ShopUserSeed> BuildUserSeeds(int additionalUserCount)
+    {
+        var seeds = new List<ShopUserSeed>
+        {
+            new("administrateur", "Administrateur", true, string.Empty, false)
+        };
+
+        for (var index = 1; index <= additionalUserCount; index++)
+        {
+            seeds.Add(new ShopUserSeed($"utilisateur{index}", $"Utilisateur {index}", false, string.Empty, false));
+        }
+
+        return seeds;
+    }
+
     private sealed record ShopSeed(string Name);
 
     private sealed record LocationSeed(string ShopName, string Code, string Label);
+
+    private sealed record ShopUserSeed(string Login, string DisplayName, bool IsAdmin, string SecretHash, bool Disabled);
 }

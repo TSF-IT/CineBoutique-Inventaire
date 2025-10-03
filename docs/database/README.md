@@ -7,6 +7,7 @@ Ce document synthétise la structure actuelle de la base PostgreSQL gérée par 
 ```mermaid
 erDiagram
     SHOP ||--o{ LOCATION : "possède"
+    SHOP ||--o{ SHOP_USER : "emploie"
     LOCATION ||--o{ COUNTING_RUN : "accueille"
     INVENTORY_SESSION ||--o{ COUNTING_RUN : "planifie"
     COUNTING_RUN ||--o{ COUNT_LINE : "enregistre"
@@ -16,6 +17,7 @@ erDiagram
 
 - **Shop** : boutique physique (Paris, Bordeaux, Montpellier, Marseille, Bruxelles).
 - **Location** : zone physique de stockage (codes `B1` à `B20`, `S1` à `S19`) rattachée à une boutique.
+- **ShopUser** : compte utilisateur rattaché à une boutique pour l'usage en magasin.
 - **InventorySession** : campagne d'inventaire regroupant plusieurs comptages.
 - **CountingRun** : passage de comptage effectué sur une zone donnée.
 - **CountLine** : quantité relevée pour un produit dans un run.
@@ -30,6 +32,15 @@ erDiagram
     SHOP {
         GUID Id PK
         STRING(256) Name
+    }
+    SHOP_USER {
+        GUID Id PK
+        GUID ShopId FK
+        STRING(128) Login
+        STRING(256) DisplayName
+        BOOL IsAdmin
+        STRING(512) Secret_Hash
+        BOOL Disabled
     }
     PRODUCT {
         GUID Id PK
@@ -96,6 +107,7 @@ erDiagram
     COUNTING_RUN ||--o{ COUNT_LINE : "FK"
     PRODUCT ||--o{ COUNT_LINE : "FK"
     COUNT_LINE ||--o{ CONFLICT : "FK"
+    SHOP ||--o{ SHOP_USER : "FK"
 ```
 
 > ℹ️ `DECIMAL_P18S3` correspond à une colonne `DECIMAL(18,3)` dans PostgreSQL. La notation a été ajustée pour rester compatible avec Mermaid.
@@ -105,6 +117,7 @@ erDiagram
 | Table | Clés principales | Index / Contraintes notables |
 | --- | --- | --- |
 | `Shop` | `Id` | Index unique `UQ_Shop_LowerName` sur `LOWER(Name)`. |
+| `ShopUser` | `Id` | Index unique `UQ_ShopUser_Shop_LowerLogin` sur (`ShopId`, `LOWER(Login)`). |
 | `Product` | `Id` | Index uniques sur `Sku` et `Ean`. |
 | `Location` | `Id` | Index unique `UQ_Location_Shop_Code` (`ShopId`, `UPPER(Code)`). |
 | `InventorySession` | `Id` | — |
@@ -118,6 +131,7 @@ erDiagram
 
 - 5 boutiques (`CinéBoutique Paris`, `CinéBoutique Bordeaux`, `CinéBoutique Montpellier`, `CinéBoutique Marseille`, `CinéBoutique Bruxelles`).
 - 39 zones (`B1` à `B20`, `S1` à `S19`) rattachées par défaut à `CinéBoutique Paris`, créées via `InventoryDataSeeder` et/ou la migration `202404010002_SeedLocations` complétée par la migration `202410010001_AddShopTableAndLocationShopRelation`.
+- Comptes utilisateurs de démonstration injectés par `InventoryDataSeeder` : un administrateur par boutique (`login=administrateur`) et des comptes "Utilisateur n" (Paris : 5 comptes supplémentaires, autres boutiques : 4).
 - 5 utilisateurs de démonstration (`appsettings.Development.json`) authentifiés par PIN.
 - Aucun produit ni comptage n'est injecté par défaut : toute donnée métier supplémentaire doit être créée via l'API ou des scripts dédiés.
 
