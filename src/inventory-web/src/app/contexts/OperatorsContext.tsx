@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { DEFAULT_OPERATORS } from '../utils/operators'
 
 export interface OperatorDefinition {
@@ -111,7 +111,7 @@ export const OperatorsProvider = ({ children }: { children: ReactNode }) => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(operators))
   }, [operators])
 
-  const addOperator = (rawName: string) => {
+  const addOperator = useCallback((rawName: string) => {
     const name = sanitizeOperatorName(rawName)
     if (!name) {
       throw new Error('Le nom de l’opérateur est requis.')
@@ -124,9 +124,9 @@ export const OperatorsProvider = ({ children }: { children: ReactNode }) => {
     const nextOperator: OperatorDefinition = { id: createOperatorId(name), name }
     setOperators((prev) => [...prev, nextOperator])
     return nextOperator
-  }
+  }, [operators])
 
-  const updateOperator = (id: string, rawName: string) => {
+  const updateOperator = useCallback((id: string, rawName: string) => {
     const name = sanitizeOperatorName(rawName)
     if (!name) {
       throw new Error('Le nom de l’opérateur est requis.')
@@ -142,7 +142,7 @@ export const OperatorsProvider = ({ children }: { children: ReactNode }) => {
 
     setOperators((prev) => prev.map((operator) => (operator.id === id ? { ...operator, name } : operator)))
     return { id, name }
-  }
+  }, [operators])
 
   const value = useMemo<OperatorsContextValue>(
     () => ({
@@ -150,7 +150,7 @@ export const OperatorsProvider = ({ children }: { children: ReactNode }) => {
       addOperator,
       updateOperator,
     }),
-    [operators],
+    [addOperator, operators, updateOperator],
   )
 
   return <OperatorsContext.Provider value={value}>{children}</OperatorsContext.Provider>
