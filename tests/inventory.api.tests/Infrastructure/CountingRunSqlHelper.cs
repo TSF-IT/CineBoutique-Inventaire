@@ -10,6 +10,7 @@ internal static class CountingRunSqlHelper
 {
     private const string TableName = "CountingRun";
     private const string OperatorColumn = "OperatorDisplayName";
+    private const string OwnerColumn = "OwnerUserId";
 
     public static async Task<bool> HasOperatorDisplayNameAsync(
         IDbConnection connection,
@@ -35,12 +36,38 @@ internal static class CountingRunSqlHelper
             .ConfigureAwait(false);
     }
 
+    public static async Task<bool> HasOwnerUserIdAsync(
+        IDbConnection connection,
+        CancellationToken cancellationToken = default)
+    {
+        const string sql = @"SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE LOWER(table_name) = LOWER(@TableName)
+      AND LOWER(column_name) = LOWER(@ColumnName)
+      AND table_schema = ANY (current_schemas(TRUE))
+);";
+
+        return await connection.ExecuteScalarAsync<bool>(
+                new CommandDefinition(
+                    sql,
+                    new
+                    {
+                        TableName,
+                        ColumnName = OwnerColumn
+                    },
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+    }
+
     public static async Task InsertAsync(
         IDbConnection connection,
         CountingRunInsert insert,
         CancellationToken cancellationToken = default)
     {
         var hasOperatorColumn = await HasOperatorDisplayNameAsync(connection, cancellationToken)
+            .ConfigureAwait(false);
+        var hasOwnerColumn = await HasOwnerUserIdAsync(connection, cancellationToken)
             .ConfigureAwait(false);
 
         var columnList = "\"Id\", \"InventorySessionId\", \"LocationId\", \"StartedAtUtc\", \"CountType\"";
@@ -58,6 +85,12 @@ internal static class CountingRunSqlHelper
             valuesList += ", @OperatorDisplayName";
         }
 
+        if (hasOwnerColumn)
+        {
+            columnList += ", \"OwnerUserId\"";
+            valuesList += ", @OwnerUserId";
+        }
+
         var sql = $"INSERT INTO \"{TableName}\" ({columnList}) VALUES ({valuesList});";
 
         await connection.ExecuteAsync(
@@ -71,7 +104,8 @@ internal static class CountingRunSqlHelper
                         insert.StartedAtUtc,
                         insert.CompletedAtUtc,
                         insert.CountType,
-                        OperatorDisplayName = insert.OperatorDisplayName
+                        OperatorDisplayName = insert.OperatorDisplayName,
+                        insert.OwnerUserId
                     },
                     cancellationToken: cancellationToken))
             .ConfigureAwait(false);
@@ -85,4 +119,5 @@ internal readonly record struct CountingRunInsert(
     int CountType,
     DateTimeOffset StartedAtUtc,
     DateTimeOffset? CompletedAtUtc,
-    string? OperatorDisplayName);
+    string? OperatorDisplayName,
+    Guid? OwnerUserId = null);
