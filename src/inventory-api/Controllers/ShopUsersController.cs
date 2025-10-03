@@ -131,7 +131,7 @@ public sealed class ShopUsersController : ControllerBase
         CancellationToken cancellationToken)
     {
         var userName = EndpointUtilities.GetAuthenticatedUserName(HttpContext);
-        var actor = EndpointUtilities.FormatActorLabel(userName);
+        var actor = EndpointUtilities.FormatActorLabel(HttpContext);
         var timestamp = EndpointUtilities.FormatTimestamp(DateTimeOffset.UtcNow);
         var message = $"{actor} {actionDescription} Boutique {shopId}. Le {timestamp} UTC.";
 
