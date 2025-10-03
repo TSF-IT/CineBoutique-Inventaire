@@ -48,6 +48,7 @@ export const ShopProvider = ({ children }: { children: ReactNode }) => {
   return <ShopContext.Provider value={value}>{children}</ShopContext.Provider>
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useShop = () => {
   const context = useContext(ShopContext)
   if (!context) {
