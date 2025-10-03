@@ -4,7 +4,7 @@ Ce dépôt monorepo regroupe l'ensemble des composants nécessaires à la future
 
 ## Structure
 
-- `src/inventory-api` : projet ASP.NET Core minimal API exposant les endpoints d'inventaire et gérant l'authentification par PIN/JWT.
+- `src/inventory-api` : projet ASP.NET Core minimal API exposant les endpoints d'inventaire et gérant l'authentification JWT.
 - `src/inventory-infra` : infrastructure et accès aux données (FluentMigrator, Dapper, seeding de démonstration).
 - `src/inventory-domain` : bibliothèque pour les règles métier.
 - `src/inventory-shared` : contrats et DTO partagés.
@@ -44,11 +44,18 @@ Une fois les conteneurs démarrés :
 - API : http://localhost:8080/swagger
 - Front PWA : http://localhost:3000
 
-Les migrations FluentMigrator et le seed automatisé (zones `B1` à `B20` et `S1` à `S19`) sont exécutés automatiquement au démarrage lorsque `AppSettings:SeedOnStartup` vaut `true` (activé par défaut en environnement `Development`). Aucun produit, session ou comptage n'est désormais prérempli : seules les 39 zones standards et les 5 utilisateurs de démonstration définis dans la configuration sont créés.
+Les migrations FluentMigrator et le seed automatisé (zones `B1` à `B20` et `S1` à `S19`) sont exécutés automatiquement au démarrage lorsque `AppSettings:SeedOnStartup` vaut `true` (activé par défaut en environnement `Development`). Aucun produit, session ou comptage n'est désormais prérempli : seules les 39 zones standards, les 5 boutiques de démonstration et les comptes utilisateurs associés générés par le seeder sont créés.
+
+Les boutiques sont stockées dans la table `Shop` et leurs collaborateurs dans `ShopUser`. Chaque zone d'inventaire référence sa boutique via `Location.ShopId`, tandis que les runs créés par l'API conservent l'opérateur responsable dans `CountingRun.OwnerUserId`.
 
 ### Vérifications rapides du seed
 
 ```sql
+-- Vérifier les boutiques créées automatiquement
+SELECT "Name"
+FROM "Shop"
+ORDER BY "Name";
+
 -- Lister les zones créées automatiquement
 SELECT "Code", "Label"
 FROM "Location"
@@ -56,6 +63,10 @@ ORDER BY "Code";
 
 -- Vérifier que seules les zones sont présentes
 SELECT COUNT(*) AS "ZoneCount"
+FROM "Location";
+
+-- Vérifier l'association des zones à leur boutique
+SELECT DISTINCT "ShopId"
 FROM "Location";
 ```
 
@@ -147,7 +158,7 @@ La réponse contient l'identifiant du run clôturé ainsi que les agrégats util
 
 - Chaîne de connexion PostgreSQL : `ConnectionStrings:Default` (surchargée dans Docker via variable d'environnement `ConnectionStrings__Default`).
 - Paramètres généraux : `AppSettings` (ex. `SeedOnStartup`).
-- Authentification : `Authentication` (issuer, audience, secret JWT, durée, utilisateurs PIN).
+- Authentification : `Authentication` (issuer, audience, secret JWT, durée, paramètres de renouvellement).
 
 ## Scripts utiles
 
@@ -159,6 +170,12 @@ dotnet build
 ```
 
 Les migrations sont exécutées automatiquement au démarrage de l'API.
+
+### Tests automatisés
+
+```bash
+bash ./scripts/test-codex.sh
+```
 
 ### Client web (React + Vite + TailwindCSS)
 
@@ -195,7 +212,7 @@ Les icônes et logos ne sont plus versionnés afin de permettre l'export GitHub 
 Une fois connecté au conteneur PostgreSQL (`docker exec -it cineboutique-inventaire-db-1 psql -U postgres -d cineboutique`), les commandes suivantes permettent de valider l'état de la base :
 
 - `\dx` pour vérifier que les extensions `uuid-ossp` et `pgcrypto` sont bien installées.
-- `\dt` pour lister les tables créées par la migration (`Product`, `Location`, `InventorySession`, `CountingRun`, `CountLine`, `Conflict`, `Audit`).
+- `\dt` pour lister les tables créées par la migration (`Shop`, `ShopUser`, `Product`, `Location`, `InventorySession`, `CountingRun`, `CountLine`, `Conflict`, `Audit`, `audit_logs`).
 - `SELECT COUNT(*) FROM "Location";` afin de confirmer la présence des 39 emplacements (`B1` à `B20`, `S1` à `S19`).
 
 ## Gestion centralisée des packages NuGet
