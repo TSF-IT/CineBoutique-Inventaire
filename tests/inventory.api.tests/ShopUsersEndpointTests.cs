@@ -336,7 +336,8 @@ public sealed class ShopUsersEndpointTests : IAsyncLifetime
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
 
-        const string sql = "SELECT \"Id\", \"Message\", \"Actor\", \"Category\" FROM audit_logs ORDER BY \"Id\";";
+        const string sql =
+            "SELECT \"id\" AS \"Id\", \"message\" AS \"Message\", \"actor\" AS \"Actor\", \"category\" AS \"Category\" FROM audit_logs ORDER BY \"at\" ASC;";
         var rows = await connection.QueryAsync<AuditLogRow>(sql);
         return rows.ToList();
     }
