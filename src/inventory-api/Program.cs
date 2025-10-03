@@ -1,7 +1,6 @@
 // Modifications : simplification de Program.cs via des extensions et intégration du mapping conflits.
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System.Data;
-using CineBoutique.Inventory.Api.Auth;
 using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
@@ -96,8 +95,6 @@ builder.Services
 
 builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<ProcessorOptions>>().Value);
 
-builder.Services.Configure<AuthenticationOptions>(builder.Configuration.GetSection("Authentication"));
-
 // Infrastructure + seeder
 builder.Services.AddInventoryInfrastructure(builder.Configuration);
 builder.Services.AddTransient<InventoryDataSeeder>();
@@ -137,8 +134,6 @@ builder.Services.AddScoped<IAuditLogger, DbAuditLogger>();
 // BRIDGE : remplace l'impl du Domain par le pont vers DbAuditLogger
 builder.Services.AddScoped<CineBoutique.Inventory.Domain.Auditing.IAuditLogger, DomainAuditBridgeLogger>();
 
-builder.Services.AddSingleton<ITokenService, JwtTokenService>();
-builder.Services.AddScoped<IShopUserAuthenticationService, ShopUserAuthenticationService>();
 builder.Services.AddScoped<IShopService, ShopService>();
 builder.Services.AddScoped<IShopUserService, ShopUserService>();
 
