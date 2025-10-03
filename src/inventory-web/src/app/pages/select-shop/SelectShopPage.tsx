@@ -56,6 +56,12 @@ export const SelectShopPage = () => {
           return
         }
         console.error('[select-shop] échec du chargement des boutiques', error)
+        if (isHttpError(error) && error.status === 401) {
+          setShops([])
+          setStatus('idle')
+          setErrorMessage(null)
+          return
+        }
         setShops([])
         setStatus('error')
         if (error instanceof TypeError) {
@@ -63,12 +69,6 @@ export const SelectShopPage = () => {
           return
         }
         if (isHttpError(error)) {
-          if (error.status === 401) {
-            setErrorMessage(
-              'Accès non autorisé. Connectez-vous pour récupérer la liste des boutiques puis réessayez.',
-            )
-            return
-          }
           if (error.status === 403) {
             setErrorMessage(
               'Vous ne disposez pas des droits nécessaires pour consulter ces boutiques. Contactez votre administrateur.',
