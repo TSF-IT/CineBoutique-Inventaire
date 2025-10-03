@@ -4,6 +4,7 @@ using System.Data;
 using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
+using CineBoutique.Inventory.Api.Infrastructure.Middleware;
 using CineBoutique.Inventory.Api.Hosting;
 using CineBoutique.Inventory.Api.Services;
 using FluentValidation;
@@ -64,6 +65,8 @@ else
 }
 
 builder.Services.Configure<AppSettingsOptions>(builder.Configuration.GetSection("AppSettings"));
+
+builder.Services.AddHttpContextAccessor();
 
 var connectionString = builder.Configuration.GetConnectionString("Default");
 if (string.IsNullOrWhiteSpace(connectionString))
@@ -295,6 +298,8 @@ if (useSerilog)
 {
     app.UseSerilogRequestLogging();
 }
+
+app.UseMiddleware<SoftOperatorMiddleware>();
 
 app.Use(async (ctx, next) =>
 {

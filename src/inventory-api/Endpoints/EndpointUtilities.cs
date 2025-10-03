@@ -5,6 +5,7 @@ using System.Data.Common;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
+using CineBoutique.Inventory.Api.Infrastructure.Middleware;
 using Dapper;
 using Microsoft.AspNetCore.Http;
 
@@ -94,10 +95,96 @@ internal static class EndpointUtilities
         return string.IsNullOrWhiteSpace(name) ? null : name.Trim();
     }
 
+    public static SoftOperatorMiddleware.OperatorContext? GetOperatorContext(HttpContext context)
+    {
+        if (context is null)
+        {
+            return null;
+        }
+
+        if (!context.Items.TryGetValue(SoftOperatorMiddleware.OperatorContextItemKey, out var value))
+        {
+            return null;
+        }
+
+        return value as SoftOperatorMiddleware.OperatorContext;
+    }
+
+    public static string? GetAuditActor(HttpContext context)
+    {
+        var operatorContext = GetOperatorContext(context);
+        var userName = GetAuthenticatedUserName(context);
+
+        return ComposeAuditActor(userName, operatorContext);
+    }
+
+    public static string FormatActorLabel(HttpContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        var operatorContext = GetOperatorContext(context);
+        var userName = GetAuthenticatedUserName(context);
+
+        return FormatActorLabel(userName, operatorContext);
+    }
+
     public static string FormatActorLabel(string? userName) =>
-        string.IsNullOrWhiteSpace(userName)
+        FormatActorLabel(userName, operatorContext: null);
+
+    public static string FormatActorLabel(string? userName, SoftOperatorMiddleware.OperatorContext? operatorContext)
+    {
+        if (operatorContext is not null)
+        {
+            var displayName = string.IsNullOrWhiteSpace(operatorContext.OperatorName)
+                ? operatorContext.OperatorId.ToString("D")
+                : operatorContext.OperatorName.Trim();
+
+            return $"L'opérateur {displayName}";
+        }
+
+        return string.IsNullOrWhiteSpace(userName)
             ? "Un utilisateur non authentifié"
             : $"L'utilisateur {userName.Trim()}";
+    }
+
+    internal static string? ComposeAuditActor(string? userName, SoftOperatorMiddleware.OperatorContext? operatorContext)
+    {
+        var hasUser = !string.IsNullOrWhiteSpace(userName);
+        var operatorActor = operatorContext is null
+            ? null
+            : BuildOperatorActorLabel(operatorContext);
+
+        if (!hasUser && string.IsNullOrWhiteSpace(operatorActor))
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(operatorActor) && hasUser)
+        {
+            return $"{userName!.Trim()} | {operatorActor}";
+        }
+
+        return !string.IsNullOrWhiteSpace(operatorActor)
+            ? operatorActor
+            : userName?.Trim();
+    }
+
+    private static string? BuildOperatorActorLabel(SoftOperatorMiddleware.OperatorContext context)
+    {
+        var operatorLabel = context.OperatorId.ToString("D");
+
+        if (!string.IsNullOrWhiteSpace(context.OperatorName))
+        {
+            operatorLabel = $"{context.OperatorName.Trim()} ({context.OperatorId:D})";
+        }
+
+        if (!string.IsNullOrWhiteSpace(context.SessionId))
+        {
+            operatorLabel = $"{operatorLabel} session:{context.SessionId.Trim()}";
+        }
+
+        return $"operator:{operatorLabel}";
+    }
 
     public static string FormatTimestamp(DateTimeOffset timestamp) =>
         timestamp.ToUniversalTime().ToString("dd/MM/yy HH:mm", CultureInfo.InvariantCulture);

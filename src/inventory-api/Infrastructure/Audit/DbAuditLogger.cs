@@ -1,9 +1,11 @@
 using System;
 using System.Threading;
 using Dapper;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using CineBoutique.Inventory.Api.Endpoints;
 
 namespace CineBoutique.Inventory.Api.Infrastructure.Audit;
 
@@ -11,11 +13,13 @@ public sealed class DbAuditLogger : IAuditLogger
 {
     private readonly string _connectionString;
     private readonly ILogger<DbAuditLogger> _logger;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public DbAuditLogger(IConfiguration configuration, ILogger<DbAuditLogger> logger)
+    public DbAuditLogger(IConfiguration configuration, ILogger<DbAuditLogger> logger, IHttpContextAccessor httpContextAccessor)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _httpContextAccessor = httpContextAccessor ?? throw new ArgumentNullException(nameof(httpContextAccessor));
 
         var connectionString = configuration.GetConnectionString("Default");
         if (string.IsNullOrWhiteSpace(connectionString))
@@ -36,7 +40,9 @@ public sealed class DbAuditLogger : IAuditLogger
                 return;
             }
 
-            var normalizedActor = string.IsNullOrWhiteSpace(actor) ? "anonymous" : actor.Trim();
+            var operatorContext = EndpointUtilities.GetOperatorContext(_httpContextAccessor.HttpContext);
+            var composedActor = EndpointUtilities.ComposeAuditActor(actor, operatorContext);
+            var normalizedActor = string.IsNullOrWhiteSpace(composedActor) ? "anonymous" : composedActor!;
             var trimmedCategory = string.IsNullOrWhiteSpace(category) ? null : category.Trim();
 
             await using var connection = new NpgsqlConnection(_connectionString);
