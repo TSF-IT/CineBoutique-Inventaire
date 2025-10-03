@@ -162,22 +162,22 @@ public sealed class CountingRunOwnershipTests : IAsyncLifetime
 
         const string cleanupSql =
             """
-DO $do$
-BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Audit') THEN
-        EXECUTE 'TRUNCATE TABLE "Audit" RESTART IDENTITY CASCADE;';
-    END IF;
-END $do$;
+            DO $do$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Audit') THEN
+                    EXECUTE 'TRUNCATE TABLE "Audit" RESTART IDENTITY CASCADE;';
+                END IF;
+            END $do$;
 
-TRUNCATE TABLE "Conflict" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE "CountLine" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE "CountingRun" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE "InventorySession" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE "Location" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE "ShopUser" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE "Shop" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE "Product" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
+            TRUNCATE TABLE "Conflict" RESTART IDENTITY CASCADE;
+            TRUNCATE TABLE "CountLine" RESTART IDENTITY CASCADE;
+            TRUNCATE TABLE "CountingRun" RESTART IDENTITY CASCADE;
+            TRUNCATE TABLE "InventorySession" RESTART IDENTITY CASCADE;
+            TRUNCATE TABLE "Location" RESTART IDENTITY CASCADE;
+            TRUNCATE TABLE "ShopUser" RESTART IDENTITY CASCADE;
+            TRUNCATE TABLE "Shop" RESTART IDENTITY CASCADE;
+            TRUNCATE TABLE "Product" RESTART IDENTITY CASCADE;
+            TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
             """;
 
         await connection.ExecuteAsync(cleanupSql);
