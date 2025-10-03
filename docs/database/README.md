@@ -6,6 +6,7 @@ Ce document synthétise la structure actuelle de la base PostgreSQL gérée par 
 
 ```mermaid
 erDiagram
+    SHOP ||--o{ LOCATION : "possède"
     LOCATION ||--o{ COUNTING_RUN : "accueille"
     INVENTORY_SESSION ||--o{ COUNTING_RUN : "planifie"
     COUNTING_RUN ||--o{ COUNT_LINE : "enregistre"
@@ -13,7 +14,8 @@ erDiagram
     COUNT_LINE ||--o{ CONFLICT : "peut générer"
 ```
 
-- **Location** : zone physique de stockage (codes `B1` à `B20`, `S1` à `S19`).
+- **Shop** : boutique physique (Paris, Bordeaux, Montpellier, Marseille, Bruxelles).
+- **Location** : zone physique de stockage (codes `B1` à `B20`, `S1` à `S19`) rattachée à une boutique.
 - **InventorySession** : campagne d'inventaire regroupant plusieurs comptages.
 - **CountingRun** : passage de comptage effectué sur une zone donnée.
 - **CountLine** : quantité relevée pour un produit dans un run.
@@ -25,6 +27,10 @@ erDiagram
 
 ```mermaid
 erDiagram
+    SHOP {
+        GUID Id PK
+        STRING(256) Name
+    }
     PRODUCT {
         GUID Id PK
         STRING(32) Sku
@@ -36,6 +42,7 @@ erDiagram
         GUID Id PK
         STRING(32) Code
         STRING(128) Label
+        GUID ShopId FK
     }
     INVENTORY_SESSION {
         GUID Id PK
@@ -83,6 +90,7 @@ erDiagram
         STRING(200) Category
     }
 
+    SHOP ||--o{ LOCATION : "FK"
     INVENTORY_SESSION ||--o{ COUNTING_RUN : "FK"
     LOCATION ||--o{ COUNTING_RUN : "FK"
     COUNTING_RUN ||--o{ COUNT_LINE : "FK"
@@ -96,8 +104,9 @@ erDiagram
 
 | Table | Clés principales | Index / Contraintes notables |
 | --- | --- | --- |
+| `Shop` | `Id` | Index unique `UQ_Shop_LowerName` sur `LOWER(Name)`. |
 | `Product` | `Id` | Index uniques sur `Sku` et `Ean`. |
-| `Location` | `Id` | Index unique `IX_Location_Code`. |
+| `Location` | `Id` | Index unique `UQ_Location_Shop_Code` (`ShopId`, `UPPER(Code)`). |
 | `InventorySession` | `Id` | — |
 | `CountingRun` | `Id` | Index partiel `IX_CountingRun_Location_CountType_Open`, index unique `ux_countingrun_active_triplet`. |
 | `CountLine` | `Id` | FK vers `CountingRun` et `Product`. |
@@ -107,7 +116,8 @@ erDiagram
 
 ## Seed disponible
 
-- 39 zones (`B1` à `B20`, `S1` à `S19`) créées via `InventoryDataSeeder` et/ou la migration `202404010002_SeedLocations`.
+- 5 boutiques (`CinéBoutique Paris`, `CinéBoutique Bordeaux`, `CinéBoutique Montpellier`, `CinéBoutique Marseille`, `CinéBoutique Bruxelles`).
+- 39 zones (`B1` à `B20`, `S1` à `S19`) rattachées par défaut à `CinéBoutique Paris`, créées via `InventoryDataSeeder` et/ou la migration `202404010002_SeedLocations` complétée par la migration `202410010001_AddShopTableAndLocationShopRelation`.
 - 5 utilisateurs de démonstration (`appsettings.Development.json`) authentifiés par PIN.
 - Aucun produit ni comptage n'est injecté par défaut : toute donnée métier supplémentaire doit être créée via l'API ou des scripts dédiés.
 
