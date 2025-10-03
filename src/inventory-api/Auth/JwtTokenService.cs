@@ -9,6 +9,11 @@ namespace CineBoutique.Inventory.Api.Auth;
 
 public sealed class JwtTokenService : ITokenService
 {
+    static JwtTokenService()
+    {
+        JwtSecurityTokenHandler.DefaultOutboundClaimTypeMap.Clear();
+    }
+
     private readonly AuthenticationOptions _authenticationOptions;
     private readonly JwtSecurityTokenHandler _tokenHandler = new();
 
@@ -18,9 +23,11 @@ public sealed class JwtTokenService : ITokenService
         _authenticationOptions = authenticationOptions.Value;
     }
 
-    public TokenResult GenerateToken(string userName)
+    public TokenResult GenerateToken(AuthenticatedShopUser user)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(userName);
+        ArgumentNullException.ThrowIfNull(user);
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(user.DisplayName);
 
         if (string.IsNullOrWhiteSpace(_authenticationOptions.Secret))
         {
@@ -34,7 +41,11 @@ public sealed class JwtTokenService : ITokenService
 
         var claims = new List<Claim>
         {
-            new(ClaimTypes.Name, userName)
+            new(ClaimTypes.NameIdentifier, user.UserId.ToString()),
+            new(ClaimTypes.Name, user.DisplayName),
+            new(AuthClaimTypes.ShopId, user.ShopId.ToString()),
+            new(AuthClaimTypes.Login, user.Login),
+            new(AuthClaimTypes.IsAdmin, user.IsAdmin ? "true" : "false")
         };
 
         var descriptor = new SecurityTokenDescriptor
