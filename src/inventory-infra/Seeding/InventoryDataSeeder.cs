@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Infrastructure.Database;
@@ -21,7 +22,11 @@ RETURNING ""Id"";";
 
     private const string InsertLocationSql = @"INSERT INTO ""Location"" (""Code"", ""Label"", ""ShopId"")
 SELECT @Code, @Label, @ShopId
-WHERE NOT EXISTS (SELECT 1 FROM ""Location"" WHERE ""Code"" = @Code AND ""ShopId"" = @ShopId);";
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM ""Location""
+    WHERE ""ShopId"" = @ShopId
+      AND UPPER(""Code"") = UPPER(@Code));";
 
     private static readonly IReadOnlyList<ShopSeed> ShopSeeds = BuildShopSeeds();
     private static readonly IReadOnlyList<LocationSeed> LocationSeeds = BuildLocationSeeds();
@@ -43,22 +48,38 @@ WHERE NOT EXISTS (SELECT 1 FROM ""Location"" WHERE ""Code"" = @Code AND ""ShopId
 
         try
         {
-            var insertedShopCount = await EnsureShopsAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
-            var parisShopId = await GetShopIdAsync(connection, transaction, DefaultShopName, cancellationToken)
+            var insertedShopCount = await EnsureShopsAsync(connection, transaction, cancellationToken)
                 .ConfigureAwait(false);
+
+            var shopIds = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var shopSeed in ShopSeeds)
+            {
+                var shopId = await GetShopIdAsync(connection, transaction, shopSeed.Name, cancellationToken)
+                    .ConfigureAwait(false);
+                shopIds[shopSeed.Name] = shopId;
+            }
 
             var insertedLocationCount = 0;
 
             foreach (var seed in LocationSeeds)
             {
+                if (!shopIds.TryGetValue(seed.ShopName, out var shopId))
+                {
+                    continue;
+                }
+
+                var code = seed.Code.ToUpperInvariant();
+                var label = seed.Label ?? $"Zone {code}";
+
                 var affectedRows = await connection.ExecuteAsync(
                         new CommandDefinition(
                             InsertLocationSql,
                             new
                             {
-                                seed.Code,
-                                seed.Label,
-                                ShopId = parisShopId
+                                Code = code,
+                                Label = label,
+                                ShopId = shopId
                             },
                             transaction,
                             cancellationToken: cancellationToken))
@@ -164,18 +185,29 @@ WHERE NOT EXISTS (SELECT 1 FROM ""Location"" WHERE ""Code"" = @Code AND ""ShopId
 
     private static IReadOnlyList<LocationSeed> BuildLocationSeeds()
     {
-        var seeds = new List<LocationSeed>(39);
+        var seeds = new List<LocationSeed>(39 + (ShopSeeds.Count - 1) * 5);
 
         for (var index = 1; index <= 20; index++)
         {
             var code = $"B{index}";
-            seeds.Add(new LocationSeed(code, $"Zone {code}"));
+            seeds.Add(new LocationSeed(DefaultShopName, code, $"Zone {code}"));
         }
 
         for (var index = 1; index <= 19; index++)
         {
             var code = $"S{index}";
-            seeds.Add(new LocationSeed(code, $"Zone {code}"));
+            seeds.Add(new LocationSeed(DefaultShopName, code, $"Zone {code}"));
+        }
+
+        var demoCodes = new[] { "A", "B", "C", "D", "E" };
+
+        foreach (var shopSeed in ShopSeeds.Where(seed => !string.Equals(seed.Name, DefaultShopName, StringComparison.OrdinalIgnoreCase)))
+        {
+            foreach (var code in demoCodes)
+            {
+                var normalizedCode = code.ToUpperInvariant();
+                seeds.Add(new LocationSeed(shopSeed.Name, normalizedCode, $"Zone {normalizedCode}"));
+            }
         }
 
         return seeds;
@@ -183,5 +215,5 @@ WHERE NOT EXISTS (SELECT 1 FROM ""Location"" WHERE ""Code"" = @Code AND ""ShopId
 
     private sealed record ShopSeed(string Name);
 
-    private sealed record LocationSeed(string Code, string Label);
+    private sealed record LocationSeed(string ShopName, string Code, string Label);
 }
