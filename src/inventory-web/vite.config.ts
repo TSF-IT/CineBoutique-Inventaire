@@ -34,5 +34,6 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './setupTests.ts',
     exclude: [...configDefaults.exclude, 'tests/e2e/**'],
+    threads: false,
   },
 })

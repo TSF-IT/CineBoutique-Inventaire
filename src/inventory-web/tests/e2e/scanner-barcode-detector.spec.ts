@@ -1,5 +1,10 @@
 import { test, expect } from '@playwright/test'
 
+const testShop = {
+  id: '00000000-0000-4000-8000-0000000000f1',
+  name: 'Cinéma test',
+}
+
 const mockLocations = [
   {
     id: '11111111-1111-4111-8111-111111111111',
@@ -17,6 +22,10 @@ const simulatedEan = '5901234123457'
 
 test.describe('Scanner avec BarcodeDetector', () => {
   test.beforeEach(async ({ page }) => {
+    await page.addInitScript(({ key, value }) => {
+      window.localStorage.setItem(key, value)
+    }, { key: 'cb.shop', value: JSON.stringify(testShop) })
+
     await page.addInitScript(({ ean }) => {
       Object.defineProperty(window, 'isSecureContext', {
         configurable: true,
