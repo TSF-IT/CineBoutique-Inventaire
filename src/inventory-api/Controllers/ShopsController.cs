@@ -3,7 +3,6 @@ using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Services;
 using CineBoutique.Inventory.Api.Services.Exceptions;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -11,7 +10,6 @@ namespace CineBoutique.Inventory.Api.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize]
 public sealed class ShopsController : ControllerBase
 {
     private readonly IShopService _shopService;
