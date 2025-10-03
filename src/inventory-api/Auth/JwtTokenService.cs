@@ -9,6 +9,11 @@ namespace CineBoutique.Inventory.Api.Auth;
 
 public sealed class JwtTokenService : ITokenService
 {
+    static JwtTokenService()
+    {
+        JwtSecurityTokenHandler.DefaultOutboundClaimTypeMap.Clear();
+    }
+
     private readonly AuthenticationOptions _authenticationOptions;
     private readonly JwtSecurityTokenHandler _tokenHandler = new();
 
