@@ -257,6 +257,7 @@ TRUNCATE TABLE "CountLine" RESTART IDENTITY CASCADE;
 TRUNCATE TABLE "CountingRun" RESTART IDENTITY CASCADE;
 TRUNCATE TABLE "InventorySession" RESTART IDENTITY CASCADE;
 TRUNCATE TABLE "Location" RESTART IDENTITY CASCADE;
+TRUNCATE TABLE "Shop" RESTART IDENTITY CASCADE;
 TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
 """;
 
@@ -270,8 +271,11 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
 
-        const string insertLocationSql = "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\") VALUES (@Id, @Code, @Label);";
-        await connection.ExecuteAsync(insertLocationSql, new { Id = id, Code = code, Label = label });
+        var shopId = await EnsureDefaultShopAsync(connection);
+
+        const string insertLocationSql =
+            "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\", \"ShopId\") VALUES (@Id, @Code, @Label, @ShopId);";
+        await connection.ExecuteAsync(insertLocationSql, new { Id = id, Code = code, Label = label, ShopId = shopId });
     }
 
     private async Task<(Guid LocationId, Guid RunId)> SeedDataAsync(int countType)
@@ -281,15 +285,17 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
 
+        var shopId = await EnsureDefaultShopAsync(connection);
         var busyLocationId = Guid.NewGuid();
         var freeLocationId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
         var runId = Guid.NewGuid();
         var startedAt = DateTimeOffset.UtcNow.AddMinutes(-7);
 
-        const string insertLocationSql = "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\") VALUES (@Id, @Code, @Label);";
-        await connection.ExecuteAsync(insertLocationSql, new { Id = busyLocationId, Code = "S1", Label = "Zone S1" });
-        await connection.ExecuteAsync(insertLocationSql, new { Id = freeLocationId, Code = "S2", Label = "Zone S2" });
+        const string insertLocationSql =
+            "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\", \"ShopId\") VALUES (@Id, @Code, @Label, @ShopId);";
+        await connection.ExecuteAsync(insertLocationSql, new { Id = busyLocationId, Code = "S1", Label = "Zone S1", ShopId = shopId });
+        await connection.ExecuteAsync(insertLocationSql, new { Id = freeLocationId, Code = "S2", Label = "Zone S2", ShopId = shopId });
 
         const string insertSessionSql = "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc);";
         await connection.ExecuteAsync(insertSessionSql, new { Id = sessionId, Name = "Session principale", StartedAtUtc = startedAt });
@@ -319,6 +325,17 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
                 connection.Open();
                 break;
         }
+    }
+
+    private static async Task<Guid> EnsureDefaultShopAsync(IDbConnection connection)
+    {
+        const string ensureShopSql =
+            "INSERT INTO \"Shop\" (\"Name\") VALUES (@Name) ON CONFLICT DO NOTHING;";
+        const string selectShopSql =
+            "SELECT \"Id\" FROM \"Shop\" WHERE LOWER(\"Name\") = LOWER(@Name) LIMIT 1;";
+
+        await connection.ExecuteAsync(ensureShopSql, new { Name = "CinéBoutique Paris" });
+        return await connection.ExecuteScalarAsync<Guid>(selectShopSql, new { Name = "CinéBoutique Paris" });
     }
 
     private async Task<bool> HasOperatorDisplayNameColumnAsync()
