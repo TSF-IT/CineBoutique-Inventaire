@@ -17,10 +17,10 @@ erDiagram
 ```
 
 - **Shop** : boutique physique (Paris, Bordeaux, Montpellier, Marseille, Bruxelles).
-- **Location** : zone physique de stockage (codes `B1` à `B20`, `S1` à `S19`) rattachée à une boutique.
+- **Location** : zone physique de stockage (codes `B1` à `B20`, `S1` à `S19`) rattachée à une boutique via `Location.ShopId`.
 - **ShopUser** : compte utilisateur rattaché à une boutique pour l'usage en magasin.
 - **InventorySession** : campagne d'inventaire regroupant plusieurs comptages.
-- **CountingRun** : passage de comptage effectué sur une zone donnée.
+- **CountingRun** : passage de comptage effectué sur une zone donnée et attribué à un utilisateur via `CountingRun.OwnerUserId`.
 - **CountLine** : quantité relevée pour un produit dans un run.
 - **Product** : référence commerciale identifiée par SKU/EAN.
 - **Conflict** : différentiel entre deux comptages d'une même zone.
@@ -135,7 +135,6 @@ erDiagram
 - 5 boutiques (`CinéBoutique Paris`, `CinéBoutique Bordeaux`, `CinéBoutique Montpellier`, `CinéBoutique Marseille`, `CinéBoutique Bruxelles`).
 - 39 zones (`B1` à `B20`, `S1` à `S19`) rattachées par défaut à `CinéBoutique Paris`, créées via `InventoryDataSeeder` et/ou la migration `202404010002_SeedLocations` complétée par la migration `202410010001_AddShopTableAndLocationShopRelation`.
 - Comptes utilisateurs de démonstration injectés par `InventoryDataSeeder` : un administrateur par boutique (`login=administrateur`) et des comptes "Utilisateur n" (Paris : 5 comptes supplémentaires, autres boutiques : 4).
-- 5 utilisateurs de démonstration (`appsettings.Development.json`) authentifiés par PIN.
 - Aucun produit ni comptage n'est injecté par défaut : toute donnée métier supplémentaire doit être créée via l'API ou des scripts dédiés.
 
 Ces représentations visuelles peuvent être rendues directement dans GitHub grâce au support de Mermaid.
