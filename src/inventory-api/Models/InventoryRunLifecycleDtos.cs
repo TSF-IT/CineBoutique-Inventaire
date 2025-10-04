@@ -2,11 +2,18 @@ using System;
 
 namespace CineBoutique.Inventory.Api.Models;
 
-public sealed class StartInventoryRunRequest
-{
-    public short CountType { get; set; }
+public sealed record StartRunRequest(Guid ShopId, Guid OwnerUserId, short CountType);
 
-    public string? Operator { get; set; }
+[Obsolete("Use StartRunRequest instead.")]
+public sealed record StartInventoryRunRequest(Guid ShopId, Guid OwnerUserId, short CountType)
+    : StartRunRequest(ShopId, OwnerUserId, CountType)
+{
+    [Obsolete("Operator has been replaced by OwnerUserId.")]
+    public string? Operator
+    {
+        get => null;
+        init { }
+    }
 }
 
 public sealed class StartInventoryRunResponse
