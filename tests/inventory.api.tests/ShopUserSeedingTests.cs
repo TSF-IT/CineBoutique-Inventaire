@@ -176,7 +176,7 @@ public sealed class ShopUserSeedingTests : IAsyncLifetime
                 var admin = Assert.Single(activeUsers.Where(user => user.IsAdmin));
                 Assert.Equal("Administrateur", admin.DisplayName);
 
-                Assert.Empty(users.Where(user => user.Disabled));
+                Assert.DoesNotContain(users, user => user.Disabled);
             }
         }
     }
