@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace CineBoutique.Inventory.Api.Models;
 
@@ -10,26 +11,39 @@ public sealed record CompleteRunRequest(
     IReadOnlyList<CompleteRunItemRequest>? Items);
 
 [Obsolete("Use CompleteRunRequest instead.")]
-public sealed record CompleteInventoryRunRequest(
-        Guid? RunId,
-        Guid OwnerUserId,
-        short CountType,
-        IReadOnlyList<CompleteRunItemRequest>? Items)
-    : CompleteRunRequest(RunId, OwnerUserId, CountType, Items)
+public sealed record CompleteInventoryRunRequest
 {
+    public Guid? RunId { get; init; }
+
+    public Guid OwnerUserId { get; init; }
+
+    public short CountType { get; init; }
+
+    public IReadOnlyList<CompleteInventoryRunItemRequest>? Items { get; init; }
+
     [Obsolete("Operator has been replaced by OwnerUserId.")]
-    public string? Operator
+    public string? Operator { get; init; }
+
+    public CompleteRunRequest ToCompleteRunRequest()
     {
-        get => null;
-        init { }
+        IReadOnlyList<CompleteRunItemRequest>? normalizedItems = Items?.Select(item => item.ToCompleteRunItemRequest()).ToArray();
+        return new CompleteRunRequest(RunId, OwnerUserId, CountType, normalizedItems);
     }
 }
 
 public sealed record CompleteRunItemRequest(string? Ean, decimal Quantity, bool IsManual);
 
 [Obsolete("Use CompleteRunItemRequest instead.")]
-public sealed record CompleteInventoryRunItemRequest(string? Ean, decimal Quantity, bool IsManual)
-    : CompleteRunItemRequest(Ean, Quantity, IsManual);
+public sealed record CompleteInventoryRunItemRequest
+{
+    public string? Ean { get; init; }
+
+    public decimal Quantity { get; init; }
+
+    public bool IsManual { get; init; }
+
+    public CompleteRunItemRequest ToCompleteRunItemRequest() => new(Ean, Quantity, IsManual);
+}
 
 public sealed class CompleteInventoryRunResponse
 {
