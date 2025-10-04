@@ -90,10 +90,13 @@ const {
     conflictZones: [],
   }
   return {
-    fetchLocationsMock: vi.fn(async (): Promise<Location[]> => [
-      { ...reserveLocation },
-      { ...busyLocation },
-    ]),
+    fetchLocationsMock: vi.fn(async ({ shopId }: { shopId: string }): Promise<Location[]> => {
+      expect(shopId).toBeTruthy()
+      return [
+        { ...reserveLocation },
+        { ...busyLocation },
+      ]
+    }),
     fetchProductMock: vi.fn(() => Promise.resolve({ ean: '123', name: 'Popcorn caramel' })),
     fetchInventorySummaryMock: vi.fn(async (): Promise<InventorySummary> => ({ ...emptySummary })),
     completeInventoryRunMock: vi.fn<(locationId: string, payload: CompleteInventoryRunPayload) => Promise<{
@@ -130,6 +133,8 @@ const {
     reserveLocation,
   }
 })
+
+const testShop = { id: 'shop-123', name: 'Boutique test' } as const
 
 vi.mock('../api/inventoryApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/inventoryApi')>()
@@ -202,38 +207,42 @@ const renderInventoryRoutes = (initialEntry: string, options?: RenderInventoryOp
 
 describe('Workflow d\'inventaire', () => {
   beforeEach(() => {
+    localStorage.setItem('cb.shop', JSON.stringify(testShop))
     fetchLocationsMock.mockReset()
-    fetchLocationsMock.mockImplementation(async (): Promise<Location[]> => [
-      { ...reserveLocation },
-      {
-        id: 'zone-2',
-        code: 'SAL1',
-        label: 'Salle 1',
-        isBusy: true,
-        busyBy: 'paul.dupont',
-        activeCountType: 1,
-        activeRunId: 'run-1',
-        activeStartedAtUtc: new Date(),
-        countStatuses: [
-          {
-            countType: 1,
-            status: 'in_progress',
-            runId: 'run-1',
-            operatorDisplayName: 'paul.dupont',
-            startedAtUtc: new Date(),
-            completedAtUtc: null,
-          },
-          {
-            countType: 2,
-            status: 'not_started',
-            runId: null,
-            operatorDisplayName: null,
-            startedAtUtc: null,
-            completedAtUtc: null,
-          },
-        ],
-      },
-    ])
+    fetchLocationsMock.mockImplementation(async ({ shopId }: { shopId: string }): Promise<Location[]> => {
+      expect(shopId).toBeTruthy()
+      return [
+        { ...reserveLocation },
+        {
+          id: 'zone-2',
+          code: 'SAL1',
+          label: 'Salle 1',
+          isBusy: true,
+          busyBy: 'paul.dupont',
+          activeCountType: 1,
+          activeRunId: 'run-1',
+          activeStartedAtUtc: new Date(),
+          countStatuses: [
+            {
+              countType: 1,
+              status: 'in_progress',
+              runId: 'run-1',
+              operatorDisplayName: 'paul.dupont',
+              startedAtUtc: new Date(),
+              completedAtUtc: null,
+            },
+            {
+              countType: 2,
+              status: 'not_started',
+              runId: null,
+              operatorDisplayName: null,
+              startedAtUtc: null,
+              completedAtUtc: null,
+            },
+          ],
+        },
+      ]
+    })
     fetchProductMock.mockReset()
     fetchProductMock.mockImplementation(() => Promise.resolve({ ean: '123', name: 'Popcorn caramel' }))
     fetchInventorySummaryMock.mockReset()
@@ -278,7 +287,7 @@ describe('Workflow d\'inventaire', () => {
     expect(locationPages).not.toHaveLength(0)
 
     await waitFor(() => expect(fetchLocationsMock).toHaveBeenCalledTimes(1))
-    expect(fetchLocationsMock.mock.calls[0]).toHaveLength(0)
+    expect(fetchLocationsMock.mock.calls[0]?.[0]).toMatchObject({ shopId: testShop.id })
 
     await waitFor(() => expect(fetchInventorySummaryMock).toHaveBeenCalledTimes(1))
 

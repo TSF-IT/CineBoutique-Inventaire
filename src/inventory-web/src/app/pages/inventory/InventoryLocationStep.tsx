@@ -12,6 +12,7 @@ import { CountType } from '../../types/inventory'
 import type { Location, LocationCountStatus } from '../../types/inventory'
 import { getLocationDisplayName, isLocationLabelRedundant } from '../../utils/locationDisplay'
 import type { HttpError } from '@/lib/api/http'
+import { useShop } from '@/state/ShopContext'
 
 const DEV_API_UNREACHABLE_HINT =
   "Impossible de joindre l’API : vérifie que le backend tourne (curl http://localhost:8080/healthz) ou que le proxy Vite est actif."
@@ -84,6 +85,7 @@ const DISPLAYED_COUNT_TYPES: CountType[] = [CountType.Count1, CountType.Count2]
 export const InventoryLocationStep = () => {
   const navigate = useNavigate()
   const { selectedUser, location, sessionId, setLocation, setSessionId, clearSession, setCountType } = useInventory()
+  const { shop } = useShop()
   const [search, setSearch] = useState('')
   const [locations, setLocations] = useState<Location[]>([])
   const [loading, setLoading] = useState(true)
@@ -96,7 +98,10 @@ export const InventoryLocationStep = () => {
       setLoading(true)
       setError(null)
       try {
-        const data = await fetchLocations()
+        if (!shop?.id) {
+          throw new Error('Aucune boutique sélectionnée.')
+        }
+        const data = await fetchLocations({ shopId: shop.id })
         if (!isCancelled()) {
           setLocations(Array.isArray(data) ? data : [])
         }
@@ -117,13 +122,21 @@ export const InventoryLocationStep = () => {
         }
       }
     },
-    [],
+    [shop?.id],
   )
 
   const loadConflicts = useCallback(
     async (options?: { isCancelled?: () => boolean }) => {
       const isCancelled = options?.isCancelled ?? (() => false)
       try {
+        if (!shop?.id) {
+          if (!isCancelled()) {
+            setConflictLookup(new Map())
+            setConflictsLoaded(false)
+          }
+          return
+        }
+
         const summary = await fetchInventorySummary()
         if (isCancelled()) {
           return
@@ -154,7 +167,7 @@ export const InventoryLocationStep = () => {
         setConflictsLoaded(false)
       }
     },
-    [],
+    [shop?.id],
   )
 
   useEffect(() => {
