@@ -1300,17 +1300,18 @@ WHERE ""Id"" = @RunId;";
             var columnsState = await DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
             var runOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
 
-            var selectRunSql = $@"SELECT
-    cr.\"InventorySessionId\" AS \"InventorySessionId\",
-    l.\"ShopId\"              AS \"ShopId\",
-    {(columnsState.HasOwnerUserId ? "cr.\\\"OwnerUserId\\\"" : "NULL::uuid")} AS \"OwnerUserId\",
-    {runOperatorSql.Projection} AS \"OperatorDisplayName\""
-FROM \"\"CountingRun\"\" cr
-JOIN \"\"Location\"\" l ON l.\"Id\" = cr.\"LocationId\"
+            var selectRunSql = $@"
+SELECT
+    cr.""InventorySessionId"" AS ""InventorySessionId"",
+    l.""ShopId""              AS ""ShopId"",
+    {(columnsState.HasOwnerUserId ? "cr.\"OwnerUserId\"" : "NULL::uuid")} AS ""OwnerUserId"",
+    {runOperatorSql.Projection} AS ""OperatorDisplayName""
+FROM ""CountingRun"" cr
+JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
 {AppendJoinClause(runOperatorSql.JoinClause)}
-WHERE cr.\"Id\" = @RunId
-  AND cr.\"LocationId\" = @LocationId
-  AND cr.\"CompletedAtUtc\" IS NULL
+WHERE cr.""Id"" = @RunId
+  AND cr.""LocationId"" = @LocationId
+  AND cr.""CompletedAtUtc"" IS NULL
 LIMIT 1;";
 
             var run = await connection
