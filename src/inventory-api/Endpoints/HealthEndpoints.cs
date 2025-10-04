@@ -1,13 +1,16 @@
 // Modifications : déplacement des endpoints de santé (/health, /ready, /healthz) et du writer JSON dédié.
 using System;
+using System.Data;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using System.Threading;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Dapper;
 
 namespace CineBoutique.Inventory.Api.Endpoints;
 
@@ -16,6 +19,25 @@ internal static class HealthEndpoints
     public static IEndpointRouteBuilder MapHealthEndpoints(this IEndpointRouteBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
+
+        app.MapGet("/api/health", async (IDbConnection connection, CancellationToken cancellationToken) =>
+        {
+            var usersCount = await connection.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COUNT(*) FROM \"ShopUser\"",
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            var runsWithoutOwner = await connection.ExecuteScalarAsync<long>(new CommandDefinition(
+                "SELECT COUNT(*) FROM \"CountingRun\" WHERE \"OwnerUserId\" IS NULL",
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            return Results.Ok(new
+            {
+                app = "inventory-api",
+                db = "inventory",
+                users = usersCount,
+                runsWithoutOwner
+            });
+        }).AllowAnonymous();
 
         app.MapHealthChecks("/health", new HealthCheckOptions
         {
