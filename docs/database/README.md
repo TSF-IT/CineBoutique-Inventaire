@@ -134,7 +134,7 @@ erDiagram
 
 - 5 boutiques (`CinéBoutique Paris`, `CinéBoutique Bordeaux`, `CinéBoutique Montpellier`, `CinéBoutique Marseille`, `CinéBoutique Bruxelles`).
 - 39 zones (`B1` à `B20`, `S1` à `S19`) rattachées par défaut à `CinéBoutique Paris`, créées via `InventoryDataSeeder` et/ou la migration `202404010002_SeedLocations` complétée par la migration `202410010001_AddShopTableAndLocationShopRelation`.
-- Comptes utilisateurs de démonstration injectés par `InventoryDataSeeder` : un administrateur par boutique (`login=administrateur`) et des comptes "Utilisateur n" (Paris : 5 comptes supplémentaires, autres boutiques : 4).
+- Comptes utilisateurs de démonstration injectés par `InventoryDataSeeder` : un administrateur par boutique (`login=administrateur`) et des comptes "Utilisateur <Ville> n" (Paris : `Utilisateur Paris`, `Utilisateur Paris 1/2/3` ; autres boutiques : `Utilisateur <Ville> 1/2/3`).
 - Aucun produit ni comptage n'est injecté par défaut : toute donnée métier supplémentaire doit être créée via l'API ou des scripts dédiés.
 
 Ces représentations visuelles peuvent être rendues directement dans GitHub grâce au support de Mermaid.
