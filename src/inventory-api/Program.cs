@@ -301,6 +301,7 @@ if (useSerilog)
     app.UseSerilogRequestLogging();
 }
 
+app.UseMiddleware<LegacyOperatorGuardMiddleware>();
 app.UseMiddleware<SoftOperatorMiddleware>();
 
 app.Use(async (ctx, next) =>
