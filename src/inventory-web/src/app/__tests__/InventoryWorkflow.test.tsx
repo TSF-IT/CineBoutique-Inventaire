@@ -14,6 +14,7 @@ import { CountType } from '../types/inventory'
 import type { InventorySummary, Location, CompleteInventoryRunPayload } from '../types/inventory'
 import type { StartInventoryRunPayload, StartInventoryRunResponse } from '../api/inventoryApi'
 import type { HttpError } from '../../lib/api/http'
+import type { ShopUser } from '@/types/user'
 
 const {
   fetchLocationsMock,
@@ -22,6 +23,8 @@ const {
   completeInventoryRunMock,
   startInventoryRunMock,
   releaseInventoryRunMock,
+  fetchShopUsersMock,
+  shopUsers,
   reserveLocation,
 } = vi.hoisted(() => {
   const reserveLocation: Location = {
@@ -89,6 +92,48 @@ const {
     completedRunDetails: [],
     conflictZones: [],
   }
+  const shopUsers: ShopUser[] = [
+    {
+      id: 'user-paris',
+      shopId: 'shop-123',
+      login: 'paris',
+      displayName: 'Utilisateur Paris',
+      isAdmin: false,
+      disabled: false,
+    },
+    {
+      id: 'user-lyon-1',
+      shopId: 'shop-123',
+      login: 'lyon1',
+      displayName: 'Utilisateur Lyon 1',
+      isAdmin: false,
+      disabled: false,
+    },
+    {
+      id: 'user-lyon-2',
+      shopId: 'shop-123',
+      login: 'lyon2',
+      displayName: 'Utilisateur Lyon 2',
+      isAdmin: false,
+      disabled: false,
+    },
+    {
+      id: 'user-marseille-1',
+      shopId: 'shop-123',
+      login: 'marseille1',
+      displayName: 'Utilisateur Marseille 1',
+      isAdmin: false,
+      disabled: false,
+    },
+    {
+      id: 'user-lille',
+      shopId: 'shop-123',
+      login: 'lille',
+      displayName: 'Utilisateur Lille',
+      isAdmin: false,
+      disabled: false,
+    },
+  ]
   return {
     fetchLocationsMock: vi.fn(async ({ shopId }: { shopId: string }): Promise<Location[]> => {
       expect(shopId).toBeTruthy()
@@ -126,10 +171,15 @@ const {
         inventorySessionId: 'session-lock-1',
         locationId: reserveLocation.id,
         countType: 1,
-        operatorDisplayName: 'Amélie',
+        operatorDisplayName: shopUsers[0]?.displayName ?? 'Utilisateur Paris',
         startedAtUtc: new Date().toISOString(),
       }),
     releaseInventoryRunMock: vi.fn(async () => {}),
+    fetchShopUsersMock: vi.fn(async (shopId: string): Promise<ShopUser[]> => {
+      expect(shopId).toBeTruthy()
+      return shopUsers
+    }),
+    shopUsers,
     reserveLocation,
   }
 })
@@ -148,6 +198,10 @@ vi.mock('../api/inventoryApi', async (importOriginal) => {
     releaseInventoryRun: releaseInventoryRunMock,
   }
 })
+
+vi.mock('../api/shopUsers', () => ({
+  fetchShopUsers: fetchShopUsersMock,
+}))
 
 interface RenderInventoryOptions {
   initialize?: (inventory: ReturnType<typeof useInventory>) => void
@@ -205,9 +259,11 @@ const renderInventoryRoutes = (initialEntry: string, options?: RenderInventoryOp
   )
 }
 
-describe('Workflow d\'inventaire', () => {
+describe("Workflow d'inventaire", () => {
   beforeEach(() => {
     localStorage.setItem('cb.shop', JSON.stringify(testShop))
+    fetchShopUsersMock.mockReset()
+    fetchShopUsersMock.mockResolvedValue(shopUsers)
     fetchLocationsMock.mockReset()
     fetchLocationsMock.mockImplementation(async ({ shopId }: { shopId: string }): Promise<Location[]> => {
       expect(shopId).toBeTruthy()
@@ -271,7 +327,7 @@ describe('Workflow d\'inventaire', () => {
       inventorySessionId: 'session-lock-1',
       locationId: reserveLocation.id,
       countType: 1,
-      operatorDisplayName: 'Amélie',
+      operatorDisplayName: shopUsers[0]?.displayName ?? 'Utilisateur Paris',
       startedAtUtc: new Date().toISOString(),
     }))
     releaseInventoryRunMock.mockReset()
@@ -281,7 +337,8 @@ describe('Workflow d\'inventaire', () => {
   it('permet de sélectionner utilisateur, zone et type en respectant les statuts', async () => {
     renderInventoryRoutes('/inventory/start')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Amélie' }))
+    const userButton = await screen.findByRole('button', { name: shopUsers[0].displayName })
+    fireEvent.click(userButton)
 
     const locationPages = await screen.findAllByTestId('page-location')
     expect(locationPages).not.toHaveLength(0)
@@ -372,7 +429,8 @@ describe('Workflow d\'inventaire', () => {
 
     renderInventoryRoutes('/inventory/start')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Amélie' }))
+    const userButton = await screen.findByRole('button', { name: shopUsers[0].displayName })
+    fireEvent.click(userButton)
 
     const conflictZoneCard = await screen.findByTestId(`zone-card-${completedZone.id}`)
     await waitFor(() => expect(within(conflictZoneCard).getByText('Conflit détecté')).toBeInTheDocument())
@@ -402,7 +460,7 @@ describe('Workflow d\'inventaire', () => {
           countType: CountType.Count2,
           status: 'completed',
           runId: 'run-22',
-          operatorDisplayName: 'Bruno',
+          operatorDisplayName: 'Utilisateur Nice 1',
           startedAtUtc: new Date(),
           completedAtUtc: new Date(),
         },
@@ -433,7 +491,8 @@ describe('Workflow d\'inventaire', () => {
 
     renderInventoryRoutes('/inventory/start')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Amélie' }))
+    const userButton = await screen.findByRole('button', { name: shopUsers[0].displayName })
+    fireEvent.click(userButton)
 
     const conflictCard = await screen.findByTestId(`zone-card-${conflictZone.id}`)
     const actionButton = within(conflictCard).getByTestId('btn-select-zone')
@@ -454,7 +513,7 @@ describe('Workflow d\'inventaire', () => {
       code: 'SAL2',
       label: 'Salle 2',
       isBusy: true,
-      busyBy: 'Amélie',
+      busyBy: shopUsers[0].displayName,
       activeRunId: 'run-self',
       activeCountType: 1,
       activeStartedAtUtc: new Date(),
@@ -463,7 +522,7 @@ describe('Workflow d\'inventaire', () => {
           countType: CountType.Count1,
           status: 'in_progress',
           runId: 'run-self',
-          operatorDisplayName: 'Amélie',
+          operatorDisplayName: shopUsers[0].displayName,
           startedAtUtc: new Date(),
           completedAtUtc: null,
         },
@@ -478,7 +537,8 @@ describe('Workflow d\'inventaire', () => {
 
     renderInventoryRoutes('/inventory/start')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Amélie' }))
+    const userButton = await screen.findByRole('button', { name: shopUsers[0].displayName })
+    fireEvent.click(userButton)
 
     const selfZoneCard = await screen.findByTestId('zone-card-zone-3')
     fireEvent.click(within(selfZoneCard).getByTestId('btn-select-zone'))
@@ -506,7 +566,7 @@ describe('Workflow d\'inventaire', () => {
   it("ajoute automatiquement un produit lorsqu'un EAN connu est saisi", async () => {
     renderInventoryRoutes('/inventory/session', {
       initialize: (inventory) => {
-        inventory.setSelectedUser('Amélie')
+        inventory.setSelectedUser(shopUsers[0])
         inventory.setCountType(CountType.Count1)
         inventory.setLocation({ ...reserveLocation })
         inventory.clearSession()
@@ -533,7 +593,7 @@ describe('Workflow d\'inventaire', () => {
 
     renderInventoryRoutes('/inventory/session', {
       initialize: (inventory) => {
-        inventory.setSelectedUser('Amélie')
+        inventory.setSelectedUser(shopUsers[0])
         inventory.setCountType(CountType.Count1)
         inventory.setLocation({ ...reserveLocation })
         inventory.clearSession()
@@ -571,7 +631,7 @@ describe('Workflow d\'inventaire', () => {
 
     renderInventoryRoutes('/inventory/session', {
       initialize: (inventory) => {
-        inventory.setSelectedUser('Amélie')
+        inventory.setSelectedUser(shopUsers[0])
         inventory.setCountType(CountType.Count1)
         inventory.setLocation({ ...reserveLocation })
         inventory.clearSession()
@@ -596,14 +656,14 @@ describe('Workflow d\'inventaire', () => {
     await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
     expect(startInventoryRunMock).toHaveBeenCalledWith(
       reserveLocation.id,
-      expect.objectContaining({ countType: 1, operator: 'Amélie' }),
+      expect.objectContaining({ countType: 1, operator: shopUsers[0].displayName }),
     )
   })
 
   it('démarre un run serveur lors du premier scan', async () => {
     renderInventoryRoutes('/inventory/session', {
       initialize: (inventory) => {
-        inventory.setSelectedUser('Amélie')
+        inventory.setSelectedUser(shopUsers[0])
         inventory.setCountType(CountType.Count1)
         inventory.setLocation({ ...reserveLocation })
         inventory.clearSession()
@@ -625,13 +685,13 @@ describe('Workflow d\'inventaire', () => {
     expect(lastCall).toBeDefined()
     const [locationId, payload] = lastCall!
     expect(locationId).toBe(reserveLocation.id)
-    expect(payload).toMatchObject({ countType: 1, operator: 'Amélie' })
+    expect(payload).toMatchObject({ countType: 1, operator: shopUsers[0].displayName })
   })
 
   it("ne libère pas le run immédiatement après l'avoir démarré", async () => {
     renderInventoryRoutes('/inventory/session', {
       initialize: (inventory) => {
-        inventory.setSelectedUser('Amélie')
+        inventory.setSelectedUser(shopUsers[0])
         inventory.setCountType(CountType.Count1)
         inventory.setLocation({ ...reserveLocation })
         inventory.clearSession()
@@ -655,7 +715,7 @@ describe('Workflow d\'inventaire', () => {
   it('libère automatiquement la zone lorsque tous les articles sont supprimés', async () => {
     renderInventoryRoutes('/inventory/session', {
       initialize: (inventory) => {
-        inventory.setSelectedUser('Amélie')
+        inventory.setSelectedUser(shopUsers[0])
         inventory.setCountType(CountType.Count1)
         inventory.setLocation({ ...reserveLocation })
         inventory.setSessionId('run-lock-1')
@@ -677,7 +737,7 @@ describe('Workflow d\'inventaire', () => {
       expect(releaseInventoryRunMock).toHaveBeenCalledWith(
         reserveLocation.id,
         'run-lock-1',
-        'Amélie',
+        shopUsers[0].displayName,
       ),
     )
 
@@ -687,7 +747,7 @@ describe('Workflow d\'inventaire', () => {
   it("conserve l'ordre d'insertion des articles lors des ajustements de quantité", async () => {
     renderInventoryRoutes('/inventory/session', {
       initialize: (inventory) => {
-        inventory.setSelectedUser('Amélie')
+        inventory.setSelectedUser(shopUsers[0])
         inventory.setCountType(CountType.Count1)
         inventory.setLocation({ ...reserveLocation })
         inventory.clearSession()
@@ -729,7 +789,7 @@ describe('Workflow d\'inventaire', () => {
   it('envoie le comptage finalisé lorsque le bouton est actionné', async () => {
     renderInventoryRoutes('/inventory/session', {
       initialize: (inventory) => {
-        inventory.setSelectedUser('Amélie')
+        inventory.setSelectedUser(shopUsers[0])
         inventory.setCountType(CountType.Count2)
         inventory.setLocation({ ...reserveLocation })
         inventory.clearSession()
@@ -757,7 +817,7 @@ describe('Workflow d\'inventaire', () => {
     expect(payload).toMatchObject({
       runId: 'run-lock-1',
       countType: CountType.Count2,
-      operator: 'Amélie',
+      operator: shopUsers[0].displayName,
     })
     expect(payload.items).toEqual(
       expect.arrayContaining([

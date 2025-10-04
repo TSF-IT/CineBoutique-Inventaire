@@ -56,14 +56,14 @@ const statusIcon = (status: LocationCountStatus) => {
   return '•'
 }
 
-const describeCountStatus = (status: LocationCountStatus, selectedUser: string | null) => {
+const describeCountStatus = (status: LocationCountStatus, selectedUserDisplayName: string | null) => {
   const baseLabel = `Comptage n°${status.countType}`
   if (status.status === 'completed') {
     return `${baseLabel} terminé`
   }
   if (status.status === 'in_progress') {
     const ownerLabel =
-      status.operatorDisplayName && status.operatorDisplayName === selectedUser
+      status.operatorDisplayName && status.operatorDisplayName === selectedUserDisplayName
         ? 'par vous'
         : status.operatorDisplayName
         ? `par ${status.operatorDisplayName}`
@@ -86,6 +86,7 @@ export const InventoryCountTypeStep = () => {
     setSessionId,
     clearSession,
   } = useInventory()
+  const selectedUserDisplayName = selectedUser?.displayName ?? null
 
   const countStatuses = useMemo<LocationCountStatus[]>(() => {
     if (!location || !Array.isArray(location.countStatuses)) {
@@ -139,7 +140,7 @@ export const InventoryCountTypeStep = () => {
     if (
       status.status === 'in_progress' &&
       status.operatorDisplayName &&
-      status.operatorDisplayName !== selectedUser
+      status.operatorDisplayName !== selectedUserDisplayName
     ) {
       return
     }
@@ -193,7 +194,7 @@ export const InventoryCountTypeStep = () => {
                   className={`flex items-center gap-2 ${statusTextClass(status)}`}
                 >
                   <span aria-hidden>{statusIcon(status)}</span>
-                  <span>{describeCountStatus(status, selectedUser ?? null)}</span>
+                  <span>{describeCountStatus(status, selectedUserDisplayName)}</span>
                 </span>
               ))}
             </div>
@@ -207,9 +208,16 @@ export const InventoryCountTypeStep = () => {
             const isCompleted = status?.status === 'completed'
             const isInProgress = status?.status === 'in_progress'
             const isInProgressByOther =
-              Boolean(isInProgress && operatorDisplayName && operatorDisplayName !== selectedUser)
+              Boolean(
+                isInProgress &&
+                  operatorDisplayName &&
+                  operatorDisplayName !== selectedUserDisplayName,
+              )
             const isInProgressByUser =
-              Boolean(isInProgress && (!operatorDisplayName || operatorDisplayName === selectedUser))
+              Boolean(
+                isInProgress &&
+                  (!operatorDisplayName || operatorDisplayName === selectedUserDisplayName),
+              )
             const isDisabled = zoneCompleted || isCompleted || isInProgressByOther
             const helperMessage = (() => {
               if (zoneCompleted || isCompleted) {

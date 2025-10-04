@@ -22,6 +22,15 @@ const fetchProductByEanMock = vi.fn()
 const startInventoryRunMock = vi.fn()
 const releaseInventoryRunMock = vi.fn()
 
+const mockShopUser = {
+  id: 'user-test',
+  shopId: 'shop-test',
+  login: 'utilisateur-test',
+  displayName: 'Utilisateur Test',
+  isAdmin: false,
+  disabled: false,
+} as const
+
 vi.mock('../../src/app/api/inventoryApi', () => ({
   fetchProductByEan: (...args: unknown[]) => fetchProductByEanMock(...args),
   completeInventoryRun: vi.fn(),
@@ -31,7 +40,7 @@ vi.mock('../../src/app/api/inventoryApi', () => ({
 
 vi.mock('../../src/app/contexts/InventoryContext', () => ({
   useInventory: () => ({
-    selectedUser: 'Alice',
+    selectedUser: mockShopUser,
     countType: 1,
     location: {
       id: '11111111-1111-4111-8111-111111111111',
@@ -72,7 +81,7 @@ describe('InventorySessionPage - ajout manuel', () => {
       inventorySessionId: 'mock-session',
       locationId: '11111111-1111-4111-8111-111111111111',
       countType: 1,
-      operatorDisplayName: 'Alice',
+      operatorDisplayName: mockShopUser.displayName,
       startedAtUtc: new Date().toISOString(),
     })
     releaseInventoryRunMock.mockReset()
