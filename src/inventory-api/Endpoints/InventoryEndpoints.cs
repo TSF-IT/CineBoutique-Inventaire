@@ -12,12 +12,12 @@ using CineBoutique.Inventory.Api.Models;
 using Dapper;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging; 
+using Npgsql;
 
 namespace CineBoutique.Inventory.Api.Endpoints;
 
@@ -1733,4 +1733,22 @@ ORDER BY cl.""CountingRunId"", p.""Id"", cl.""CountedAtUtc"" DESC, cl.""Id"" DES
     }
 
     private sealed record CountLineReference(Guid CountingRunId, Guid CountLineId, Guid ProductId, string? Ean);
+
+    private static async Task<bool> ValidateUserBelongsToShop(NpgsqlConnection cn, Guid ownerUserId, Guid shopId, CancellationToken ct)
+    {
+        const string sql = """
+    SELECT 1
+    FROM "ShopUser"
+    WHERE "Id" = @ownerUserId
+      AND "ShopId" = @shopId
+      AND NOT "Disabled"
+    """;
+
+        var command = new CommandDefinition(sql, new { ownerUserId, shopId }, cancellationToken: ct);
+
+        return await cn.ExecuteScalarAsync<int?>(command).ConfigureAwait(false) is 1;
+    }
+
+    private static IResult BadOwnerUser(Guid ownerUserId, Guid shopId) =>
+        Results.BadRequest(new { error = "Invalid ownerUserId for shop", ownerUserId, shopId });
 }
