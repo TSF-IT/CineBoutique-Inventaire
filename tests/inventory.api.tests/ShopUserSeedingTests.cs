@@ -96,7 +96,7 @@ public sealed class ShopUserSeedingTests : IAsyncLifetime
 
         var parisUsers = (await connection.QueryAsync<ShopUserRow>(
                 """
-                SELECT "Id", "DisplayName", "IsAdmin", "Disabled"
+                SELECT "Id", "DisplayName", "IsAdmin", "Disabled", "ShopId"
                 FROM "ShopUser"
                 WHERE "ShopId" = @ShopId
                 ORDER BY "DisplayName";
@@ -126,7 +126,7 @@ public sealed class ShopUserSeedingTests : IAsyncLifetime
 
         var parisUsers = (await connection.QueryAsync<ShopUserRow>(
                 """
-                SELECT "Id", "DisplayName", "IsAdmin", "Disabled"
+                SELECT "Id", "DisplayName", "IsAdmin", "Disabled", "ShopId"
                 FROM "ShopUser"
                 WHERE "ShopId" = @ShopId
                 ORDER BY "Id";

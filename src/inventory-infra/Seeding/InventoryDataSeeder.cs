@@ -65,6 +65,10 @@ WHERE ""ShopId"" = @ShopId
   AND ""Disabled"" = FALSE
   AND ""IsAdmin"" = TRUE;";
 
+    private const string CountShopUsersSql = @"SELECT COUNT(*)
+FROM ""ShopUser""
+WHERE ""ShopId"" = @ShopId;";
+
     private static readonly IReadOnlyList<ShopSeed> ShopSeeds = BuildShopSeeds();
     private static readonly IReadOnlyList<LocationSeed> LocationSeeds = BuildLocationSeeds();
 
@@ -357,6 +361,19 @@ WHERE ""ShopId"" = @ShopId
         Guid shopId,
         CancellationToken cancellationToken)
     {
+        var totalUsers = await connection.ExecuteScalarAsync<int>(
+                new CommandDefinition(
+                    CountShopUsersSql,
+                    new { ShopId = shopId },
+                    transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        if (totalUsers == 0)
+        {
+            return;
+        }
+
         var adminCount = await connection.ExecuteScalarAsync<int>(
                 new CommandDefinition(
                     CountActiveAdminsSql,
