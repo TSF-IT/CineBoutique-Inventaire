@@ -1,14 +1,15 @@
 import type { ReactNode } from 'react'
 import { createContext, useContext, useMemo, useState } from 'react'
 import type { CountType, InventoryItem, Location, Product } from '../types/inventory'
+import type { ShopUser } from '@/types/user'
 
 interface InventoryContextValue {
-  selectedUser: string | null
+  selectedUser: ShopUser | null
   countType: CountType | null
   location: Location | null
   sessionId: string | null
   items: InventoryItem[]
-  setSelectedUser: (user: string) => void
+  setSelectedUser: (user: ShopUser) => void
   setCountType: (type: CountType | null) => void
   setLocation: (location: Location) => void
   setSessionId: (sessionId: string | null) => void
@@ -20,7 +21,7 @@ interface InventoryContextValue {
 }
 
 interface InventoryState {
-  selectedUser: string | null
+  selectedUser: ShopUser | null
   countType: CountType | null
   location: Location | null
   sessionId: string | null
@@ -49,7 +50,7 @@ const createInventoryItemId = () => {
 export const InventoryProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<InventoryState>(INITIAL_STATE)
 
-  const setSelectedUser = (user: string) => {
+  const setSelectedUser = (user: ShopUser) => {
     setState(() => ({ ...INITIAL_STATE, selectedUser: user }))
   }
 

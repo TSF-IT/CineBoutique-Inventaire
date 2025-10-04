@@ -160,7 +160,8 @@ export const InventorySessionPage = () => {
     }
   }, [])
 
-  const trimmedOperator = selectedUser?.trim() ?? ''
+  const selectedUserDisplayName = selectedUser?.displayName ?? null
+  const trimmedOperator = selectedUserDisplayName?.trim() ?? ''
   const existingRunId = typeof sessionId === 'string' ? sessionId.trim() : ''
   const locationId = typeof location?.id === 'string' ? location.id.trim() : ''
   const isValidCountType =
@@ -625,7 +626,9 @@ export const InventorySessionPage = () => {
         <div className="flex flex-col gap-2">
           <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Session de comptage</h2>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            {location?.label} • {countType} comptage{countType && countType > 1 ? 's' : ''} • {selectedUser}
+            {location?.label} • {countType} comptage{countType && countType > 1 ? 's' : ''} •
+            {' '}
+            {selectedUserDisplayName ?? '–'}
           </p>
           {sessionId && <p className="text-xs text-slate-500 dark:text-slate-400">Session existante #{sessionId}</p>}
         </div>

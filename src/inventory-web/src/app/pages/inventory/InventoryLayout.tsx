@@ -91,7 +91,7 @@ export const InventoryLayout = () => {
           </div>
           <div className="flex flex-col items-end gap-3 sm:flex-row sm:items-center">
             <div className="hidden text-right text-xs text-slate-500 dark:text-slate-400 sm:block">
-              <p>Utilisateur : {selectedUser ?? '–'}</p>
+              <p>Utilisateur : {selectedUser?.displayName ?? '–'}</p>
               <p>Zone : {selectedLocation?.label ?? '–'}</p>
               <p>Comptage : {countType ?? '–'}</p>
             </div>

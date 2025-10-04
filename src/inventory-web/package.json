@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "check:health": "node -e \"fetch('http://localhost:5173/api/healthz').then(r=>r.text()).then(console.log).catch(e=>{console.error(e);process.exit(1)})\"",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "ci:guard": "sh -c \"rg -n --hidden --glob '!node_modules' --glob '!package.json' '(Amélie|Bruno|Elisa|Camille|David)\\b' src/inventory-web && exit 1 || true; rg -n --hidden --glob '!node_modules' --glob '!package.json' 'OperatorsContext|DEFAULT_OPERATORS' src/inventory-web && exit 1 || true\""
   },
   "dependencies": {
     "@zxing/browser": "^0.1.5",
