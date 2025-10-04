@@ -43,7 +43,7 @@ const fetchInventorySummaryMock = vi.hoisted(() =>
 )
 
 const fetchLocationsMock = vi.hoisted(() =>
-  vi.fn(async (): Promise<Location[]> => [
+  vi.fn(async (_options: { shopId: string }): Promise<Location[]> => [
       {
         id: 'loc-1',
         code: 'Z1',
@@ -113,8 +113,11 @@ vi.mock('../api/inventoryApi', async (importOriginal) => {
 })
 
 describe('HomePage', () => {
+  const testShop = { id: 'shop-123', name: 'Boutique test' } as const
+
   beforeEach(() => {
     localStorage.clear()
+    localStorage.setItem('cb.shop', JSON.stringify(testShop))
   })
 
   it("affiche les indicateurs et le bouton d'accès", async () => {
@@ -147,6 +150,7 @@ describe('HomePage', () => {
 
     expect(screen.getByRole('button', { name: 'Débuter un inventaire' })).toBeInTheDocument()
     expect(fetchLocationsMock).toHaveBeenCalled()
+    expect(fetchLocationsMock.mock.calls[0]?.[0]).toMatchObject({ shopId: testShop.id })
   })
 
   it('affiche les messages neutres quand il ne reste plus de conflit ni de comptage', async () => {

@@ -7,6 +7,7 @@ import { AdminLocationsPage } from '../AdminLocationsPage'
 import type { Location } from '../../../types/inventory'
 import { fetchLocations } from '../../../api/inventoryApi'
 import { createLocation, updateLocation } from '../../../api/adminApi'
+import { ShopProvider } from '@/state/ShopContext'
 
 vi.mock('../../../api/inventoryApi', () => ({
   fetchLocations: vi.fn(),
@@ -23,18 +24,24 @@ const { createLocation: mockedCreateLocation, updateLocation: mockedUpdateLocati
   updateLocation,
 })
 
+const testShop = { id: 'shop-123', name: 'Boutique test' } as const
+
 const renderAdminPage = async () => {
   render(
     <ThemeProvider>
-      <OperatorsProvider>
-        <AdminLocationsPage />
-      </OperatorsProvider>
+      <ShopProvider>
+        <OperatorsProvider>
+          <AdminLocationsPage />
+        </OperatorsProvider>
+      </ShopProvider>
     </ThemeProvider>,
   )
 
   await waitFor(() => {
     expect(mockedFetchLocations).toHaveBeenCalled()
   })
+
+  expect(mockedFetchLocations.mock.calls[0]?.[0]).toMatchObject({ shopId: testShop.id })
 
 }
 
@@ -53,6 +60,7 @@ describe('AdminLocationsPage', () => {
 
   beforeEach(() => {
     window.localStorage.clear()
+    window.localStorage.setItem('cb.shop', JSON.stringify(testShop))
     mockedFetchLocations.mockReset()
     mockedFetchLocations.mockResolvedValue([baseLocation])
     mockedCreateLocation.mockReset()

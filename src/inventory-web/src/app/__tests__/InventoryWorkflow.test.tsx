@@ -90,7 +90,7 @@ const {
     conflictZones: [],
   }
   return {
-    fetchLocationsMock: vi.fn(async (): Promise<Location[]> => [
+    fetchLocationsMock: vi.fn(async (_options: { shopId: string }): Promise<Location[]> => [
       { ...reserveLocation },
       { ...busyLocation },
     ]),
@@ -130,6 +130,8 @@ const {
     reserveLocation,
   }
 })
+
+const testShop = { id: 'shop-123', name: 'Boutique test' } as const
 
 vi.mock('../api/inventoryApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/inventoryApi')>()
@@ -202,8 +204,9 @@ const renderInventoryRoutes = (initialEntry: string, options?: RenderInventoryOp
 
 describe('Workflow d\'inventaire', () => {
   beforeEach(() => {
+    localStorage.setItem('cb.shop', JSON.stringify(testShop))
     fetchLocationsMock.mockReset()
-    fetchLocationsMock.mockImplementation(async (): Promise<Location[]> => [
+    fetchLocationsMock.mockImplementation(async (_options: { shopId: string }): Promise<Location[]> => [
       { ...reserveLocation },
       {
         id: 'zone-2',
@@ -278,7 +281,7 @@ describe('Workflow d\'inventaire', () => {
     expect(locationPages).not.toHaveLength(0)
 
     await waitFor(() => expect(fetchLocationsMock).toHaveBeenCalledTimes(1))
-    expect(fetchLocationsMock.mock.calls[0]).toHaveLength(0)
+    expect(fetchLocationsMock.mock.calls[0]?.[0]).toMatchObject({ shopId: testShop.id })
 
     await waitFor(() => expect(fetchInventorySummaryMock).toHaveBeenCalledTimes(1))
 
