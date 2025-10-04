@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
+using System.Security.Cryptography;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Infrastructure.Database;
@@ -28,18 +31,50 @@ WHERE NOT EXISTS (
     WHERE ""ShopId"" = @ShopId
       AND UPPER(""Code"") = UPPER(@Code));";
 
-    private const string InsertShopUserSql = @"INSERT INTO ""ShopUser"" (""ShopId"", ""Login"", ""DisplayName"", ""IsAdmin"", ""Secret_Hash"", ""Disabled"")
-SELECT @ShopId, @Login, @DisplayName, @IsAdmin, @SecretHash, @Disabled
-WHERE NOT EXISTS (
-    SELECT 1
-    FROM ""ShopUser""
-    WHERE ""ShopId"" = @ShopId
-      AND LOWER(""Login"") = LOWER(@Login));";
+    private const string SelectParisUsersSql = @"SELECT ""Id"", ""DisplayName"", ""IsAdmin"", ""Disabled""
+FROM ""ShopUser""
+WHERE ""ShopId"" = @ShopId
+ORDER BY ""Id"";";
+
+    private const string PromoteParisAdminSql = @"UPDATE ""ShopUser""
+SET ""IsAdmin"" = TRUE,
+    ""Disabled"" = FALSE
+WHERE ""Id"" = @UserId;";
+
+    private const string DemoteParisUsersSql = @"UPDATE ""ShopUser""
+SET ""IsAdmin"" = FALSE
+WHERE ""ShopId"" = @ShopId
+  AND ""Id"" <> @AdminId;";
+
+    private const string UpsertNonParisUserSql = @"INSERT INTO ""ShopUser"" (""Id"", ""ShopId"", ""Login"", ""DisplayName"", ""IsAdmin"", ""Secret_Hash"", ""Disabled"")
+VALUES (@Id, @ShopId, @Login, @DisplayName, @IsAdmin, @SecretHash, FALSE)
+ON CONFLICT (""ShopId"", ""DisplayName"")
+DO UPDATE SET ""IsAdmin"" = EXCLUDED.""IsAdmin"",
+              ""Disabled"" = EXCLUDED.""Disabled"",
+              ""Login"" = EXCLUDED.""Login"";";
+
+    private const string DisableNonParisSurplusSql = @"UPDATE ""ShopUser""
+SET ""Disabled"" = TRUE,
+    ""IsAdmin"" = FALSE
+WHERE ""ShopId"" = @ShopId
+  AND ""DisplayName"" <> ALL(@AllowedDisplayNames);";
+
+    private const string CountActiveAdminsSql = @"SELECT COUNT(*)
+FROM ""ShopUser""
+WHERE ""ShopId"" = @ShopId
+  AND ""Disabled"" = FALSE
+  AND ""IsAdmin"" = TRUE;";
 
     private static readonly IReadOnlyList<ShopSeed> ShopSeeds = BuildShopSeeds();
     private static readonly IReadOnlyList<LocationSeed> LocationSeeds = BuildLocationSeeds();
-    private static readonly IReadOnlyDictionary<string, IReadOnlyList<ShopUserSeed>> ShopUserSeeds =
-        BuildShopUserSeeds();
+
+    private static readonly IReadOnlyList<NonParisUserSeed> NonParisSeeds = new List<NonParisUserSeed>
+    {
+        new("Administrateur", "administrateur", true),
+        new("Utilisateur 1", "utilisateur1", false),
+        new("Utilisateur 2", "utilisateur2", false),
+        new("Utilisateur 3", "utilisateur3", false)
+    };
 
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<InventoryDataSeeder> _logger;
@@ -125,8 +160,8 @@ WHERE NOT EXISTS (
     }
 
     private async Task<int> EnsureShopsAsync(
-        System.Data.IDbConnection connection,
-        System.Data.IDbTransaction transaction,
+        IDbConnection connection,
+        IDbTransaction transaction,
         CancellationToken cancellationToken)
     {
         var insertedCount = 0;
@@ -154,8 +189,8 @@ WHERE NOT EXISTS (
     }
 
     private static async Task<Guid> GetShopIdAsync(
-        System.Data.IDbConnection connection,
-        System.Data.IDbTransaction transaction,
+        IDbConnection connection,
+        IDbTransaction transaction,
         string name,
         CancellationToken cancellationToken)
     {
@@ -189,47 +224,152 @@ WHERE NOT EXISTS (
         return insertedId;
     }
 
-    private static async Task<int> EnsureShopUsersAsync(
-        System.Data.IDbConnection connection,
-        System.Data.IDbTransaction transaction,
+    private async Task<int> EnsureShopUsersAsync(
+        IDbConnection connection,
+        IDbTransaction transaction,
         IReadOnlyDictionary<string, Guid> shopIds,
         CancellationToken cancellationToken)
     {
-        var insertedCount = 0;
+        var affected = 0;
 
-        foreach (var (shopName, userSeeds) in ShopUserSeeds)
+        if (shopIds.TryGetValue(DefaultShopName, out var parisShopId))
         {
-            if (!shopIds.TryGetValue(shopName, out var shopId))
+            affected += await EnsureParisUsersAsync(connection, transaction, parisShopId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        foreach (var (shopName, shopId) in shopIds)
+        {
+            if (string.Equals(shopName, DefaultShopName, StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            foreach (var userSeed in userSeeds)
-            {
-                var affectedRows = await connection.ExecuteAsync(
-                        new CommandDefinition(
-                            InsertShopUserSql,
-                            new
-                            {
-                                ShopId = shopId,
-                                userSeed.Login,
-                                userSeed.DisplayName,
-                                userSeed.IsAdmin,
-                                SecretHash = userSeed.SecretHash ?? string.Empty,
-                                userSeed.Disabled
-                            },
-                            transaction,
-                            cancellationToken: cancellationToken))
-                    .ConfigureAwait(false);
-
-                if (affectedRows > 0)
-                {
-                    insertedCount += affectedRows;
-                }
-            }
+            affected += await EnsureNonParisUsersAsync(connection, transaction, shopId, cancellationToken)
+                .ConfigureAwait(false);
         }
 
-        return insertedCount;
+        foreach (var (shopName, shopId) in shopIds)
+        {
+            await EnsureSingleActiveAdminAsync(connection, transaction, shopName, shopId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return affected;
+    }
+
+    private async Task<int> EnsureParisUsersAsync(
+        IDbConnection connection,
+        IDbTransaction transaction,
+        Guid shopId,
+        CancellationToken cancellationToken)
+    {
+        var users = (await connection.QueryAsync<ParisUserRow>(
+                new CommandDefinition(
+                    SelectParisUsersSql,
+                    new { ShopId = shopId },
+                    transaction,
+                    cancellationToken: cancellationToken)))
+            .ToList();
+
+        if (users.Count == 0)
+        {
+            return 0;
+        }
+
+        var adminUser = users.FirstOrDefault(
+                           user => string.Equals(user.DisplayName, "Arnaud", StringComparison.OrdinalIgnoreCase))
+                       ?? users.OrderBy(user => user.Id).First();
+
+        var affected = 0;
+
+        affected += await connection.ExecuteAsync(
+                new CommandDefinition(
+                    PromoteParisAdminSql,
+                    new { UserId = adminUser.Id },
+                    transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        affected += await connection.ExecuteAsync(
+                new CommandDefinition(
+                    DemoteParisUsersSql,
+                    new
+                    {
+                        ShopId = shopId,
+                        AdminId = adminUser.Id
+                    },
+                    transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return affected;
+    }
+
+    private async Task<int> EnsureNonParisUsersAsync(
+        IDbConnection connection,
+        IDbTransaction transaction,
+        Guid shopId,
+        CancellationToken cancellationToken)
+    {
+        var affected = 0;
+
+        foreach (var seed in NonParisSeeds)
+        {
+            affected += await connection.ExecuteAsync(
+                    new CommandDefinition(
+                        UpsertNonParisUserSql,
+                        new
+                        {
+                            Id = CreateStableGuid(shopId, seed.DisplayName),
+                            ShopId = shopId,
+                            seed.Login,
+                            seed.DisplayName,
+                            seed.IsAdmin,
+                            SecretHash = string.Empty
+                        },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+        }
+
+        var allowedDisplayNames = NonParisSeeds.Select(seed => seed.DisplayName).ToArray();
+
+        affected += await connection.ExecuteAsync(
+                new CommandDefinition(
+                    DisableNonParisSurplusSql,
+                    new
+                    {
+                        ShopId = shopId,
+                        AllowedDisplayNames = allowedDisplayNames
+                    },
+                    transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return affected;
+    }
+
+    private async Task EnsureSingleActiveAdminAsync(
+        IDbConnection connection,
+        IDbTransaction transaction,
+        string shopName,
+        Guid shopId,
+        CancellationToken cancellationToken)
+    {
+        var adminCount = await connection.ExecuteScalarAsync<int>(
+                new CommandDefinition(
+                    CountActiveAdminsSql,
+                    new { ShopId = shopId },
+                    transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        if (adminCount != 1)
+        {
+            throw new InvalidOperationException(
+                $"La boutique '{shopName}' doit posséder exactement un administrateur actif (actuel : {adminCount}).");
+        }
     }
 
     private static IReadOnlyList<ShopSeed> BuildShopSeeds()
@@ -274,39 +414,23 @@ WHERE NOT EXISTS (
         return seeds;
     }
 
-    private static IReadOnlyDictionary<string, IReadOnlyList<ShopUserSeed>> BuildShopUserSeeds()
+    private static Guid CreateStableGuid(Guid shopId, string displayName)
     {
-        var seeds = new Dictionary<string, IReadOnlyList<ShopUserSeed>>(StringComparer.OrdinalIgnoreCase)
-        {
-            [DefaultShopName] = BuildUserSeeds(5)
-        };
-
-        foreach (var shopSeed in ShopSeeds.Where(seed => !string.Equals(seed.Name, DefaultShopName, StringComparison.OrdinalIgnoreCase)))
-        {
-            seeds[shopSeed.Name] = BuildUserSeeds(4);
-        }
-
-        return seeds;
-    }
-
-    private static IReadOnlyList<ShopUserSeed> BuildUserSeeds(int additionalUserCount)
-    {
-        var seeds = new List<ShopUserSeed>
-        {
-            new("administrateur", "Administrateur", true, string.Empty, false)
-        };
-
-        for (var index = 1; index <= additionalUserCount; index++)
-        {
-            seeds.Add(new ShopUserSeed($"utilisateur{index}", $"Utilisateur {index}", false, string.Empty, false));
-        }
-
-        return seeds;
+        using var md5 = MD5.Create();
+        var shopBytes = shopId.ToByteArray();
+        var displayNameBytes = Encoding.UTF8.GetBytes(displayName);
+        var buffer = new byte[shopBytes.Length + displayNameBytes.Length];
+        Buffer.BlockCopy(shopBytes, 0, buffer, 0, shopBytes.Length);
+        Buffer.BlockCopy(displayNameBytes, 0, buffer, shopBytes.Length, displayNameBytes.Length);
+        var hash = md5.ComputeHash(buffer);
+        return new Guid(hash);
     }
 
     private sealed record ShopSeed(string Name);
 
     private sealed record LocationSeed(string ShopName, string Code, string Label);
 
-    private sealed record ShopUserSeed(string Login, string DisplayName, bool IsAdmin, string SecretHash, bool Disabled);
+    private sealed record ParisUserRow(Guid Id, string DisplayName, bool IsAdmin, bool Disabled);
+
+    private sealed record NonParisUserSeed(string DisplayName, string Login, bool IsAdmin);
 }
