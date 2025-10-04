@@ -55,10 +55,15 @@ SET "OwnerUserId" = um."OwnerUserId"
 FROM unique_matches um
 WHERE cr."Id" = um."CountingRunId";
 """);
+
+        Execute.Sql(
+            "CREATE INDEX IF NOT EXISTS ix_countingrun_owneruserid ON \"CountingRun\"(\"OwnerUserId\");");
     }
 
     public override void Down()
     {
+        Execute.Sql("DROP INDEX IF EXISTS ix_countingrun_owneruserid;");
+
         if (Schema.Table(CountingRunTable).Constraint(ForeignKeyName).Exists())
         {
             Delete.ForeignKey(ForeignKeyName).OnTable(CountingRunTable);
