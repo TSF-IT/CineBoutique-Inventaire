@@ -417,8 +417,24 @@ ORDER BY p.""Ean"";";
 
     private static void MapLocationsEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/locations", async (int? countType, IDbConnection connection, CancellationToken cancellationToken) =>
+        app.MapGet(
+            "/api/locations",
+            async (string? shopId, int? countType, IDbConnection connection, CancellationToken cancellationToken) =>
         {
+            if (string.IsNullOrWhiteSpace(shopId))
+            {
+                return Results.Problem(
+                    detail: "ShopId requis",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            if (!Guid.TryParse(shopId, out var parsedShopId))
+            {
+                return Results.Problem(
+                    detail: "ShopId invalide",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+
             if (countType.HasValue && countType is not (1 or 2 or 3))
             {
                 return Results.BadRequest(new { message = "Le paramètre countType doit valoir 1, 2 ou 3." });
@@ -468,10 +484,17 @@ SELECT
     ar.""ActiveStartedAtUtc""
 FROM ""Location"" l
 LEFT JOIN active_runs ar ON l.""Id"" = ar.""LocationId""
+WHERE l.""ShopId"" = @ShopId
 ORDER BY l.""Code"" ASC;";
 
+            var sqlParameters = new
+            {
+                CountType = countType,
+                ShopId = parsedShopId,
+            };
+
             var locations = (await connection
-                    .QueryAsync<LocationListItemDto>(new CommandDefinition(sql, new { CountType = countType }, cancellationToken: cancellationToken))
+                    .QueryAsync<LocationListItemDto>(new CommandDefinition(sql, sqlParameters, cancellationToken: cancellationToken))
                     .ConfigureAwait(false)).ToList();
 
             if (locations.Count == 0)
@@ -621,6 +644,18 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
             op.Summary = "Liste les emplacements (locations)";
             op.Description = "Retourne les métadonnées et l'état d'occupation des locations, filtré par type de comptage optionnel.";
             op.Parameters ??= new List<OpenApiParameter>();
+            if (!op.Parameters.Any(parameter => string.Equals(parameter.Name, "shopId", StringComparison.OrdinalIgnoreCase)))
+            {
+                op.Parameters.Add(new OpenApiParameter
+                {
+                    Name = "shopId",
+                    In = ParameterLocation.Query,
+                    Required = true,
+                    Description = "Identifiant unique de la boutique dont on souhaite récupérer les zones.",
+                    Schema = new OpenApiSchema { Type = "string", Format = "uuid" }
+                });
+            }
+
             if (!op.Parameters.Any(parameter => string.Equals(parameter.Name, "countType", StringComparison.OrdinalIgnoreCase)))
             {
                 op.Parameters.Add(new OpenApiParameter
