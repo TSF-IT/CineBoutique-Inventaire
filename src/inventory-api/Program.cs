@@ -182,6 +182,8 @@ builder.Logging.SetMinimumLevel(LogLevel.Information);
 var app = builder.Build();
 var env = app.Environment;
 
+app.Logger.LogInformation("[API] Using ownerUserId for runs; legacy operatorName disabled for write.");
+
 app.Logger.LogInformation("ASPNETCORE_ENVIRONMENT = {Env}", env.EnvironmentName);
 var devLike = env.IsDevelopment() || env.IsEnvironment("CI") || 
               string.Equals(env.EnvironmentName, "Docker", StringComparison.OrdinalIgnoreCase);
