@@ -43,7 +43,9 @@ const fetchInventorySummaryMock = vi.hoisted(() =>
 )
 
 const fetchLocationsMock = vi.hoisted(() =>
-  vi.fn(async (_options: { shopId: string }): Promise<Location[]> => [
+  vi.fn(async ({ shopId }: { shopId: string }): Promise<Location[]> => {
+    expect(shopId).toBeTruthy()
+    return [
       {
         id: 'loc-1',
         code: 'Z1',
@@ -100,7 +102,8 @@ const fetchLocationsMock = vi.hoisted(() =>
           },
         ],
       },
-    ]),
+    ]
+  }),
 )
 
 vi.mock('../api/inventoryApi', async (importOriginal) => {
