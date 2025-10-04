@@ -33,7 +33,7 @@ describe('SelectShopPage', () => {
     navigateMock.mockReset()
   })
 
-  it('affiche les boutiques et permet de continuer après sélection', async () => {
+  it('navigue vers l’accueil après sélection depuis la liste', async () => {
     const shops: Shop[] = [
       { id: 'shop-1', name: 'Boutique 1' },
       { id: 'shop-2', name: 'Boutique 2' },
@@ -51,16 +51,14 @@ describe('SelectShopPage', () => {
     const select = await screen.findByLabelText('Boutique')
     expect(select).toHaveValue('')
 
-    const continueButton = screen.getByRole('button', { name: 'Continuer' })
-    expect(continueButton).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'Continuer' })).not.toBeInTheDocument()
 
     fireEvent.change(select, { target: { value: 'shop-2' } })
-    expect(continueButton).not.toBeDisabled()
 
-    fireEvent.click(continueButton)
-
-    expect(setShopSpy).toHaveBeenCalledWith(shops[1])
-    expect(navigateMock).toHaveBeenCalledWith('/', { replace: true })
+    await waitFor(() => {
+      expect(setShopSpy).toHaveBeenCalledWith(shops[1])
+      expect(navigateMock).toHaveBeenCalledWith('/', { replace: true })
+    })
   })
 
   it('pré-sélectionne la boutique existante quand elle est disponible', async () => {
@@ -78,15 +76,15 @@ describe('SelectShopPage', () => {
       </ThemeProvider>,
     )
 
-    await screen.findByLabelText('Boutique')
+    const selectedRadio = await screen.findByRole('radio', { name: /Boutique 1/i })
+    expect(selectedRadio).toHaveAttribute('aria-checked', 'true')
 
-    const continueButtons = screen.getAllByRole('button', { name: 'Continuer' })
-    continueButtons.forEach((button) => {
-      expect(button).not.toBeDisabled()
-      fireEvent.click(button)
+    fireEvent.click(selectedRadio)
+
+    await waitFor(() => {
+      expect(setShopSpy).toHaveBeenCalledWith(shops[0])
+      expect(navigateMock).toHaveBeenCalledWith('/', { replace: true })
     })
-
-    expect(setShopSpy).toHaveBeenCalledWith(shops[0])
   })
 
   it('affiche un message d’erreur et permet de réessayer le chargement', async () => {
