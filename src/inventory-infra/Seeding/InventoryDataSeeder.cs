@@ -57,7 +57,11 @@ DO UPDATE SET ""IsAdmin"" = EXCLUDED.""IsAdmin"",
 SET ""Disabled"" = TRUE,
     ""IsAdmin"" = FALSE
 WHERE ""ShopId"" = @ShopId
-  AND NOT (LOWER(""DisplayName"") = ANY(@AllowedDisplayNames));";
+  AND NOT EXISTS (
+        SELECT 1
+        FROM UNNEST(@AllowedDisplayNames) AS allowed(name)
+        WHERE LOWER(allowed.name) = LOWER(""DisplayName"")
+    );";
 
     private const string CountActiveAdminsSql = @"SELECT COUNT(*)
 FROM ""ShopUser""
@@ -338,7 +342,7 @@ WHERE ""ShopId"" = @ShopId;";
         }
 
         var allowedDisplayNames = NonParisSeeds
-            .Select(seed => seed.DisplayName.ToLowerInvariant())
+            .Select(seed => seed.DisplayName)
             .ToArray();
 
         affected += await connection.ExecuteAsync(
