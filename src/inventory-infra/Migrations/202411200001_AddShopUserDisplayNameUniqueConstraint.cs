@@ -12,9 +12,18 @@ public sealed class AddShopUserDisplayNameUniqueConstraint : Migration
     public override void Up()
     {
         Execute.Sql($"""
-        ALTER TABLE "{TableName}"
-            ADD CONSTRAINT IF NOT EXISTS "{UniqueConstraintName}"
-            UNIQUE ("ShopId", "DisplayName");
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1
+                FROM pg_constraint
+                WHERE conname = '{UniqueConstraintName}'
+            ) THEN
+                ALTER TABLE "{TableName}"
+                    ADD CONSTRAINT "{UniqueConstraintName}"
+                    UNIQUE ("ShopId", "DisplayName");
+            END IF;
+        END $$;
         """);
 
         Execute.Sql($"""
