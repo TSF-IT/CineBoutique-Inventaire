@@ -56,6 +56,23 @@ internal static class EndpointUtilities
             .ConfigureAwait(false);
     }
 
+    public static async Task<bool> ColumnIsNullableAsync(IDbConnection connection, string tableName, string columnName, CancellationToken cancellationToken)
+    {
+        const string sql = @"SELECT
+    CASE
+        WHEN COUNT(*) = 0 THEN TRUE
+        ELSE BOOL_OR(is_nullable = 'YES')
+    END
+FROM information_schema.columns
+WHERE LOWER(table_name) = LOWER(@TableName)
+  AND LOWER(column_name) = LOWER(@ColumnName)
+  AND table_schema = ANY (current_schemas(TRUE));";
+
+        return await connection.ExecuteScalarAsync<bool>(
+                new CommandDefinition(sql, new { TableName = tableName, ColumnName = columnName }, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+    }
+
     public static Guid? SanitizeRunId(Guid? runId)
     {
         if (runId is null)
