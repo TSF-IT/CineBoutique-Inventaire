@@ -18,6 +18,25 @@ const mockLocations = [
   },
 ]
 
+const mockUsers = [
+  {
+    id: 'user-paris',
+    shopId: testShop.id,
+    login: 'paris',
+    displayName: 'Utilisateur Paris',
+    isAdmin: false,
+    disabled: false,
+  },
+  {
+    id: 'user-lyon',
+    shopId: testShop.id,
+    login: 'lyon',
+    displayName: 'Utilisateur Lyon',
+    isAdmin: false,
+    disabled: false,
+  },
+]
+
 const simulatedEan = '5901234123457'
 
 test.describe('Scanner avec BarcodeDetector', () => {
@@ -111,7 +130,7 @@ test.describe('Scanner avec BarcodeDetector', () => {
           inventorySessionId: '00000000-0000-4000-8000-000000000011',
           locationId: mockLocations[0].id,
           countType: 1,
-          operatorDisplayName: 'Amélie',
+          operatorDisplayName: mockUsers[0].displayName,
           startedAtUtc: new Date().toISOString(),
         }),
       })
@@ -123,6 +142,18 @@ test.describe('Scanner avec BarcodeDetector', () => {
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify(mockLocations),
+        })
+        return
+      }
+      await route.fallback()
+    })
+
+    await page.route('**/api/shops/**/users', async (route, request) => {
+      if (request.method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(mockUsers),
         })
         return
       }
@@ -145,7 +176,7 @@ test.describe('Scanner avec BarcodeDetector', () => {
   test('déclenche onDetected via BarcodeDetector', async ({ page }) => {
     await page.goto('/inventory/start')
 
-    const userButton = page.getByRole('button', { name: 'Amélie' })
+    const userButton = page.getByRole('button', { name: mockUsers[0].displayName })
     await expect(userButton).toBeVisible({ timeout: 5000 })
     await userButton.click()
 
