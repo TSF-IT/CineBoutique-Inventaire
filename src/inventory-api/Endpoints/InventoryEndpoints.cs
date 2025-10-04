@@ -917,13 +917,13 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc{operatorValue}{o
                 return Results.BadRequest(new { message = "Le type de comptage doit valoir 1, 2 ou 3." });
             }
 
-            var rawItems = request.Items ?? new List<CompleteInventoryRunItemRequest>();
-            if (rawItems.Count == 0)
+            var rawItems = request.Items?.ToArray() ?? Array.Empty<CompleteRunItemRequest>();
+            if (rawItems.Length == 0)
             {
                 return Results.BadRequest(new { message = "Au moins une ligne de comptage doit être fournie." });
             }
 
-            var sanitizedItems = new List<SanitizedCountLine>(rawItems.Count);
+            var sanitizedItems = new List<SanitizedCountLine>(rawItems.Length);
             foreach (var item in rawItems)
             {
                 var ean = item.Ean?.Trim();
