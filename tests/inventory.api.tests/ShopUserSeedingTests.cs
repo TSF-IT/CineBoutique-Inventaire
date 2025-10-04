@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,6 +29,14 @@ public sealed class ShopUserSeedingTests : IAsyncLifetime
         ["CinéBoutique Montpellier"] = 4,
         ["CinéBoutique Marseille"] = 4,
         ["CinéBoutique Bruxelles"] = 4
+    };
+
+    private static readonly string[] NonParisExpectedDisplayNames =
+    {
+        "Administrateur",
+        "Utilisateur 1",
+        "Utilisateur 2",
+        "Utilisateur 3"
     };
 
     private static readonly IReadOnlyList<ParisUserSeed> ParisUsersWithArnaud = new List<ParisUserSeed>
@@ -164,7 +173,7 @@ public sealed class ShopUserSeedingTests : IAsyncLifetime
             if (!string.Equals(expected.Key, "CinéBoutique Paris", StringComparison.OrdinalIgnoreCase))
             {
                 var displayNames = activeUsers.Select(user => user.DisplayName).OrderBy(name => name).ToList();
-                Assert.Equal(new[] { "Administrateur", "Utilisateur 1", "Utilisateur 2", "Utilisateur 3" }, displayNames);
+                Assert.Equal(NonParisExpectedDisplayNames, displayNames);
                 var admin = Assert.Single(activeUsers.Where(user => user.IsAdmin));
                 Assert.Equal("Administrateur", admin.DisplayName);
 
@@ -209,7 +218,7 @@ public sealed class ShopUserSeedingTests : IAsyncLifetime
         }
     }
 
-    private async Task<IDictionary<Guid, List<ShopUserRow>>> SnapshotActiveUsersAsync(IServiceProvider services)
+    private static async Task<IDictionary<Guid, List<ShopUserRow>>> SnapshotActiveUsersAsync(IServiceProvider services)
     {
         var connectionFactory = services.GetRequiredService<IDbConnectionFactory>();
         await using var connection = await connectionFactory.CreateOpenConnectionAsync(CancellationToken.None);
@@ -223,7 +232,7 @@ public sealed class ShopUserSeedingTests : IAsyncLifetime
         return rows.GroupBy(row => row.ShopId).ToDictionary(group => group.Key, group => group.OrderBy(user => user.Id).ToList());
     }
 
-    private async Task<Guid> SeedParisUsersAsync(IServiceProvider services, IReadOnlyList<ParisUserSeed> seeds)
+    private static async Task<Guid> SeedParisUsersAsync(IServiceProvider services, IReadOnlyList<ParisUserSeed> seeds)
     {
         var connectionFactory = services.GetRequiredService<IDbConnectionFactory>();
         await using var connection = await connectionFactory.CreateOpenConnectionAsync(CancellationToken.None);
@@ -252,7 +261,7 @@ public sealed class ShopUserSeedingTests : IAsyncLifetime
         return shopId;
     }
 
-    private async Task SeedLegacyNonParisUserAsync(IServiceProvider services, string shopName, string login, string displayName, bool isAdmin)
+    private static async Task SeedLegacyNonParisUserAsync(IServiceProvider services, string shopName, string login, string displayName, bool isAdmin)
     {
         var connectionFactory = services.GetRequiredService<IDbConnectionFactory>();
         await using var connection = await connectionFactory.CreateOpenConnectionAsync(CancellationToken.None);
@@ -320,9 +329,12 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
         await connection.ExecuteAsync(cleanupSql);
     }
 
+    [SuppressMessage("Performance", "CA1812", Justification = "Instantiated via Dapper materializer.")]
     private sealed record ParisUserSeed(Guid Id, string Login, string DisplayName, bool IsAdmin, bool Disabled);
 
+    [SuppressMessage("Performance", "CA1812", Justification = "Instantiated via Dapper materializer.")]
     private sealed record ShopUserRow(Guid Id, string DisplayName, bool IsAdmin, bool Disabled, Guid ShopId);
 
+    [SuppressMessage("Performance", "CA1812", Justification = "Instantiated via Dapper materializer.")]
     private sealed record ShopUserRowWithShop(Guid Id, string DisplayName, bool IsAdmin, bool Disabled, Guid ShopId, string ShopName);
 }
