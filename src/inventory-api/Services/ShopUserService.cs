@@ -25,7 +25,8 @@ public sealed class ShopUserService : IShopUserService
         SELECT "Id", "ShopId", "Login", "DisplayName", "IsAdmin", "Disabled"
         FROM "ShopUser"
         WHERE "ShopId" = @ShopId
-        ORDER BY LOWER("Login");
+          AND "Disabled" = FALSE
+        ORDER BY "IsAdmin" DESC, "DisplayName";
         """;
 
         var users = await connection.QueryAsync<ShopUserDto>(
