@@ -89,11 +89,8 @@ internal static class InventoryEndpoints
                 .QueryFirstOrDefaultAsync<InventorySummaryDto>(new CommandDefinition(summarySql, cancellationToken: cancellationToken))
                 .ConfigureAwait(false);
 
-            var hasOperatorDisplayNameColumn = await EndpointUtilities.ColumnExistsAsync(connection, "CountingRun", "OperatorDisplayName", cancellationToken).ConfigureAwait(false);
-
-            var operatorDisplayNameProjection = hasOperatorDisplayNameColumn
-                ? "cr.\"OperatorDisplayName\""
-                : "NULL::text";
+            var columnsState = await DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
+            var openRunsOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
 
             var openRunsDetailsSql = $@"SELECT
     cr.""Id""          AS ""RunId"",
@@ -101,10 +98,11 @@ internal static class InventoryEndpoints
     l.""Code""         AS ""LocationCode"",
     l.""Label""        AS ""LocationLabel"",
     cr.""CountType"",
-    {operatorDisplayNameProjection} AS ""OperatorDisplayName"",
+    {openRunsOperatorSql.Projection} AS ""OperatorDisplayName"",
     cr.""StartedAtUtc""
 FROM ""CountingRun"" cr
 JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
+{AppendJoinClause(openRunsOperatorSql.JoinClause)}
 WHERE cr.""CompletedAtUtc"" IS NULL
 ORDER BY cr.""StartedAtUtc"" DESC;";
 
@@ -125,17 +123,20 @@ ORDER BY cr.""StartedAtUtc"" DESC;";
                 })
                 .ToList();
 
+            var completedRunsOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
+
             var completedRunsSql = $@"SELECT
     cr.""Id""          AS ""RunId"",
     cr.""LocationId"",
     l.""Code""         AS ""LocationCode"",
     l.""Label""        AS ""LocationLabel"",
     cr.""CountType"",
-    {operatorDisplayNameProjection} AS ""OperatorDisplayName"",
+    {completedRunsOperatorSql.Projection} AS ""OperatorDisplayName"",
     cr.""StartedAtUtc"",
     cr.""CompletedAtUtc""
 FROM ""CountingRun"" cr
 JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
+{AppendJoinClause(completedRunsOperatorSql.JoinClause)}
 WHERE cr.""CompletedAtUtc"" IS NOT NULL
 ORDER BY cr.""CompletedAtUtc"" DESC
 LIMIT 20;";
@@ -212,13 +213,8 @@ ORDER BY l.""Code"";",
         {
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-            var hasOperatorDisplayNameColumn = await EndpointUtilities
-                .ColumnExistsAsync(connection, "CountingRun", "OperatorDisplayName", cancellationToken)
-                .ConfigureAwait(false);
-
-            var operatorDisplayNameProjection = hasOperatorDisplayNameColumn
-                ? "cr.\"OperatorDisplayName\""
-                : "NULL::text";
+            var columnsState = await DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
+            var runOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
 
             var runSql = $@"SELECT
     cr.""Id""           AS ""RunId"",
@@ -226,11 +222,12 @@ ORDER BY l.""Code"";",
     l.""Code""          AS ""LocationCode"",
     l.""Label""         AS ""LocationLabel"",
     cr.""CountType"",
-    {operatorDisplayNameProjection} AS ""OperatorDisplayName"",
+    {runOperatorSql.Projection} AS ""OperatorDisplayName"",
     cr.""StartedAtUtc"",
     cr.""CompletedAtUtc""
 FROM ""CountingRun"" cr
 JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
+{AppendJoinClause(runOperatorSql.JoinClause)}
 WHERE cr.""Id"" = @RunId
   AND cr.""CompletedAtUtc"" IS NOT NULL
 LIMIT 1;";
@@ -442,19 +439,20 @@ ORDER BY p.""Ean"";";
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-            var hasOperatorDisplayNameColumn = await EndpointUtilities.ColumnExistsAsync(connection, "CountingRun", "OperatorDisplayName", cancellationToken).ConfigureAwait(false);
+            var columnsState = await DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
+            var locationOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
 
-            var operatorDisplayNameProjection = hasOperatorDisplayNameColumn
-                ? "cr.\"OperatorDisplayName\""
-                : "NULL::text";
+            var activeRunsDistinctColumns = columnsState.HasOwnerUserId
+                ? "cr.\"LocationId\", cr.\"CountType\", cr.\"OwnerUserId\""
+                : columnsState.HasOperatorDisplayName
+                    ? "cr.\"LocationId\", cr.\"CountType\", cr.\"OperatorDisplayName\""
+                    : "cr.\"LocationId\", cr.\"CountType\"";
 
-            var activeRunsDistinctColumns = hasOperatorDisplayNameColumn
-                ? "cr.\"LocationId\", cr.\"CountType\", cr.\"OperatorDisplayName\""
-                : "cr.\"LocationId\", cr.\"CountType\"";
-
-            var activeRunsOrderByColumns = hasOperatorDisplayNameColumn
-                ? "cr.\"LocationId\", cr.\"CountType\", cr.\"OperatorDisplayName\", cr.\"StartedAtUtc\" DESC"
-                : "cr.\"LocationId\", cr.\"CountType\", cr.\"StartedAtUtc\" DESC";
+            var activeRunsOrderByColumns = columnsState.HasOwnerUserId
+                ? "cr.\"LocationId\", cr.\"CountType\", cr.\"OwnerUserId\", cr.\"StartedAtUtc\" DESC"
+                : columnsState.HasOperatorDisplayName
+                    ? "cr.\"LocationId\", cr.\"CountType\", cr.\"OperatorDisplayName\", cr.\"StartedAtUtc\" DESC"
+                    : "cr.\"LocationId\", cr.\"CountType\", cr.\"StartedAtUtc\" DESC";
 
             var sql = $@"WITH active_runs AS (
     SELECT DISTINCT ON ({activeRunsDistinctColumns})
@@ -463,8 +461,9 @@ ORDER BY p.""Ean"";";
         cr.""CountType""     AS ""ActiveCountType"",
         cr.""StartedAtUtc""  AS ""ActiveStartedAtUtc"",
         -- si tu as la détection conditionnelle de la colonne:
-        {operatorDisplayNameProjection} AS ""BusyBy""
+        {locationOperatorSql.Projection} AS ""BusyBy""
     FROM ""CountingRun"" cr
+{AppendJoinClause(locationOperatorSql.JoinClause)}
     WHERE cr.""CompletedAtUtc"" IS NULL
       AND (@CountType IS NULL OR cr.""CountType"" = @CountType)
     ORDER BY {activeRunsOrderByColumns}
@@ -504,17 +503,22 @@ ORDER BY l.""Code"" ASC;";
 
             var locationIds = locations.Select(location => location.Id).ToArray();
 
+            var openRunsOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
+
             var openRunsSql = $@"SELECT
     cr.""LocationId"",
     cr.""CountType"",
     cr.""Id""          AS ""RunId"",
     cr.""StartedAtUtc"",
     cr.""CompletedAtUtc"",
-    {operatorDisplayNameProjection} AS ""OperatorDisplayName""
+    {openRunsOperatorSql.Projection} AS ""OperatorDisplayName""
 FROM ""CountingRun"" cr
+{AppendJoinClause(openRunsOperatorSql.JoinClause)}
 WHERE cr.""CompletedAtUtc"" IS NULL
   AND cr.""LocationId"" = ANY(@LocationIds::uuid[])
 ORDER BY cr.""LocationId"", cr.""CountType"", cr.""StartedAtUtc"" DESC;";
+
+            var completedRunsOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
 
             var completedRunsSql = $@"SELECT DISTINCT ON (cr.""LocationId"", cr.""CountType"")
     cr.""LocationId"",
@@ -522,8 +526,9 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""StartedAtUtc"" DESC;";
     cr.""Id""           AS ""RunId"",
     cr.""StartedAtUtc"",
     cr.""CompletedAtUtc"",
-    {operatorDisplayNameProjection} AS ""OperatorDisplayName""
+    {completedRunsOperatorSql.Projection} AS ""OperatorDisplayName""
 FROM ""CountingRun"" cr
+{AppendJoinClause(completedRunsOperatorSql.JoinClause)}
 WHERE cr.""CompletedAtUtc"" IS NOT NULL
   AND cr.""LocationId"" = ANY(@LocationIds::uuid[])
 ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
@@ -675,7 +680,7 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
     {
         app.MapPost("/api/inventories/{locationId:guid}/start", async (
             Guid locationId,
-            StartInventoryRunRequest request,
+            StartRunRequest request,
             IDbConnection connection,
             CancellationToken cancellationToken) =>
         {
@@ -684,25 +689,27 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                 return Results.BadRequest(new { message = "Le corps de la requête est requis." });
             }
 
+            if (request.ShopId == Guid.Empty)
+            {
+                return Results.BadRequest(new { message = "Le champ shopId est requis." });
+            }
+
+            if (request.OwnerUserId == Guid.Empty)
+            {
+                return Results.BadRequest(new { message = "Le champ ownerUserId est requis." });
+            }
+
             if (request.CountType is not (1 or 2 or 3))
             {
                 return Results.BadRequest(new { message = "Le type de comptage doit valoir 1, 2 ou 3." });
             }
 
-            var operatorName = request.Operator?.Trim();
-            if (string.IsNullOrWhiteSpace(operatorName))
-            {
-                return Results.BadRequest(new { message = "L'opérateur réalisant le comptage est requis." });
-            }
-
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-            var hasOperatorDisplayNameColumn = await EndpointUtilities
-                .ColumnExistsAsync(connection, "CountingRun", "OperatorDisplayName", cancellationToken)
-                .ConfigureAwait(false);
+            var columnsState = await DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
 
             const string selectLocationSql =
-                "SELECT \"Id\", \"Code\", \"Label\" FROM \"Location\" WHERE \"Id\" = @LocationId LIMIT 1;";
+                "SELECT \"Id\", \"ShopId\", \"Code\", \"Label\" FROM \"Location\" WHERE \"Id\" = @LocationId LIMIT 1;";
 
             var location = await connection
                 .QuerySingleOrDefaultAsync<LocationMetadataRow>(
@@ -714,32 +721,53 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                 return Results.NotFound(new { message = "La zone demandée est introuvable." });
             }
 
-            var selectActiveSql = hasOperatorDisplayNameColumn
-                ? @"SELECT
-    ""Id""                AS ""RunId"",
-    ""InventorySessionId"" AS ""InventorySessionId"",
-    ""StartedAtUtc""       AS ""StartedAtUtc"",
-    ""OperatorDisplayName"" AS ""OperatorDisplayName""
-FROM ""CountingRun""
-WHERE ""LocationId"" = @LocationId
-  AND ""CountType"" = @CountType
-  AND ""CompletedAtUtc"" IS NULL
-ORDER BY ""StartedAtUtc"" DESC
-LIMIT 1;"
-                : @"SELECT
-    ""Id""                AS ""RunId"",
-    ""InventorySessionId"" AS ""InventorySessionId"",
-    ""StartedAtUtc""       AS ""StartedAtUtc"",
-    NULL::text              AS ""OperatorDisplayName""
-FROM ""CountingRun""
-WHERE ""LocationId"" = @LocationId
-  AND ""CountType"" = @CountType
-  AND ""CompletedAtUtc"" IS NULL
-ORDER BY ""StartedAtUtc"" DESC
+            if (location.ShopId != request.ShopId)
+            {
+                return Results.BadRequest(new { message = "La zone ne correspond pas à la boutique demandée." });
+            }
+
+            if (connection is not NpgsqlConnection npgsqlConnection)
+            {
+                return Results.Problem(
+                    "La connexion à la base de données n'est pas compatible avec PostgreSQL.",
+                    statusCode: StatusCodes.Status500InternalServerError);
+            }
+
+            if (!await ValidateUserBelongsToShop(npgsqlConnection, request.OwnerUserId, location.ShopId, cancellationToken).ConfigureAwait(false))
+            {
+                return BadOwnerUser(request.OwnerUserId, location.ShopId);
+            }
+
+            const string selectOwnerDisplayNameSql =
+                "SELECT \"DisplayName\" FROM \"ShopUser\" WHERE \"Id\" = @OwnerUserId LIMIT 1;";
+
+            var ownerDisplayName = await connection
+                .ExecuteScalarAsync<string?>(
+                    new CommandDefinition(selectOwnerDisplayNameSql, new { OwnerUserId = request.OwnerUserId }, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            ownerDisplayName = string.IsNullOrWhiteSpace(ownerDisplayName)
+                ? null
+                : ownerDisplayName.Trim();
+
+            var activeOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
+
+            var selectActiveSql = $@"SELECT
+    cr.""Id""                AS ""RunId"",
+    cr.""InventorySessionId"" AS ""InventorySessionId"",
+    cr.""StartedAtUtc""       AS ""StartedAtUtc"",
+    {(columnsState.HasOwnerUserId ? "cr.\"OwnerUserId\"" : "NULL::uuid")} AS ""OwnerUserId"",
+    {activeOperatorSql.Projection} AS ""OperatorDisplayName""
+FROM ""CountingRun"" cr
+{AppendJoinClause(activeOperatorSql.JoinClause)}
+WHERE cr.""LocationId"" = @LocationId
+  AND cr.""CountType"" = @CountType
+  AND cr.""CompletedAtUtc"" IS NULL
+ORDER BY cr.""StartedAtUtc"" DESC
 LIMIT 1;";
 
             var existingRun = await connection
-                .QuerySingleOrDefaultAsync<(Guid RunId, Guid InventorySessionId, DateTime StartedAtUtc, string? OperatorDisplayName)?>(
+                .QuerySingleOrDefaultAsync<ActiveCountingRunRow?>(
                     new CommandDefinition(
                         selectActiveSql,
                         new { LocationId = locationId, CountType = request.CountType },
@@ -748,17 +776,23 @@ LIMIT 1;";
 
             if (existingRun is { } active)
             {
-                if (hasOperatorDisplayNameColumn)
+                if (columnsState.HasOwnerUserId && active.OwnerUserId is Guid ownerId && ownerId != request.OwnerUserId)
                 {
-                    var existingOperator = active.OperatorDisplayName?.Trim();
-                    if (!string.IsNullOrWhiteSpace(existingOperator) &&
-                        !string.Equals(existingOperator, operatorName, StringComparison.OrdinalIgnoreCase))
+                    var ownerLabel = active.OperatorDisplayName ?? "un autre utilisateur";
+                    return Results.Conflict(new
                     {
-                        return Results.Conflict(new
-                        {
-                            message = $"Comptage déjà en cours par {existingOperator}."
-                        });
-                    }
+                        message = $"Comptage déjà en cours par {ownerLabel}."
+                    });
+                }
+
+                if (!columnsState.HasOwnerUserId && !string.IsNullOrWhiteSpace(active.OperatorDisplayName) &&
+                    !string.IsNullOrWhiteSpace(ownerDisplayName) &&
+                    !string.Equals(active.OperatorDisplayName.Trim(), ownerDisplayName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Results.Conflict(new
+                    {
+                        message = $"Comptage déjà en cours par {active.OperatorDisplayName}."
+                    });
                 }
 
                 return Results.Ok(new StartInventoryRunResponse
@@ -767,7 +801,7 @@ LIMIT 1;";
                     InventorySessionId = active.InventorySessionId,
                     LocationId = locationId,
                     CountType = request.CountType,
-                    OperatorDisplayName = active.OperatorDisplayName,
+                    OperatorDisplayName = active.OperatorDisplayName ?? ownerDisplayName,
                     StartedAtUtc = TimeUtil.ToUtcOffset(active.StartedAtUtc)
                 });
             }
@@ -803,30 +837,24 @@ LIMIT 1;";
 
             var runId = Guid.NewGuid();
 
-            var insertRunSql = hasOperatorDisplayNameColumn
-                ? @"INSERT INTO ""CountingRun"" (""Id"", ""InventorySessionId"", ""LocationId"", ""CountType"", ""StartedAtUtc"", ""OperatorDisplayName"")
-VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc, @Operator);"
-                : @"INSERT INTO ""CountingRun"" (""Id"", ""InventorySessionId"", ""LocationId"", ""CountType"", ""StartedAtUtc"")
-VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc);";
+            var operatorColumn = columnsState.HasOperatorDisplayName ? ", \"OperatorDisplayName\"" : string.Empty;
+            var operatorValue = columnsState.HasOperatorDisplayName ? ", @Operator" : string.Empty;
+            var ownerColumn = columnsState.HasOwnerUserId ? ", \"OwnerUserId\"" : string.Empty;
+            var ownerValue = columnsState.HasOwnerUserId ? ", @OwnerUserId" : string.Empty;
 
-            object insertParameters = hasOperatorDisplayNameColumn
-                ? new
-                {
-                    Id = runId,
-                    SessionId = sessionId,
-                    LocationId = locationId,
-                    CountType = request.CountType,
-                    StartedAtUtc = now,
-                    Operator = operatorName
-                }
-                : new
-                {
-                    Id = runId,
-                    SessionId = sessionId,
-                    LocationId = locationId,
-                    CountType = request.CountType,
-                    StartedAtUtc = now
-                };
+            var insertRunSql = $@"INSERT INTO ""CountingRun"" (""Id"", ""InventorySessionId"", ""LocationId"", ""CountType"", ""StartedAtUtc""{operatorColumn}{ownerColumn})
+VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc{operatorValue}{ownerValue});";
+
+            var insertParameters = new
+            {
+                Id = runId,
+                SessionId = sessionId,
+                LocationId = locationId,
+                CountType = request.CountType,
+                StartedAtUtc = now,
+                Operator = ownerDisplayName,
+                OwnerUserId = request.OwnerUserId
+            };
 
             await connection
                 .ExecuteAsync(
@@ -845,7 +873,7 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc);";
                 InventorySessionId = sessionId,
                 LocationId = locationId,
                 CountType = request.CountType,
-                OperatorDisplayName = hasOperatorDisplayNameColumn ? operatorName : null,
+                OperatorDisplayName = ownerDisplayName,
                 StartedAtUtc = now
             });
         })
@@ -867,7 +895,7 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc);";
     {
         app.MapPost("/api/inventories/{locationId:guid}/complete", async (
             Guid locationId,
-            CompleteInventoryRunRequest request,
+            CompleteRunRequest request,
             IDbConnection connection,
             IAuditLogger auditLogger,
             HttpContext httpContext,
@@ -878,16 +906,15 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc);";
                 return Results.BadRequest(new { message = "Le corps de la requête est requis." });
             }
 
+            if (request.OwnerUserId == Guid.Empty)
+            {
+                return Results.BadRequest(new { message = "Le champ ownerUserId est requis." });
+            }
+
             var countType = request.CountType;
             if (countType is not (1 or 2 or 3))
             {
                 return Results.BadRequest(new { message = "Le type de comptage doit valoir 1, 2 ou 3." });
-            }
-
-            var operatorName = request.Operator?.Trim();
-            if (string.IsNullOrWhiteSpace(operatorName))
-            {
-                return Results.BadRequest(new { message = "L'opérateur ayant réalisé le comptage est requis." });
             }
 
             var rawItems = request.Items ?? new List<CompleteInventoryRunItemRequest>();
@@ -925,11 +952,44 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc);";
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-            var hasOperatorDisplayNameColumn = await EndpointUtilities.ColumnExistsAsync(
-                    connection,
-                    "CountingRun",
-                    "OperatorDisplayName",
-                    cancellationToken).ConfigureAwait(false);
+            var columnsState = await DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
+
+            const string selectLocationSql =
+                "SELECT \"Id\", \"ShopId\", \"Code\", \"Label\" FROM \"Location\" WHERE \"Id\" = @LocationId LIMIT 1;";
+
+            var location = await connection
+                .QuerySingleOrDefaultAsync<LocationMetadataRow>(
+                    new CommandDefinition(selectLocationSql, new { LocationId = locationId }, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (location is null)
+            {
+                return Results.NotFound(new { message = "La zone demandée est introuvable." });
+            }
+
+            if (connection is not NpgsqlConnection npgsqlConnection)
+            {
+                return Results.Problem(
+                    "La connexion à la base de données n'est pas compatible avec PostgreSQL.",
+                    statusCode: StatusCodes.Status500InternalServerError);
+            }
+
+            if (!await ValidateUserBelongsToShop(npgsqlConnection, request.OwnerUserId, location.ShopId, cancellationToken).ConfigureAwait(false))
+            {
+                return BadOwnerUser(request.OwnerUserId, location.ShopId);
+            }
+
+            const string selectOwnerDisplayNameSql =
+                "SELECT \"DisplayName\" FROM \"ShopUser\" WHERE \"Id\" = @OwnerUserId LIMIT 1;";
+
+            var ownerDisplayName = await connection
+                .ExecuteScalarAsync<string?>(
+                    new CommandDefinition(selectOwnerDisplayNameSql, new { OwnerUserId = request.OwnerUserId }, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            ownerDisplayName = string.IsNullOrWhiteSpace(ownerDisplayName)
+                ? null
+                : ownerDisplayName.Trim();
 
             if (connection is not DbConnection dbConnection)
             {
@@ -940,21 +1000,9 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc);";
 
             await using var transaction = await dbConnection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
-            const string selectLocationSql =
-                "SELECT \"Id\", \"Code\", \"Label\" FROM \"Location\" WHERE \"Id\" = @LocationId LIMIT 1;";
-
-            var location = await connection
-                .QuerySingleOrDefaultAsync<LocationMetadataRow>(
-                    new CommandDefinition(selectLocationSql, new { LocationId = locationId }, transaction, cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
-
-            if (location is null)
-            {
-                return Results.NotFound(new { message = "La zone demandée est introuvable." });
-            }
-
-            const string selectRunSql =
-                "SELECT \"Id\", \"InventorySessionId\", \"LocationId\", \"CountType\" FROM \"CountingRun\" WHERE \"Id\" = @RunId LIMIT 1;";
+            var selectRunSql = columnsState.HasOwnerUserId
+                ? "SELECT \"Id\", \"InventorySessionId\", \"LocationId\", \"CountType\", \"OwnerUserId\" FROM \"CountingRun\" WHERE \"Id\" = @RunId LIMIT 1;"
+                : "SELECT \"Id\", \"InventorySessionId\", \"LocationId\", \"CountType\", NULL::uuid AS \"OwnerUserId\" FROM \"CountingRun\" WHERE \"Id\" = @RunId LIMIT 1;";
 
             CountingRunRow? existingRun = null;
             if (request.RunId is { } runId)
@@ -973,11 +1021,47 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc);";
                 {
                     return Results.BadRequest(new { message = "Le run ne correspond pas à la zone demandée." });
                 }
+
+                if (existingRun.OwnerUserId is Guid ownerId && ownerId != request.OwnerUserId)
+                {
+                    return Results.Conflict(new { message = "Le run est attribué à un autre opérateur." });
+                }
             }
 
-            if (countType == 2 && hasOperatorDisplayNameColumn)
+            if (countType == 2)
             {
-                const string selectFirstRunOperatorSql = @"
+                if (columnsState.HasOwnerUserId)
+                {
+                    const string selectFirstRunOwnerSql = @"
+SELECT ""OwnerUserId""
+FROM ""CountingRun""
+WHERE ""LocationId"" = @LocationId
+  AND ""CountType"" = 1
+  AND ""CompletedAtUtc"" IS NOT NULL
+ORDER BY ""CompletedAtUtc"" DESC
+LIMIT 1;";
+
+                    var firstRunOwner = await connection
+                        .ExecuteScalarAsync<Guid?>(
+                            new CommandDefinition(
+                                selectFirstRunOwnerSql,
+                                new { LocationId = locationId },
+                                transaction,
+                                cancellationToken: cancellationToken))
+                        .ConfigureAwait(false);
+
+                    if (firstRunOwner is Guid ownerId && ownerId == request.OwnerUserId)
+                    {
+                        await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                        return Results.Conflict(new
+                        {
+                            message = "Le deuxième comptage doit être réalisé par un opérateur différent du premier."
+                        });
+                    }
+                }
+                else if (columnsState.HasOperatorDisplayName)
+                {
+                    const string selectFirstRunOperatorSql = @"
 SELECT ""OperatorDisplayName""
 FROM ""CountingRun""
 WHERE ""LocationId"" = @LocationId
@@ -986,23 +1070,25 @@ WHERE ""LocationId"" = @LocationId
 ORDER BY ""CompletedAtUtc"" DESC
 LIMIT 1;";
 
-                var firstRunOperator = await connection
-                    .ExecuteScalarAsync<string?>(
-                        new CommandDefinition(
-                            selectFirstRunOperatorSql,
-                            new { LocationId = locationId },
-                            transaction,
-                            cancellationToken: cancellationToken))
-                    .ConfigureAwait(false);
+                    var firstRunOperator = await connection
+                        .ExecuteScalarAsync<string?>(
+                            new CommandDefinition(
+                                selectFirstRunOperatorSql,
+                                new { LocationId = locationId },
+                                transaction,
+                                cancellationToken: cancellationToken))
+                        .ConfigureAwait(false);
 
-                if (!string.IsNullOrWhiteSpace(firstRunOperator) &&
-                    string.Equals(firstRunOperator.Trim(), operatorName, StringComparison.OrdinalIgnoreCase))
-                {
-                    await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-                    return Results.Conflict(new
+                    if (!string.IsNullOrWhiteSpace(firstRunOperator) &&
+                        !string.IsNullOrWhiteSpace(ownerDisplayName) &&
+                        string.Equals(firstRunOperator.Trim(), ownerDisplayName, StringComparison.OrdinalIgnoreCase))
                     {
-                        message = "Le deuxième comptage doit être réalisé par un opérateur différent du premier."
-                    });
+                        await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                        return Results.Conflict(new
+                        {
+                            message = "Le deuxième comptage doit être réalisé par un opérateur différent du premier."
+                        });
+                    }
                 }
             }
 
@@ -1038,38 +1124,29 @@ LIMIT 1;";
                             cancellationToken: cancellationToken))
                     .ConfigureAwait(false);
 
-                const string insertRunSql =
-                    "INSERT INTO \"CountingRun\" (\"Id\", \"InventorySessionId\", \"LocationId\", \"CountType\", \"StartedAtUtc\", \"CompletedAtUtc\"{0}) VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc, @CompletedAtUtc{1});";
+                var operatorColumn = columnsState.HasOperatorDisplayName ? ", \"OperatorDisplayName\"" : string.Empty;
+                var operatorValue = columnsState.HasOperatorDisplayName ? ", @Operator" : string.Empty;
+                var ownerColumn = columnsState.HasOwnerUserId ? ", \"OwnerUserId\"" : string.Empty;
+                var ownerValue = columnsState.HasOwnerUserId ? ", @OwnerUserId" : string.Empty;
 
-                object insertRunParameters = hasOperatorDisplayNameColumn
-                    ? new
-                    {
-                        Id = countingRunId,
-                        SessionId = inventorySessionId,
-                        LocationId = locationId,
-                        CountType = countType,
-                        StartedAtUtc = now,
-                        CompletedAtUtc = now,
-                        Operator = operatorName
-                    }
-                    : new
-                    {
-                        Id = countingRunId,
-                        SessionId = inventorySessionId,
-                        LocationId = locationId,
-                        CountType = countType,
-                        StartedAtUtc = now,
-                        CompletedAtUtc = now
-                    };
-
-                var operatorColumns = hasOperatorDisplayNameColumn ? ", \"OperatorDisplayName\"" : string.Empty;
-                var operatorValues = hasOperatorDisplayNameColumn ? ", @Operator" : string.Empty;
+                var insertRunSql = $@"INSERT INTO ""CountingRun"" (""Id"", ""InventorySessionId"", ""LocationId"", ""CountType"", ""StartedAtUtc"", ""CompletedAtUtc""{operatorColumn}{ownerColumn})
+VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc, @CompletedAtUtc{operatorValue}{ownerValue});";
 
                 await connection
                     .ExecuteAsync(
                         new CommandDefinition(
-                            string.Format(insertRunSql, operatorColumns, operatorValues),
-                            insertRunParameters,
+                            insertRunSql,
+                            new
+                            {
+                                Id = countingRunId,
+                                SessionId = inventorySessionId,
+                                LocationId = locationId,
+                                CountType = countType,
+                                StartedAtUtc = now,
+                                CompletedAtUtc = now,
+                                Operator = ownerDisplayName,
+                                OwnerUserId = request.OwnerUserId
+                            },
                             transaction,
                             cancellationToken: cancellationToken))
                     .ConfigureAwait(false);
@@ -1082,24 +1159,22 @@ LIMIT 1;";
                 .ExecuteAsync(new CommandDefinition(updateSessionSql, new { SessionId = inventorySessionId, CompletedAtUtc = now }, transaction, cancellationToken: cancellationToken))
                 .ConfigureAwait(false);
 
-            var updateRunSql = hasOperatorDisplayNameColumn
-                ? "UPDATE \"CountingRun\" SET \"CountType\" = @CountType, \"CompletedAtUtc\" = @CompletedAtUtc, \"OperatorDisplayName\" = @Operator WHERE \"Id\" = @RunId;"
-                : "UPDATE \"CountingRun\" SET \"CountType\" = @CountType, \"CompletedAtUtc\" = @CompletedAtUtc WHERE \"Id\" = @RunId;";
+            var operatorUpdateFragment = columnsState.HasOperatorDisplayName ? ", \"OperatorDisplayName\" = @Operator" : string.Empty;
+            var ownerUpdateFragment = columnsState.HasOwnerUserId ? ", \"OwnerUserId\" = @OwnerUserId" : string.Empty;
 
-            object updateRunParameters = hasOperatorDisplayNameColumn
-                ? new
-                {
-                    RunId = countingRunId,
-                    CountType = countType,
-                    CompletedAtUtc = now,
-                    Operator = operatorName
-                }
-                : new
-                {
-                    RunId = countingRunId,
-                    CountType = countType,
-                    CompletedAtUtc = now
-                };
+            var updateRunSql = $@"UPDATE ""CountingRun""
+SET ""CountType"" = @CountType,
+    ""CompletedAtUtc"" = @CompletedAtUtc{operatorUpdateFragment}{ownerUpdateFragment}
+WHERE ""Id"" = @RunId;";
+
+            var updateRunParameters = new
+            {
+                RunId = countingRunId,
+                CountType = countType,
+                CompletedAtUtc = now,
+                Operator = ownerDisplayName,
+                OwnerUserId = request.OwnerUserId
+            };
 
             await connection
                 .ExecuteAsync(
@@ -1194,7 +1269,7 @@ LIMIT 1;";
             var auditMessage =
                 $"{actor} a terminé {zoneDescription} pour un {countDescription} le {timestamp} UTC ({response.ItemsCount} références, total {response.TotalQuantity}).";
 
-            await auditLogger.LogAsync(auditMessage, operatorName, "inventories.complete.success", cancellationToken).ConfigureAwait(false);
+            await auditLogger.LogAsync(auditMessage, ownerDisplayName, "inventories.complete.success", cancellationToken).ConfigureAwait(false);
 
             return Results.Ok(response);
         })
@@ -1210,42 +1285,33 @@ LIMIT 1;";
         app.MapDelete("/api/inventories/{locationId:guid}/runs/{runId:guid}", async (
             Guid locationId,
             Guid runId,
-            string operatorName,
+            Guid ownerUserId,
             IDbConnection connection,
             CancellationToken cancellationToken) =>
         {
-            operatorName = operatorName?.Trim() ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(operatorName))
+            if (ownerUserId == Guid.Empty)
             {
-                return Results.BadRequest(new { message = "operatorName est requis." });
+                return Results.BadRequest(new { message = "ownerUserId est requis." });
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-            var hasOperatorDisplayNameColumn = await EndpointUtilities
-                .ColumnExistsAsync(connection, "CountingRun", "OperatorDisplayName", cancellationToken)
-                .ConfigureAwait(false);
+            var columnsState = await DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
+            var runOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
 
-            var selectRunSql = hasOperatorDisplayNameColumn
-                ? @"SELECT
-    ""InventorySessionId"" AS ""InventorySessionId"",
-    ""OperatorDisplayName"" AS ""OperatorDisplayName""
-FROM ""CountingRun""
-WHERE ""Id"" = @RunId
-  AND ""LocationId"" = @LocationId
-  AND ""CompletedAtUtc"" IS NULL
-LIMIT 1;"
-                : @"SELECT
-    ""InventorySessionId"" AS ""InventorySessionId"",
-    NULL::text              AS ""OperatorDisplayName""
-FROM ""CountingRun""
-WHERE ""Id"" = @RunId
-  AND ""LocationId"" = @LocationId
-  AND ""CompletedAtUtc"" IS NULL
+            var selectRunSql = $@"SELECT
+    cr.""InventorySessionId"" AS ""InventorySessionId"",
+    {(columnsState.HasOwnerUserId ? "cr.\"OwnerUserId\"" : "NULL::uuid")} AS ""OwnerUserId"",
+    {runOperatorSql.Projection} AS ""OperatorDisplayName""
+FROM ""CountingRun"" cr
+{AppendJoinClause(runOperatorSql.JoinClause)}
+WHERE cr.""Id"" = @RunId
+  AND cr.""LocationId"" = @LocationId
+  AND cr.""CompletedAtUtc"" IS NULL
 LIMIT 1;";
 
             var run = await connection
-                .QuerySingleOrDefaultAsync<(Guid InventorySessionId, string? OperatorDisplayName)?>(
+                .QuerySingleOrDefaultAsync<(Guid InventorySessionId, Guid? OwnerUserId, string? OperatorDisplayName)?>(
                     new CommandDefinition(
                         selectRunSql,
                         new { RunId = runId, LocationId = locationId },
@@ -1257,11 +1323,31 @@ LIMIT 1;";
                 return Results.NotFound(new { message = "Aucun comptage actif pour les critères fournis." });
             }
 
-            if (hasOperatorDisplayNameColumn)
+            if (columnsState.HasOwnerUserId)
             {
+                if (run.Value.OwnerUserId is Guid ownerId && ownerId != ownerUserId)
+                {
+                    var ownerLabel = run.Value.OperatorDisplayName ?? "un autre utilisateur";
+                    return Results.Conflict(new
+                    {
+                        message = $"Comptage détenu par {ownerLabel}."
+                    });
+                }
+            }
+            else if (columnsState.HasOperatorDisplayName)
+            {
+                const string selectOwnerDisplayNameSql =
+                    "SELECT \"DisplayName\" FROM \"ShopUser\" WHERE \"Id\" = @OwnerUserId LIMIT 1;";
+
+                var requestedDisplayName = await connection
+                    .ExecuteScalarAsync<string?>(
+                        new CommandDefinition(selectOwnerDisplayNameSql, new { OwnerUserId = ownerUserId }, cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+
                 var existingOperator = run.Value.OperatorDisplayName?.Trim();
                 if (!string.IsNullOrWhiteSpace(existingOperator) &&
-                    !string.Equals(existingOperator, operatorName, StringComparison.OrdinalIgnoreCase))
+                    !string.IsNullOrWhiteSpace(requestedDisplayName) &&
+                    !string.Equals(existingOperator, requestedDisplayName.Trim(), StringComparison.OrdinalIgnoreCase))
                 {
                     return Results.Conflict(new
                     {
@@ -1342,15 +1428,15 @@ LIMIT 1;";
             op.Summary = "Libère un comptage en cours sans le finaliser.";
             op.Description = "Supprime le run actif lorsqu'aucune ligne n'a été enregistrée, ce qui libère la zone.";
             op.Parameters ??= new List<OpenApiParameter>();
-            if (!op.Parameters.Any(parameter => string.Equals(parameter.Name, "operatorName", StringComparison.Ordinal)))
+            if (!op.Parameters.Any(parameter => string.Equals(parameter.Name, "ownerUserId", StringComparison.Ordinal)))
             {
                 op.Parameters.Add(new OpenApiParameter
                 {
-                    Name = "operatorName",
+                    Name = "ownerUserId",
                     In = ParameterLocation.Query,
-                    Description = "Nom de l'opérateur qui libère le comptage.",
+                    Description = "Identifiant de l'utilisateur à l'origine du run.",
                     Required = true,
-                    Schema = new OpenApiSchema { Type = "string" }
+                    Schema = new OpenApiSchema { Type = "string", Format = "uuid" }
                 });
             }
             return op;
@@ -1424,7 +1510,7 @@ WHERE ""LocationId"" = @LocationId
         app.MapGet("/api/inventories/{locationId:guid}/active-run", async (
             Guid locationId,
             int countType,
-            string operatorName,
+            Guid ownerUserId,
             Guid? sessionId,
             IDbConnection connection,
             CancellationToken cancellationToken) =>
@@ -1432,9 +1518,8 @@ WHERE ""LocationId"" = @LocationId
             if (countType is not (1 or 2 or 3))
                 return Results.BadRequest(new { message = "countType doit valoir 1, 2 ou 3." });
 
-            operatorName = operatorName?.Trim() ?? "";
-            if (string.IsNullOrWhiteSpace(operatorName))
-                return Results.BadRequest(new { message = "operatorName est requis." });
+            if (ownerUserId == Guid.Empty)
+                return Results.BadRequest(new { message = "ownerUserId est requis." });
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
@@ -1461,22 +1546,84 @@ WHERE ""LocationId"" = @LocationId
                 targetSessionId = resolved.Value;
             }
 
-            const string selectRunSql = @"
-    SELECT ""Id"" AS ""RunId"", ""StartedAtUtc""
-    FROM ""CountingRun""
-    WHERE ""InventorySessionId"" = @SessionId
-    AND ""LocationId""        = @LocationId
-    AND ""CountType""         = @CountType
-    AND COALESCE(""OperatorDisplayName"", '') = @Operator
-    AND ""CompletedAtUtc"" IS NULL
-    ORDER BY ""StartedAtUtc"" DESC
+            var columnsState = await DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
+            var runOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
+
+            string? ownerDisplayName = null;
+            if (columnsState.HasOperatorDisplayName || columnsState.HasOwnerUserId)
+            {
+                const string selectOwnerDisplayNameSql =
+                    "SELECT \"DisplayName\" FROM \"ShopUser\" WHERE \"Id\" = @OwnerUserId LIMIT 1;";
+
+                ownerDisplayName = await connection
+                    .ExecuteScalarAsync<string?>(
+                        new CommandDefinition(selectOwnerDisplayNameSql, new { OwnerUserId = ownerUserId }, cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+
+                ownerDisplayName = string.IsNullOrWhiteSpace(ownerDisplayName)
+                    ? null
+                    : ownerDisplayName.Trim();
+            }
+
+            string selectRunSql;
+            object parameters;
+
+            if (columnsState.HasOwnerUserId)
+            {
+                selectRunSql = $@"
+    SELECT cr.""Id"" AS ""RunId"", cr.""StartedAtUtc"", {runOperatorSql.Projection} AS ""OperatorDisplayName""
+    FROM ""CountingRun"" cr
+    {AppendJoinClause(runOperatorSql.JoinClause)}
+    WHERE cr.""InventorySessionId"" = @SessionId
+      AND cr.""LocationId""        = @LocationId
+      AND cr.""CountType""         = @CountType
+      AND cr.""OwnerUserId""       = @OwnerUserId
+      AND cr.""CompletedAtUtc"" IS NULL
+    ORDER BY cr.""StartedAtUtc"" DESC
     LIMIT 1;";
 
-            var run = await connection.QuerySingleOrDefaultAsync<(Guid RunId, DateTime StartedAtUtc)?>(
-                new CommandDefinition(
-                    selectRunSql,
-                    new { SessionId = targetSessionId, LocationId = locationId, CountType = (short)countType, Operator = operatorName },
-                    cancellationToken: cancellationToken)).ConfigureAwait(false);
+                parameters = new
+                {
+                    SessionId = targetSessionId,
+                    LocationId = locationId,
+                    CountType = (short)countType,
+                    OwnerUserId = ownerUserId
+                };
+            }
+            else if (columnsState.HasOperatorDisplayName)
+            {
+                if (string.IsNullOrWhiteSpace(ownerDisplayName))
+                {
+                    return Results.NotFound(new { message = "Utilisateur introuvable pour déterminer le run actif." });
+                }
+
+                selectRunSql = $@"
+    SELECT cr.""Id"" AS ""RunId"", cr.""StartedAtUtc"", {runOperatorSql.Projection} AS ""OperatorDisplayName""
+    FROM ""CountingRun"" cr
+    {AppendJoinClause(runOperatorSql.JoinClause)}
+    WHERE cr.""InventorySessionId"" = @SessionId
+      AND cr.""LocationId""        = @LocationId
+      AND cr.""CountType""         = @CountType
+      AND COALESCE(cr.""OperatorDisplayName"", '') = @OperatorDisplayName
+      AND cr.""CompletedAtUtc"" IS NULL
+    ORDER BY cr.""StartedAtUtc"" DESC
+    LIMIT 1;";
+
+                parameters = new
+                {
+                    SessionId = targetSessionId,
+                    LocationId = locationId,
+                    CountType = (short)countType,
+                    OperatorDisplayName = ownerDisplayName
+                };
+            }
+            else
+            {
+                return Results.NotFound(new { message = "Impossible de déterminer l'opérateur pour ce run." });
+            }
+
+            var run = await connection.QuerySingleOrDefaultAsync<(Guid RunId, DateTime StartedAtUtc, string? OperatorDisplayName)?>(
+                new CommandDefinition(selectRunSql, parameters, cancellationToken: cancellationToken)).ConfigureAwait(false);
 
             if (run is null)
                 return Results.NotFound(new { message = "Aucun run actif pour ces critères." });
@@ -1486,7 +1633,8 @@ WHERE ""LocationId"" = @LocationId
                 SessionId = targetSessionId,
                 RunId = run.Value.RunId,
                 CountType = countType,
-                Operator = operatorName,
+                OwnerUserId = ownerUserId,
+                OperatorDisplayName = run.Value.OperatorDisplayName ?? ownerDisplayName,
                 StartedAtUtc = TimeUtil.ToUtcOffset(run.Value.StartedAtUtc)
             });
         })
@@ -1497,7 +1645,7 @@ WHERE ""LocationId"" = @LocationId
         .Produces(StatusCodes.Status404NotFound)
         .WithOpenApi(op =>
         {
-            op.Summary = "Trouve le run ouvert pour une zone/type/opérateur (dans la session active par défaut).";
+            op.Summary = "Trouve le run ouvert pour une zone, un type et un utilisateur donné.";
             return op;
         });
     }
@@ -1707,6 +1855,50 @@ ORDER BY cl.""CountingRunId"", p.""Id"", cl.""CountedAtUtc"" DESC, cl.""Id"" DES
 
         return null;
     }
+
+    private sealed record OperatorColumnsState(bool HasOperatorDisplayName, bool HasOwnerUserId);
+
+    private sealed record OperatorSqlFragments(string Projection, string? JoinClause);
+
+    private static async Task<OperatorColumnsState> DetectOperatorColumnsAsync(
+        IDbConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var hasOperatorDisplayNameColumn = await EndpointUtilities
+            .ColumnExistsAsync(connection, "CountingRun", "OperatorDisplayName", cancellationToken)
+            .ConfigureAwait(false);
+
+        var hasOwnerUserIdColumn = await EndpointUtilities
+            .ColumnExistsAsync(connection, "CountingRun", "OwnerUserId", cancellationToken)
+            .ConfigureAwait(false);
+
+        return new OperatorColumnsState(hasOperatorDisplayNameColumn, hasOwnerUserIdColumn);
+    }
+
+    private static OperatorSqlFragments BuildOperatorSqlFragments(
+        string runAlias,
+        string ownerAlias,
+        OperatorColumnsState state)
+    {
+        if (state.HasOwnerUserId)
+        {
+            var joinClause = $"LEFT JOIN \"ShopUser\" {ownerAlias} ON {ownerAlias}.\"Id\" = {runAlias}.\"OwnerUserId\"";
+            var projection = state.HasOperatorDisplayName
+                ? $"COALESCE({ownerAlias}.\"DisplayName\", {runAlias}.\"OperatorDisplayName\")"
+                : $"{ownerAlias}.\"DisplayName\"";
+            return new OperatorSqlFragments(projection, joinClause);
+        }
+
+        if (state.HasOperatorDisplayName)
+        {
+            return new OperatorSqlFragments($"{runAlias}.\"OperatorDisplayName\"", null);
+        }
+
+        return new OperatorSqlFragments("NULL::text", null);
+    }
+
+    private static string AppendJoinClause(string? joinClause) =>
+        string.IsNullOrWhiteSpace(joinClause) ? string.Empty : $"\n{joinClause}";
 
     private static string BuildProductKey(Guid productId, string? ean)
     {

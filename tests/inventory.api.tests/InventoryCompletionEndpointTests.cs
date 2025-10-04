@@ -52,14 +52,10 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
     public async Task CompleteInventoryRun_ReturnsBadRequest_WhenNoItems()
     {
         await ResetDatabaseAsync();
-        var locationId = await SeedLocationAsync("S1", "Zone S1");
+        var (locationId, shopId) = await SeedLocationAsync("S1", "Zone S1");
+        var ownerUserId = await SeedShopUserAsync(shopId, "Amélie");
 
-        var payload = new CompleteInventoryRunRequest
-        {
-            CountType = 1,
-            Operator = "Amélie",
-            Items = new List<CompleteInventoryRunItemRequest>()
-        };
+        var payload = new CompleteRunRequest(null, ownerUserId, 1, Array.Empty<CompleteRunItemRequest>());
 
         var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", payload);
 
@@ -70,23 +66,15 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
     public async Task CompleteInventoryRun_CreatesRunAndLines_ForExistingProduct()
     {
         await ResetDatabaseAsync();
-        var locationId = await SeedLocationAsync("S1", "Zone S1");
+        var (locationId, shopId) = await SeedLocationAsync("S1", "Zone S1");
+        var ownerUserId = await SeedShopUserAsync(shopId, "Amélie");
         var productId = await SeedProductAsync("PROD-001", "Produit référencé", "12345678");
 
-        var payload = new CompleteInventoryRunRequest
-        {
-            CountType = 1,
-            Operator = "Amélie",
-            Items = new List<CompleteInventoryRunItemRequest>
-            {
-                new()
-                {
-                    Ean = "12345678",
-                    Quantity = 2,
-                    IsManual = false
-                }
-            }
-        };
+        var payload = new CompleteRunRequest(
+            null,
+            ownerUserId,
+            1,
+            new[] { new CompleteRunItemRequest("12345678", 2m, false) });
 
         var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", payload);
         response.EnsureSuccessStatusCode();
@@ -137,22 +125,14 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
     public async Task CompleteInventoryRun_CreatesUnknownProduct_WhenEanNotFound()
     {
         await ResetDatabaseAsync();
-        var locationId = await SeedLocationAsync("S1", "Zone S1");
+        var (locationId, shopId) = await SeedLocationAsync("S1", "Zone S1");
+        var ownerUserId = await SeedShopUserAsync(shopId, "Bruno");
 
-        var payload = new CompleteInventoryRunRequest
-        {
-            CountType = 2,
-            Operator = "Bruno",
-            Items = new List<CompleteInventoryRunItemRequest>
-            {
-                new()
-                {
-                    Ean = "99999999",
-                    Quantity = 5,
-                    IsManual = true
-                }
-            }
-        };
+        var payload = new CompleteRunRequest(
+            null,
+            ownerUserId,
+            2,
+            new[] { new CompleteRunItemRequest("99999999", 5m, true) });
 
         var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", payload);
         response.EnsureSuccessStatusCode();
@@ -185,40 +165,24 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
     public async Task CompleteInventoryRun_CreatesConflict_WhenSecondRunDiffers()
     {
         await ResetDatabaseAsync();
-        var locationId = await SeedLocationAsync("Z1", "Zone Z1");
+        var (locationId, shopId) = await SeedLocationAsync("Z1", "Zone Z1");
 
-        var firstPayload = new CompleteInventoryRunRequest
-        {
-            CountType = 1,
-            Operator = "Yann",
-            Items = new List<CompleteInventoryRunItemRequest>
-            {
-                new()
-                {
-                    Ean = "32165498",
-                    Quantity = 10,
-                    IsManual = false
-                }
-            }
-        };
+        var ownerYann = await SeedShopUserAsync(shopId, "Yann");
+        var firstPayload = new CompleteRunRequest(
+            null,
+            ownerYann,
+            1,
+            new[] { new CompleteRunItemRequest("32165498", 10m, false) });
 
         var firstResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", firstPayload);
         firstResponse.EnsureSuccessStatusCode();
 
-        var secondPayload = new CompleteInventoryRunRequest
-        {
-            CountType = 2,
-            Operator = "Zoé",
-            Items = new List<CompleteInventoryRunItemRequest>
-            {
-                new()
-                {
-                    Ean = "32165498",
-                    Quantity = 4,
-                    IsManual = false
-                }
-            }
-        };
+        var ownerZoe = await SeedShopUserAsync(shopId, "Zoé");
+        var secondPayload = new CompleteRunRequest(
+            null,
+            ownerZoe,
+            2,
+            new[] { new CompleteRunItemRequest("32165498", 4m, false) });
 
         var secondResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", secondPayload);
         secondResponse.EnsureSuccessStatusCode();
@@ -253,58 +217,34 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
     public async Task CompleteInventoryRun_AllowsThirdRunForInitialOperator_WhenConflictExists()
     {
         await ResetDatabaseAsync();
-        var locationId = await SeedLocationAsync("Z3", "Zone Z3");
+        var (locationId, shopId) = await SeedLocationAsync("Z3", "Zone Z3");
 
-        var firstPayload = new CompleteInventoryRunRequest
-        {
-            CountType = 1,
-            Operator = "Chloé",
-            Items = new List<CompleteInventoryRunItemRequest>
-            {
-                new()
-                {
-                    Ean = "12345670",
-                    Quantity = 5,
-                    IsManual = true
-                }
-            }
-        };
+        var ownerChloe = await SeedShopUserAsync(shopId, "Chloé");
+        var ownerBruno = await SeedShopUserAsync(shopId, "Bruno");
+
+        var firstPayload = new CompleteRunRequest(
+            null,
+            ownerChloe,
+            1,
+            new[] { new CompleteRunItemRequest("12345670", 5m, true) });
 
         var firstResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", firstPayload);
         firstResponse.EnsureSuccessStatusCode();
 
-        var secondPayload = new CompleteInventoryRunRequest
-        {
-            CountType = 2,
-            Operator = "Bruno",
-            Items = new List<CompleteInventoryRunItemRequest>
-            {
-                new()
-                {
-                    Ean = "12345670",
-                    Quantity = 7,
-                    IsManual = true
-                }
-            }
-        };
+        var secondPayload = new CompleteRunRequest(
+            null,
+            ownerBruno,
+            2,
+            new[] { new CompleteRunItemRequest("12345670", 7m, true) });
 
         var secondResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", secondPayload);
         secondResponse.EnsureSuccessStatusCode();
 
-        var thirdPayload = new CompleteInventoryRunRequest
-        {
-            CountType = 3,
-            Operator = "Chloé",
-            Items = new List<CompleteInventoryRunItemRequest>
-            {
-                new()
-                {
-                    Ean = "12345670",
-                    Quantity = 6,
-                    IsManual = true
-                }
-            }
-        };
+        var thirdPayload = new CompleteRunRequest(
+            null,
+            ownerChloe,
+            3,
+            new[] { new CompleteRunItemRequest("12345670", 6m, true) });
 
         var thirdResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", thirdPayload);
         thirdResponse.EnsureSuccessStatusCode();
@@ -339,22 +279,15 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
     public async Task CompleteInventoryRun_RejectsSecondRun_WhenOperatorMatchesFirst()
     {
         await ResetDatabaseAsync();
-        var locationId = await SeedLocationAsync("Z2", "Zone Z2");
+        var (locationId, shopId) = await SeedLocationAsync("Z2", "Zone Z2");
 
-        var firstPayload = new CompleteInventoryRunRequest
-        {
-            CountType = 1,
-            Operator = "Chloé",
-            Items = new List<CompleteInventoryRunItemRequest>
-            {
-                new()
-                {
-                    Ean = "78945612",
-                    Quantity = 3,
-                    IsManual = false
-                }
-            }
-        };
+        var ownerChloe = await SeedShopUserAsync(shopId, "Chloé");
+
+        var firstPayload = new CompleteRunRequest(
+            null,
+            ownerChloe,
+            1,
+            new[] { new CompleteRunItemRequest("78945612", 3m, false) });
 
         var firstResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", firstPayload);
         firstResponse.EnsureSuccessStatusCode();
@@ -368,20 +301,11 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
             Assert.True(hasOperatorColumn, "La colonne OperatorDisplayName est requise pour ce test.");
         }
 
-        var secondPayload = new CompleteInventoryRunRequest
-        {
-            CountType = 2,
-            Operator = "Chloé",
-            Items = new List<CompleteInventoryRunItemRequest>
-            {
-                new()
-                {
-                    Ean = "78945612",
-                    Quantity = 3,
-                    IsManual = false
-                }
-            }
-        };
+        var secondPayload = new CompleteRunRequest(
+            null,
+            ownerChloe,
+            2,
+            new[] { new CompleteRunItemRequest("78945612", 3m, false) });
 
         var secondResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", secondPayload);
 
@@ -422,7 +346,7 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
         await connection.ExecuteAsync(cleanupSql);
     }
 
-    private async Task<Guid> SeedLocationAsync(string code, string label)
+    private async Task<(Guid LocationId, Guid ShopId)> SeedLocationAsync(string code, string label)
     {
         using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
@@ -441,7 +365,7 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
         const string sql =
             "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\", \"ShopId\") VALUES (@Id, @Code, @Label, @ShopId);";
         await connection.ExecuteAsync(sql, new { Id = locationId, Code = code, Label = label, ShopId = shopId });
-        return locationId;
+        return (locationId, shopId);
     }
 
     private async Task<Guid> SeedProductAsync(string sku, string name, string ean)
@@ -456,6 +380,30 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
             "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"Ean\", \"CreatedAtUtc\") VALUES (@Id, @Sku, @Name, @Ean, @CreatedAtUtc);";
         await connection.ExecuteAsync(sql, new { Id = productId, Sku = sku, Name = name, Ean = ean, CreatedAtUtc = DateTimeOffset.UtcNow });
         return productId;
+    }
+
+    private async Task<Guid> SeedShopUserAsync(Guid shopId, string displayName)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        var userId = Guid.NewGuid();
+        const string sql =
+            "INSERT INTO \"ShopUser\" (\"Id\", \"ShopId\", \"Login\", \"DisplayName\", \"IsAdmin\", \"Secret_Hash\", \"Disabled\") VALUES (@Id, @ShopId, @Login, @DisplayName, FALSE, '', FALSE);";
+
+        await connection.ExecuteAsync(
+            sql,
+            new
+            {
+                Id = userId,
+                ShopId = shopId,
+                Login = $"inventory_user_{Guid.NewGuid():N}",
+                DisplayName = displayName
+            });
+
+        return userId;
     }
 
     private static async Task EnsureConnectionOpenAsync(NpgsqlConnection connection)

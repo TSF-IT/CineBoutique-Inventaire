@@ -53,12 +53,9 @@ public sealed class InventoryRunLifecycleTests : IAsyncLifetime
     {
         await ResetDatabaseAsync();
         var (locationId, shopId) = await SeedLocationAsync("S1", "Zone S1");
+        var ownerUserId = await SeedShopUserAsync(shopId, "Amélie");
 
-        var request = new StartInventoryRunRequest
-        {
-            CountType = 1,
-            Operator = "Amélie"
-        };
+        var request = new StartRunRequest(shopId, ownerUserId, 1);
 
         var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/start", request);
         response.EnsureSuccessStatusCode();
@@ -112,21 +109,15 @@ public sealed class InventoryRunLifecycleTests : IAsyncLifetime
     public async Task StartInventoryRun_ReturnsConflict_WhenOtherOperatorActive()
     {
         await ResetDatabaseAsync();
-        var (locationId, _) = await SeedLocationAsync("S1", "Zone S1");
+        var (locationId, shopId) = await SeedLocationAsync("S1", "Zone S1");
 
-        var firstRequest = new StartInventoryRunRequest
-        {
-            CountType = 1,
-            Operator = "Amélie"
-        };
+        var firstOwnerId = await SeedShopUserAsync(shopId, "Amélie");
+        var firstRequest = new StartRunRequest(shopId, firstOwnerId, 1);
         var firstResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/start", firstRequest);
         firstResponse.EnsureSuccessStatusCode();
 
-        var secondRequest = new StartInventoryRunRequest
-        {
-            CountType = 1,
-            Operator = "Bruno"
-        };
+        var secondOwnerId = await SeedShopUserAsync(shopId, "Bruno");
+        var secondRequest = new StartRunRequest(shopId, secondOwnerId, 1);
 
         var secondResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/start", secondRequest);
         Assert.Equal(HttpStatusCode.Conflict, secondResponse.StatusCode);
@@ -137,18 +128,15 @@ public sealed class InventoryRunLifecycleTests : IAsyncLifetime
     {
         await ResetDatabaseAsync();
         var (locationId, shopId) = await SeedLocationAsync("S1", "Zone S1");
+        var ownerUserId = await SeedShopUserAsync(shopId, "Amélie");
 
-        var startRequest = new StartInventoryRunRequest
-        {
-            CountType = 1,
-            Operator = "Amélie"
-        };
+        var startRequest = new StartRunRequest(shopId, ownerUserId, 1);
         var startResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/start", startRequest);
         startResponse.EnsureSuccessStatusCode();
         var startPayload = await startResponse.Content.ReadFromJsonAsync<StartInventoryRunResponse>();
         Assert.NotNull(startPayload);
 
-        var abortResponse = await _client.DeleteAsync($"/api/inventories/{locationId}/runs/{startPayload!.RunId}?operatorName=Amélie");
+        var abortResponse = await _client.DeleteAsync($"/api/inventories/{locationId}/runs/{startPayload!.RunId}?ownerUserId={ownerUserId}");
         Assert.Equal(HttpStatusCode.NoContent, abortResponse.StatusCode);
 
         var locationsResponse = await _client.GetAsync($"/api/locations?shopId={shopId}");
@@ -205,6 +193,31 @@ TRUNCATE TABLE "Conflict" RESTART IDENTITY CASCADE;
         {
             await ((DbConnection)connection).OpenAsync();
         }
+    }
+
+    private async Task<Guid> SeedShopUserAsync(Guid shopId, string displayName)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        var userId = Guid.NewGuid();
+        const string insertSql =
+            "INSERT INTO \"ShopUser\" (\"Id\", \"ShopId\", \"Login\", \"DisplayName\", \"IsAdmin\", \"Secret_Hash\", \"Disabled\")" +
+            " VALUES (@Id, @ShopId, @Login, @DisplayName, FALSE, '', FALSE);";
+
+        await connection.ExecuteAsync(
+            insertSql,
+            new
+            {
+                Id = userId,
+                ShopId = shopId,
+                Login = $"user_{Guid.NewGuid():N}",
+                DisplayName = displayName
+            });
+
+        return userId;
     }
 
     private async Task<(Guid LocationId, Guid ShopId)> SeedLocationAsync(string code, string label)
