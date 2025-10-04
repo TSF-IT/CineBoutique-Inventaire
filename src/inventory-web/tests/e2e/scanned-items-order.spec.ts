@@ -23,6 +23,25 @@ const productsByEan: Record<string, { ean: string; name: string }> = {
   '0000': { ean: '0000', name: 'Produit 0000' },
 }
 
+const mockUsers = [
+  {
+    id: 'user-paris',
+    shopId: testShop.id,
+    login: 'paris',
+    displayName: 'Utilisateur Paris',
+    isAdmin: false,
+    disabled: false,
+  },
+  {
+    id: 'user-lyon',
+    shopId: testShop.id,
+    login: 'lyon',
+    displayName: 'Utilisateur Lyon',
+    isAdmin: false,
+    disabled: false,
+  },
+]
+
 test.describe("Ordre d'affichage des articles scannés", () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(({ key, value }) => {
@@ -43,10 +62,22 @@ test.describe("Ordre d'affichage des articles scannés", () => {
           inventorySessionId: '00000000-0000-4000-8000-000000000002',
           locationId: mockLocations[0].id,
           countType: 1,
-          operatorDisplayName: 'Amélie',
+          operatorDisplayName: mockUsers[0].displayName,
           startedAtUtc: new Date().toISOString(),
         }),
       })
+    })
+
+    await page.route('**/api/shops/**/users', async (route, request) => {
+      if (request.method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(mockUsers),
+        })
+        return
+      }
+      await route.fallback()
     })
 
     await page.route('**/api/locations**', async (route, request) => {
@@ -87,7 +118,7 @@ test.describe("Ordre d'affichage des articles scannés", () => {
   test('maintient un ordre stable lors des ajustements de quantité', async ({ page }) => {
     await page.goto('/inventory/start')
 
-    const userButton = page.getByRole('button', { name: 'Amélie' })
+    const userButton = page.getByRole('button', { name: mockUsers[0].displayName })
     await expect(userButton).toBeVisible({ timeout: 5000 })
     await userButton.click()
 

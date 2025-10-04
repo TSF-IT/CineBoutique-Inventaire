@@ -18,6 +18,25 @@ const testShop = {
   name: 'Cinéma test',
 }
 
+const mockUsers = [
+  {
+    id: 'user-paris',
+    shopId: testShop.id,
+    login: 'paris',
+    displayName: 'Utilisateur Paris',
+    isAdmin: false,
+    disabled: false,
+  },
+  {
+    id: 'user-lyon',
+    shopId: testShop.id,
+    login: 'lyon',
+    displayName: 'Utilisateur Lyon',
+    isAdmin: false,
+    disabled: false,
+  },
+]
+
 test.describe('Scanner fallback', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(({ key, value }) => {
@@ -37,6 +56,18 @@ test.describe('Scanner fallback', () => {
           status: 200,
           contentType: 'application/json',
           body: JSON.stringify(mockLocations),
+        })
+        return
+      }
+      await route.fallback()
+    })
+
+    await page.route('**/api/shops/**/users', async (route, request) => {
+      if (request.method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify(mockUsers),
         })
         return
       }
@@ -69,7 +100,7 @@ test.describe('Scanner fallback', () => {
 
     await page.goto('/inventory/start')
 
-    const userButton = page.getByRole('button', { name: 'Amélie' })
+    const userButton = page.getByRole('button', { name: mockUsers[0].displayName })
     await expect(userButton).toBeVisible({ timeout: 5000 })
     await userButton.click()
 

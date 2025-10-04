@@ -114,7 +114,7 @@ describe('HomePage', () => {
           locationCode: 'S1',
           locationLabel: 'Zone S1',
           countType: 2,
-          operatorDisplayName: 'Bruno',
+          operatorDisplayName: 'Utilisateur Nice 1',
           startedAtUtc: new Date('2023-12-31T09:00:00Z').toISOString(),
           completedAtUtc: new Date('2023-12-31T10:00:00Z').toISOString(),
         },
@@ -173,6 +173,6 @@ describe('HomePage', () => {
     expect(completedRunsModalTitle).toBeInTheDocument()
     const completedRunsModal = await screen.findByRole('dialog', { name: /Comptages terminés/i })
     expect(within(completedRunsModal).getByText(/Comptages terminés \(20 plus récents\)/i)).toBeInTheDocument()
-    expect(within(completedRunsModal).getByText(/Opérateur : Bruno/i)).toBeInTheDocument()
+    expect(within(completedRunsModal).getByText(/Opérateur : Utilisateur Nice 1/i)).toBeInTheDocument()
   })
 })

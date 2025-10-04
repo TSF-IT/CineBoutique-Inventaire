@@ -8,8 +8,6 @@ import { EmptyState } from '../../components/EmptyState'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { useAsync } from '../../hooks/useAsync'
 import type { Location } from '../../types/inventory'
-import { useOperators } from '../../contexts/OperatorsContext'
-import { sortOperatorNames } from '../../utils/operators'
 import { useShop } from '@/state/ShopContext'
 
 type FeedbackState = { type: 'success' | 'error'; message: string } | null
@@ -128,85 +126,6 @@ const LocationListItem = ({
   )
 }
 
-const OperatorListItem = ({
-  operator,
-  onRename,
-}: {
-  operator: { id: string; name: string }
-  onRename: (id: string, name: string) => Promise<void>
-}) => {
-  const [isEditing, setIsEditing] = useState(false)
-  const [name, setName] = useState(operator.name)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const handleCancel = () => {
-    setName(operator.name)
-    setError(null)
-    setIsEditing(false)
-  }
-
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setError(null)
-
-    const nextName = name.trim()
-    if (!nextName) {
-      setError("Le nom de l’opérateur est requis.")
-      return
-    }
-
-    if (nextName === operator.name) {
-      setIsEditing(false)
-      return
-    }
-
-    setSaving(true)
-    try {
-      await onRename(operator.id, nextName)
-      setIsEditing(false)
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Impossible de mettre à jour cet opérateur.'
-      setError(message)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
-      {isEditing ? (
-        <form className="flex flex-col gap-3 sm:flex-row sm:items-end" onSubmit={handleSubmit}>
-          <Input
-            label="Nom affiché"
-            name={`operator-${operator.id}`}
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            containerClassName="flex-1"
-            autoComplete="off"
-          />
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Button type="submit" className="py-3" disabled={saving}>
-              {saving ? 'Enregistrement…' : 'Enregistrer'}
-            </Button>
-            <Button type="button" variant="ghost" onClick={handleCancel} disabled={saving}>
-              Annuler
-            </Button>
-          </div>
-          {error && <p className="text-sm text-red-600 dark:text-red-400 sm:basis-full">{error}</p>}
-        </form>
-      ) : (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-base font-semibold text-slate-900 dark:text-white">{operator.name}</p>
-          <Button variant="secondary" onClick={() => setIsEditing(true)}>
-            Renommer
-          </Button>
-        </div>
-      )}
-    </div>
-  )
-}
-
 export const AdminLocationsPage = () => {
   const { shop } = useShop()
   const loadLocations = useCallback(() => {
@@ -220,43 +139,16 @@ export const AdminLocationsPage = () => {
     initialValue: [],
     immediate: Boolean(shop?.id),
   })
-  const { operators, addOperator, updateOperator } = useOperators()
-
-  const [newOperatorName, setNewOperatorName] = useState('')
-  const [operatorFeedback, setOperatorFeedback] = useState<FeedbackState>(null)
 
   const [newLocationCode, setNewLocationCode] = useState('')
   const [newLocationLabel, setNewLocationLabel] = useState('')
   const [creatingLocation, setCreatingLocation] = useState(false)
   const [locationFeedback, setLocationFeedback] = useState<FeedbackState>(null)
 
-  const orderedOperators = useMemo(() => sortOperatorNames(operators), [operators])
-  const sortedLocations = useMemo(() => [...(data ?? [])].sort((a, b) => a.code.localeCompare(b.code)), [data])
-
-  const handleAddOperator = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setOperatorFeedback(null)
-    try {
-      addOperator(newOperatorName)
-      setNewOperatorName('')
-      setOperatorFeedback({ type: 'success', message: 'Opérateur ajouté.' })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Impossible d’ajouter cet opérateur.'
-      setOperatorFeedback({ type: 'error', message })
-    }
-  }
-
-  const handleRenameOperator = async (id: string, name: string) => {
-    setOperatorFeedback(null)
-    try {
-      updateOperator(id, name)
-      setOperatorFeedback({ type: 'success', message: 'Opérateur mis à jour.' })
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Impossible de renommer cet opérateur.'
-      setOperatorFeedback({ type: 'error', message })
-      throw new Error(message)
-    }
-  }
+  const sortedLocations = useMemo(
+    () => [...(data ?? [])].sort((a, b) => a.code.localeCompare(b.code)),
+    [data],
+  )
 
   const handleCreateLocation = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
@@ -303,54 +195,6 @@ export const AdminLocationsPage = () => {
 
   return (
     <div className="flex flex-col gap-6">
-      <Card className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Opérateurs</h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            Gérez la liste proposée lors du démarrage d’un comptage.
-          </p>
-        </div>
-        <form
-          data-testid="operator-create-form"
-          className="flex flex-col gap-4 sm:flex-row"
-          onSubmit={handleAddOperator}
-        >
-          <Input
-            label="Nom affiché"
-            name="newOperatorName"
-            placeholder="Ex. Alex, Léa"
-            value={newOperatorName}
-            onChange={(event) => setNewOperatorName(event.target.value)}
-            containerClassName="flex-1"
-          />
-          <Button type="submit" className="py-3">
-            Ajouter
-          </Button>
-        </form>
-        {operatorFeedback && (
-          <p
-            className={`text-sm ${
-              operatorFeedback.type === 'success'
-                ? 'text-emerald-600 dark:text-emerald-400'
-                : 'text-red-600 dark:text-red-400'
-            }`}
-          >
-            {operatorFeedback.message}
-          </p>
-        )}
-        <div className="flex flex-col gap-3">
-          {orderedOperators.length === 0 && (
-            <EmptyState
-              title="Aucun opérateur"
-              description="Ajoutez un premier nom pour le proposer dans l’assistant d’inventaire."
-            />
-          )}
-          {orderedOperators.map((operator) => (
-            <OperatorListItem key={operator.id} operator={operator} onRename={handleRenameOperator} />
-          ))}
-        </div>
-      </Card>
-
       <Card className="flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between gap-4">
@@ -403,7 +247,7 @@ export const AdminLocationsPage = () => {
           </p>
         )}
         {loading && <LoadingIndicator label="Chargement des zones" />}
-        {Boolean(error) && <EmptyState title="Erreur" description="Les zones n&apos;ont pas pu être chargées." />}
+        {Boolean(error) && <EmptyState title="Erreur" description="Les zones n'ont pas pu être chargées." />}
         {!loading && !error && (
           <div className="flex flex-col gap-3">
             {sortedLocations.length === 0 ? (
