@@ -1012,16 +1012,56 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc{ownerValue}{oper
 
             await using var transaction = await dbConnection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
-            var selectRunSql = columnsState.HasOwnerUserId
-                ? "SELECT \"Id\", \"InventorySessionId\", \"LocationId\", \"CountType\", \"OwnerUserId\" FROM \"CountingRun\" WHERE \"Id\" = @RunId LIMIT 1;"
-                : "SELECT \"Id\", \"InventorySessionId\", \"LocationId\", \"CountType\", NULL::uuid AS \"OwnerUserId\" FROM \"CountingRun\" WHERE \"Id\" = @RunId LIMIT 1;";
+            var runOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
 
-            CountingRunRow? existingRun = null;
+            var selectRunSql = $@"SELECT
+    cr.""Id"",
+    l.""ShopId"",
+    cr.""InventorySessionId"",
+    cr.""LocationId"",
+    cr.""CountType"",
+    {(columnsState.HasOwnerUserId ? "cr.\"OwnerUserId\"" : "NULL::uuid")} AS ""OwnerUserId"",
+    {runOperatorSql.Projection} AS ""OperatorDisplayName"",
+    CASE
+        WHEN cr.""CompletedAtUtc"" IS NOT NULL THEN @StatusCompleted
+        WHEN cr.""StartedAtUtc""   IS NOT NULL THEN @StatusInProgress
+        ELSE @StatusNotStarted
+    END AS ""Status"",
+    COALESCE(lines.""LinesCount"", 0)::int     AS ""LinesCount"",
+    COALESCE(lines.""TotalQuantity"", 0)::numeric AS ""TotalQuantity"",
+    cr.""StartedAtUtc"",
+    cr.""CompletedAtUtc"",
+    NULL::timestamptz AS ""ReleasedAtUtc""
+FROM ""CountingRun"" cr
+JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
+{AppendJoinClause(runOperatorSql.JoinClause)}
+LEFT JOIN (
+    SELECT
+        ""CountingRunId"",
+        COUNT(*)::int                    AS ""LinesCount"",
+        COALESCE(SUM(""Quantity""), 0)::numeric AS ""TotalQuantity""
+    FROM ""CountLine""
+    GROUP BY ""CountingRunId""
+) AS lines ON lines.""CountingRunId"" = cr.""Id""
+WHERE cr.""Id"" = @RunId
+LIMIT 1;";
+
+            CountingRunDto? existingRun = null;
             if (request.RunId is { } runId)
             {
                 existingRun = await connection
-                    .QuerySingleOrDefaultAsync<CountingRunRow>(
-                        new CommandDefinition(selectRunSql, new { RunId = runId }, transaction, cancellationToken: cancellationToken))
+                    .QuerySingleOrDefaultAsync<CountingRunDto>(
+                        new CommandDefinition(
+                            selectRunSql,
+                            new
+                            {
+                                RunId = runId,
+                                StatusCompleted = LocationCountStatus.Completed,
+                                StatusInProgress = LocationCountStatus.InProgress,
+                                StatusNotStarted = LocationCountStatus.NotStarted
+                            },
+                            transaction,
+                            cancellationToken: cancellationToken))
                     .ConfigureAwait(false);
 
                 if (existingRun is null)
