@@ -7,11 +7,16 @@ const mockHttpModule = (implementation: (...args: unknown[]) => unknown) => {
   }))
 }
 
-const createHttpError = (status: number, url = '/api/locations') =>
+const createHttpError = (
+  status: number,
+  url = '/api/locations?shopId=11111111-1111-1111-1111-111111111111',
+) =>
   Object.assign(new Error(`HTTP ${status}`), {
     status,
     url,
   })
+
+const defaultShopId = '11111111-1111-1111-1111-111111111111'
 
 describe('fetchLocations (dev fixtures)', () => {
   beforeEach(() => {
@@ -35,7 +40,7 @@ describe('fetchLocations (dev fixtures)', () => {
 
     const { fetchLocations } = await import('./inventoryApi')
 
-    const locations = await fetchLocations()
+    const locations = await fetchLocations({ shopId: defaultShopId })
 
     expect(locations).toHaveLength(39)
     expect(locations[0].code).toBe('B1')
@@ -49,7 +54,7 @@ describe('fetchLocations (dev fixtures)', () => {
 
     const { fetchLocations } = await import('./inventoryApi')
 
-    await expect(fetchLocations()).rejects.toMatchObject({ status: 404 })
+    await expect(fetchLocations({ shopId: defaultShopId })).rejects.toMatchObject({ status: 404 })
   })
 
   it('désactive le fallback quand VITE_DISABLE_DEV_FIXTURES=true', async () => {
@@ -59,7 +64,7 @@ describe('fetchLocations (dev fixtures)', () => {
 
     const { fetchLocations } = await import('./inventoryApi')
 
-    await expect(fetchLocations()).rejects.toMatchObject({ status: 500 })
+    await expect(fetchLocations({ shopId: defaultShopId })).rejects.toMatchObject({ status: 500 })
   })
 
   it('normalise les identifiants de run vides en null', async () => {
@@ -89,7 +94,7 @@ describe('fetchLocations (dev fixtures)', () => {
 
     const { fetchLocations } = await import('./inventoryApi')
 
-    const [location] = await fetchLocations()
+    const [location] = await fetchLocations({ shopId: defaultShopId })
 
     expect(location.activeRunId).toBeNull()
     expect(location.countStatuses[0]?.runId).toBeNull()

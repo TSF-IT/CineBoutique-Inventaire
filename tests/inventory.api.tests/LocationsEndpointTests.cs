@@ -19,6 +19,7 @@ using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -58,12 +59,82 @@ public class LocationsEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetLocations_WithoutShopId_ReturnsBadRequestProblem()
+    {
+        var response = await this._client.GetAsync("/api/locations");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("ShopId requis", problem!.Detail);
+    }
+
+    [Fact]
+    public async Task GetLocations_WithInvalidShopId_ReturnsBadRequestProblem()
+    {
+        var response = await this._client.GetAsync("/api/locations?shopId=not-a-guid");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("ShopId invalide", problem!.Detail);
+    }
+
+    [Fact]
+    public async Task GetLocations_FiltersLocationsByShop()
+    {
+        await this.ResetDatabaseAsync();
+
+        using var scope = this._factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        var parisId = await EnsureShopAsync(connection, "CinéBoutique Paris");
+        var brusselsId = await EnsureShopAsync(connection, "CinéBoutique Bruxelles");
+
+        var parisLocation1 = Guid.NewGuid();
+        var parisLocation2 = Guid.NewGuid();
+        await InsertLocationAsync(connection, parisId, parisLocation1, "A1", "Paris A1");
+        await InsertLocationAsync(connection, parisId, parisLocation2, "B1", "Paris B1");
+
+        var brusselsLocation1 = Guid.NewGuid();
+        var brusselsLocation2 = Guid.NewGuid();
+        await InsertLocationAsync(connection, brusselsId, brusselsLocation1, "A1", "Bruxelles A1");
+        await InsertLocationAsync(connection, brusselsId, brusselsLocation2, "C1", "Bruxelles C1");
+
+        var parisResponse = await this._client.GetAsync($"/api/locations?shopId={parisId:D}");
+        parisResponse.EnsureSuccessStatusCode();
+        var parisPayload = await parisResponse.Content.ReadFromJsonAsync<List<LocationResponse>>();
+        Assert.NotNull(parisPayload);
+        Assert.Equal(2, parisPayload!.Count);
+        var parisIds = parisPayload.Select(item => item.Id).ToList();
+        Assert.Contains(parisLocation1, parisIds);
+        Assert.Contains(parisLocation2, parisIds);
+        Assert.DoesNotContain(brusselsLocation1, parisIds);
+        Assert.DoesNotContain(brusselsLocation2, parisIds);
+
+        var brusselsResponse = await this._client.GetAsync($"/api/locations?shopId={brusselsId:D}");
+        brusselsResponse.EnsureSuccessStatusCode();
+        var brusselsPayload = await brusselsResponse.Content.ReadFromJsonAsync<List<LocationResponse>>();
+        Assert.NotNull(brusselsPayload);
+        Assert.Equal(2, brusselsPayload!.Count);
+        var brusselsIds = brusselsPayload.Select(item => item.Id).ToList();
+        Assert.Contains(brusselsLocation1, brusselsIds);
+        Assert.Contains(brusselsLocation2, brusselsIds);
+        Assert.DoesNotContain(parisLocation1, brusselsIds);
+        Assert.DoesNotContain(parisLocation2, brusselsIds);
+    }
+
+    [Fact]
     public async Task GetLocations_ReturnsBusyStatus_ForRequestedCountType()
     {
         await this.ResetDatabaseAsync();
         var seed = await this.SeedDataAsync(countType: 1);
 
-        var response = await this._client.GetAsync("/api/locations?countType=1");
+        var response = await this._client.GetAsync($"/api/locations?shopId={seed.ShopId:D}&countType=1");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -96,9 +167,9 @@ public class LocationsEndpointTests : IAsyncLifetime
     public async Task GetLocations_WithMismatchedCountType_ReturnsFreeState()
     {
         await this.ResetDatabaseAsync();
-        await this.SeedDataAsync(countType: 2);
+        var seed = await this.SeedDataAsync(countType: 2);
 
-        var response = await this._client.GetAsync("/api/locations?countType=1");
+        var response = await this._client.GetAsync($"/api/locations?shopId={seed.ShopId:D}&countType=1");
         response.EnsureSuccessStatusCode();
 
         var payload = await response.Content.ReadFromJsonAsync<List<LocationResponse>>();
@@ -111,7 +182,11 @@ public class LocationsEndpointTests : IAsyncLifetime
     [Fact]
     public async Task GetLocations_WithInvalidCountType_ReturnsBadRequest()
     {
-        var response = await this._client.GetAsync("/api/locations?countType=5");
+        await this.ResetDatabaseAsync();
+
+        var seed = await this.SeedDataAsync(countType: 1);
+
+        var response = await this._client.GetAsync($"/api/locations?shopId={seed.ShopId:D}&countType=5");
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -150,7 +225,7 @@ public class LocationsEndpointTests : IAsyncLifetime
                     OperatorDisplayName: "bob.martin"));
         }
 
-        var response = await this._client.GetAsync("/api/locations?countType=1");
+        var response = await this._client.GetAsync($"/api/locations?shopId={seed.ShopId:D}&countType=1");
         response.EnsureSuccessStatusCode();
 
         var payload = await response.Content.ReadFromJsonAsync<List<LocationResponse>>();
@@ -171,7 +246,7 @@ public class LocationsEndpointTests : IAsyncLifetime
         await this.ResetDatabaseAsync();
         var seed = await this.SeedDataAsync(countType: 1);
 
-        var response = await this._client.PostAsync($"/api/inventories/{seed.LocationId}/restart?countType=1", null);
+        var response = await this._client.PostAsync($"/api/inventories/{seed.BusyLocationId}/restart?countType=1", null);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
         using var scope = this._factory.Services.CreateScope();
@@ -215,9 +290,9 @@ public class LocationsEndpointTests : IAsyncLifetime
         await this.ResetDatabaseAsync();
 
         var locationId = Guid.NewGuid();
-        await this.SeedLocationAsync(locationId, code: "A1", label: "Allée 1");
+        var shopId = await this.SeedLocationAsync(locationId, code: "A1", label: "Allée 1");
 
-        var response = await this._client.GetAsync("/api/locations");
+        var response = await this._client.GetAsync($"/api/locations?shopId={shopId:D}");
         response.EnsureSuccessStatusCode();
 
         Assert.Equal("application/json; charset=utf-8", response.Content.Headers.ContentType?.ToString());
@@ -265,7 +340,7 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
         await connection.ExecuteAsync(cleanupSql);
     }
 
-    private async Task SeedLocationAsync(Guid id, string code, string label)
+    private async Task<Guid> SeedLocationAsync(Guid id, string code, string label)
     {
         using var scope = this._factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
@@ -274,12 +349,11 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
 
         var shopId = await EnsureDefaultShopAsync(connection);
 
-        const string insertLocationSql =
-            "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\", \"ShopId\") VALUES (@Id, @Code, @Label, @ShopId);";
-        await connection.ExecuteAsync(insertLocationSql, new { Id = id, Code = code, Label = label, ShopId = shopId });
+        await InsertLocationAsync(connection, shopId, id, code, label);
+        return shopId;
     }
 
-    private async Task<(Guid LocationId, Guid RunId)> SeedDataAsync(int countType)
+    private async Task<SeedDataResult> SeedDataAsync(int countType)
     {
         using var scope = this._factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
@@ -312,8 +386,10 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
                 CompletedAtUtc: null,
                 OperatorDisplayName: "alice.durand"));
 
-        return (busyLocationId, runId);
+        return new SeedDataResult(shopId, busyLocationId, runId);
     }
+
+    private readonly record struct SeedDataResult(Guid ShopId, Guid BusyLocationId, Guid RunId);
 
     private static async Task EnsureConnectionOpenAsync(IDbConnection connection)
     {
@@ -328,15 +404,25 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
         }
     }
 
-    private static async Task<Guid> EnsureDefaultShopAsync(IDbConnection connection)
+    private static Task<Guid> EnsureDefaultShopAsync(IDbConnection connection)
+        => EnsureShopAsync(connection, "CinéBoutique Paris");
+
+    private static async Task<Guid> EnsureShopAsync(IDbConnection connection, string name)
     {
         const string ensureShopSql =
             "INSERT INTO \"Shop\" (\"Name\") VALUES (@Name) ON CONFLICT DO NOTHING;";
         const string selectShopSql =
             "SELECT \"Id\" FROM \"Shop\" WHERE LOWER(\"Name\") = LOWER(@Name) LIMIT 1;";
 
-        await connection.ExecuteAsync(ensureShopSql, new { Name = "CinéBoutique Paris" });
-        return await connection.ExecuteScalarAsync<Guid>(selectShopSql, new { Name = "CinéBoutique Paris" });
+        await connection.ExecuteAsync(ensureShopSql, new { Name = name });
+        return await connection.ExecuteScalarAsync<Guid>(selectShopSql, new { Name = name });
+    }
+
+    private static Task InsertLocationAsync(IDbConnection connection, Guid shopId, Guid locationId, string code, string label)
+    {
+        const string insertLocationSql =
+            "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\", \"ShopId\") VALUES (@Id, @Code, @Label, @ShopId);";
+        return connection.ExecuteAsync(insertLocationSql, new { Id = locationId, Code = code, Label = label, ShopId = shopId });
     }
 
     private async Task<bool> HasOperatorDisplayNameColumnAsync()
