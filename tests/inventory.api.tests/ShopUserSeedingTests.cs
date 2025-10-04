@@ -14,7 +14,6 @@ using CineBoutique.Inventory.Infrastructure.Database;
 using CineBoutique.Inventory.Infrastructure.Seeding;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
-using Npgsql;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
@@ -22,42 +21,49 @@ namespace CineBoutique.Inventory.Api.Tests;
 [Collection(TestCollections.Postgres)]
 public sealed class ShopUserSeedingTests : IAsyncLifetime
 {
-    private static readonly IReadOnlyDictionary<string, int> ExpectedActiveUserCountByShop = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
-    {
-        ["CinéBoutique Paris"] = 6,
-        ["CinéBoutique Bordeaux"] = 4,
-        ["CinéBoutique Montpellier"] = 4,
-        ["CinéBoutique Marseille"] = 4,
-        ["CinéBoutique Bruxelles"] = 4
-    };
+    private const string ParisShopName = "CinéBoutique Paris";
 
-    private static readonly string[] NonParisExpectedDisplayNames =
+    private static readonly string[] ExpectedParisDisplayNames =
     {
         "Administrateur",
-        "Utilisateur 1",
-        "Utilisateur 2",
-        "Utilisateur 3"
+        "Utilisateur Paris",
+        "Utilisateur Paris 1",
+        "Utilisateur Paris 2",
+        "Utilisateur Paris 3"
     };
 
-    private static readonly IReadOnlyList<ParisUserSeed> ParisUsersWithArnaud = new List<ParisUserSeed>
-    {
-        new(Guid.Parse("aaaaaaaa-0000-0000-0000-000000000001"), "arnaud.paris", "Arnaud", false, false),
-        new(Guid.Parse("aaaaaaaa-0000-0000-0000-000000000002"), "celine.paris", "Céline", false, false),
-        new(Guid.Parse("aaaaaaaa-0000-0000-0000-000000000003"), "david.paris", "David", false, false),
-        new(Guid.Parse("aaaaaaaa-0000-0000-0000-000000000004"), "eva.paris", "Eva", false, false),
-        new(Guid.Parse("aaaaaaaa-0000-0000-0000-000000000005"), "francois.paris", "François", false, false),
-        new(Guid.Parse("aaaaaaaa-0000-0000-0000-000000000006"), "georges.paris", "Georges", true, false)
-    };
-
-    private static readonly IReadOnlyList<ParisUserSeed> ParisUsersWithoutArnaud = new List<ParisUserSeed>
-    {
-        new(Guid.Parse("bbbbbbbb-0000-0000-0000-000000000001"), "alice.paris", "Alice", false, false),
-        new(Guid.Parse("bbbbbbbb-0000-0000-0000-000000000002"), "bruno.paris", "Bruno", false, false),
-        new(Guid.Parse("bbbbbbbb-0000-0000-0000-000000000003"), "camille.paris", "Camille", false, false),
-        new(Guid.Parse("bbbbbbbb-0000-0000-0000-000000000004"), "dorian.paris", "Dorian", false, false),
-        new(Guid.Parse("bbbbbbbb-0000-0000-0000-000000000005"), "eric.paris", "Eric", false, false),
-        new(Guid.Parse("bbbbbbbb-0000-0000-0000-000000000006"), "florence.paris", "Florence", true, false)
-    };
+    private static readonly IReadOnlyDictionary<string, string[]> ExpectedNonParisDisplayNames =
+        new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["CinéBoutique Bordeaux"] = new[]
+            {
+                "Administrateur",
+                "Utilisateur Bordeaux 1",
+                "Utilisateur Bordeaux 2",
+                "Utilisateur Bordeaux 3"
+            },
+            ["CinéBoutique Montpellier"] = new[]
+            {
+                "Administrateur",
+                "Utilisateur Montpellier 1",
+                "Utilisateur Montpellier 2",
+                "Utilisateur Montpellier 3"
+            },
+            ["CinéBoutique Marseille"] = new[]
+            {
+                "Administrateur",
+                "Utilisateur Marseille 1",
+                "Utilisateur Marseille 2",
+                "Utilisateur Marseille 3"
+            },
+            ["CinéBoutique Bruxelles"] = new[]
+            {
+                "Administrateur",
+                "Utilisateur Bruxelles 1",
+                "Utilisateur Bruxelles 2",
+                "Utilisateur Bruxelles 3"
+            }
+        };
 
     private readonly PostgresTestContainerFixture _pg;
     private InventoryApiApplicationFactory _factory = default!;
@@ -81,62 +87,22 @@ public sealed class ShopUserSeedingTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task SeedAsync_ParisAdminIsArnaudWhenPresent()
+    public async Task SeedAsync_ParisShopContainsExpectedActiveUsers()
     {
         await ResetDatabaseAsync();
 
         using var scope = _factory.Services.CreateScope();
-        var parisShopId = await SeedParisUsersAsync(scope.ServiceProvider, ParisUsersWithArnaud);
+        await RunSeederAsync(scope.ServiceProvider);
 
-        var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
-        await seeder.SeedAsync();
+        var parisShopId = await GetShopIdAsync(scope.ServiceProvider, ParisShopName);
+        var users = await GetUsersByShopAsync(scope.ServiceProvider, parisShopId);
 
-        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-        await using var connection = await connectionFactory.CreateOpenConnectionAsync(CancellationToken.None);
+        var active = users.Where(user => !user.Disabled).OrderBy(user => user.DisplayName, StringComparer.OrdinalIgnoreCase).ToList();
+        Assert.Equal(ExpectedParisDisplayNames.Length, active.Count);
+        Assert.Equal(ExpectedParisDisplayNames, active.Select(user => user.DisplayName).ToArray());
 
-        var parisUsers = (await connection.QueryAsync<ShopUserRow>(
-                """
-                SELECT "Id", "DisplayName", "IsAdmin", "Disabled", "ShopId"
-                FROM "ShopUser"
-                WHERE "ShopId" = @ShopId
-                ORDER BY "DisplayName";
-                """,
-                new { ShopId = parisShopId }))
-            .ToList();
-
-        Assert.Equal(ParisUsersWithArnaud.Count, parisUsers.Count);
-        var admin = Assert.Single(parisUsers.Where(user => user.IsAdmin && !user.Disabled));
-        Assert.Equal("Arnaud", admin.DisplayName);
-        Assert.All(parisUsers.Where(user => !string.Equals(user.DisplayName, "Arnaud", StringComparison.OrdinalIgnoreCase)), user => Assert.False(user.IsAdmin));
-    }
-
-    [Fact]
-    public async Task SeedAsync_ParisAdminFallbacksToLowestIdentifierWhenArnaudMissing()
-    {
-        await ResetDatabaseAsync();
-
-        using var scope = _factory.Services.CreateScope();
-        var parisShopId = await SeedParisUsersAsync(scope.ServiceProvider, ParisUsersWithoutArnaud);
-
-        var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
-        await seeder.SeedAsync();
-
-        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-        await using var connection = await connectionFactory.CreateOpenConnectionAsync(CancellationToken.None);
-
-        var parisUsers = (await connection.QueryAsync<ShopUserRow>(
-                """
-                SELECT "Id", "DisplayName", "IsAdmin", "Disabled", "ShopId"
-                FROM "ShopUser"
-                WHERE "ShopId" = @ShopId
-                ORDER BY "Id";
-                """,
-                new { ShopId = parisShopId }))
-            .ToList();
-
-        Assert.Equal(ParisUsersWithoutArnaud.Count, parisUsers.Count);
-        var admin = Assert.Single(parisUsers.Where(user => user.IsAdmin && !user.Disabled));
-        Assert.Equal("Alice", admin.DisplayName);
+        var admin = Assert.Single(active.Where(user => user.IsAdmin));
+        Assert.Equal("Administrateur", admin.DisplayName);
     }
 
     [Fact]
@@ -145,40 +111,63 @@ public sealed class ShopUserSeedingTests : IAsyncLifetime
         await ResetDatabaseAsync();
 
         using var scope = _factory.Services.CreateScope();
-        await SeedParisUsersAsync(scope.ServiceProvider, ParisUsersWithArnaud);
+        await RunSeederAsync(scope.ServiceProvider);
 
-        var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
-        await seeder.SeedAsync();
-
-        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-        await using var connection = await connectionFactory.CreateOpenConnectionAsync(CancellationToken.None);
-
-        foreach (var expected in ExpectedActiveUserCountByShop)
+        foreach (var expected in ExpectedNonParisDisplayNames)
         {
-            var users = (await connection.QueryAsync<ShopUserRowWithShop>(
-                    """
-                    SELECT su."Id", su."DisplayName", su."IsAdmin", su."Disabled", su."ShopId", s."Name" AS ShopName
-                    FROM "ShopUser" su
-                    JOIN "Shop" s ON s."Id" = su."ShopId"
-                    WHERE s."Name" = @ShopName;
-                    """,
-                    new { ShopName = expected.Key }))
-                .ToList();
+            var shopId = await GetShopIdAsync(scope.ServiceProvider, expected.Key);
+            var users = await GetUsersByShopAsync(scope.ServiceProvider, shopId);
+            var active = users.Where(user => !user.Disabled).OrderBy(user => user.DisplayName, StringComparer.OrdinalIgnoreCase).ToList();
 
-            var activeUsers = users.Where(user => !user.Disabled).ToList();
-            Assert.Equal(expected.Value, activeUsers.Count);
-            Assert.Equal(1, activeUsers.Count(user => user.IsAdmin));
+            Assert.Equal(expected.Value.Length, active.Count);
+            Assert.Equal(expected.Value, active.Select(user => user.DisplayName).ToArray());
 
-            if (!string.Equals(expected.Key, "CinéBoutique Paris", StringComparison.OrdinalIgnoreCase))
-            {
-                var displayNames = activeUsers.Select(user => user.DisplayName).OrderBy(name => name).ToList();
-                Assert.Equal(NonParisExpectedDisplayNames, displayNames);
-                var admin = Assert.Single(activeUsers.Where(user => user.IsAdmin));
-                Assert.Equal("Administrateur", admin.DisplayName);
-
-                Assert.DoesNotContain(users, user => user.Disabled);
-            }
+            var admin = Assert.Single(active.Where(user => user.IsAdmin));
+            Assert.Equal("Administrateur", admin.DisplayName);
         }
+    }
+
+    [Fact]
+    public async Task SeedAsync_DisablesUnexpectedUsersAndEnforcesSingleAdminPerShop()
+    {
+        await ResetDatabaseAsync();
+
+        using var scope = _factory.Services.CreateScope();
+        await RunSeederAsync(scope.ServiceProvider);
+
+        var services = scope.ServiceProvider;
+        var shopId = await GetShopIdAsync(services, "CinéBoutique Bordeaux");
+
+        var rogueUserId = await InsertUserAsync(
+            services,
+            shopId,
+            login: "intrus-bordeaux",
+            displayName: "Intrus Bordeaux",
+            isAdmin: false,
+            disabled: false);
+
+        var rogueAdminId = await InsertUserAsync(
+            services,
+            shopId,
+            login: "super-admin",
+            displayName: "Super Admin",
+            isAdmin: true,
+            disabled: false);
+
+        await RunSeederAsync(services);
+
+        var users = await GetUsersByShopAsync(services, shopId);
+
+        var admin = Assert.Single(users.Where(user => user.IsAdmin && !user.Disabled));
+        Assert.Equal("Administrateur", admin.DisplayName);
+
+        var rogueUser = Assert.Single(users.Where(user => user.Id == rogueUserId));
+        Assert.True(rogueUser.Disabled);
+        Assert.False(rogueUser.IsAdmin);
+
+        var rogueAdmin = Assert.Single(users.Where(user => user.Id == rogueAdminId));
+        Assert.True(rogueAdmin.Disabled);
+        Assert.False(rogueAdmin.IsAdmin);
     }
 
     [Fact]
@@ -187,27 +176,24 @@ public sealed class ShopUserSeedingTests : IAsyncLifetime
         await ResetDatabaseAsync();
 
         using var scope = _factory.Services.CreateScope();
-        await SeedParisUsersAsync(scope.ServiceProvider, ParisUsersWithArnaud);
+        await RunSeederAsync(scope.ServiceProvider);
 
-        var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
-        await seeder.SeedAsync();
+        var snapshot = await SnapshotUsersAsync(scope.ServiceProvider);
 
-        var snapshot = await SnapshotActiveUsersAsync(scope.ServiceProvider);
+        await RunSeederAsync(scope.ServiceProvider);
 
-        await seeder.SeedAsync();
-
-        var secondSnapshot = await SnapshotActiveUsersAsync(scope.ServiceProvider);
+        var secondSnapshot = await SnapshotUsersAsync(scope.ServiceProvider);
 
         Assert.Equal(snapshot.Count, secondSnapshot.Count);
 
-        foreach (var (shopId, users) in snapshot)
+        foreach (var (shopId, first) in snapshot)
         {
-            Assert.True(secondSnapshot.TryGetValue(shopId, out var other));
-            Assert.Equal(users.Count, other.Count);
+            Assert.True(secondSnapshot.TryGetValue(shopId, out var second));
+            Assert.Equal(first.Count, second.Count);
 
-            foreach (var user in users.OrderBy(user => user.Id))
+            foreach (var user in first.OrderBy(user => user.Id))
             {
-                var matching = Assert.Single(other.Where(candidate => candidate.Id == user.Id));
+                var matching = Assert.Single(second.Where(candidate => candidate.Id == user.Id));
                 Assert.Equal(user.DisplayName, matching.DisplayName);
                 Assert.Equal(user.IsAdmin, matching.IsAdmin);
                 Assert.Equal(user.Disabled, matching.Disabled);
@@ -215,64 +201,82 @@ public sealed class ShopUserSeedingTests : IAsyncLifetime
         }
     }
 
-    private static async Task<IDictionary<Guid, List<ShopUserRow>>> SnapshotActiveUsersAsync(IServiceProvider services)
+    private static async Task RunSeederAsync(IServiceProvider services)
+    {
+        var seeder = services.GetRequiredService<InventoryDataSeeder>();
+        await seeder.SeedAsync();
+    }
+
+    private static async Task<Guid> GetShopIdAsync(IServiceProvider services, string shopName)
+    {
+        var connectionFactory = services.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = await connectionFactory.CreateOpenConnectionAsync(CancellationToken.None);
+
+        return await connection.ExecuteScalarAsync<Guid>(
+            "SELECT \"Id\" FROM \"Shop\" WHERE LOWER(\"Name\") = LOWER(@Name) LIMIT 1;",
+            new { Name = shopName });
+    }
+
+    private static async Task<IReadOnlyList<ShopUserRow>> GetUsersByShopAsync(IServiceProvider services, Guid shopId)
     {
         var connectionFactory = services.GetRequiredService<IDbConnectionFactory>();
         await using var connection = await connectionFactory.CreateOpenConnectionAsync(CancellationToken.None);
 
         var rows = await connection.QueryAsync<ShopUserRow>(
             """
-            SELECT "Id", "DisplayName", "IsAdmin", "Disabled", "ShopId"
-            FROM "ShopUser";
-            """ );
+            SELECT "Id", "ShopId", "DisplayName", "IsAdmin", "Disabled"
+            FROM "ShopUser"
+            WHERE "ShopId" = @ShopId
+            ORDER BY "DisplayName";
+            """,
+            new { ShopId = shopId });
 
-        return rows.GroupBy(row => row.ShopId).ToDictionary(group => group.Key, group => group.OrderBy(user => user.Id).ToList());
+        return rows.ToList();
     }
 
-    private static async Task<Guid> SeedParisUsersAsync(IServiceProvider services, IReadOnlyList<ParisUserSeed> seeds)
+    private static async Task<IDictionary<Guid, List<ShopUserRow>>> SnapshotUsersAsync(IServiceProvider services)
     {
         var connectionFactory = services.GetRequiredService<IDbConnectionFactory>();
         await using var connection = await connectionFactory.CreateOpenConnectionAsync(CancellationToken.None);
 
-        var shopId = await EnsureShopAsync(connection, "CinéBoutique Paris");
+        var rows = await connection.QueryAsync<ShopUserRow>(
+            """
+            SELECT "Id", "ShopId", "DisplayName", "IsAdmin", "Disabled"
+            FROM "ShopUser";
+            """ );
 
-        foreach (var seed in seeds)
-        {
-            await connection.ExecuteAsync(
-                """
-                INSERT INTO "ShopUser" ("Id", "ShopId", "Login", "DisplayName", "IsAdmin", "Secret_Hash", "Disabled")
-                VALUES (@Id, @ShopId, @Login, @DisplayName, @IsAdmin, '', @Disabled)
-                ON CONFLICT DO NOTHING;
-                """,
-                new
-                {
-                    seed.Id,
-                    ShopId = shopId,
-                    seed.Login,
-                    seed.DisplayName,
-                    seed.IsAdmin,
-                    Disabled = seed.Disabled
-                });
-        }
-
-        return shopId;
+        return rows
+            .GroupBy(row => row.ShopId)
+            .ToDictionary(group => group.Key, group => group.OrderBy(user => user.Id).ToList());
     }
 
-    private static async Task<Guid> EnsureShopAsync(NpgsqlConnection connection, string name)
+    private static async Task<Guid> InsertUserAsync(
+        IServiceProvider services,
+        Guid shopId,
+        string login,
+        string displayName,
+        bool isAdmin,
+        bool disabled)
     {
-        var existingId = await connection.ExecuteScalarAsync<Guid?>(
-            "SELECT \"Id\" FROM \"Shop\" WHERE LOWER(\"Name\") = LOWER(@Name) LIMIT 1;",
-            new { Name = name });
-
-        if (existingId.HasValue)
-        {
-            return existingId.Value;
-        }
+        var connectionFactory = services.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = await connectionFactory.CreateOpenConnectionAsync(CancellationToken.None);
 
         var id = Guid.NewGuid();
         await connection.ExecuteAsync(
-            "INSERT INTO \"Shop\" (\"Id\", \"Name\") VALUES (@Id, @Name);",
-            new { Id = id, Name = name });
+            """
+            INSERT INTO "ShopUser" ("Id", "ShopId", "Login", "DisplayName", "IsAdmin", "Secret_Hash", "Disabled")
+            VALUES (@Id, @ShopId, @Login, @DisplayName, @IsAdmin, '', @Disabled);
+            """,
+            new
+            {
+                Id = id,
+                ShopId = shopId,
+                Login = login,
+                DisplayName = displayName,
+                IsAdmin = isAdmin,
+                Disabled = disabled
+            });
+
         return id;
     }
 
@@ -304,11 +308,5 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
     }
 
     [SuppressMessage("Performance", "CA1812", Justification = "Instantiated via Dapper materializer.")]
-    private sealed record ParisUserSeed(Guid Id, string Login, string DisplayName, bool IsAdmin, bool Disabled);
-
-    [SuppressMessage("Performance", "CA1812", Justification = "Instantiated via Dapper materializer.")]
-    private sealed record ShopUserRow(Guid Id, string DisplayName, bool IsAdmin, bool Disabled, Guid ShopId);
-
-    [SuppressMessage("Performance", "CA1812", Justification = "Instantiated via Dapper materializer.")]
-    private sealed record ShopUserRowWithShop(Guid Id, string DisplayName, bool IsAdmin, bool Disabled, Guid ShopId, string ShopName);
+    private sealed record ShopUserRow(Guid Id, Guid ShopId, string DisplayName, bool IsAdmin, bool Disabled);
 }
