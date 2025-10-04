@@ -10,6 +10,7 @@ import { useAsync } from '../../hooks/useAsync'
 import type { Location } from '../../types/inventory'
 import { useOperators } from '../../contexts/OperatorsContext'
 import { sortOperatorNames } from '../../utils/operators'
+import { useShop } from '@/state/ShopContext'
 
 type FeedbackState = { type: 'success' | 'error'; message: string } | null
 
@@ -207,7 +208,18 @@ const OperatorListItem = ({
 }
 
 export const AdminLocationsPage = () => {
-  const { data, loading, error, execute, setData } = useAsync(fetchLocations, [], { initialValue: [] })
+  const { shop } = useShop()
+  const loadLocations = useCallback(() => {
+    if (!shop?.id) {
+      return Promise.resolve<Location[]>([])
+    }
+    return fetchLocations({ shopId: shop.id })
+  }, [shop?.id])
+
+  const { data, loading, error, execute, setData } = useAsync(loadLocations, [loadLocations], {
+    initialValue: [],
+    immediate: Boolean(shop?.id),
+  })
   const { operators, addOperator, updateOperator } = useOperators()
 
   const [newOperatorName, setNewOperatorName] = useState('')

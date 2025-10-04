@@ -52,7 +52,7 @@ public sealed class InventoryRunLifecycleTests : IAsyncLifetime
     public async Task StartInventoryRun_CreatesRunAndMarksLocationBusy()
     {
         await ResetDatabaseAsync();
-        var locationId = await SeedLocationAsync("S1", "Zone S1");
+        var (locationId, shopId) = await SeedLocationAsync("S1", "Zone S1");
 
         var request = new StartInventoryRunRequest
         {
@@ -69,7 +69,7 @@ public sealed class InventoryRunLifecycleTests : IAsyncLifetime
         Assert.Equal((short)1, payload.CountType);
         Assert.NotEqual(Guid.Empty, payload.RunId);
 
-        var locationsResponse = await _client.GetAsync("/api/locations");
+        var locationsResponse = await _client.GetAsync($"/api/locations?shopId={shopId}");
         locationsResponse.EnsureSuccessStatusCode();
         var locations = await locationsResponse.Content.ReadFromJsonAsync<List<LocationResponse>>();
         Assert.NotNull(locations);
@@ -112,7 +112,7 @@ public sealed class InventoryRunLifecycleTests : IAsyncLifetime
     public async Task StartInventoryRun_ReturnsConflict_WhenOtherOperatorActive()
     {
         await ResetDatabaseAsync();
-        var locationId = await SeedLocationAsync("S1", "Zone S1");
+        var (locationId, _) = await SeedLocationAsync("S1", "Zone S1");
 
         var firstRequest = new StartInventoryRunRequest
         {
@@ -136,7 +136,7 @@ public sealed class InventoryRunLifecycleTests : IAsyncLifetime
     public async Task AbortInventoryRun_ReleasesZone()
     {
         await ResetDatabaseAsync();
-        var locationId = await SeedLocationAsync("S1", "Zone S1");
+        var (locationId, shopId) = await SeedLocationAsync("S1", "Zone S1");
 
         var startRequest = new StartInventoryRunRequest
         {
@@ -151,7 +151,7 @@ public sealed class InventoryRunLifecycleTests : IAsyncLifetime
         var abortResponse = await _client.DeleteAsync($"/api/inventories/{locationId}/runs/{startPayload!.RunId}?operatorName=Amélie");
         Assert.Equal(HttpStatusCode.NoContent, abortResponse.StatusCode);
 
-        var locationsResponse = await _client.GetAsync("/api/locations");
+        var locationsResponse = await _client.GetAsync($"/api/locations?shopId={shopId}");
         locationsResponse.EnsureSuccessStatusCode();
         var locations = await locationsResponse.Content.ReadFromJsonAsync<List<LocationResponse>>();
         Assert.NotNull(locations);
@@ -207,7 +207,7 @@ TRUNCATE TABLE "Conflict" RESTART IDENTITY CASCADE;
         }
     }
 
-    private async Task<Guid> SeedLocationAsync(string code, string label)
+    private async Task<(Guid LocationId, Guid ShopId)> SeedLocationAsync(string code, string label)
     {
         using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
@@ -234,7 +234,7 @@ TRUNCATE TABLE "Conflict" RESTART IDENTITY CASCADE;
                 Label = label,
                 ShopId = shopId
             });
-        return locationId;
+        return (locationId, shopId);
     }
 }
 
