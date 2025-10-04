@@ -53,7 +53,7 @@ const describeError = (error: unknown): { title: string; details?: string } | nu
 
 export const HomePage = () => {
   const navigate = useNavigate()
-  const { setShop } = useShop()
+  const { shop, setShop } = useShop()
   const [openRunsModalOpen, setOpenRunsModalOpen] = useState(false)
   const [completedRunsModalOpen, setCompletedRunsModalOpen] = useState(false)
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
@@ -73,14 +73,22 @@ export const HomePage = () => {
     onError,
   })
 
+  const loadLocations = useCallback(() => {
+    if (!shop?.id) {
+      return Promise.resolve<Location[]>([])
+    }
+    return fetchLocations({ shopId: shop.id })
+  }, [shop?.id])
+
   const {
     data: locationsData,
     loading: locationsLoading,
     error: locationsError,
     execute: executeLocations,
-  } = useAsync<Location[]>(fetchLocations, [], {
+  } = useAsync<Location[]>(loadLocations, [loadLocations], {
     initialValue: [],
     onError,
+    immediate: Boolean(shop?.id),
   })
 
   const handleRetry = useCallback(() => {
