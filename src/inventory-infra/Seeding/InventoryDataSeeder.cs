@@ -57,7 +57,7 @@ DO UPDATE SET ""IsAdmin"" = EXCLUDED.""IsAdmin"",
 SET ""Disabled"" = TRUE,
     ""IsAdmin"" = FALSE
 WHERE ""ShopId"" = @ShopId
-  AND ""DisplayName"" <> ALL(@AllowedDisplayNames);";
+  AND NOT (LOWER(""DisplayName"") = ANY(@AllowedDisplayNames));";
 
     private const string CountActiveAdminsSql = @"SELECT COUNT(*)
 FROM ""ShopUser""
@@ -337,7 +337,9 @@ WHERE ""ShopId"" = @ShopId;";
                 .ConfigureAwait(false);
         }
 
-        var allowedDisplayNames = NonParisSeeds.Select(seed => seed.DisplayName).ToArray();
+        var allowedDisplayNames = NonParisSeeds
+            .Select(seed => seed.DisplayName.ToLowerInvariant())
+            .ToArray();
 
         affected += await connection.ExecuteAsync(
                 new CommandDefinition(
