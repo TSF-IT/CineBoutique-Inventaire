@@ -85,6 +85,7 @@ const DISPLAYED_COUNT_TYPES: CountType[] = [CountType.Count1, CountType.Count2]
 export const InventoryLocationStep = () => {
   const navigate = useNavigate()
   const { selectedUser, location, sessionId, setLocation, setSessionId, clearSession, setCountType } = useInventory()
+  const selectedUserDisplayName = selectedUser?.displayName ?? null
   const { shop } = useShop()
   const [search, setSearch] = useState('')
   const [locations, setLocations] = useState<Location[]>([])
@@ -254,7 +255,7 @@ export const InventoryLocationStep = () => {
     }
     if (status.status === 'in_progress') {
       const ownerLabel =
-        status.operatorDisplayName && status.operatorDisplayName === selectedUser
+        status.operatorDisplayName && status.operatorDisplayName === selectedUserDisplayName
           ? 'par vous'
           : status.operatorDisplayName
           ? `par ${status.operatorDisplayName}`

@@ -1,31 +1,79 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Card } from '../../components/Card'
 import { useInventory } from '../../contexts/InventoryContext'
-import { useOperators } from '../../contexts/OperatorsContext'
-import { sortOperatorNames } from '../../utils/operators'
+import { fetchShopUsers } from '../../api/shopUsers'
+import type { ShopUser } from '@/types/user'
+import { useShop } from '@/state/ShopContext'
 
 export const InventoryUserStep = () => {
   const navigate = useNavigate()
   const { selectedUser, setSelectedUser } = useInventory()
-  const { operators } = useOperators()
+  const { shop } = useShop()
   const [search, setSearch] = useState('')
+  const [users, setUsers] = useState<ShopUser[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const sortedOperators = useMemo(() => sortOperatorNames(operators), [operators])
+  useEffect(() => {
+    let isCancelled = false
 
-  const filteredOperators = useMemo(() => {
+    const loadUsers = async () => {
+      if (!shop?.id) {
+        setUsers([])
+        setLoading(false)
+        setError('Aucune boutique sélectionnée.')
+        return
+      }
+
+      setLoading(true)
+      setError(null)
+      try {
+        const data = await fetchShopUsers(shop.id)
+        if (!isCancelled) {
+          setUsers(data.filter((user) => !user.disabled))
+        }
+      } catch (err) {
+        if (!isCancelled) {
+          if (import.meta.env.DEV) {
+            console.error('Impossible de charger les utilisateurs de la boutique.', err)
+          }
+          setUsers([])
+          setError('Impossible de charger la liste des utilisateurs. Réessayez plus tard.')
+        }
+      } finally {
+        if (!isCancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    void loadUsers()
+
+    return () => {
+      isCancelled = true
+    }
+  }, [shop?.id])
+
+  const sortedUsers = useMemo(() => {
+    return [...users].sort((left, right) =>
+      left.displayName.localeCompare(right.displayName, undefined, { sensitivity: 'accent' }),
+    )
+  }, [users])
+
+  const filteredUsers = useMemo(() => {
     const normalizedQuery = search.trim().toLowerCase()
     if (!normalizedQuery) {
-      return sortedOperators
+      return sortedUsers
     }
-    return sortedOperators.filter((operator) => operator.name.toLowerCase().includes(normalizedQuery))
-  }, [search, sortedOperators])
+    return sortedUsers.filter((user) => user.displayName.toLowerCase().includes(normalizedQuery))
+  }, [search, sortedUsers])
 
-  const handleSelect = (operator: string) => {
-    if (operator !== selectedUser) {
-      setSelectedUser(operator)
+  const handleSelect = (user: ShopUser) => {
+    if (user.id !== selectedUser?.id) {
+      setSelectedUser(user)
     }
     navigate('/inventory/location')
   }
@@ -40,28 +88,37 @@ export const InventoryUserStep = () => {
         <Input
           label="Rechercher"
           name="operatorQuery"
-          placeholder="Tapez un prénom"
+          placeholder="Rechercher un utilisateur"
           value={search}
           onChange={(event) => setSearch(event.target.value)}
         />
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          {filteredOperators.map((operator) => {
-            const isSelected = selectedUser === operator.name
-            return (
-              <button
-                key={operator.id}
-                type="button"
-                onClick={() => handleSelect(operator.name)}
-                className={`rounded-2xl border px-4 py-4 text-center text-sm font-semibold transition-all ${
-                  isSelected
-                    ? 'border-brand-400 bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-100'
-                    : 'border-slate-200 bg-white text-slate-700 hover:border-brand-400/40 hover:bg-brand-50 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200'
-                }`}
-              >
-                {operator.name}
-              </button>
-            )
-          })}
+          {loading && filteredUsers.length === 0 ? (
+            <p className="col-span-full text-sm text-slate-500 dark:text-slate-400">Chargement…</p>
+          ) : filteredUsers.length === 0 ? (
+            <p className="col-span-full text-sm text-slate-500 dark:text-slate-400">
+              Aucun utilisateur ne correspond à votre recherche.
+            </p>
+          ) : (
+            filteredUsers.map((user) => {
+              const isSelected = selectedUser?.id === user.id
+              return (
+                <button
+                  key={user.id}
+                  type="button"
+                  onClick={() => handleSelect(user)}
+                  className={`rounded-2xl border px-4 py-4 text-center text-sm font-semibold transition-all ${
+                    isSelected
+                      ? 'border-brand-400 bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-100'
+                      : 'border-slate-200 bg-white text-slate-700 hover:border-brand-400/40 hover:bg-brand-50 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200'
+                  }`}
+                >
+                  {user.displayName}
+                </button>
+              )
+            })
+          )}
         </div>
       </Card>
       {selectedUser && (

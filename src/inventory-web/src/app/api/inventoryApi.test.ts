@@ -186,14 +186,14 @@ describe('startInventoryRun', () => {
       inventorySessionId: 'session-1',
       locationId: 'loc-1',
       countType: 1,
-      operatorDisplayName: 'Amélie',
+      operatorDisplayName: 'Utilisateur Paris',
       startedAtUtc: new Date().toISOString(),
     })
     mockHttpModule(httpMock)
 
     const { startInventoryRun } = await import('./inventoryApi')
 
-    const result = await startInventoryRun('loc-1', { countType: 1, operator: 'Amélie' })
+    const result = await startInventoryRun('loc-1', { countType: 1, operator: 'Utilisateur Paris' })
 
     expect(result).toMatchObject({ runId: 'run-1', countType: 1 })
     expect(httpMock).toHaveBeenCalledWith(
@@ -223,7 +223,7 @@ describe('releaseInventoryRun', () => {
 
     const { releaseInventoryRun } = await import('./inventoryApi')
 
-    await expect(releaseInventoryRun('loc-1', 'run-1', 'Amélie')).resolves.toBeUndefined()
+    await expect(releaseInventoryRun('loc-1', 'run-1', 'Utilisateur Paris')).resolves.toBeUndefined()
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/inventories/loc-1/runs/run-1'),
       expect.objectContaining({ method: 'DELETE' }),
@@ -241,7 +241,7 @@ describe('releaseInventoryRun', () => {
 
     const { releaseInventoryRun } = await import('./inventoryApi')
 
-    await expect(releaseInventoryRun('loc-1', 'run-1', 'Amélie')).rejects.toMatchObject({
+    await expect(releaseInventoryRun('loc-1', 'run-1', 'Utilisateur Paris')).rejects.toMatchObject({
       message: 'Comptage détenu par Paul.',
       status: 409,
     })

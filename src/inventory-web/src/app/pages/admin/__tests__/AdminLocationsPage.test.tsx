@@ -2,7 +2,6 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ThemeProvider } from '../../../../theme/ThemeProvider'
-import { OperatorsProvider } from '../../../contexts/OperatorsContext'
 import { AdminLocationsPage } from '../AdminLocationsPage'
 import type { Location } from '../../../types/inventory'
 import { fetchLocations } from '../../../api/inventoryApi'
@@ -30,9 +29,7 @@ const renderAdminPage = async () => {
   render(
     <ThemeProvider>
       <ShopProvider>
-        <OperatorsProvider>
-          <AdminLocationsPage />
-        </OperatorsProvider>
+        <AdminLocationsPage />
       </ShopProvider>
     </ThemeProvider>,
   )
@@ -65,31 +62,6 @@ describe('AdminLocationsPage', () => {
     mockedFetchLocations.mockResolvedValue([baseLocation])
     mockedCreateLocation.mockReset()
     mockedUpdateLocation.mockReset()
-  })
-
-  it('permet de renommer un opérateur existant', async () => {
-    await renderAdminPage()
-
-    const renameButtons = await screen.findAllByRole('button', { name: 'Renommer' })
-    const user = userEvent.setup()
-    await user.click(renameButtons[0])
-
-    const inputs = screen.getAllByLabelText('Nom affiché')
-    const editInput = inputs[inputs.length - 1]
-    await user.clear(editInput)
-    await user.type(editInput, 'Alexis')
-
-    const editForm = editInput.closest('form')
-    expect(editForm).not.toBeNull()
-    if (!editForm) {
-      throw new Error('Formulaire d’édition introuvable')
-    }
-
-    const saveButton = within(editForm).getByRole('button', { name: 'Enregistrer' })
-    await user.click(saveButton)
-
-    expect(await screen.findByText('Opérateur mis à jour.')).toBeInTheDocument()
-    expect(screen.getByText('Alexis')).toBeInTheDocument()
   })
 
   it('crée une nouvelle zone', async () => {
