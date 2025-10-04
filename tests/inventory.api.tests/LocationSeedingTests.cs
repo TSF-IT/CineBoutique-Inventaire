@@ -157,21 +157,43 @@ public sealed class LocationSeedingTests : IAsyncLifetime
         var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
         await seeder.SeedAsync();
 
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = await connectionFactory.CreateOpenConnectionAsync(CancellationToken.None);
+
+        var shops = (await connection.QueryAsync<ShopRow>(
+                "SELECT \"Id\", \"Name\" FROM \"Shop\" ORDER BY \"Name\";"))
+            .ToList();
+
         using HttpClient client = _factory.CreateClient();
-        var response = await client.GetAsync("/api/locations?countType=1");
-        response.EnsureSuccessStatusCode();
 
-        var payload = await response.Content.ReadFromJsonAsync<List<LocationListItemDto>>();
-        Assert.NotNull(payload);
+        var totalLocations = 0;
 
-        var locations = payload!;
-        Assert.Equal(ExpectedTotalLocationCount, locations.Count);
+        foreach (var shop in shops)
+        {
+            var response = await client.GetAsync($"/api/locations?shopId={shop.Id}&countType=1");
+            response.EnsureSuccessStatusCode();
 
-        var expectedCodes = BuildExpectedUniqueCodes();
-        Assert.True(
-            expectedCodes.SetEquals(locations.Select(item => item.Code)),
-            "Tous les codes de zones doivent être présents.");
-        Assert.All(locations, item => Assert.False(item.IsBusy));
+            var payload = await response.Content.ReadFromJsonAsync<List<LocationListItemDto>>();
+            Assert.NotNull(payload);
+
+            var locations = payload!;
+            totalLocations += locations.Count;
+
+            var expectedCodes = string.Equals(shop.Name, ParisShopName, StringComparison.OrdinalIgnoreCase)
+                ? ExpectedParisCodes
+                : ExpectedDemoCodes;
+
+            Assert.Equal(expectedCodes.Count, locations.Count);
+
+            var actualCodes = new HashSet<string>(locations.Select(item => item.Code), StringComparer.OrdinalIgnoreCase);
+            Assert.True(
+                expectedCodes.SetEquals(actualCodes),
+                $"Les zones retournées pour {shop.Name} doivent correspondre au jeu de données attendu.");
+
+            Assert.All(locations, item => Assert.False(item.IsBusy));
+        }
+
+        Assert.Equal(ExpectedTotalLocationCount, totalLocations);
     }
 
     [Fact]
