@@ -1,4 +1,4 @@
-import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState, useId } from 'react'
+import { type ChangeEvent, useCallback, useEffect, useRef, useState, useId } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchShops } from '@/api/shops'
 import type { Shop } from '@/types/shop'
@@ -90,11 +90,33 @@ export const SelectShopPage = () => {
     setRetryCount((count) => count + 1)
   }, [])
 
-  const onSelectChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
-    setSelectedId(event.target.value)
-  }, [])
+  const navigateToShop = useCallback(
+    (shopToNavigate: Shop) => {
+      setIsRedirecting(true)
+      setShop(shopToNavigate)
+      navigate('/', { replace: true })
+    },
+    [navigate, setShop],
+  )
 
-  const selectedShop = useMemo(() => shops.find((item) => item.id === selectedId) ?? null, [selectedId, shops])
+  const onSelectChange = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      const id = event.target.value
+      setSelectedId(id)
+
+      if (!id) {
+        return
+      }
+
+      const shopToNavigate = shops.find((item) => item.id === id)
+
+      if (shopToNavigate) {
+        navigateToShop(shopToNavigate)
+      }
+    },
+    [navigateToShop, shops],
+  )
+
   const useCardLayout = !isRedirecting && status === 'idle' && shops.length > 0 && shops.length <= 5
   const isLoadingShops = status === 'loading'
   const shouldShowError = status === 'error' && !isRedirecting
@@ -124,27 +146,24 @@ export const SelectShopPage = () => {
     selectRef.current?.focus()
   }, [isRedirecting, selectedId, shops, status, useCardLayout])
 
-  const onContinue = useCallback(() => {
-    if (!selectedShop) {
-      return
-    }
-    setIsRedirecting(true)
-    setShop(selectedShop)
-    navigate('/', { replace: true })
-  }, [navigate, selectedShop, setShop])
+  const handleCardSelect = useCallback(
+    (id: string) => {
+      setSelectedId(id)
 
-  const handleCardSelect = useCallback((id: string) => {
-    setSelectedId(id)
-  }, [])
+      const shopToNavigate = shops.find((item) => item.id === id)
+
+      if (shopToNavigate) {
+        navigateToShop(shopToNavigate)
+      }
+    },
+    [navigateToShop, shops],
+  )
 
   return (
-    <Page className="justify-between px-4 py-6 sm:px-6">
+    <Page className="px-4 py-6 sm:px-6">
       <main className="flex flex-1 flex-col justify-center gap-8">
-        <div className="space-y-2">
+        <div>
           <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Choisir une boutique</h1>
-          <p className="text-sm text-slate-600 dark:text-slate-300">
-            Sélectionnez la boutique sur laquelle vous travaillez pour personnaliser votre expérience.
-          </p>
         </div>
 
         {isLoadingShops && (
@@ -174,12 +193,8 @@ export const SelectShopPage = () => {
         )}
 
         {shouldShowForm && (
-          <form className="space-y-6" onSubmit={(event) => event.preventDefault()}>
-            <label
-              className="block text-sm font-medium text-slate-700 dark:text-slate-200"
-              htmlFor="shop-select"
-              id={labelId}
-            >
+          <form className="space-y-4" onSubmit={(event) => event.preventDefault()}>
+            <label className="sr-only" htmlFor="shop-select" id={labelId}>
               Boutique
             </label>
             <div className="space-y-4">
@@ -260,21 +275,9 @@ export const SelectShopPage = () => {
                 </p>
               )}
             </div>
-            <Button
-              fullWidth
-              disabled={!selectedShop}
-              onClick={onContinue}
-              aria-disabled={!selectedShop}
-            >
-              Continuer
-            </Button>
           </form>
         )}
       </main>
-
-      <p className="text-xs text-slate-500 dark:text-slate-400">
-        Astuce : vous pourrez changer de boutique depuis l’accueil.
-      </p>
     </Page>
   )
 }
