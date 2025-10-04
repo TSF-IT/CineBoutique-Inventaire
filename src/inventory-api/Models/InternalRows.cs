@@ -3,8 +3,6 @@ using System;
 
 namespace CineBoutique.Inventory.Api.Models;
 
-internal sealed record CountingRunRow(Guid Id, Guid InventorySessionId, Guid LocationId, short CountType);
-
 internal sealed record ProductLookupRow(Guid Id, string Ean);
 
 internal sealed class LocationCountStatusRow
@@ -123,7 +121,22 @@ internal sealed class LocationMetadataRow
 {
     public Guid Id { get; set; }
 
+    public Guid ShopId { get; set; }
+
     public string Code { get; set; } = string.Empty;
 
     public string Label { get; set; } = string.Empty;
+}
+
+internal sealed class ActiveCountingRunRow
+{
+    public Guid RunId { get; set; }
+
+    public Guid InventorySessionId { get; set; }
+
+    public DateTime StartedAtUtc { get; set; }
+
+    public Guid? OwnerUserId { get; set; }
+
+    public string? OperatorDisplayName { get; set; }
 }
