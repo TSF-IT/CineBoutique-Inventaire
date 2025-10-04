@@ -60,6 +60,8 @@ public sealed class ShopUsersEndpointTests : IAsyncLifetime
         var targetShopId = await SeedShopAsync("CinéBoutique Tours");
         var firstUserId = await SeedShopUserAsync(targetShopId, "user1", "Utilisateur 1", isAdmin: false, secret: string.Empty);
         var secondUserId = await SeedShopUserAsync(targetShopId, "user2", "Utilisateur 2", isAdmin: true, secret: string.Empty);
+        var disabledUserId = await SeedShopUserAsync(targetShopId, "user3", "Zeta", isAdmin: false, secret: string.Empty);
+        await DisableShopUserAsync(disabledUserId);
 
         var response = await _client.GetAsync($"/api/shops/{targetShopId}/users");
 
@@ -68,8 +70,9 @@ public sealed class ShopUsersEndpointTests : IAsyncLifetime
         var payload = await response.Content.ReadFromJsonAsync<List<ShopUserDto>>();
         Assert.NotNull(payload);
         Assert.Equal(2, payload!.Count);
-        Assert.Contains(payload, user => user.Id == firstUserId && user.Login == "user1" && !user.IsAdmin && !user.Disabled);
-        Assert.Contains(payload, user => user.Id == secondUserId && user.Login == "user2" && user.IsAdmin);
+        Assert.Equal(new[] { secondUserId, firstUserId }, payload.Select(user => user.Id).ToArray());
+        Assert.DoesNotContain(payload, user => user.Id == disabledUserId);
+        Assert.All(payload, user => Assert.False(user.Disabled));
     }
 
     [Fact]
@@ -269,6 +272,17 @@ public sealed class ShopUsersEndpointTests : IAsyncLifetime
             });
 
         return id;
+    }
+
+    private async Task DisableShopUserAsync(Guid userId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        const string sql = "UPDATE \"ShopUser\" SET \"Disabled\" = TRUE WHERE \"Id\" = @Id;";
+        await connection.ExecuteAsync(sql, new { Id = userId });
     }
 
     private async Task<ShopUserRow?> GetShopUserAsync(Guid userId)
