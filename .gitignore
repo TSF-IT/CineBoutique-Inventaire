@@ -19,6 +19,10 @@ packages/
 # Visual Studio Code
 .vscode/
 
+# Visual Studio
+*.code-workspace
+.vs
+
 # Logs
 *.log
 
