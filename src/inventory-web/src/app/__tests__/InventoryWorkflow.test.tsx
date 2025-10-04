@@ -90,10 +90,13 @@ const {
     conflictZones: [],
   }
   return {
-    fetchLocationsMock: vi.fn(async (_options: { shopId: string }): Promise<Location[]> => [
-      { ...reserveLocation },
-      { ...busyLocation },
-    ]),
+    fetchLocationsMock: vi.fn(async ({ shopId }: { shopId: string }): Promise<Location[]> => {
+      expect(shopId).toBeTruthy()
+      return [
+        { ...reserveLocation },
+        { ...busyLocation },
+      ]
+    }),
     fetchProductMock: vi.fn(() => Promise.resolve({ ean: '123', name: 'Popcorn caramel' })),
     fetchInventorySummaryMock: vi.fn(async (): Promise<InventorySummary> => ({ ...emptySummary })),
     completeInventoryRunMock: vi.fn<(locationId: string, payload: CompleteInventoryRunPayload) => Promise<{
@@ -206,37 +209,40 @@ describe('Workflow d\'inventaire', () => {
   beforeEach(() => {
     localStorage.setItem('cb.shop', JSON.stringify(testShop))
     fetchLocationsMock.mockReset()
-    fetchLocationsMock.mockImplementation(async (_options: { shopId: string }): Promise<Location[]> => [
-      { ...reserveLocation },
-      {
-        id: 'zone-2',
-        code: 'SAL1',
-        label: 'Salle 1',
-        isBusy: true,
-        busyBy: 'paul.dupont',
-        activeCountType: 1,
-        activeRunId: 'run-1',
-        activeStartedAtUtc: new Date(),
-        countStatuses: [
-          {
-            countType: 1,
-            status: 'in_progress',
-            runId: 'run-1',
-            operatorDisplayName: 'paul.dupont',
-            startedAtUtc: new Date(),
-            completedAtUtc: null,
-          },
-          {
-            countType: 2,
-            status: 'not_started',
-            runId: null,
-            operatorDisplayName: null,
-            startedAtUtc: null,
-            completedAtUtc: null,
-          },
-        ],
-      },
-    ])
+    fetchLocationsMock.mockImplementation(async ({ shopId }: { shopId: string }): Promise<Location[]> => {
+      expect(shopId).toBeTruthy()
+      return [
+        { ...reserveLocation },
+        {
+          id: 'zone-2',
+          code: 'SAL1',
+          label: 'Salle 1',
+          isBusy: true,
+          busyBy: 'paul.dupont',
+          activeCountType: 1,
+          activeRunId: 'run-1',
+          activeStartedAtUtc: new Date(),
+          countStatuses: [
+            {
+              countType: 1,
+              status: 'in_progress',
+              runId: 'run-1',
+              operatorDisplayName: 'paul.dupont',
+              startedAtUtc: new Date(),
+              completedAtUtc: null,
+            },
+            {
+              countType: 2,
+              status: 'not_started',
+              runId: null,
+              operatorDisplayName: null,
+              startedAtUtc: null,
+              completedAtUtc: null,
+            },
+          ],
+        },
+      ]
+    })
     fetchProductMock.mockReset()
     fetchProductMock.mockImplementation(() => Promise.resolve({ ean: '123', name: 'Popcorn caramel' }))
     fetchInventorySummaryMock.mockReset()
