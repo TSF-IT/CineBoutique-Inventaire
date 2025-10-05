@@ -11,7 +11,8 @@ import { AdminLocationsPage } from './app/pages/admin/AdminLocationsPage'
 import { AppErrorBoundary } from './app/components/AppErrorBoundary'
 import { ScanSimulationPage } from './app/pages/debug/ScanSimulationPage'
 import { LoadingIndicator } from './app/components/LoadingIndicator'
-import { SelectShopPage } from './app/pages/select-shop/SelectShopPage'
+import { GuardOperator, GuardShop } from './components/RouteGuard'
+import { SelectShopPage as SelectShopView } from './app/pages/select-shop/SelectShopPage'
 import { useShop } from '@/state/ShopContext'
 import { RequireShop } from '@/router/RequireShop'
 
@@ -30,8 +31,12 @@ const BypassSelect = () => {
     return <Navigate to="/" replace />
   }
 
-  return <SelectShopPage />
+  return <SelectShopView />
 }
+
+const SelectShopPage = BypassSelect
+const SelectUserPage = InventoryUserStep
+const InventoryStartPage = InventoryUserStep
 
 export const AppRoutes = () => {
   const isScanSimMode = import.meta.env.MODE === 'scan-sim' || import.meta.env.VITE_SCAN_SIM === '1'
@@ -42,7 +47,14 @@ export const AppRoutes = () => {
 
   return (
     <Routes>
-      <Route path="/select-shop" element={<BypassSelect />} />
+      <Route path="/select-shop" element={<SelectShopPage />} />
+      <Route element={<GuardShop />}>
+        <Route path="/select-user" element={<SelectUserPage />} />
+      </Route>
+      <Route element={<GuardOperator />}>
+        <Route path="/home" element={<HomePage />} />
+        <Route path="/inventory/start" element={<InventoryStartPage />} />
+      </Route>
       <Route path="/" element={<RequireShop />}>
         <Route index element={<HomePage />} />
         <Route path="inventory" element={<InventoryLayout />}>
@@ -56,7 +68,7 @@ export const AppRoutes = () => {
           <Route index element={<AdminLocationsPage />} />
         </Route>
       </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/select-shop" replace />} />
     </Routes>
   )
 }

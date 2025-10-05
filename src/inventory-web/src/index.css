@@ -46,3 +46,9 @@ body {
   align-items: center;
   justify-content: center;
 }
+
+@media (orientation: landscape) {
+  .landscape\:grid-cols-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
