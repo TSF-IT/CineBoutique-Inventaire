@@ -3,7 +3,6 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
-using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -589,37 +588,17 @@ WHERE cr.""CompletedAtUtc"" IS NOT NULL
   AND cr.""LocationId"" = ANY(@LocationIds::uuid[])
 ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
 
-            var openRuns = await connection
-                .QueryAsync<LocationCountStatusRow>(new CommandDefinition(openRunsSql, new { LocationIds = locationIds }, cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
+            var openRuns = (await connection
+                    .QueryAsync<LocationCountStatusRow>(new CommandDefinition(openRunsSql, new { LocationIds = locationIds }, cancellationToken: cancellationToken))
+                    .ConfigureAwait(false)).ToList();
 
-            var completedRuns = await connection
-                .QueryAsync<LocationCountStatusRow>(new CommandDefinition(completedRunsSql, new { LocationIds = locationIds }, cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
+            var completedRuns = (await connection
+                    .QueryAsync<LocationCountStatusRow>(new CommandDefinition(completedRunsSql, new { LocationIds = locationIds }, cancellationToken: cancellationToken))
+                    .ConfigureAwait(false)).ToList();
 
             var openLookup = openRuns.ToLookup(row => (row.LocationId, row.CountType));
+            var openByLocation = openRuns.ToLookup(row => row.LocationId);
             var completedLookup = completedRuns.ToLookup(row => (row.LocationId, row.CountType));
-
-            static IEnumerable<short> DiscoverCountTypes(IEnumerable<LocationCountStatusRow> runs)
-                => runs
-                    .Select(row => row.CountType)
-                    .Where(countTypeValue => countTypeValue > 0)
-                    .Distinct();
-
-            var discoveredCountTypes = DiscoverCountTypes(openRuns).Concat(DiscoverCountTypes(completedRuns));
-
-            var defaultCountTypes = new short[] { 1, 2 };
-
-            if (countType is { } requested)
-            {
-                defaultCountTypes = defaultCountTypes.Concat(new[] { (short)requested }).ToArray();
-            }
-
-            var targetCountTypes = defaultCountTypes
-                .Concat(discoveredCountTypes)
-                .Distinct()
-                .OrderBy(value => value)
-                .ToArray();
 
             static string? NormalizeDisplayName(string? value) =>
                 string.IsNullOrWhiteSpace(value) ? null : value.Trim();
@@ -627,77 +606,73 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
             static Guid? NormalizeUserId(Guid? value) =>
                 value is { } guid && guid != Guid.Empty ? guid : null;
 
-            static string FormatTimestamp(DateTime? value)
-            {
-                if (!value.HasValue)
-                {
-                    return string.Empty;
-                }
-
-                var utcValue = TimeUtil.ToUtcOffset(value.Value);
-                return utcValue.ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture);
-            }
-
             foreach (var location in locations)
             {
-                var statuses = new List<LocationCountStatusDto>(targetCountTypes.Length);
-
-                foreach (var type in targetCountTypes)
-                {
-                    var status = new LocationCountStatusDto
-                    {
-                        CountType = type
-                    };
-
-                    var open = openLookup[(location.Id, type)].FirstOrDefault();
-                    if (open is not null)
-                    {
-                        status.Status = LocationCountStatus.InProgress;
-                        status.RunId = EndpointUtilities.SanitizeRunId(open.RunId);
-                        status.OwnerDisplayName = NormalizeDisplayName(open.OwnerDisplayName);
-                        status.OwnerUserId = NormalizeUserId(open.OwnerUserId);
-                        status.StartedAtUtc = FormatTimestamp(open.StartedAtUtc);
-                        status.CompletedAtUtc = FormatTimestamp(open.CompletedAtUtc);
-                    }
-                    else
-                    {
-                        var completed = completedLookup[(location.Id, type)].FirstOrDefault();
-                        if (completed is not null)
-                        {
-                            status.Status = LocationCountStatus.Completed;
-                            status.RunId = EndpointUtilities.SanitizeRunId(completed.RunId);
-                            status.OwnerDisplayName = NormalizeDisplayName(completed.OwnerDisplayName);
-                            status.OwnerUserId = NormalizeUserId(completed.OwnerUserId);
-                            status.StartedAtUtc = FormatTimestamp(completed.StartedAtUtc);
-                            status.CompletedAtUtc = FormatTimestamp(completed.CompletedAtUtc);
-                        }
-                    }
-
-                    statuses.Add(status);
-                }
-
-                location.CountStatuses = statuses;
-
-                var openRunsForLocation = openRuns
-                    .Where(r => r.LocationId == location.Id)
+                var openRunsForLocation = openByLocation[location.Id]
+                    .OrderByDescending(r => r.StartedAtUtc)
                     .ToList();
 
-                // Y a-t-il un run ouvert correspondant au filtre éventuel ?
-                if (countType is { } requestedType)
+                CountingRunRow? Resolve(short countTypeValue)
                 {
-                    var runsForRequestedType = openRunsForLocation
-                        .Where(r => r.CountType == requestedType)
-                        .ToList();
-
-                    location.IsBusy = runsForRequestedType.Any();
-
-                    var mostRecent = runsForRequestedType
+                    var openRun = openLookup[(location.Id, countTypeValue)]
                         .OrderByDescending(r => r.StartedAtUtc)
                         .FirstOrDefault();
 
+                    var completedRun = completedLookup[(location.Id, countTypeValue)]
+                        .OrderByDescending(r => r.CompletedAtUtc ?? r.StartedAtUtc)
+                        .FirstOrDefault();
+
+                    var source = openRun ?? completedRun;
+                    if (source is null)
+                    {
+                        return null;
+                    }
+
+                    var display = NormalizeDisplayName(source.OwnerDisplayName)
+                        ?? NormalizeDisplayName(source.OperatorDisplayName);
+
+                    return new CountingRunRow
+                    {
+                        CountType = source.CountType,
+                        Id = EndpointUtilities.SanitizeRunId(source.RunId),
+                        OperatorDisplayName = display,
+                        OwnerUserId = NormalizeUserId(source.OwnerUserId),
+                        StartedAtUtc = TimeUtil.ToUtcOffset(source.StartedAtUtc),
+                        CompletedAtUtc = TimeUtil.ToUtcOffset(source.CompletedAtUtc)
+                    };
+                }
+
+                var runsForLocation = new List<CountingRunRow>(3);
+
+                var run1 = Resolve(1);
+                if (run1 is not null)
+                {
+                    runsForLocation.Add(run1);
+                }
+
+                var run2 = Resolve(2);
+                if (run2 is not null)
+                {
+                    runsForLocation.Add(run2);
+                }
+
+                var run3 = Resolve(3);
+                if (run3 is not null)
+                {
+                    runsForLocation.Add(run3);
+                }
+
+                location.CountStatuses = BuildCountStatuses(runsForLocation);
+
+                if (countType is { } requestedType)
+                {
+                    location.IsBusy = openRunsForLocation.Any(r => r.CountType == requestedType);
+
+                    var mostRecent = openRunsForLocation.FirstOrDefault(r => r.CountType == requestedType);
                     location.ActiveRunId = EndpointUtilities.SanitizeRunId(mostRecent?.RunId);
                     location.ActiveCountType = mostRecent?.CountType;
                     location.ActiveStartedAtUtc = TimeUtil.ToUtcOffset(mostRecent?.StartedAtUtc);
+
                     var normalizedBusy = NormalizeDisplayName(mostRecent?.OwnerDisplayName)
                         ?? NormalizeDisplayName(mostRecent?.OperatorDisplayName);
                     location.BusyBy = normalizedBusy;
@@ -706,17 +681,23 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                 {
                     location.IsBusy = openRunsForLocation.Any();
 
-                    var mostRecent = openRunsForLocation
-                        .OrderByDescending(r => r.StartedAtUtc)
-                        .FirstOrDefault();
-
+                    var mostRecent = openRunsForLocation.FirstOrDefault();
                     location.ActiveRunId = EndpointUtilities.SanitizeRunId(mostRecent?.RunId);
                     location.ActiveCountType = mostRecent?.CountType;
                     location.ActiveStartedAtUtc = TimeUtil.ToUtcOffset(mostRecent?.StartedAtUtc);
+
                     var normalizedBusy = NormalizeDisplayName(mostRecent?.OwnerDisplayName)
                         ?? NormalizeDisplayName(mostRecent?.OperatorDisplayName);
                     location.BusyBy = normalizedBusy;
                 }
+            }
+
+            foreach (var dto in locations)
+            {
+                dto.BusyBy = string.IsNullOrWhiteSpace(dto.BusyBy) ? null : dto.BusyBy;
+                dto.ActiveRunId = dto.ActiveRunId ?? null;
+                dto.ActiveCountType = dto.ActiveCountType is > 0 ? dto.ActiveCountType : null;
+                dto.ActiveStartedAtUtc = dto.ActiveStartedAtUtc == default ? null : dto.ActiveStartedAtUtc;
             }
 
             return Results.Ok(locations);
@@ -754,6 +735,55 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
             }
             return op;
         });
+    }
+
+    private sealed record CountingRunRow
+    {
+        public short CountType { get; init; }
+
+        public Guid? Id { get; init; }
+
+        public string? OperatorDisplayName { get; init; }
+
+        public Guid? OwnerUserId { get; init; }
+
+        public DateTimeOffset? StartedAtUtc { get; init; }
+
+        public DateTimeOffset? CompletedAtUtc { get; init; }
+    }
+
+    private static IReadOnlyList<LocationCountStatusDto> BuildCountStatuses(IEnumerable<CountingRunRow> runsForLocation)
+    {
+        var statuses = new List<LocationCountStatusDto>(3);
+
+        LocationCountStatusDto Make(short ct, CountingRunRow? run)
+            => new()
+            {
+                CountType = ct,
+                Status = run is null
+                    ? LocationCountStatus.NotStarted
+                    : run.CompletedAtUtc is not null
+                        ? LocationCountStatus.Completed
+                        : LocationCountStatus.InProgress,
+                RunId = run?.Id,
+                OwnerDisplayName = run?.OperatorDisplayName,
+                OwnerUserId = run?.OwnerUserId,
+                StartedAtUtc = run?.StartedAtUtc,
+                CompletedAtUtc = run?.CompletedAtUtc,
+            };
+
+        var run1 = runsForLocation.FirstOrDefault(r => r.CountType == 1);
+        var run2 = runsForLocation.FirstOrDefault(r => r.CountType == 2);
+        var run3 = runsForLocation.FirstOrDefault(r => r.CountType == 3);
+
+        statuses.Add(Make(1, run1));
+        statuses.Add(Make(2, run2));
+        if (run3 is not null)
+        {
+            statuses.Add(Make(3, run3));
+        }
+
+        return statuses;
     }
 
     private static void MapStartEndpoint(IEndpointRouteBuilder app)
