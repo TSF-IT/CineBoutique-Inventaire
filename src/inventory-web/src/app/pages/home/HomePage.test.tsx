@@ -35,6 +35,7 @@ describe('HomePage', () => {
     const summary: InventorySummary = {
       activeSessions: 0,
       openRuns: 0,
+      completedRuns: 0,
       conflicts: 1,
       lastActivityUtc: null,
       openRunDetails: [],
@@ -94,6 +95,7 @@ describe('HomePage', () => {
     const summary: InventorySummary = {
       activeSessions: 1,
       openRuns: 1,
+      completedRuns: 1,
       conflicts: 0,
       lastActivityUtc: null,
       openRunDetails: [
