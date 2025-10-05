@@ -55,18 +55,23 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
     {
         await ResetDatabaseAsync();
 
-        var response = await _client.GetAsync("/api/inventories/summary");
+        var shopId = await SeedShopAsync($"Summary-empty-{Guid.NewGuid():N}");
+
+        var response = await _client.GetAsync($"/api/inventories/summary?shopId={shopId:D}");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         var payload = await response.Content.ReadFromJsonAsync<InventorySummaryDto>();
         Assert.NotNull(payload);
         Assert.Equal(0, payload!.ActiveSessions);
         Assert.Equal(0, payload.OpenRuns);
+        Assert.Equal(0, payload.CompletedRuns);
         Assert.Equal(0, payload.Conflicts);
         Assert.Null(payload.LastActivityUtc);
         Assert.Empty(payload.OpenRunDetails);
         Assert.Empty(payload.CompletedRunDetails);
         Assert.Empty(payload.ConflictZones);
+        Assert.Equal(payload.OpenRuns, payload.OpenRunDetails.Count);
+        Assert.Equal(payload.CompletedRuns, payload.CompletedRunDetails.Count);
     }
 
     [Fact]
@@ -79,7 +84,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
 
-        var hasOperatorDisplayNameColumn = await CountingRunSqlHelper.HasOperatorDisplayNameAsync(connection);
+        var shopId = await SeedShopAsync($"Summary-activity-{Guid.NewGuid():N}");
 
         var sessionId = Guid.NewGuid();
         var locationId = Guid.NewGuid();
@@ -87,11 +92,15 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         var startedAt = DateTimeOffset.UtcNow.AddMinutes(-5);
         var countedAt = DateTimeOffset.UtcNow.AddMinutes(-1);
 
-        const string insertLocation = "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\") VALUES (@Id, 'Z1', 'Zone 1');";
-        await connection.ExecuteAsync(insertLocation, new { Id = locationId });
+        await InsertLocationAsync(connection, shopId, locationId, "Z1", "Zone 1");
 
         const string insertSession = "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, 'Session', @StartedAt);";
         await connection.ExecuteAsync(insertSession, new { Id = sessionId, StartedAt = startedAt });
+
+        var hasOwnerColumn = await CountingRunSqlHelper.HasOwnerUserIdAsync(connection);
+        Assert.True(hasOwnerColumn, "La colonne OwnerUserId est requise pour ce scénario.");
+
+        var ownerUserId = await InsertShopUserAsync(connection, shopId, "Camille");
 
         await CountingRunSqlHelper.InsertAsync(
             connection,
@@ -102,7 +111,8 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
                 CountType: 1,
                 StartedAtUtc: startedAt,
                 CompletedAtUtc: null,
-                OperatorDisplayName: "Unknown"));
+                OperatorDisplayName: null,
+                OwnerUserId: ownerUserId));
 
         var productId = Guid.NewGuid();
         const string insertProduct = "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"CreatedAtUtc\") VALUES (@Id, 'SKU-1', 'Produit', @CreatedAt);";
@@ -113,13 +123,14 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
             "VALUES (@Id, @RunId, @ProductId, 1, @CountedAt);";
         await connection.ExecuteAsync(insertCountLine, new { Id = Guid.NewGuid(), RunId = runId, ProductId = productId, CountedAt = countedAt });
 
-        var response = await _client.GetAsync("/api/inventories/summary");
+        var response = await _client.GetAsync($"/api/inventories/summary?shopId={shopId:D}");
         response.EnsureSuccessStatusCode();
 
         var payload = await response.Content.ReadFromJsonAsync<InventorySummaryDto>();
         Assert.NotNull(payload);
         Assert.Equal(1, payload!.ActiveSessions);
         Assert.Equal(1, payload.OpenRuns);
+        Assert.Equal(0, payload.CompletedRuns);
         Assert.Equal(0, payload.Conflicts);
         Assert.NotNull(payload.LastActivityUtc);
         Assert.True(payload.LastActivityUtc >= countedAt.AddMinutes(-1));
@@ -130,16 +141,12 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         Assert.Equal("Z1", openRun.LocationCode);
         Assert.Equal("Zone 1", openRun.LocationLabel);
         Assert.Equal(1, openRun.CountType);
-        if (hasOperatorDisplayNameColumn)
-        {
-            Assert.Equal("Unknown", openRun.OperatorDisplayName);
-        }
-        else
-        {
-            Assert.Null(openRun.OperatorDisplayName);
-        }
+        Assert.Equal("Camille", openRun.OwnerDisplayName);
+        Assert.Equal(ownerUserId, openRun.OwnerUserId);
         Assert.Equal(startedAt, openRun.StartedAtUtc, TimeSpan.FromSeconds(1));
         Assert.Empty(payload.ConflictZones);
+        Assert.Equal(payload.OpenRuns, payload.OpenRunDetails.Count);
+        Assert.Equal(payload.CompletedRuns, payload.CompletedRunDetails.Count);
     }
 
     [Fact]
@@ -152,17 +159,19 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
 
+        var shopId = await SeedShopAsync($"Summary-completed-{Guid.NewGuid():N}");
         var locationId = Guid.NewGuid();
         var sessionId = Guid.NewGuid();
         var runId = Guid.NewGuid();
         var startedAt = DateTimeOffset.UtcNow.AddHours(-2);
         var completedAt = startedAt.AddMinutes(45);
 
-        const string insertLocation = "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\") VALUES (@Id, 'ZC1', 'Zone C1');";
-        await connection.ExecuteAsync(insertLocation, new { Id = locationId });
+        await InsertLocationAsync(connection, shopId, locationId, "ZC1", "Zone C1");
 
         const string insertSession = "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, 'Session', @StartedAt);";
         await connection.ExecuteAsync(insertSession, new { Id = sessionId, StartedAt = startedAt });
+
+        var ownerUserId = await InsertShopUserAsync(connection, shopId, "Chloé");
 
         await CountingRunSqlHelper.InsertAsync(
             connection,
@@ -173,14 +182,17 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
                 CountType: 1,
                 StartedAtUtc: startedAt,
                 CompletedAtUtc: completedAt,
-                OperatorDisplayName: "Chloé"));
+                OperatorDisplayName: null,
+                OwnerUserId: ownerUserId));
 
-        var response = await _client.GetAsync("/api/inventories/summary");
+        var response = await _client.GetAsync($"/api/inventories/summary?shopId={shopId:D}");
         response.EnsureSuccessStatusCode();
 
         var payload = await response.Content.ReadFromJsonAsync<InventorySummaryDto>();
         Assert.NotNull(payload);
         Assert.Single(payload!.CompletedRunDetails);
+        Assert.Equal(payload.CompletedRuns, payload.CompletedRunDetails.Count);
+        Assert.Equal(payload.OpenRuns, payload.OpenRunDetails.Count);
 
         var completedRun = payload.CompletedRunDetails[0];
         Assert.Equal(runId, completedRun.RunId);
@@ -188,7 +200,8 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         Assert.Equal("ZC1", completedRun.LocationCode);
         Assert.Equal("Zone C1", completedRun.LocationLabel);
         Assert.Equal(1, completedRun.CountType);
-        Assert.Equal("Chloé", completedRun.OperatorDisplayName);
+        Assert.Equal("Chloé", completedRun.OwnerDisplayName);
+        Assert.Equal(ownerUserId, completedRun.OwnerUserId);
         Assert.Equal(completedAt, completedRun.CompletedAtUtc, TimeSpan.FromMilliseconds(1));
     }
 
@@ -202,6 +215,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
 
+        var shopId = await SeedShopAsync($"Summary-conflicts-{Guid.NewGuid():N}");
         var sessionId = Guid.NewGuid();
         var locationId = Guid.NewGuid();
         var runId = Guid.NewGuid();
@@ -212,8 +226,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         var startedAt = DateTimeOffset.UtcNow.AddHours(-1);
         var completedAt = DateTimeOffset.UtcNow.AddMinutes(-30);
 
-        const string insertLocation = "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\") VALUES (@Id, 'Z2', 'Zone 2');";
-        await connection.ExecuteAsync(insertLocation, new { Id = locationId });
+        await InsertLocationAsync(connection, shopId, locationId, "Z2", "Zone 2");
 
         const string insertSession = "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, 'Session', @StartedAt);";
         await connection.ExecuteAsync(insertSession, new { Id = sessionId, StartedAt = startedAt });
@@ -259,13 +272,14 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         await connection.ExecuteAsync(insertConflict, new { Id = Guid.NewGuid(), CountLineId = countLineId, CreatedAt = completedAt });
         await connection.ExecuteAsync(insertConflict, new { Id = Guid.NewGuid(), CountLineId = secondCountLineId, CreatedAt = completedAt });
 
-        var response = await _client.GetAsync("/api/inventories/summary");
+        var response = await _client.GetAsync($"/api/inventories/summary?shopId={shopId:D}");
         response.EnsureSuccessStatusCode();
 
         var payload = await response.Content.ReadFromJsonAsync<InventorySummaryDto>();
         Assert.NotNull(payload);
         Assert.Equal(1, payload!.Conflicts);
         Assert.Equal(0, payload.OpenRuns);
+        Assert.Equal(1, payload.CompletedRuns);
         Assert.Single(payload.ConflictZones);
         var conflictZone = payload.ConflictZones[0];
         Assert.Equal(locationId, conflictZone.LocationId);
@@ -273,6 +287,105 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         Assert.Equal("Zone 2", conflictZone.LocationLabel);
         Assert.Equal(2, conflictZone.ConflictLines);
         Assert.Empty(payload.OpenRunDetails);
+        Assert.Equal(payload.OpenRuns, payload.OpenRunDetails.Count);
+        Assert.Equal(payload.CompletedRuns, payload.CompletedRunDetails.Count);
+    }
+
+    [Fact]
+    public async Task GetInventorySummary_FiltersRunsByShop()
+    {
+        await ResetDatabaseAsync();
+
+        using var scope = _factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        var parisShopId = await SeedShopAsync($"Summary-paris-{Guid.NewGuid():N}");
+        var lyonShopId = await SeedShopAsync($"Summary-lyon-{Guid.NewGuid():N}");
+
+        var parisLocationId = Guid.NewGuid();
+        var lyonLocationId = Guid.NewGuid();
+        var parisSessionId = Guid.NewGuid();
+        var lyonSessionId = Guid.NewGuid();
+        var parisOpenRunId = Guid.NewGuid();
+        var parisCompletedRunId = Guid.NewGuid();
+        var lyonOpenRunId = Guid.NewGuid();
+        var parisStartedAt = DateTimeOffset.UtcNow.AddMinutes(-45);
+        var parisCompletedAt = parisStartedAt.AddMinutes(20);
+
+        await InsertLocationAsync(connection, parisShopId, parisLocationId, "P1", "Paris Zone 1");
+        await InsertLocationAsync(connection, lyonShopId, lyonLocationId, "L1", "Lyon Zone 1");
+
+        const string insertSessionSql = "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, 'Session', @StartedAt);";
+        await connection.ExecuteAsync(insertSessionSql, new { Id = parisSessionId, StartedAt = parisStartedAt });
+        await connection.ExecuteAsync(insertSessionSql, new { Id = lyonSessionId, StartedAt = parisStartedAt });
+
+        var parisUserId = await InsertShopUserAsync(connection, parisShopId, "Utilisateur Paris");
+        var lyonUserId = await InsertShopUserAsync(connection, lyonShopId, "Utilisateur Lyon");
+
+        await CountingRunSqlHelper.InsertAsync(
+            connection,
+            new CountingRunInsert(
+                parisOpenRunId,
+                parisSessionId,
+                parisLocationId,
+                CountType: 1,
+                StartedAtUtc: parisStartedAt,
+                CompletedAtUtc: null,
+                OperatorDisplayName: null,
+                OwnerUserId: parisUserId));
+
+        await CountingRunSqlHelper.InsertAsync(
+            connection,
+            new CountingRunInsert(
+                parisCompletedRunId,
+                parisSessionId,
+                parisLocationId,
+                CountType: 2,
+                StartedAtUtc: parisStartedAt.AddMinutes(-30),
+                CompletedAtUtc: parisCompletedAt,
+                OperatorDisplayName: null,
+                OwnerUserId: parisUserId));
+
+        await CountingRunSqlHelper.InsertAsync(
+            connection,
+            new CountingRunInsert(
+                lyonOpenRunId,
+                lyonSessionId,
+                lyonLocationId,
+                CountType: 1,
+                StartedAtUtc: parisStartedAt,
+                CompletedAtUtc: null,
+                OperatorDisplayName: null,
+                OwnerUserId: lyonUserId));
+
+        var response = await _client.GetAsync($"/api/inventories/summary?shopId={parisShopId:D}");
+        response.EnsureSuccessStatusCode();
+
+        var payload = await response.Content.ReadFromJsonAsync<InventorySummaryDto>();
+        Assert.NotNull(payload);
+
+        Assert.Equal(1, payload!.OpenRuns);
+        Assert.Equal(1, payload.OpenRunDetails.Count);
+        var openRun = payload.OpenRunDetails[0];
+        Assert.Equal(parisOpenRunId, openRun.RunId);
+        Assert.Equal(parisLocationId, openRun.LocationId);
+        Assert.Equal(parisUserId, openRun.OwnerUserId);
+        Assert.Equal("Utilisateur Paris", openRun.OwnerDisplayName);
+
+        Assert.Equal(1, payload.CompletedRuns);
+        Assert.Equal(1, payload.CompletedRunDetails.Count);
+        var completedRun = payload.CompletedRunDetails[0];
+        Assert.Equal(parisCompletedRunId, completedRun.RunId);
+        Assert.Equal(parisLocationId, completedRun.LocationId);
+        Assert.Equal(parisUserId, completedRun.OwnerUserId);
+
+        Assert.DoesNotContain(payload.OpenRunDetails, run => run.LocationId == lyonLocationId || run.OwnerUserId == lyonUserId);
+        Assert.DoesNotContain(payload.CompletedRunDetails, run => run.LocationId == lyonLocationId || run.OwnerUserId == lyonUserId);
+
+        Assert.Equal(payload.OpenRuns, payload.OpenRunDetails.Count);
+        Assert.Equal(payload.CompletedRuns, payload.CompletedRunDetails.Count);
     }
 
     [Fact]
@@ -290,7 +403,8 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
 
         try
         {
-            var response = await _client.GetAsync("/api/inventories/summary");
+            var shopId = await SeedShopAsync($"Summary-operator-missing-{Guid.NewGuid():N}");
+            var response = await _client.GetAsync($"/api/inventories/summary?shopId={shopId:D}");
             response.EnsureSuccessStatusCode();
 
             var payload = await response.Content.ReadFromJsonAsync<InventorySummaryDto>();
@@ -326,7 +440,8 @@ ALTER TABLE "CountingRun"
 
         try
         {
-            var response = await _client.GetAsync("/api/inventories/summary");
+            var shopId = await SeedShopAsync($"Summary-audit-missing-{Guid.NewGuid():N}");
+            var response = await _client.GetAsync($"/api/inventories/summary?shopId={shopId:D}");
             response.EnsureSuccessStatusCode();
 
             var payload = await response.Content.ReadFromJsonAsync<InventorySummaryDto>();
@@ -366,6 +481,48 @@ TRUNCATE TABLE "Conflict" RESTART IDENTITY CASCADE;
 """;
 
         await connection.ExecuteAsync(cleanupSql);
+    }
+
+    private async Task<Guid> SeedShopAsync(string name)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        var shopId = Guid.NewGuid();
+        const string insertShopSql = "INSERT INTO \"Shop\" (\"Id\", \"Name\") VALUES (@Id, @Name);";
+        await connection.ExecuteAsync(insertShopSql, new { Id = shopId, Name = name });
+        return shopId;
+    }
+
+    private static async Task<Guid> InsertShopUserAsync(IDbConnection connection, Guid shopId, string displayName)
+    {
+        var userId = Guid.NewGuid();
+        const string insertShopUserSql = @"
+INSERT INTO ""ShopUser"" (""Id"", ""ShopId"", ""Login"", ""DisplayName"", ""IsAdmin"", ""Secret_Hash"", ""Disabled"")
+VALUES (@Id, @ShopId, @Login, @DisplayName, FALSE, '', FALSE);";
+        await connection.ExecuteAsync(
+            insertShopUserSql,
+            new
+            {
+                Id = userId,
+                ShopId = shopId,
+                Login = $"user-{Guid.NewGuid():N}",
+                DisplayName = displayName
+            });
+        return userId;
+    }
+
+    private static async Task<Guid> InsertLocationAsync(IDbConnection connection, Guid shopId, Guid locationId, string code, string label)
+    {
+        const string insertLocationSql = @"
+INSERT INTO ""Location"" (""Id"", ""Code"", ""Label"", ""ShopId"")
+VALUES (@Id, @Code, @Label, @ShopId);";
+        await connection.ExecuteAsync(
+            insertLocationSql,
+            new { Id = locationId, Code = code, Label = label, ShopId = shopId });
+        return locationId;
     }
 
     private static async Task EnsureConnectionOpenAsync(IDbConnection connection)

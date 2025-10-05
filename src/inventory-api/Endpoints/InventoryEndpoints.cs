@@ -46,71 +46,108 @@ internal static class InventoryEndpoints
     private static void MapSummaryEndpoint(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/inventories/summary", async (
+            string? shopId,
             IDbConnection connection,
             [FromServices] ILogger<InventoryEndpointsMarker> logger,
             CancellationToken cancellationToken) =>
         {
+            if (string.IsNullOrWhiteSpace(shopId))
+            {
+                return Results.Problem(
+                    detail: "ShopId requis",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            if (!Guid.TryParse(shopId, out var parsedShopId))
+            {
+                return Results.Problem(
+                    detail: "ShopId invalide",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+            var hasIsActiveColumn = await EndpointUtilities
+                .ColumnExistsAsync(connection, "CountingRun", "IsActive", cancellationToken)
+                .ConfigureAwait(false);
 
             var activitySources = new List<string>
             {
-                "SELECT MAX(\"CountedAtUtc\") AS value FROM \"CountLine\"",
-                "SELECT MAX(\"StartedAtUtc\") FROM \"CountingRun\"",
-                "SELECT MAX(\"CompletedAtUtc\") FROM \"CountingRun\""
+                @"SELECT MAX(cl.""CountedAtUtc"") AS value
+        FROM ""CountLine"" cl
+        JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
+        JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
+        WHERE l.""ShopId"" = @ShopId",
+                @"SELECT MAX(cr.""StartedAtUtc"") AS value
+        FROM ""CountingRun"" cr
+        JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
+        WHERE l.""ShopId"" = @ShopId",
+                @"SELECT MAX(cr.""CompletedAtUtc"") AS value
+        FROM ""CountingRun"" cr
+        JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
+        WHERE l.""ShopId"" = @ShopId"
             };
 
             if (await EndpointUtilities.TableExistsAsync(connection, "Audit", cancellationToken).ConfigureAwait(false))
             {
-                activitySources.Insert(0, "SELECT MAX(\"CreatedAtUtc\") AS value FROM \"Audit\"");
+                activitySources.Insert(0,
+                    @"SELECT MAX(a.""CreatedAtUtc"") AS value
+        FROM ""Audit"" a
+        WHERE EXISTS (
+            SELECT 1
+            FROM ""CountingRun"" cr
+            JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
+            WHERE l.""ShopId"" = @ShopId
+              AND a.""EntityId"" = cr.""Id""::text
+        )");
             }
 
             var activityUnion = string.Join("\n            UNION ALL\n            ", activitySources);
 
             var summarySql = $@"SELECT
-    (SELECT COUNT(*)::int FROM ""InventorySession"" WHERE ""CompletedAtUtc"" IS NULL) AS ""ActiveSessions"",
-    (SELECT COUNT(*)::int FROM ""CountingRun""   WHERE ""CompletedAtUtc"" IS NULL) AS ""OpenRuns"",
     (
-        SELECT COUNT(*)::int
+        SELECT COUNT(DISTINCT cr.""InventorySessionId"")
+        FROM ""CountingRun"" cr
+        JOIN ""InventorySession"" s ON s.""Id"" = cr.""InventorySessionId""
+        JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
+        WHERE s.""CompletedAtUtc"" IS NULL
+          AND l.""ShopId"" = @ShopId
+    ) AS ""ActiveSessions"",
+    (
+        SELECT MAX(value)
         FROM (
-            SELECT DISTINCT cr.""LocationId""
-            FROM ""Conflict"" c
-            JOIN ""CountLine""  cl ON cl.""Id"" = c.""CountLineId""
-            JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
-            WHERE c.""ResolvedAtUtc"" IS NULL
-        ) AS conflict_zones
-    ) AS ""Conflicts"",
-    (
-        SELECT MAX(value) FROM (
             {activityUnion}
         ) AS activity
     ) AS ""LastActivityUtc"";";
 
             var summary = await connection
-                .QueryFirstOrDefaultAsync<InventorySummaryDto>(new CommandDefinition(summarySql, cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
+                .QueryFirstOrDefaultAsync<InventorySummaryDto>(
+                    new CommandDefinition(summarySql, new { ShopId = parsedShopId }, cancellationToken: cancellationToken))
+                .ConfigureAwait(false)
+                ?? new InventorySummaryDto();
 
-            var columnsState = await DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
-            var openRunsOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
-
-            var openRunsDetailsSql = $@"SELECT
-    cr.""Id""          AS ""RunId"",
+            var openRunsSql = $@"SELECT
+    cr.""Id""           AS ""RunId"",
     cr.""LocationId"",
-    l.""Code""         AS ""LocationCode"",
-    l.""Label""        AS ""LocationLabel"",
+    l.""Code""          AS ""LocationCode"",
+    l.""Label""         AS ""LocationLabel"",
     cr.""CountType"",
-    {openRunsOperatorSql.Projection} AS ""OperatorDisplayName"",
+    COALESCE(su.""DisplayName"", NULL) AS ""OwnerDisplayName"",
+    cr.""OwnerUserId"",
     cr.""StartedAtUtc""
 FROM ""CountingRun"" cr
 JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
-{AppendJoinClause(openRunsOperatorSql.JoinClause)}
-WHERE cr.""CompletedAtUtc"" IS NULL
-ORDER BY cr.""StartedAtUtc"" DESC;";
+LEFT JOIN ""ShopUser"" su ON su.""Id"" = cr.""OwnerUserId"" AND su.""ShopId"" = l.""ShopId""
+WHERE l.""ShopId"" = @ShopId
+  AND cr.""CompletedAtUtc"" IS NULL
+{(hasIsActiveColumn ? "  AND cr.\"IsActive\" = TRUE\n" : string.Empty)}ORDER BY cr.""StartedAtUtc"" DESC;";
 
             var openRunRows = (await connection
-                    .QueryAsync<OpenRunSummaryRow>(new CommandDefinition(openRunsDetailsSql, cancellationToken: cancellationToken))
+                    .QueryAsync<OpenRunSummaryRow>(
+                        new CommandDefinition(openRunsSql, new { ShopId = parsedShopId }, cancellationToken: cancellationToken))
                     .ConfigureAwait(false)).ToList();
 
-            summary.OpenRunDetails = openRunRows
+            var openRunDetails = openRunRows
                 .Select(row => new OpenRunSummaryDto
                 {
                     RunId = row.RunId,
@@ -118,34 +155,42 @@ ORDER BY cr.""StartedAtUtc"" DESC;";
                     LocationCode = row.LocationCode,
                     LocationLabel = row.LocationLabel,
                     CountType = row.CountType,
-                    OperatorDisplayName = row.OperatorDisplayName,
+                    OwnerDisplayName = row.OwnerDisplayName,
+                    OwnerUserId = row.OwnerUserId,
                     StartedAtUtc = TimeUtil.ToUtcOffset(row.StartedAtUtc)
                 })
                 .ToList();
 
-            var completedRunsOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
+            summary.OpenRunDetails = openRunDetails;
+            summary.OpenRuns = openRunDetails.Count;
 
-            var completedRunsSql = $@"SELECT
-    cr.""Id""          AS ""RunId"",
+            var completedRunsSql = @"SELECT
+    cr.""Id""           AS ""RunId"",
     cr.""LocationId"",
-    l.""Code""         AS ""LocationCode"",
-    l.""Label""        AS ""LocationLabel"",
+    l.""Code""          AS ""LocationCode"",
+    l.""Label""         AS ""LocationLabel"",
     cr.""CountType"",
-    {completedRunsOperatorSql.Projection} AS ""OperatorDisplayName"",
+    COALESCE(su.""DisplayName"", NULL) AS ""OwnerDisplayName"",
+    cr.""OwnerUserId"",
     cr.""StartedAtUtc"",
     cr.""CompletedAtUtc""
 FROM ""CountingRun"" cr
 JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
-{AppendJoinClause(completedRunsOperatorSql.JoinClause)}
-WHERE cr.""CompletedAtUtc"" IS NOT NULL
+LEFT JOIN ""ShopUser"" su ON su.""Id"" = cr.""OwnerUserId"" AND su.""ShopId"" = l.""ShopId""
+WHERE l.""ShopId"" = @ShopId
+  AND cr.""CompletedAtUtc"" IS NOT NULL
 ORDER BY cr.""CompletedAtUtc"" DESC
-LIMIT 20;";
+LIMIT 50;";
 
             var completedRunRows = (await connection
-                    .QueryAsync<CompletedRunSummaryRow>(new CommandDefinition(completedRunsSql, cancellationToken: cancellationToken))
+                    .QueryAsync<CompletedRunSummaryRow>(
+                        new CommandDefinition(
+                            completedRunsSql,
+                            new { ShopId = parsedShopId },
+                            cancellationToken: cancellationToken))
                     .ConfigureAwait(false)).ToList();
 
-            summary.CompletedRunDetails = completedRunRows
+            var completedRunDetails = completedRunRows
                 .Select(row => new CompletedRunSummaryDto
                 {
                     RunId = row.RunId,
@@ -153,11 +198,15 @@ LIMIT 20;";
                     LocationCode = row.LocationCode,
                     LocationLabel = row.LocationLabel,
                     CountType = row.CountType,
-                    OperatorDisplayName = row.OperatorDisplayName,
+                    OwnerDisplayName = row.OwnerDisplayName,
+                    OwnerUserId = row.OwnerUserId,
                     StartedAtUtc = TimeUtil.ToUtcOffset(row.StartedAtUtc),
                     CompletedAtUtc = TimeUtil.ToUtcOffset(row.CompletedAtUtc)
                 })
                 .ToList();
+
+            summary.CompletedRunDetails = completedRunDetails;
+            summary.CompletedRuns = completedRunDetails.Count;
 
             var conflictZoneRows = (await connection
                     .QueryAsync<ConflictZoneSummaryRow>(
@@ -172,8 +221,10 @@ JOIN ""CountLine""  cl ON cl.""Id"" = c.""CountLineId""
 JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
 JOIN ""Location""    l ON l.""Id"" = cr.""LocationId""
 WHERE c.""ResolvedAtUtc"" IS NULL
+  AND l.""ShopId"" = @ShopId
 GROUP BY cr.""LocationId"", l.""Code"", l.""Label""
 ORDER BY l.""Code"";",
+                            new { ShopId = parsedShopId },
                             cancellationToken: cancellationToken))
                     .ConfigureAwait(false)).ToList();
 
@@ -189,7 +240,7 @@ ORDER BY l.""Code"";",
 
             summary.Conflicts = summary.ConflictZones.Count;
 
-            logger.LogDebug("ConflictsSummary zones={Count}", summary.Conflicts);
+            logger.LogDebug("ConflictsSummary shop={ShopId} zones={Count}", parsedShopId, summary.Conflicts);
 
             return Results.Ok(summary);
         })
