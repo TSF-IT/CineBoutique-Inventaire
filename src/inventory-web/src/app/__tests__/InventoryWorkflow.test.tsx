@@ -15,6 +15,7 @@ import type { InventorySummary, Location, CompleteInventoryRunPayload } from '..
 import type { StartInventoryRunPayload, StartInventoryRunResponse } from '../api/inventoryApi'
 import type { HttpError } from '../../lib/api/http'
 import type { ShopUser } from '@/types/user'
+import { SELECTED_USER_STORAGE_PREFIX } from '../../lib/selectedUserStorage'
 
 const {
   fetchLocationsMock,
@@ -267,6 +268,7 @@ const renderInventoryRoutes = (initialEntry: string, options?: RenderInventoryOp
 describe("Workflow d'inventaire", () => {
   beforeEach(() => {
     localStorage.setItem('cb.shop', JSON.stringify(testShop))
+    sessionStorage.clear()
     fetchShopUsersMock.mockReset()
     fetchShopUsersMock.mockResolvedValue(shopUsers)
     fetchLocationsMock.mockReset()
@@ -677,6 +679,32 @@ describe("Workflow d'inventaire", () => {
     )
   })
 
+  it("enregistre l'utilisateur sélectionné dans la session", async () => {
+    renderInventoryRoutes('/inventory/start')
+
+    const userButton = await screen.findByRole('button', { name: shopUsers[0].displayName })
+    fireEvent.click(userButton)
+
+    const storageKey = `${SELECTED_USER_STORAGE_PREFIX}.${testShop.id}`
+    await waitFor(() =>
+      expect(sessionStorage.getItem(storageKey)).toBe(
+        JSON.stringify({ userId: shopUsers[0].id }),
+      ),
+    )
+  })
+
+  it("restaure l'utilisateur sélectionné depuis la session", async () => {
+    const storageKey = `${SELECTED_USER_STORAGE_PREFIX}.${testShop.id}`
+    sessionStorage.setItem(storageKey, JSON.stringify({ userId: shopUsers[0].id }))
+
+    renderInventoryRoutes('/inventory/start')
+
+    const userSummaries = await screen.findAllByText((content) =>
+      content.replace(/\s+/g, ' ').includes(`Utilisateur : ${shopUsers[0].displayName}`),
+    )
+    expect(userSummaries.length).toBeGreaterThan(0)
+  })
+
   it('démarre un run serveur lors du premier scan', async () => {
     renderInventoryRoutes('/inventory/session', {
       initialize: (inventory) => {
@@ -703,6 +731,34 @@ describe("Workflow d'inventaire", () => {
     const [locationId, payload] = lastCall!
     expect(locationId).toBe(reserveLocation.id)
     expect(payload).toMatchObject({ countType: 1, ownerUserId: shopUsers[0].id, shopId: testShop.id })
+  })
+
+  it("n'effectue pas de recherche produit sans boutique sélectionnée", async () => {
+    localStorage.removeItem('cb.shop')
+
+    renderInventoryRoutes('/inventory/session', {
+      initialize: (inventory) => {
+        inventory.setSelectedUser(shopUsers[0])
+        inventory.setCountType(CountType.Count1)
+        inventory.setLocation({ ...reserveLocation })
+        inventory.clearSession()
+      },
+    })
+
+    const sessionPages = await screen.findAllByTestId('page-session')
+    const activeSessionPage = sessionPages[sessionPages.length - 1]
+    const input = within(activeSessionPage).getByLabelText('Scanner (douchette ou saisie)')
+
+    fireEvent.change(input, { target: { value: '123456' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() =>
+      expect(
+        within(activeSessionPage).getByText('Sélectionnez une boutique valide avant de scanner un produit.'),
+      ).toBeInTheDocument(),
+    )
+
+    expect(fetchProductMock).not.toHaveBeenCalled()
   })
 
   it("ne libère pas le run immédiatement après l'avoir démarré", async () => {
