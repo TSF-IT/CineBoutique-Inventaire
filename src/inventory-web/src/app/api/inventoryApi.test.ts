@@ -261,14 +261,18 @@ describe('releaseInventoryRun', () => {
     const { releaseInventoryRun } = await import('./inventoryApi')
 
     await expect(releaseInventoryRun('loc-1', 'run-1', '00000000-0000-0000-0000-000000000001')).resolves.toBeUndefined()
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/inventories/loc-1/release'),
-      expect.objectContaining({
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ runId: 'run-1', ownerUserId: '00000000-0000-0000-0000-000000000001' }),
-      }),
+    const [calledUrl, rawOptions] = fetchMock.mock.calls[0] ?? []
+    const options = (rawOptions ?? {}) as RequestInit
+
+    expect(calledUrl).toContain('/inventories/loc-1/release')
+    expect(options.method).toBe('POST')
+    expect(options.body).toBe(
+      JSON.stringify({ runId: 'run-1', ownerUserId: '00000000-0000-0000-0000-000000000001' }),
     )
+
+    const headers =
+      options.headers instanceof Headers ? options.headers : new Headers(options.headers ?? undefined)
+    expect(headers.get('Content-Type')).toBe('application/json')
   })
 
   it('remonte le message de conflit retourné par le backend', async () => {
