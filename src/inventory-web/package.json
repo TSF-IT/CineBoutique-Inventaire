@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:api5255": "cross-env DEV_BACKEND_ORIGIN=http://localhost:5255 vite",
+    "dev:api8080": "cross-env DEV_BACKEND_ORIGIN=http://localhost:8080 vite",
     "dev:scan-sim": "vite --mode scan-sim",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
@@ -36,6 +38,7 @@
     "@vite-pwa/assets-generator": "^0.2.6",
     "@vitejs/plugin-react": "^4.3.2",
     "autoprefixer": "^10.4.20",
+    "cross-env": "^7.0.3",
     "eslint": "^9.35.0",
     "eslint-plugin-jsx-a11y": "^6.10.0",
     "eslint-plugin-react": "^7.37.2",

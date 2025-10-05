@@ -11,6 +11,16 @@ DEV_BACKEND_ORIGIN=http://localhost:8080 npm run dev
 
 Sans variable, le proxy Vite utilise automatiquement `http://localhost:8080` comme origine backend.
 
+## Démarrage rapide (dev)
+
+### API locale (dotnet run)
+1. Lancer l’API (noter l’URL HTTP affichée, ex: `http://localhost:5255`).
+2. Dans `src/inventory-web`:
+   ```bash
+   npm i
+   npm run dev:api5255
+   ```
+
 La variable `VITE_API_BASE` contrôle l'URL de l'API :
 
 - `.env` → valeur par défaut `/api` (reverse proxy local ou prod).
