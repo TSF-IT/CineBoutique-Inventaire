@@ -21,6 +21,8 @@ export const CountStatusItemSchema = z.object({
   completedAtUtc: zDateOrNull,
 })
 
+export type CountStatusItem = z.infer<typeof CountStatusItemSchema>
+
 export const LocationSummarySchema = z.object({
   locationId: z.string().uuid(),
   locationName: z.string(),
@@ -32,3 +34,6 @@ export const LocationSummarySchema = z.object({
 })
 
 export const LocationSummaryListSchema = z.array(LocationSummarySchema)
+
+export type LocationSummary = z.infer<typeof LocationSummarySchema>
+export type LocationSummaryList = z.infer<typeof LocationSummaryListSchema>
