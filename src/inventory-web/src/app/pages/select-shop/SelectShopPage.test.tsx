@@ -35,8 +35,8 @@ describe('SelectShopPage', () => {
 
   it('navigue vers l’accueil après sélection depuis la liste', async () => {
     const shops: Shop[] = [
-      { id: 'shop-1', name: 'Boutique 1' },
-      { id: 'shop-2', name: 'Boutique 2' },
+      { id: '11111111-1111-1111-1111-111111111111', name: 'Boutique 1' },
+      { id: '22222222-2222-2222-2222-222222222222', name: 'Boutique 2' },
     ]
     fetchShopsMock.mockResolvedValueOnce(shops)
     const setShopSpy = vi.fn()
@@ -53,18 +53,21 @@ describe('SelectShopPage', () => {
 
     expect(screen.queryByRole('button', { name: 'Continuer' })).not.toBeInTheDocument()
 
-    fireEvent.change(select, { target: { value: 'shop-2' } })
+    fireEvent.change(select, { target: { value: shops[1].id } })
 
     await waitFor(() => {
       expect(setShopSpy).toHaveBeenCalledWith(shops[1])
-      expect(navigateMock).toHaveBeenCalledWith('/', { replace: true })
+      expect(navigateMock).toHaveBeenCalledWith('/inventory/start', {
+        replace: true,
+        state: { redirectTo: '/' },
+      })
     })
   })
 
   it('pré-sélectionne la boutique existante quand elle est disponible', async () => {
     const shops: Shop[] = [
-      { id: 'shop-1', name: 'Boutique 1' },
-      { id: 'shop-2', name: 'Boutique 2' },
+      { id: '33333333-3333-3333-3333-333333333333', name: 'Boutique 1' },
+      { id: '44444444-4444-4444-4444-444444444444', name: 'Boutique 2' },
     ]
     fetchShopsMock.mockResolvedValueOnce(shops)
     const setShopSpy = vi.fn()
@@ -83,12 +86,35 @@ describe('SelectShopPage', () => {
 
     await waitFor(() => {
       expect(setShopSpy).toHaveBeenCalledWith(shops[0])
-      expect(navigateMock).toHaveBeenCalledWith('/', { replace: true })
+      expect(navigateMock).toHaveBeenCalledWith('/inventory/start', {
+        replace: true,
+        state: { redirectTo: '/' },
+      })
     })
   })
 
+  it('bloque la navigation quand le GUID est invalide', async () => {
+    const shops: Shop[] = [{ id: 'invalid-id', name: 'Boutique invalide' }]
+    fetchShopsMock.mockResolvedValueOnce(shops)
+    const setShopSpy = vi.fn()
+    useShopMock.mockReturnValue({ shop: null, setShop: setShopSpy, isLoaded: true })
+
+    render(
+      <ThemeProvider>
+        <SelectShopPage />
+      </ThemeProvider>,
+    )
+
+    const card = await screen.findByRole('radio', { name: /Boutique invalide/i })
+    fireEvent.click(card)
+
+    expect(await screen.findByText(/Identifiant de boutique invalide/i)).toBeInTheDocument()
+    expect(setShopSpy).not.toHaveBeenCalled()
+    expect(navigateMock).not.toHaveBeenCalled()
+  })
+
   it('affiche un message d’erreur et permet de réessayer le chargement', async () => {
-    const shops: Shop[] = [{ id: 'shop-1', name: 'Boutique 1' }]
+    const shops: Shop[] = [{ id: '55555555-5555-5555-5555-555555555555', name: 'Boutique 1' }]
     fetchShopsMock
       .mockRejectedValueOnce(new Error('API indisponible'))
       .mockResolvedValueOnce(shops)
@@ -112,7 +138,8 @@ describe('SelectShopPage', () => {
       expect(fetchShopsMock).toHaveBeenCalledTimes(2)
     })
 
-    await screen.findByLabelText('Boutique')
+    const selects = await screen.findAllByLabelText('Boutique')
+    expect(selects.length).toBeGreaterThan(0)
 
     consoleErrorSpy.mockRestore()
   })
