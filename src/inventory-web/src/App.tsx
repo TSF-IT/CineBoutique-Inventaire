@@ -44,6 +44,7 @@ export const AppRoutes = () => {
     <Routes>
       <Route path="/select-shop" element={<BypassSelect />} />
       <Route element={<RequireShop />}>
+        <Route path="/inventory/start" element={<Navigate to="/select-user" replace />} />
         <Route path="/select-user" element={<InventoryUserStep />} />
         <Route path="/" element={<HomePage />} />
         <Route path="/inventory" element={<InventoryLayout />}>
