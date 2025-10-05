@@ -11,6 +11,7 @@ const fetchInventorySummaryMock = vi.hoisted(() =>
   vi.fn(async (): Promise<InventorySummary> => ({
       activeSessions: 3,
       openRuns: 1,
+      completedRuns: 0,
       conflicts: 2,
       lastActivityUtc: '2025-01-01T12:00:00Z',
       openRunDetails: [
@@ -165,6 +166,7 @@ describe('HomePage', () => {
     fetchInventorySummaryMock.mockResolvedValueOnce({
       activeSessions: 0,
       openRuns: 0,
+      completedRuns: 0,
       conflicts: 0,
       lastActivityUtc: null,
       openRunDetails: [],
