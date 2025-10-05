@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { CountType, LocationsSchema } from '../types/inventory'
-import type { CompletedRunDetail } from '../types/inventory'
+import type { CompletedRunDetail, CompletedRunSummary, OpenRunSummary } from '../types/inventory'
 import type {
   ConflictZoneDetail,
   ConflictZoneSummary,
@@ -138,8 +138,36 @@ const normaliseLocationsPayload = (payload: unknown): unknown => {
 export const fetchInventorySummary = async (): Promise<InventorySummary> => {
   const data = (await http(`${API_BASE}/inventories/summary`)) as Partial<InventorySummary> | null | undefined
 
-  const openRunDetails = Array.isArray(data?.openRunDetails) ? data!.openRunDetails : []
-  const completedRunDetails = Array.isArray(data?.completedRunDetails) ? data!.completedRunDetails : []
+  const sanitizeOpenRun = (run: Partial<OpenRunSummary> | null | undefined): OpenRunSummary => ({
+    runId: typeof run?.runId === 'string' ? run.runId : '',
+    locationId: typeof run?.locationId === 'string' ? run.locationId : '',
+    locationCode: typeof run?.locationCode === 'string' ? run.locationCode : '',
+    locationLabel: typeof run?.locationLabel === 'string' ? run.locationLabel : '',
+    countType: (run?.countType as CountType) ?? CountType.Count1,
+    ownerDisplayName: run?.ownerDisplayName ?? null,
+    ownerUserId: typeof run?.ownerUserId === 'string' ? run.ownerUserId : null,
+    startedAtUtc: typeof run?.startedAtUtc === 'string' ? run.startedAtUtc : '',
+  })
+
+  const sanitizeCompletedRun = (
+    run: Partial<CompletedRunSummary> | null | undefined,
+  ): CompletedRunSummary => ({
+    runId: typeof run?.runId === 'string' ? run.runId : '',
+    locationId: typeof run?.locationId === 'string' ? run.locationId : '',
+    locationCode: typeof run?.locationCode === 'string' ? run.locationCode : '',
+    locationLabel: typeof run?.locationLabel === 'string' ? run.locationLabel : '',
+    countType: (run?.countType as CountType) ?? CountType.Count1,
+    ownerDisplayName: run?.ownerDisplayName ?? null,
+    ownerUserId: typeof run?.ownerUserId === 'string' ? run.ownerUserId : null,
+    startedAtUtc: typeof run?.startedAtUtc === 'string' ? run.startedAtUtc : '',
+    completedAtUtc: typeof run?.completedAtUtc === 'string' ? run.completedAtUtc : '',
+  })
+
+  const openRunDetails = (Array.isArray(data?.openRunDetails) ? data.openRunDetails : []).map(sanitizeOpenRun)
+  const completedRunDetails = (Array.isArray(data?.completedRunDetails)
+    ? data.completedRunDetails
+    : []
+  ).map(sanitizeCompletedRun)
   const conflictZones = Array.isArray(data?.conflictZones) ? data!.conflictZones : []
 
   return {
@@ -182,7 +210,8 @@ export const getCompletedRunDetail = async (runId: string): Promise<CompletedRun
     locationCode: data?.locationCode ?? '',
     locationLabel: data?.locationLabel ?? '',
     countType: (data?.countType as CountType) ?? CountType.Count1,
-    operatorDisplayName: data?.operatorDisplayName ?? null,
+    ownerDisplayName: data?.ownerDisplayName ?? null,
+    ownerUserId: data?.ownerUserId ?? null,
     startedAtUtc: data?.startedAtUtc ?? '',
     completedAtUtc: data?.completedAtUtc ?? '',
     items: items.map((item) => ({
@@ -267,7 +296,8 @@ export interface StartInventoryRunResponse {
   inventorySessionId: string
   locationId: string
   countType: number
-  operatorDisplayName: string | null
+  ownerDisplayName: string | null
+  ownerUserId: string | null
   startedAtUtc: string
 }
 
@@ -423,7 +453,7 @@ export const releaseInventoryRun = async (
     }
     let message = `Impossible de libérer le comptage (HTTP ${res.status}).`
     if (res.status === 404) message = messageFromBody ?? 'Comptage introuvable.'
-    else if (res.status === 409) message = messageFromBody ?? 'Comptage déjà détenu par un autre opérateur.'
+    else if (res.status === 409) message = messageFromBody ?? 'Comptage déjà détenu par un autre utilisateur.'
     else if (res.status === 400) message = messageFromBody ?? 'Requête invalide.'
     else if (messageFromBody) message = messageFromBody
     throw Object.assign(new Error(message), { status: res.status, url })

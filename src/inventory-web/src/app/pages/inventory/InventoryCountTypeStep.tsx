@@ -56,21 +56,28 @@ const statusIcon = (status: LocationCountStatus) => {
   return '•'
 }
 
-const describeCountStatus = (status: LocationCountStatus, selectedUserDisplayName: string | null) => {
+const describeCountStatus = (
+  status: LocationCountStatus,
+  selectedUserId: string | null,
+  selectedUserDisplayName: string | null,
+) => {
   const baseLabel = `Comptage n°${status.countType}`
   if (status.status === 'completed') {
     return `${baseLabel} terminé`
   }
   if (status.status === 'in_progress') {
-    const ownerLabel =
-      status.operatorDisplayName && status.operatorDisplayName === selectedUserDisplayName
-        ? 'par vous'
-        : status.operatorDisplayName
-        ? `par ${status.operatorDisplayName}`
+    const ownerDisplayName = status.ownerDisplayName?.trim() ?? null
+    const ownerUserId = status.ownerUserId?.trim() ?? null
+    const isCurrentUser =
+      ownerUserId && selectedUserId ? ownerUserId === selectedUserId : ownerDisplayName === selectedUserDisplayName
+    const ownerLabel = isCurrentUser
+      ? 'par vous'
+      : ownerDisplayName
+        ? `par ${ownerDisplayName}`
         : null
     const duration = computeDurationLabel(status.startedAtUtc ?? null)
     const meta = [ownerLabel, duration].filter(Boolean).join(' • ')
-  return `${baseLabel} en cours${meta ? ` (${meta})` : ''}`
+    return `${baseLabel} en cours${meta ? ` (${meta})` : ''}`
   }
   return `${baseLabel} disponible`
 }
@@ -87,6 +94,7 @@ export const InventoryCountTypeStep = () => {
     clearSession,
   } = useInventory()
   const selectedUserDisplayName = selectedUser?.displayName ?? null
+  const selectedUserId = selectedUser?.id?.trim() ?? null
 
   const countStatuses = useMemo<LocationCountStatus[]>(() => {
     if (!location || !Array.isArray(location.countStatuses)) {
@@ -94,7 +102,8 @@ export const InventoryCountTypeStep = () => {
         countType: type,
         status: 'not_started',
         runId: null,
-        operatorDisplayName: null,
+        ownerDisplayName: null,
+        ownerUserId: null,
         startedAtUtc: null,
         completedAtUtc: null,
       }))
@@ -112,7 +121,8 @@ export const InventoryCountTypeStep = () => {
         countType: type,
         status: 'not_started',
         runId: null,
-        operatorDisplayName: null,
+        ownerDisplayName: null,
+        ownerUserId: null,
         startedAtUtc: null,
         completedAtUtc: null,
       }
@@ -137,12 +147,16 @@ export const InventoryCountTypeStep = () => {
       return
     }
 
-    if (
-      status.status === 'in_progress' &&
-      status.operatorDisplayName &&
-      status.operatorDisplayName !== selectedUserDisplayName
-    ) {
-      return
+    if (status.status === 'in_progress') {
+      const statusOwnerId = status.ownerUserId?.trim() ?? null
+      const statusOwnerName = status.ownerDisplayName?.trim() ?? null
+      const isCurrentUser =
+        statusOwnerId && selectedUserId
+          ? statusOwnerId === selectedUserId
+          : statusOwnerName === selectedUserDisplayName
+      if (!isCurrentUser) {
+        return
+      }
     }
 
     setCountType(type)
@@ -194,7 +208,7 @@ export const InventoryCountTypeStep = () => {
                   className={`flex items-center gap-2 ${statusTextClass(status)}`}
                 >
                   <span aria-hidden>{statusIcon(status)}</span>
-                  <span>{describeCountStatus(status, selectedUserDisplayName)}</span>
+                  <span>{describeCountStatus(status, selectedUserId, selectedUserDisplayName)}</span>
                 </span>
               ))}
             </div>
@@ -203,20 +217,23 @@ export const InventoryCountTypeStep = () => {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {DISPLAYED_COUNT_TYPES.map((option) => {
             const status = countStatuses.find((item) => item.countType === option)
-            const operatorDisplayName = status?.operatorDisplayName ?? null
+            const ownerDisplayName = status?.ownerDisplayName?.trim() ?? null
+            const ownerUserId = status?.ownerUserId?.trim() ?? null
             const isSelected = countType === option
             const isCompleted = status?.status === 'completed'
             const isInProgress = status?.status === 'in_progress'
             const isInProgressByOther =
               Boolean(
                 isInProgress &&
-                  operatorDisplayName &&
-                  operatorDisplayName !== selectedUserDisplayName,
+                  ((ownerUserId && selectedUserId && ownerUserId !== selectedUserId) ||
+                    (!ownerUserId && ownerDisplayName && ownerDisplayName !== selectedUserDisplayName)),
               )
             const isInProgressByUser =
               Boolean(
                 isInProgress &&
-                  (!operatorDisplayName || operatorDisplayName === selectedUserDisplayName),
+                  (!ownerUserId && !ownerDisplayName) ||
+                    (ownerUserId && selectedUserId && ownerUserId === selectedUserId) ||
+                    (!ownerUserId && ownerDisplayName === selectedUserDisplayName),
               )
             const isDisabled = zoneCompleted || isCompleted || isInProgressByOther
             const helperMessage = (() => {
@@ -224,7 +241,7 @@ export const InventoryCountTypeStep = () => {
                 return 'Comptage terminé.'
               }
               if (isInProgressByOther) {
-                return `En cours par ${operatorDisplayName}.`
+                return `En cours par ${ownerDisplayName ?? 'un autre utilisateur'}.`
               }
               if (isInProgressByUser) {
                 return 'Reprenez votre comptage en cours.'
