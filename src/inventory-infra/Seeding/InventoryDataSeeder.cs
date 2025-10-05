@@ -395,20 +395,47 @@ WHERE ""ShopId"" = @ShopId
     private static IReadOnlyList<TargetUser> BuildTargetUsers(ShopRow shop)
     {
         var cityLabel = ResolveCityLabel(shop);
-        var targets = new List<TargetUser>
+        var displayNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var targets = new List<TargetUser>();
+
+        static void EnsureAdded(
+            ShopRow targetShop,
+            HashSet<string> knownDisplayNames,
+            List<TargetUser> accumulator,
+            TargetUser candidate)
         {
-            new("Administrateur", BuildLogin("Administrateur", isAdmin: true), true)
-        };
+            if (!knownDisplayNames.Add(candidate.DisplayName))
+            {
+                throw new InvalidOperationException(
+                    $"La boutique '{targetShop.Name}' tente de créer plusieurs comptes avec l'affichage '{candidate.DisplayName}'.");
+            }
+
+            accumulator.Add(candidate);
+        }
+
+        EnsureAdded(
+            shop,
+            displayNames,
+            targets,
+            new TargetUser("Administrateur", BuildLogin("Administrateur", isAdmin: true), true));
 
         if (IsParisShop(shop))
         {
             var baseDisplayName = $"Utilisateur {cityLabel}";
-            targets.Add(new TargetUser(baseDisplayName, BuildLogin(baseDisplayName, isAdmin: false), false));
+            EnsureAdded(
+                shop,
+                displayNames,
+                targets,
+                new TargetUser(baseDisplayName, BuildLogin(baseDisplayName, isAdmin: false), false));
 
             for (var index = 1; index <= 3; index++)
             {
                 var numberedDisplayName = $"Utilisateur {cityLabel} {index}";
-                targets.Add(new TargetUser(numberedDisplayName, BuildLogin(numberedDisplayName, isAdmin: false), false));
+                EnsureAdded(
+                    shop,
+                    displayNames,
+                    targets,
+                    new TargetUser(numberedDisplayName, BuildLogin(numberedDisplayName, isAdmin: false), false));
             }
         }
         else
@@ -416,7 +443,11 @@ WHERE ""ShopId"" = @ShopId
             for (var index = 1; index <= 3; index++)
             {
                 var displayName = $"Utilisateur {cityLabel} {index}";
-                targets.Add(new TargetUser(displayName, BuildLogin(displayName, isAdmin: false), false));
+                EnsureAdded(
+                    shop,
+                    displayNames,
+                    targets,
+                    new TargetUser(displayName, BuildLogin(displayName, isAdmin: false), false));
             }
         }
 
