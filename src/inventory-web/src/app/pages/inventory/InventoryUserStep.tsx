@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Card } from '../../components/Card'
@@ -11,12 +11,21 @@ import { clearSelectedUserForShop, loadSelectedUserForShop, saveSelectedUserForS
 
 export const InventoryUserStep = () => {
   const navigate = useNavigate()
+  const location = useLocation()
   const { selectedUser, setSelectedUser } = useInventory()
   const { shop } = useShop()
   const [search, setSearch] = useState('')
   const [users, setUsers] = useState<ShopUser[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const redirectTo = useMemo(() => {
+    const state = location.state as { redirectTo?: string } | null
+    if (!state || typeof state.redirectTo !== 'string') {
+      return null
+    }
+    const target = state.redirectTo.trim()
+    return target.length > 0 ? target : null
+  }, [location.state])
 
   useEffect(() => {
     let isCancelled = false
@@ -115,6 +124,18 @@ export const InventoryUserStep = () => {
     if (shop?.id) {
       saveSelectedUserForShop(shop.id, user)
     }
+    if (redirectTo) {
+      navigate(redirectTo, { replace: true })
+      return
+    }
+    navigate('/inventory/location')
+  }
+
+  const handleContinue = () => {
+    if (redirectTo) {
+      navigate(redirectTo, { replace: true })
+      return
+    }
     navigate('/inventory/location')
   }
 
@@ -162,7 +183,7 @@ export const InventoryUserStep = () => {
         </div>
       </Card>
       {selectedUser && (
-        <Button fullWidth className="py-4" onClick={() => navigate('/inventory/location')}>
+        <Button fullWidth className="py-4" onClick={handleContinue}>
           Continuer
         </Button>
       )}
