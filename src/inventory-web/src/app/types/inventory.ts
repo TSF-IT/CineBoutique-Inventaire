@@ -85,26 +85,46 @@ export interface ConflictZoneDetail {
 
 const CountTypeSchema = z.number().int().min(1).max(3)
 
+const zDateOrNull = z
+  .preprocess((value) => {
+    if (value === null || value === undefined) {
+      return null
+    }
+
+    if (value instanceof Date) {
+      return isNaN(value.getTime()) ? null : value
+    }
+
+    const date = new Date(value as string | number | Date)
+    return isNaN(date.getTime()) ? null : date
+  }, z.date().nullable())
+  .transform((value) => (value instanceof Date ? value : null))
+
 export const LocationSchema = z.object({
   id: z.string().uuid(),
   code: z.string().min(1),
   label: z.string().min(1),
   isBusy: z.boolean(),
-  busyBy: z.string().nullable(),
-  activeRunId: z.string().uuid().nullable(),
-  activeCountType: CountTypeSchema.nullable(),
-  activeStartedAtUtc: z.coerce.date().nullable(),
-  countStatuses: z.array(
-    z.object({
-      countType: CountTypeSchema,
-      status: z.enum(['not_started', 'in_progress', 'completed']),
-      runId: z.string().uuid().nullable(),
-      ownerDisplayName: z.string().nullable(),
-      ownerUserId: z.string().uuid().nullable(),
-      startedAtUtc: z.coerce.date().nullable(),
-      completedAtUtc: z.coerce.date().nullable(),
-    }),
-  ),
+  busyBy: z.string().nullish().transform((value) => (typeof value === 'string' ? value : null)),
+  activeRunId: z.string().uuid().nullish().transform((value) => value ?? null),
+  activeCountType: CountTypeSchema.nullish().transform((value) => (typeof value === 'number' ? value : null)),
+  activeStartedAtUtc: zDateOrNull,
+  countStatuses: z
+    .array(
+      z.object({
+        countType: CountTypeSchema,
+        status: z.enum(['not_started', 'in_progress', 'completed']),
+        runId: z.string().uuid().nullish().transform((value) => value ?? null),
+        ownerDisplayName: z
+          .string()
+          .nullish()
+          .transform((value) => (typeof value === 'string' ? value : null)),
+        ownerUserId: z.string().uuid().nullish().transform((value) => value ?? null),
+        startedAtUtc: zDateOrNull,
+        completedAtUtc: zDateOrNull,
+      }),
+    )
+    .default([]),
 })
 
 export const LocationsSchema = z.array(LocationSchema)

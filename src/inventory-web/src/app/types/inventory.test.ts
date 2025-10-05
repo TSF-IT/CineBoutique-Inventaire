@@ -52,7 +52,7 @@ const buildLocationPayload = (overrides: Record<string, unknown> = {}) => {
 }
 
 describe('LocationsSchema', () => {
-  it('accepte uniquement le contrat strict avec des dates ISO converties', () => {
+  it('convertit les dates ISO valides et normalise les valeurs nullish', () => {
     const sample = [buildLocationPayload()]
 
     const result = LocationsSchema.parse(sample)
@@ -65,6 +65,51 @@ describe('LocationsSchema', () => {
     expect(result[0].countStatuses[0].completedAtUtc).toBeInstanceOf(Date)
     expect(result[0].countStatuses[1].startedAtUtc).toBeNull()
     expect(result[0].countStatuses[1].completedAtUtc).toBeNull()
+  })
+
+  it('accepte les champs undefined et les convertit en valeurs sûres', () => {
+    const sample = [
+      buildLocationPayload({
+        busyBy: undefined,
+        activeRunId: undefined,
+        activeCountType: undefined,
+        activeStartedAtUtc: undefined,
+        countStatuses: [
+          buildCountStatusPayload({
+            runId: undefined,
+            ownerDisplayName: undefined,
+            ownerUserId: undefined,
+            startedAtUtc: undefined,
+            completedAtUtc: undefined,
+          }),
+        ],
+      }),
+    ]
+
+    const [location] = LocationsSchema.parse(sample)
+
+    expect(location.busyBy).toBeNull()
+    expect(location.activeRunId).toBeNull()
+    expect(location.activeCountType).toBeNull()
+    expect(location.activeStartedAtUtc).toBeNull()
+    expect(location.countStatuses).toHaveLength(1)
+    expect(location.countStatuses[0]).toMatchObject({
+      runId: null,
+      ownerDisplayName: null,
+      ownerUserId: null,
+      startedAtUtc: null,
+      completedAtUtc: null,
+    })
+  })
+
+  it('retourne un tableau vide quand les statuts sont absents', () => {
+    const sample = [
+      buildLocationPayload({ countStatuses: undefined }),
+    ]
+
+    const [location] = LocationsSchema.parse(sample)
+
+    expect(location.countStatuses).toEqual([])
   })
 
   it('rejette toute valeur incompatible avec le contrat (UUID et dates)', () => {
@@ -113,15 +158,20 @@ describe('LocationsSchema', () => {
     expect(() => LocationsSchema.parse(invalidSample)).toThrowError()
   })
 
-  it('rejette des dates impossibles à convertir', () => {
-    const invalidSample = [
+  it('convertit les dates impossibles à interpréter en null', () => {
+    const sample = [
       buildLocationPayload({
         countStatuses: [
-          buildCountStatusPayload({ startedAtUtc: 'date-non-valide' }),
+          buildCountStatusPayload({ startedAtUtc: 'date-non-valide', completedAtUtc: 'date-non-valide' }),
         ],
       }),
     ]
 
-    expect(() => LocationsSchema.parse(invalidSample)).toThrowError()
+    const [location] = LocationsSchema.parse(sample)
+
+    expect(location.countStatuses[0]).toMatchObject({
+      startedAtUtc: null,
+      completedAtUtc: null,
+    })
   })
 })
