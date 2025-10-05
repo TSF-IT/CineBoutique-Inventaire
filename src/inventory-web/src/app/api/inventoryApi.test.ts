@@ -48,13 +48,19 @@ describe('fetchLocations (dev fixtures)', () => {
     expect(warnSpy).toHaveBeenCalled()
   })
 
-  it('remonte l’erreur HTTP 404 sans fallback', async () => {
+  it('retourne les fixtures quand l’API répond 404', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const httpMock = vi.fn().mockRejectedValue(createHttpError(404))
     mockHttpModule(httpMock)
 
     const { fetchLocations } = await import('./inventoryApi')
 
-    await expect(fetchLocations({ shopId: defaultShopId })).rejects.toMatchObject({ status: 404 })
+    const locations = await fetchLocations({ shopId: defaultShopId })
+
+    expect(locations).toHaveLength(39)
+    expect(locations[0].code).toBe('B1')
+    expect(locations[locations.length - 1].code).toBe('S19')
+    expect(warnSpy).toHaveBeenCalled()
   })
 
   it('désactive le fallback quand VITE_DISABLE_DEV_FIXTURES=true', async () => {
@@ -99,6 +105,28 @@ describe('fetchLocations (dev fixtures)', () => {
 
     expect(location.activeRunId).toBeNull()
     expect(location.countStatuses[0]?.runId).toBeNull()
+  })
+
+  it('lève une HttpError 422 avec les détails Zod quand la validation échoue', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const httpMock = vi.fn().mockResolvedValue([
+      {
+        id: '00000000-0000-4000-8000-000000000001',
+        code: 'Z1',
+        label: null,
+      },
+    ])
+    mockHttpModule(httpMock)
+
+    const { fetchLocations } = await import('./inventoryApi')
+
+    await expect(fetchLocations({ shopId: defaultShopId })).rejects.toMatchObject({
+      status: 422,
+      problem: expect.objectContaining({
+        fieldErrors: expect.any(Object),
+      }),
+    })
+    expect(warnSpy).toHaveBeenCalled()
   })
 })
 
