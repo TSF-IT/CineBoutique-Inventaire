@@ -105,6 +105,85 @@ describe('fetchLocations', () => {
   })
 })
 
+describe('fetchLocationSummaries', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    vi.resetModules()
+    vi.doUnmock('@/lib/api/http')
+    vi.restoreAllMocks()
+  })
+
+  it('exige un identifiant de boutique non vide', async () => {
+    const { fetchLocationSummaries } = await import('./inventoryApi')
+
+    await expect(fetchLocationSummaries('')).rejects.toThrow('Aucune boutique sélectionnée.')
+  })
+
+  it('valide la réponse et convertit les dates ISO', async () => {
+    const httpMock = vi.fn().mockResolvedValue([
+      {
+        locationId: '00000000-0000-4000-8000-000000000111',
+        locationName: 'Zone principale',
+        busyBy: null,
+        activeRunId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        activeCountType: 1,
+        activeStartedAtUtc: '2025-01-01T09:15:00Z',
+        countStatuses: [
+          {
+            runId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            startedAtUtc: '2025-01-01T09:15:00Z',
+            completedAtUtc: null,
+          },
+          {
+            runId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            startedAtUtc: '2025-01-01T07:00:00Z',
+            completedAtUtc: '2025-01-01T07:45:00Z',
+          },
+        ],
+      },
+    ])
+    mockHttpModule(httpMock)
+
+    const { fetchLocationSummaries } = await import('./inventoryApi')
+
+    const [summary] = await fetchLocationSummaries(defaultShopId)
+
+    expect(httpMock).toHaveBeenCalledWith(
+      expect.stringContaining(`/inventory/locations/summary?shopId=${encodeURIComponent(defaultShopId)}`),
+      expect.objectContaining({ signal: undefined }),
+    )
+    expect(summary.activeStartedAtUtc).toBeInstanceOf(Date)
+    expect(summary.countStatuses[0]?.startedAtUtc).toBeInstanceOf(Date)
+    expect(summary.countStatuses[0]?.completedAtUtc).toBeNull()
+    expect(summary.countStatuses[1]?.completedAtUtc).toBeInstanceOf(Date)
+  })
+
+  it('retourne un tableau vide si la réponse brute ne fournit pas de liste', async () => {
+    const httpMock = vi.fn().mockResolvedValue({ message: 'ok' })
+    mockHttpModule(httpMock)
+
+    const { fetchLocationSummaries } = await import('./inventoryApi')
+
+    const summaries = await fetchLocationSummaries(defaultShopId)
+
+    expect(Array.isArray(summaries)).toBe(true)
+    expect(summaries).toHaveLength(0)
+  })
+
+  it('propage les erreurs HTTP', async () => {
+    const httpMock = vi.fn().mockRejectedValue(createHttpError(500))
+    mockHttpModule(httpMock)
+
+    const { fetchLocationSummaries } = await import('./inventoryApi')
+
+    await expect(fetchLocationSummaries(defaultShopId)).rejects.toMatchObject({ status: 500 })
+  })
+})
+
 describe('startInventoryRun', () => {
   beforeEach(() => {
     vi.resetModules()
