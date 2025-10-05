@@ -65,6 +65,8 @@ public sealed class InventoryRunLifecycleTests : IAsyncLifetime
         Assert.Equal(locationId, payload!.LocationId);
         Assert.Equal((short)1, payload.CountType);
         Assert.NotEqual(Guid.Empty, payload.RunId);
+        Assert.Equal(ownerUserId, payload.OwnerUserId);
+        Assert.Equal("Amélie", payload.OwnerDisplayName);
 
         var locationsResponse = await _client.GetAsync($"/api/locations?shopId={shopId}");
         locationsResponse.EnsureSuccessStatusCode();
@@ -121,6 +123,36 @@ public sealed class InventoryRunLifecycleTests : IAsyncLifetime
 
         var secondResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/start", secondRequest);
         Assert.Equal(HttpStatusCode.Conflict, secondResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task StartInventoryRun_ReturnsNotFound_WhenLocationBelongsToAnotherShop()
+    {
+        await ResetDatabaseAsync();
+        var (locationId, _) = await SeedLocationAsync("S1", "Zone S1");
+        var otherShopId = await SeedShopAsync("CinéBoutique Lyon");
+        var ownerUserId = await SeedShopUserAsync(otherShopId, "Lucie");
+
+        var request = new StartRunRequest(otherShopId, ownerUserId, 1);
+
+        var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/start", request);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var payload = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+        Assert.NotNull(payload);
+        Assert.True(payload!.TryGetValue("message", out var message));
+        Assert.Equal("La zone demandée est introuvable.", message);
+
+        using var scope = _factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        var runsCount = await connection.ExecuteScalarAsync<int>(
+            "SELECT COUNT(*) FROM \"CountingRun\" WHERE \"LocationId\" = @LocationId",
+            new { LocationId = locationId });
+
+        Assert.Equal(0, runsCount);
     }
 
     [Fact]
@@ -227,13 +259,7 @@ TRUNCATE TABLE "Conflict" RESTART IDENTITY CASCADE;
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
 
-        const string ensureShopSql =
-            "INSERT INTO \"Shop\" (\"Name\") VALUES (@Name) ON CONFLICT DO NOTHING;";
-        const string selectShopSql =
-            "SELECT \"Id\" FROM \"Shop\" WHERE LOWER(\"Name\") = LOWER(@Name) LIMIT 1;";
-
-        await connection.ExecuteAsync(ensureShopSql, new { Name = "CinéBoutique Paris" });
-        var shopId = await connection.ExecuteScalarAsync<Guid>(selectShopSql, new { Name = "CinéBoutique Paris" });
+        var shopId = await SeedShopAsync("CinéBoutique Paris");
 
         var locationId = Guid.NewGuid();
         const string insertLocationSql =
@@ -248,6 +274,22 @@ TRUNCATE TABLE "Conflict" RESTART IDENTITY CASCADE;
                 ShopId = shopId
             });
         return (locationId, shopId);
+    }
+
+    private async Task<Guid> SeedShopAsync(string name)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        const string ensureShopSql =
+            "INSERT INTO \"Shop\" (\"Name\") VALUES (@Name) ON CONFLICT DO NOTHING;";
+        const string selectShopSql =
+            "SELECT \"Id\" FROM \"Shop\" WHERE LOWER(\"Name\") = LOWER(@Name) LIMIT 1;";
+
+        await connection.ExecuteAsync(ensureShopSql, new { Name = name });
+        return await connection.ExecuteScalarAsync<Guid>(selectShopSql, new { Name = name });
     }
 }
 
