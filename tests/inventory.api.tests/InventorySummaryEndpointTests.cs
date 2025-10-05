@@ -111,7 +111,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
                 CountType: 1,
                 StartedAtUtc: startedAt,
                 CompletedAtUtc: null,
-                OperatorDisplayName: null,
+                OperatorDisplayName: "Camille",
                 OwnerUserId: ownerUserId));
 
         var productId = Guid.NewGuid();
@@ -182,7 +182,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
                 CountType: 1,
                 StartedAtUtc: startedAt,
                 CompletedAtUtc: completedAt,
-                OperatorDisplayName: null,
+                OperatorDisplayName: "Chloé",
                 OwnerUserId: ownerUserId));
 
         var response = await _client.GetAsync($"/api/inventories/summary?shopId={shopId:D}");
@@ -333,7 +333,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
                 CountType: 1,
                 StartedAtUtc: parisStartedAt,
                 CompletedAtUtc: null,
-                OperatorDisplayName: null,
+                OperatorDisplayName: "Utilisateur Paris",
                 OwnerUserId: parisUserId));
 
         await CountingRunSqlHelper.InsertAsync(
@@ -345,7 +345,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
                 CountType: 2,
                 StartedAtUtc: parisStartedAt.AddMinutes(-30),
                 CompletedAtUtc: parisCompletedAt,
-                OperatorDisplayName: null,
+                OperatorDisplayName: "Utilisateur Paris",
                 OwnerUserId: parisUserId));
 
         await CountingRunSqlHelper.InsertAsync(
@@ -357,7 +357,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
                 CountType: 1,
                 StartedAtUtc: parisStartedAt,
                 CompletedAtUtc: null,
-                OperatorDisplayName: null,
+                OperatorDisplayName: "Utilisateur Lyon",
                 OwnerUserId: lyonUserId));
 
         var response = await _client.GetAsync($"/api/inventories/summary?shopId={parisShopId:D}");
