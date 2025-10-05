@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { fetchShops } from '@/api/shops'
 import type { Shop } from '@/types/shop'
 import { useShop } from '@/state/ShopContext'
+import { clearShop, loadShop } from '@/lib/shopStorage'
 import { Page } from '@/app/components/Page'
 import { LoadingIndicator } from '@/app/components/LoadingIndicator'
 import { Button } from '@/app/components/ui/Button'
@@ -43,6 +44,10 @@ export const SelectShopPage = () => {
           return
         }
         setShops(data)
+        const savedShop = loadShop()
+        if (savedShop && !data.some((item) => item.id === savedShop.id)) {
+          clearShop()
+        }
         setStatus('idle')
       })
       .catch((error) => {
