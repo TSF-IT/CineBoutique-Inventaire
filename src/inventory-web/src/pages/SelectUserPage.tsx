@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { appStore, OperatorCtx } from '../lib/context/appContext'
 import { useNavigate } from 'react-router-dom'
-import { fetchShopUsers } from '../lib/api/shops' // assume exists
+import { fetchShopUsers } from '@/api/shops'
+import { appStore, OperatorCtx } from '@/lib/context/appContext'
+import type { ShopUser } from '@/types/user'
 
 type UserDto = { id: string; displayName: string; isAdmin: boolean }
 
@@ -21,8 +22,14 @@ export default function SelectUserPage() {
     }
     setLoading(true)
     fetchShopUsers(shopId)
-      .then((x) => {
-        if (mounted) setUsers(x)
+      .then((response: ShopUser[]) => {
+        if (!mounted) {
+          return
+        }
+        const activeUsers = response
+          .filter((user) => !user.disabled)
+          .map<UserDto>(({ id, displayName, isAdmin }) => ({ id, displayName, isAdmin }))
+        setUsers(activeUsers)
       })
       .finally(() => mounted && setLoading(false))
     return () => {
@@ -44,7 +51,7 @@ export default function SelectUserPage() {
       <p className="mb-3 text-[clamp(13px,3vw,16px)] text-muted-foreground">Boutique&nbsp;: {shop.name}</p>
 
       {loading ? (
-        <div className="grid grid-cols-2 gap-2 sm:gap-3 [@media(orientation:landscape)]:grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 landscape:grid-cols-3 [@media(orientation:landscape)]:grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
           {Array.from({ length: 6 }).map((_, index) => (
             <div key={index} className="h-11 animate-pulse rounded-xl bg-gray-200/50" />
           ))}
@@ -52,8 +59,8 @@ export default function SelectUserPage() {
       ) : users.length === 0 ? (
         <div className="text-sm text-muted-foreground">Aucun utilisateur actif pour cette boutique.</div>
       ) : (
-        <ul className="grid grid-cols-2 gap-2 sm:gap-3 [@media(orientation:landscape)]:grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {users
+        <ul className="grid grid-cols-2 gap-2 sm:gap-3 landscape:grid-cols-3 [@media(orientation:landscape)]:grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          {[...users]
             .sort(
               (left, right) =>
                 Number(right.isAdmin) - Number(left.isAdmin) ||
