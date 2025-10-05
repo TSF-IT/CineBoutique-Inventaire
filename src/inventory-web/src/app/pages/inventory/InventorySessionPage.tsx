@@ -20,6 +20,7 @@ import { useInventory } from '../../contexts/InventoryContext'
 import type { HttpError } from '@/lib/api/http'
 import type { Product } from '../../types/inventory'
 import { CountType } from '../../types/inventory'
+import { useShop } from '@/state/ShopContext'
 
 const DEV_API_UNREACHABLE_HINT =
   "Impossible de joindre l’API : vérifie que le backend tourne (curl http://localhost:8080/healthz) ou que le proxy Vite est actif."
@@ -118,6 +119,7 @@ export const InventorySessionPage = () => {
     setSessionId,
     clearSession,
   } = useInventory()
+  const { shop } = useShop()
   const [useCamera, setUseCamera] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -161,9 +163,10 @@ export const InventorySessionPage = () => {
   }, [])
 
   const selectedUserDisplayName = selectedUser?.displayName ?? null
-  const trimmedOperator = selectedUserDisplayName?.trim() ?? ''
+  const ownerUserId = selectedUser?.id?.trim() ?? ''
   const existingRunId = typeof sessionId === 'string' ? sessionId.trim() : ''
-  const locationId = typeof location?.id === 'string' ? location.id.trim() : ''
+  const locationId = location?.id?.trim() ?? ''
+  const shopId = shop?.id?.trim() ?? ''
   const isValidCountType =
     countType === CountType.Count1 || countType === CountType.Count2 || countType === CountType.Count3
 
@@ -176,21 +179,26 @@ export const InventorySessionPage = () => {
       return existingRunId
     }
 
-    if (!isValidCountType) {
-      throw new Error('Sélectionnez le type de comptage avant de scanner.')
-    }
-
     if (!locationId) {
       throw new Error('Sélectionnez une zone avant de scanner.')
     }
 
-    if (trimmedOperator.length === 0) {
-      throw new Error("Indiquez l'opérateur avant de démarrer le comptage.")
+    if (!ownerUserId) {
+      throw new Error("Sélectionnez un utilisateur avant de démarrer le comptage.")
+    }
+
+    if (!shopId) {
+      throw new Error('Sélectionnez une boutique valide avant de démarrer le comptage.')
+    }
+
+    if (!isValidCountType) {
+      throw new Error('Le type de comptage est invalide.')
     }
 
     const response = await startInventoryRun(locationId, {
+      shopId,
+      ownerUserId,
       countType: countType as 1 | 2 | 3,
-      operator: trimmedOperator,
     })
 
     const sanitizedRunId = typeof response.runId === 'string' ? response.runId.trim() : ''
@@ -206,8 +214,9 @@ export const InventorySessionPage = () => {
     isValidCountType,
     items.length,
     locationId,
+    ownerUserId,
     setSessionId,
-    trimmedOperator,
+    shopId,
   ])
 
   const addProductToSession = useCallback(
@@ -458,18 +467,24 @@ export const InventorySessionPage = () => {
   const canCompleteRun =
     locationId.length > 0 &&
     isValidCountType &&
-    trimmedOperator.length > 0 &&
+    ownerUserId.length > 0 &&
+    shopId.length > 0 &&
     items.length > 0 &&
     !completionLoading
 
   const handleCompleteRun = useCallback(async () => {
     if (!isValidCountType) {
-      setErrorMessage('Type de comptage invalide.')
+      setErrorMessage('Le type de comptage est invalide.')
       return
     }
 
-    if (trimmedOperator.length === 0) {
-      setErrorMessage("Indiquez l'opérateur qui réalise le comptage.")
+    if (!shopId) {
+      setErrorMessage('Sélectionnez une boutique valide avant de terminer le comptage.')
+      return
+    }
+
+    if (!ownerUserId) {
+      setErrorMessage('Sélectionnez un utilisateur avant de terminer le comptage.')
       return
     }
 
@@ -499,10 +514,10 @@ export const InventorySessionPage = () => {
       }
 
       const payload: CompleteInventoryRunPayload = {
-        countType: countType as 1 | 2 | 3,
-        operator: trimmedOperator,
-        items: payloadItems,
         runId: existingRunId || null,
+        ownerUserId,
+        countType: countType as 1 | 2 | 3,
+        items: payloadItems,
       }
 
       await completeInventoryRun(locationId, payload)
@@ -539,7 +554,8 @@ export const InventorySessionPage = () => {
     items,
     locationId,
     navigate,
-    trimmedOperator,
+    ownerUserId,
+    shopId,
   ])
 
   const handleOpenCompletionConfirmation = useCallback(() => {
@@ -580,7 +596,7 @@ export const InventorySessionPage = () => {
       return
     }
 
-    if (!locationId || trimmedOperator.length === 0) {
+    if (!locationId || !ownerUserId) {
       return
     }
 
@@ -588,7 +604,7 @@ export const InventorySessionPage = () => {
 
     void (async () => {
       try {
-        await releaseInventoryRun(locationId, existingRunId, trimmedOperator)
+        await releaseInventoryRun(locationId, existingRunId, ownerUserId)
         if (!cancelled) {
           setSessionId(null)
         }
@@ -602,7 +618,7 @@ export const InventorySessionPage = () => {
     return () => {
       cancelled = true
     }
-  }, [existingRunId, items.length, locationId, setErrorMessage, setSessionId, trimmedOperator])
+  }, [existingRunId, items.length, locationId, ownerUserId, setErrorMessage, setSessionId])
 
   const handleCompletionModalOk = () => {
     completionDialogRef.current?.close()
