@@ -350,6 +350,90 @@ public class LocationsEndpointTests : IAsyncLifetime
         }
     }
 
+    [Fact]
+    public async Task GetLocationsV2_WithEmptyShopId_ReturnsBadRequest()
+    {
+        var response = await this._client.GetAsync("/locations?shopId=");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetLocationsV2_WithUnknownShopId_ReturnsEmptyArray()
+    {
+        await this.ResetDatabaseAsync();
+
+        var response = await this._client.GetAsync($"/locations?shopId={Guid.NewGuid():D}");
+
+        response.EnsureSuccessStatusCode();
+
+        var payload = await response.Content.ReadFromJsonAsync<List<LocationV2Response>>();
+
+        Assert.NotNull(payload);
+        Assert.Empty(payload!);
+    }
+
+    [Fact]
+    public async Task GetLocationsV2_WithCompletedRun_ReturnsExpectedPayload()
+    {
+        await this.ResetDatabaseAsync();
+
+        using var scope = this._factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        var shopId = await EnsureDefaultShopAsync(connection);
+        var locationId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var runId = Guid.NewGuid();
+        var startedAt = DateTimeOffset.UtcNow.AddMinutes(-30);
+        var completedAt = startedAt.AddMinutes(10);
+
+        await InsertLocationAsync(connection, shopId, locationId, "L1", "Zone L1");
+
+        var ownerUserId = await InsertShopUserAsync(connection, shopId, "compteur.api", "Camille API");
+
+        await connection.ExecuteAsync(
+            "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc);",
+            new { Id = sessionId, Name = "Session principale", StartedAtUtc = startedAt });
+
+        await CountingRunSqlHelper.InsertAsync(
+            connection,
+            new CountingRunInsert(
+                runId,
+                sessionId,
+                locationId,
+                CountType: 1,
+                StartedAtUtc: startedAt,
+                CompletedAtUtc: completedAt,
+                OperatorDisplayName: "Camille API",
+                OwnerUserId: ownerUserId));
+
+        var response = await this._client.GetAsync($"/locations?shopId={shopId:D}");
+
+        response.EnsureSuccessStatusCode();
+
+        var payload = await response.Content.ReadFromJsonAsync<List<LocationV2Response>>();
+
+        Assert.NotNull(payload);
+        var location = Assert.Single(payload!);
+        Assert.Equal(locationId, location.Id);
+        Assert.False(location.IsBusy);
+        Assert.Null(location.ActiveRunId);
+        Assert.Null(location.ActiveStartedAtUtc);
+        Assert.Null(location.BusyBy);
+        Assert.NotNull(location.CountStatuses);
+        var status = Assert.Single(location.CountStatuses!);
+        Assert.Equal((short)1, status.CountType);
+        Assert.Equal("completed", status.Status);
+        Assert.Equal(runId, status.RunId);
+        Assert.Equal(ownerUserId, status.OwnerUserId);
+        Assert.Equal("Camille API", status.OwnerDisplayName);
+        Assert.Equal(startedAt.ToUnixTimeSeconds(), status.StartedAtUtc?.ToUnixTimeSeconds());
+        Assert.Equal(completedAt.ToUnixTimeSeconds(), status.CompletedAtUtc?.ToUnixTimeSeconds());
+    }
+
     private async Task ResetDatabaseAsync()
     {
         using var scope = this._factory.Services.CreateScope();
@@ -462,6 +546,16 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
         return connection.ExecuteAsync(insertLocationSql, new { Id = locationId, Code = code, Label = label, ShopId = shopId });
     }
 
+    private static Task<Guid> InsertShopUserAsync(IDbConnection connection, Guid shopId, string login, string displayName)
+    {
+        const string sql = @"
+INSERT INTO ""ShopUser"" (""ShopId"", ""Login"", ""DisplayName"", ""IsAdmin"", ""Secret_Hash"", ""Disabled"")
+VALUES (@ShopId, @Login, @DisplayName, FALSE, '', FALSE)
+RETURNING ""Id"";";
+
+        return connection.ExecuteScalarAsync<Guid>(sql, new { ShopId = shopId, Login = login, DisplayName = displayName });
+    }
+
     private async Task<bool> HasOperatorDisplayNameColumnAsync()
     {
         using var scope = this._factory.Services.CreateScope();
@@ -489,5 +583,43 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
         public short? ActiveCountType { get; init; }
 
         public DateTimeOffset? ActiveStartedAtUtc { get; init; }
+    }
+
+    private sealed record CountStatusV2Response
+    {
+        public short CountType { get; init; }
+
+        public string Status { get; init; } = string.Empty;
+
+        public Guid? RunId { get; init; }
+
+        public string? OwnerDisplayName { get; init; }
+
+        public Guid? OwnerUserId { get; init; }
+
+        public DateTimeOffset? StartedAtUtc { get; init; }
+
+        public DateTimeOffset? CompletedAtUtc { get; init; }
+    }
+
+    private sealed record LocationV2Response
+    {
+        public Guid Id { get; init; }
+
+        public string Code { get; init; } = string.Empty;
+
+        public string Label { get; init; } = string.Empty;
+
+        public bool IsBusy { get; init; }
+
+        public string? BusyBy { get; init; }
+
+        public Guid? ActiveRunId { get; init; }
+
+        public short? ActiveCountType { get; init; }
+
+        public DateTimeOffset? ActiveStartedAtUtc { get; init; }
+
+        public IReadOnlyList<CountStatusV2Response>? CountStatuses { get; init; }
     }
 }
