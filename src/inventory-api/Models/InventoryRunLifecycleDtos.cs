@@ -29,6 +29,10 @@ public sealed class StartInventoryRunResponse
 
     public short CountType { get; set; }
 
+    public Guid? OwnerUserId { get; set; }
+
+    public string? OwnerDisplayName { get; set; }
+
     public string? OperatorDisplayName { get; set; }
 
     public DateTimeOffset StartedAtUtc { get; set; }
