@@ -127,7 +127,7 @@ test.describe('Scanner fallback', () => {
       })
     })
 
-    await page.goto('/inventory/start')
+    await page.goto('/select-user')
 
     const userButton = page.getByRole('button', { name: mockUsers[0].displayName })
     await expect(userButton).toBeVisible({ timeout: 5000 })
