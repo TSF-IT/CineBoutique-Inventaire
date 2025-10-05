@@ -83,63 +83,33 @@ export interface ConflictZoneDetail {
   items: ConflictZoneItem[]
 }
 
-const IsoDateNullable = z.preprocess((value) => {
-  if (value == null || value === '') {
-    return null
-  }
-  if (value instanceof Date) {
-    return value
-  }
-  if (typeof value === 'string') {
-    const timestamp = Date.parse(value)
-    return Number.isNaN(timestamp) ? value : new Date(timestamp)
-  }
-  return value
-}, z.date().nullable())
+const CountTypeSchema = z.number().int().min(1).max(3)
 
-const NullableUuid = z.preprocess((value) => {
-  if (value == null) {
-    return null
-  }
-  if (typeof value === 'string') {
-    const trimmed = value.trim()
-    if (trimmed.length === 0 || trimmed.toLowerCase() === 'null') {
-      return null
-    }
-    return trimmed
-  }
-  return value
-}, z.string().uuid().nullable())
-
-export const LocationDto = z.object({
+export const LocationSchema = z.object({
   id: z.string().uuid(),
-  code: z.string(),
-  label: z.string(),
+  code: z.string().min(1),
+  label: z.string().min(1),
   isBusy: z.boolean(),
   busyBy: z.string().nullable(),
-  activeRunId: NullableUuid,
-  activeCountType: z.number().int().nullable(),
-  activeStartedAtUtc: IsoDateNullable,
-  countStatuses: z
-    .array(
-      z.object({
-        countType: z.number().int(),
-        status: z.enum(['not_started', 'in_progress', 'completed']),
-        runId: NullableUuid,
-        ownerDisplayName: z.string().nullable(),
-        ownerUserId: NullableUuid,
-        startedAtUtc: IsoDateNullable,
-        completedAtUtc: IsoDateNullable,
-      }),
-    )
-    .default([]),
+  activeRunId: z.string().uuid().nullable(),
+  activeCountType: CountTypeSchema.nullable(),
+  activeStartedAtUtc: z.coerce.date().nullable(),
+  countStatuses: z.array(
+    z.object({
+      countType: CountTypeSchema,
+      status: z.enum(['not_started', 'in_progress', 'completed']),
+      runId: z.string().uuid().nullable(),
+      ownerDisplayName: z.string().nullable(),
+      ownerUserId: z.string().uuid().nullable(),
+      startedAtUtc: z.coerce.date().nullable(),
+      completedAtUtc: z.coerce.date().nullable(),
+    }),
+  ),
 })
 
-export const LocationSchema = LocationDto
+export const LocationsSchema = z.array(LocationSchema)
 
-export const LocationsSchema = z.array(LocationDto)
-
-export type Location = z.infer<typeof LocationDto>
+export type Location = z.infer<typeof LocationSchema>
 
 export type LocationCountStatus = Location['countStatuses'][number]
 
