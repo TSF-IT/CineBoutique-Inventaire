@@ -17,7 +17,8 @@ const baseRun = {
   locationCode: 'B1',
   locationLabel: 'Zone B1',
   countType: 1,
-  operatorDisplayName: 'Toto',
+  ownerDisplayName: 'Toto',
+  ownerUserId: 'user-toto',
   startedAtUtc: '2025-12-17T09:00:00Z',
   completedAtUtc: '2025-12-17T10:00:00Z',
 }
@@ -28,7 +29,8 @@ const baseDetail = {
   locationCode: 'B1',
   locationLabel: 'Zone B1',
   countType: 1,
-  operatorDisplayName: 'Toto',
+  ownerDisplayName: 'Toto',
+  ownerUserId: 'user-toto',
   startedAtUtc: '2025-12-17T09:00:00Z',
   completedAtUtc: '2025-12-17T10:00:00Z',
   items: [

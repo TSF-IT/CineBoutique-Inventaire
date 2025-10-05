@@ -22,7 +22,8 @@ export interface OpenRunSummary {
   locationCode: string
   locationLabel: string
   countType: CountType
-  operatorDisplayName: string | null
+  ownerDisplayName: string | null
+  ownerUserId: string | null
   startedAtUtc: string
 }
 
@@ -32,7 +33,8 @@ export interface CompletedRunSummary {
   locationCode: string
   locationLabel: string
   countType: CountType
-  operatorDisplayName: string | null
+  ownerDisplayName: string | null
+  ownerUserId: string | null
   startedAtUtc: string
   completedAtUtc: string
 }
@@ -51,7 +53,8 @@ export interface CompletedRunDetail {
   locationCode: string
   locationLabel: string
   countType: CountType
-  operatorDisplayName: string | null
+  ownerDisplayName: string | null
+  ownerUserId: string | null
   startedAtUtc: string
   completedAtUtc: string
   items: CompletedRunDetailItem[]
@@ -122,7 +125,8 @@ export const LocationDto = z.object({
         countType: z.number().int(),
         status: z.enum(['not_started', 'in_progress', 'completed']),
         runId: NullableUuid,
-        operatorDisplayName: z.string().nullable(),
+        ownerDisplayName: z.string().nullable(),
+        ownerUserId: NullableUuid,
         startedAtUtc: IsoDateNullable,
         completedAtUtc: IsoDateNullable,
       }),
