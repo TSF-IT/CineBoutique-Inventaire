@@ -12,6 +12,8 @@ using Dapper;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using FluentValidation.Results;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace CineBoutique.Inventory.Api.Endpoints;
 
@@ -103,24 +105,47 @@ WHERE LOWER(table_name) = LOWER(@TableName)
     {
         ArgumentNullException.ThrowIfNull(validationResult);
 
-        if (validationResult.IsValid)
-        {
-            return Results.ValidationProblem(
-                new Dictionary<string, string[]>(StringComparer.Ordinal),
-                statusCode: StatusCodes.Status400BadRequest,
-                title: "Requête invalide");
-        }
-
         var errors = validationResult.Errors
             .GroupBy(error => string.IsNullOrWhiteSpace(error.PropertyName) ? string.Empty : error.PropertyName)
             .ToDictionary(
                 group => group.Key,
-                group => group.Select(error => error.ErrorMessage).Distinct().ToArray());
+                group => group.Select(error => error.ErrorMessage).Distinct().ToArray(),
+                StringComparer.Ordinal);
 
-        return Results.ValidationProblem(
-            errors,
-            statusCode: StatusCodes.Status400BadRequest,
-            title: "Requête invalide");
+        if (validationResult.IsValid)
+        {
+            errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+        }
+
+        var problemDetails = new ValidationProblemDetails(errors)
+        {
+            Status = StatusCodes.Status400BadRequest,
+            Title = "Requête invalide",
+            Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.1"
+        };
+
+        return Results.Json(
+            problemDetails,
+            ValidationProblemSerializerOptions,
+            contentType: "application/problem+json",
+            statusCode: problemDetails.Status ?? StatusCodes.Status400BadRequest);
+    }
+
+    private static readonly JsonSerializerOptions ValidationProblemSerializerOptions = CreateValidationProblemSerializerOptions();
+
+    private static JsonSerializerOptions CreateValidationProblemSerializerOptions()
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            DictionaryKeyPolicy = null
+        };
+
+        if (!options.Converters.OfType<JsonStringEnumConverter>().Any())
+        {
+            options.Converters.Add(new JsonStringEnumConverter());
+        }
+
+        return options;
     }
 
     public static IResult Problem(string title, string detail, int statusCode, IDictionary<string, object?>? extensions = null) =>
