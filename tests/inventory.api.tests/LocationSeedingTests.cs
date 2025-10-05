@@ -283,6 +283,22 @@ public sealed class LocationSeedingTests : IAsyncLifetime
         Assert.Equal("23505", exception.SqlState);
     }
 
+    [Fact]
+    public async Task SeedAsync_DoesNotCreateCountingRuns()
+    {
+        await ResetDatabaseAsync();
+
+        using var scope = _factory.Services.CreateScope();
+        var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
+        await seeder.SeedAsync();
+
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = await connectionFactory.CreateOpenConnectionAsync(CancellationToken.None);
+
+        var runCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM \"CountingRun\";");
+        Assert.Equal(0, runCount);
+    }
+
     private async Task ResetDatabaseAsync()
     {
         using var scope = _factory.Services.CreateScope();
