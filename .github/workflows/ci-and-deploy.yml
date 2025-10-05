@@ -6,70 +6,70 @@ on:
   pull_request:
 
 permissions:
-  contents: write   # nécessaire pour pousser sur la branche deploy
+  contents: write
   packages: read
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64, tsf, docker]
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup .NET
+      - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
-
+          dotnet-version: |
+            8.0.x
       - name: Restore
         run: dotnet restore CineBoutique.Inventory.sln
-
       - name: Build
-        run: dotnet build CineBoutique.Inventory.sln --configuration Release --no-restore
-
-      - name: Test
-        run: dotnet test CineBoutique.Inventory.sln --configuration Release --no-build --logger "trx;LogFileName=test-results.trx"
+        run: dotnet build CineBoutique.Inventory.sln -c Release --no-restore
+      - name: Test Domain
+        working-directory: tests/inventory.domain.tests
+        run: dotnet test -c Release --no-build --logger "trx;LogFileName=domain.trx"
+      - name: Test API
+        working-directory: tests/inventory.api.tests
+        run: dotnet test -c Release --no-build --logger "trx;LogFileName=api.trx"
 
   frontend:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: src/inventory-web
+    runs-on: [self-hosted, Linux, X64, tsf, docker]
     steps:
       - uses: actions/checkout@v4
 
+      # Si tu as réellement besoin de Playwright sur le runner, garde ces étapes.
+      # ATTENTION: sur un self-hosted, l’install des deps système peut nécessiter sudo et casser.
+      # Si ton runner n’est pas prêt pour Playwright, commente ces steps le temps d’installer proprement les deps.
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: 'src/inventory-web/package-lock.json'
-
-      - name: Install
+      - name: Install deps
+        working-directory: src/inventory-web
         run: npm ci
-
-      - name: Lint
-        run: npm run lint --if-present
-
-      - name: Build
+      - name: Build web
+        working-directory: src/inventory-web
         run: npm run build
+      - name: Install Playwright (with deps)
+        working-directory: src/inventory-web
+        run: npx playwright install --with-deps
+      - name: Run Playwright tests
+        working-directory: src/inventory-web
+        run: npx playwright test
 
-  deploy-branch:
-    name: Update "deploy" branch when CI is green
-    runs-on: ubuntu-latest
+  deploy:
+    runs-on: [self-hosted, Linux, X64, tsf, docker]
     needs: [backend, frontend]
     if: github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Configure Git
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
       - name: Force-update deploy branch to this commit
         run: |
-          # Crée ou avance la branche 'deploy' exactement sur le commit courant
           git push origin HEAD:refs/heads/deploy --force
           echo "Branch 'deploy' is now at $GITHUB_SHA"
