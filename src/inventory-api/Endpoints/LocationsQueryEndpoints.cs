@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
 using System.Linq;
@@ -83,7 +84,7 @@ internal static class LocationsQueryEndpoints
                                 row.CompletedAtUtc))
                             .ToList();
 
-                        var countStatuses = statusDtos.Count > 0
+                        IReadOnlyList<CountStatusDto> countStatuses = statusDtos.Count > 0
                             ? statusDtos
                             : Array.Empty<CountStatusDto>();
 
