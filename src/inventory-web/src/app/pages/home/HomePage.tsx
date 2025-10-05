@@ -63,14 +63,22 @@ export const HomePage = () => {
     console.error('[home] http error', err)
   }, [])
 
+  const fetchSummarySafely = useCallback(() => {
+    if (!shop?.id) {
+      return Promise.resolve<InventorySummary | null>(null)
+    }
+    return fetchInventorySummary()
+  }, [shop?.id])
+
   const {
     data: summaryData,
     loading: summaryLoading,
     error: summaryError,
     execute: executeSummary,
-  } = useAsync(fetchInventorySummary, [], {
+  } = useAsync(fetchSummarySafely, [fetchSummarySafely], {
     initialValue: null,
     onError,
+    immediate: Boolean(shop?.id),
   })
 
   const loadLocations = useCallback(() => {
