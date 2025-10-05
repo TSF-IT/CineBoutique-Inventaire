@@ -6,6 +6,7 @@ import { ThemeProvider } from '../../theme/ThemeProvider'
 import { HomePage } from '../pages/home/HomePage'
 import { ShopProvider } from '@/state/ShopContext'
 import type { InventorySummary, Location } from '../types/inventory'
+import type { LocationSummary } from '@/types/summary'
 
 const fetchInventorySummaryMock = vi.hoisted(() =>
   vi.fn(async (): Promise<InventorySummary> => ({
@@ -112,11 +113,40 @@ const fetchLocationsMock = vi.hoisted(() =>
   }),
 )
 
+const fetchLocationSummariesMock = vi.hoisted(() =>
+  vi.fn(async (shopId: string): Promise<LocationSummary[]> => {
+    expect(shopId).toBeTruthy()
+    return [
+      {
+        locationId: '00000000-0000-4000-8000-000000000010',
+        locationName: 'Zone 1',
+        busyBy: null,
+        activeRunId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        activeCountType: 1,
+        activeStartedAtUtc: new Date('2025-01-01T09:00:00Z'),
+        countStatuses: [
+          {
+            runId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            startedAtUtc: new Date('2025-01-01T09:00:00Z'),
+            completedAtUtc: null,
+          },
+          {
+            runId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            startedAtUtc: new Date('2025-01-01T08:00:00Z'),
+            completedAtUtc: new Date('2025-01-01T08:45:00Z'),
+          },
+        ],
+      },
+    ]
+  }),
+)
+
 vi.mock('../api/inventoryApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/inventoryApi')>()
   return {
     ...actual,
     fetchInventorySummary: fetchInventorySummaryMock,
+    fetchLocationSummaries: fetchLocationSummariesMock,
     fetchLocations: fetchLocationsMock,
   }
 })
@@ -174,6 +204,7 @@ describe('HomePage', () => {
       conflictZones: [],
     })
     fetchLocationsMock.mockResolvedValueOnce([])
+    fetchLocationSummariesMock.mockResolvedValueOnce([])
 
     render(
       <ThemeProvider>
@@ -188,5 +219,6 @@ describe('HomePage', () => {
     expect(await screen.findByText('Aucun comptage en cours')).toBeInTheDocument()
     expect(await screen.findByText('Aucun conflit')).toBeInTheDocument()
     expect(await screen.findByText(/Progression\s*:\s*0\s*\/\s*0/)).toBeInTheDocument()
+    expect(await screen.findByText('Aucun comptage en cours pour cette boutique.')).toBeInTheDocument()
   })
 })
