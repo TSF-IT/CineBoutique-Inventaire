@@ -7,6 +7,16 @@ import type { ConflictZoneDetail, InventorySummary, Location } from '../../types
 import { fetchInventorySummary, fetchLocations, getConflictZoneDetail } from '../../api/inventoryApi'
 import { ThemeProvider } from '../../../theme/ThemeProvider'
 
+const navigateMock = vi.fn()
+
+vi.mock('react-router-dom', async () => {
+  const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
+  return {
+    ...actual,
+    useNavigate: () => navigateMock,
+  }
+})
+
 vi.mock('../../api/inventoryApi', () => ({
   fetchInventorySummary: vi.fn(),
   fetchLocations: vi.fn(),
@@ -25,6 +35,7 @@ describe('HomePage', () => {
     mockedFetchSummary.mockReset()
     mockedFetchLocations.mockReset()
     mockedGetDetail.mockReset()
+    navigateMock.mockReset()
   })
 
   afterEach(() => {
@@ -178,5 +189,39 @@ describe('HomePage', () => {
     const completedRunsModal = await screen.findByRole('dialog', { name: /Comptages terminés/i })
     expect(within(completedRunsModal).getByText(/Comptages terminés \(20 plus récents\)/i)).toBeInTheDocument()
     expect(within(completedRunsModal).getByText(/Opérateur : Utilisateur Nice 1/i)).toBeInTheDocument()
+  })
+
+  it("redirige vers l'assistant d'inventaire au clic sur le CTA principal", async () => {
+    const summary: InventorySummary = {
+      activeSessions: 0,
+      openRuns: 0,
+      completedRuns: 0,
+      conflicts: 0,
+      lastActivityUtc: null,
+      openRunDetails: [],
+      completedRunDetails: [],
+      conflictZones: [],
+    }
+
+    const locations: Location[] = []
+
+    mockedFetchSummary.mockResolvedValue(summary)
+    mockedFetchLocations.mockResolvedValue(locations)
+
+    render(
+      <ThemeProvider>
+        <ShopProvider>
+          <MemoryRouter>
+            <HomePage />
+          </MemoryRouter>
+        </ShopProvider>
+      </ThemeProvider>,
+    )
+
+    const buttons = await screen.findAllByRole('button', { name: /Débuter un inventaire/i })
+    expect(buttons.length).toBeGreaterThan(0)
+    fireEvent.click(buttons[0])
+
+    expect(navigateMock).toHaveBeenCalledWith('/inventory/start')
   })
 })
