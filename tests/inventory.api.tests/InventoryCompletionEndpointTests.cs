@@ -17,6 +17,7 @@ using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using Microsoft.AspNetCore.Mvc;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
@@ -60,6 +61,29 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
         var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", payload);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CompleteInventoryRun_ReturnsNotFound_WhenRunDoesNotExist()
+    {
+        await ResetDatabaseAsync();
+        var (locationId, shopId) = await SeedLocationAsync("S1", "Zone S1");
+        var ownerUserId = await SeedShopUserAsync(shopId, "Amélie");
+
+        var payload = new CompleteRunRequest(
+            Guid.NewGuid(),
+            ownerUserId,
+            1,
+            new[] { new CompleteRunItemRequest("12345678", 1m, false) });
+
+        var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", payload);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Ressource introuvable", problem!.Title);
+        Assert.Equal("Le run fourni est introuvable.", problem.Detail);
     }
 
     [Fact]
@@ -369,11 +393,12 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.Conflict, secondResponse.StatusCode);
 
-        var error = await secondResponse.Content.ReadFromJsonAsync<Dictionary<string, string>>();
-        Assert.NotNull(error);
+        var problem = await secondResponse.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Conflit", problem!.Title);
         Assert.Equal(
             "Le deuxième comptage doit être réalisé par un opérateur différent du premier.",
-            error!.GetValueOrDefault("message"));
+            problem.Detail);
     }
 
     private async Task ResetDatabaseAsync()
