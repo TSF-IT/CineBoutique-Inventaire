@@ -367,16 +367,14 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         Assert.NotNull(payload);
 
         Assert.Equal(1, payload!.OpenRuns);
-        Assert.Equal(1, payload.OpenRunDetails.Count);
-        var openRun = payload.OpenRunDetails[0];
+        var openRun = Assert.Single(payload.OpenRunDetails);
         Assert.Equal(parisOpenRunId, openRun.RunId);
         Assert.Equal(parisLocationId, openRun.LocationId);
         Assert.Equal(parisUserId, openRun.OwnerUserId);
         Assert.Equal("Utilisateur Paris", openRun.OwnerDisplayName);
 
         Assert.Equal(1, payload.CompletedRuns);
-        Assert.Equal(1, payload.CompletedRunDetails.Count);
-        var completedRun = payload.CompletedRunDetails[0];
+        var completedRun = Assert.Single(payload.CompletedRunDetails);
         Assert.Equal(parisCompletedRunId, completedRun.RunId);
         Assert.Equal(parisLocationId, completedRun.LocationId);
         Assert.Equal(parisUserId, completedRun.OwnerUserId);
