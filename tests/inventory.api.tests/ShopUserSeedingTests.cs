@@ -201,6 +201,21 @@ public sealed class ShopUserSeedingTests : IAsyncLifetime
         }
     }
 
+    [Fact]
+    public async Task SeedAsync_DoesNotCreateCountingRuns()
+    {
+        await ResetDatabaseAsync();
+
+        using var scope = _factory.Services.CreateScope();
+        await RunSeederAsync(scope.ServiceProvider);
+
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = await connectionFactory.CreateOpenConnectionAsync(CancellationToken.None);
+
+        var runCount = await connection.ExecuteScalarAsync<int>("SELECT COUNT(*) FROM \"CountingRun\";");
+        Assert.Equal(0, runCount);
+    }
+
     private static async Task RunSeederAsync(IServiceProvider services)
     {
         var seeder = services.GetRequiredService<InventoryDataSeeder>();
