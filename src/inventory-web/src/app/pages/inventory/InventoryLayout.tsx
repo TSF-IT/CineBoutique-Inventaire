@@ -4,13 +4,11 @@ import { Stepper } from '../../components/Stepper'
 import { Page } from '../../components/Page'
 import { useInventory } from '../../contexts/InventoryContext'
 
-const STEPS = ['Utilisateur', 'Zone', 'Type de comptage', 'Scan']
-
 const stepIndexByPath: Record<string, number> = {
   '/inventory/start': 0,
-  '/inventory/location': 1,
-  '/inventory/count-type': 2,
-  '/inventory/session': 3,
+  '/inventory/location': 0,
+  '/inventory/count-type': 1,
+  '/inventory/session': 2,
 }
 
 export const InventoryLayout = () => {
@@ -63,16 +61,8 @@ export const InventoryLayout = () => {
       return
     }
 
-    const zoneStepButton = container.querySelector<HTMLElement>(
-      'li:nth-of-type(2) button, li:nth-of-type(2) a, li:nth-of-type(2) [role="button"]',
-    )
-    if (zoneStepButton) {
-      zoneStepButton.setAttribute('data-testid', 'step-nav-location')
-      return
-    }
-
-    const zoneStepFallback = container.querySelector<HTMLElement>('li:nth-of-type(2)')
-    zoneStepFallback?.setAttribute('data-testid', 'step-nav-location')
+    const zoneStepCard = container.querySelector<HTMLElement>('[data-step-index="1"]')
+    zoneStepCard?.setAttribute('data-testid', 'step-nav-location')
   }, [location.pathname])
 
   if (location.pathname === '/inventory') {
@@ -98,7 +88,7 @@ export const InventoryLayout = () => {
           </div>
         </div>
         <div ref={stepperContainerRef}>
-          <Stepper steps={STEPS} activeIndex={activeIndex} />
+          <Stepper activeIndex={activeIndex} />
         </div>
       </div>
       <div className="flex-1">

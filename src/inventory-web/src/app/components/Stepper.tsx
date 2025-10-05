@@ -1,23 +1,24 @@
-import clsx from 'clsx'
+import clsx from 'clsx';
+
+const STEP_LABELS = ['Zone', 'Type de comptage', 'Scan'] as const;
 
 interface StepperProps {
-  steps: string[]
-  activeIndex: number
+  activeIndex: number;
 }
 
-const STEPPER_LABELS = ['Zone', 'Type de comptage', 'Scan'] as const
-
-export const Stepper = ({ activeIndex }: StepperProps) => {
-  const currentIndex = Math.min(activeIndex, STEPPER_LABELS.length - 1)
+export function Stepper({ activeIndex }: StepperProps) {
+  const currentIndex = Math.min(activeIndex, STEP_LABELS.length - 1);
 
   return (
     <div className="grid grid-cols-3 [@media(orientation:landscape)]:grid-cols-3 sm:grid-cols-3 gap-2 sm:gap-3 px-2 py-1 sm:px-4 sm:py-3">
-      {STEPPER_LABELS.map((label, index) => {
-        const isActive = index === currentIndex
-        const isCompleted = index < currentIndex
+      {STEP_LABELS.map((label, index) => {
+        const isActive = index === currentIndex;
+        const isCompleted = index < currentIndex;
+
         return (
           <div
             key={label}
+            data-step-index={index}
             className={clsx(
               'min-w-[88px] rounded-xl border px-2 py-1 sm:px-3 sm:py-2 transition-colors',
               isCompleted && 'border-brand-400 bg-brand-500/10 dark:border-brand-500',
@@ -50,8 +51,8 @@ export const Stepper = ({ activeIndex }: StepperProps) => {
               </span>
             </div>
           </div>
-        )
-      })
+        );
+      })}
     </div>
-  )
+  );
 }

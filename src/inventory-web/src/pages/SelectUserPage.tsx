@@ -8,14 +8,19 @@ type UserDto = { id: string; displayName: string; isAdmin: boolean }
 export default function SelectUserPage() {
   const nav = useNavigate()
   const shop = appStore.getShop()
+  const shopId = shop?.id
   const [users, setUsers] = useState<UserDto[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let mounted = true
-    if (!shop) return
+    if (!shopId) {
+      return () => {
+        mounted = false
+      }
+    }
     setLoading(true)
-    fetchShopUsers(shop.id)
+    fetchShopUsers(shopId)
       .then((x) => {
         if (mounted) setUsers(x)
       })
@@ -23,7 +28,7 @@ export default function SelectUserPage() {
     return () => {
       mounted = false
     }
-  }, [shop?.id])
+  }, [shopId])
 
   if (!shop) return null
 

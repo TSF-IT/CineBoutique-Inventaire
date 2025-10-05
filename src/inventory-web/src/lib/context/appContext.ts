@@ -1,19 +1,45 @@
 // tiny localStorage helpers
-const k = {
+const keys = {
   shop: 'inv.shop',
-  operator: 'inv.operator'
-};
+  operator: 'inv.operator',
+} as const;
+
 export type ShopCtx = { id: string; name: string };
 export type OperatorCtx = { id: string; name: string };
 
 export const appStore = {
   getShop(): ShopCtx | null {
-    try { const s = localStorage.getItem(k.shop); return s ? JSON.parse(s) : null; } catch { return null; }
+    try {
+      const stored = localStorage.getItem(keys.shop);
+      return stored ? (JSON.parse(stored) as ShopCtx) : null;
+    } catch {
+      return null;
+    }
   },
-  setShop(v: ShopCtx | null) { v ? localStorage.setItem(k.shop, JSON.stringify(v)) : localStorage.removeItem(k.shop); },
+  setShop(value: ShopCtx | null) {
+    if (value) {
+      localStorage.setItem(keys.shop, JSON.stringify(value));
+      return;
+    }
+    localStorage.removeItem(keys.shop);
+  },
   getOperator(): OperatorCtx | null {
-    try { const s = localStorage.getItem(k.operator); return s ? JSON.parse(s) : null; } catch { return null; }
+    try {
+      const stored = localStorage.getItem(keys.operator);
+      return stored ? (JSON.parse(stored) as OperatorCtx) : null;
+    } catch {
+      return null;
+    }
   },
-  setOperator(v: OperatorCtx | null) { v ? localStorage.setItem(k.operator, JSON.stringify(v)) : localStorage.removeItem(k.operator); },
-  clearAll() { localStorage.removeItem(k.shop); localStorage.removeItem(k.operator); }
+  setOperator(value: OperatorCtx | null) {
+    if (value) {
+      localStorage.setItem(keys.operator, JSON.stringify(value));
+      return;
+    }
+    localStorage.removeItem(keys.operator);
+  },
+  clearAll() {
+    localStorage.removeItem(keys.shop);
+    localStorage.removeItem(keys.operator);
+  },
 };
