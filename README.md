@@ -124,7 +124,7 @@ Le front appelle l'endpoint `POST /api/inventories/{locationId}/complete` pour i
 {
   "runId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
   "countType": 1,
-  "operator": "amelie.dupont",
+  "ownerUserId": "3b9934f1-4f0e-4ab3-8a2c-1f0182c2b4c8",
   "items": [
     {
       "ean": "3057065988108",
@@ -153,6 +153,11 @@ La réponse contient l'identifiant du run clôturé ainsi que les agrégats util
   "totalQuantity": 4
 }
 ```
+
+> ℹ️ Les résumés retournés par `GET /api/inventories/summary` et `GET /api/locations` exposent désormais
+> `ownerUserId` (UUID du collaborateur) et `ownerDisplayName` (libellé à afficher) pour identifier le
+> responsable de chaque comptage en cours ou terminé. Le front se base exclusivement sur ces
+> propriétés pour déterminer les droits d'accès et pour afficher les libellés utilisateur.
 
 ## Configuration applicative
 
