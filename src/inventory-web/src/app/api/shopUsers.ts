@@ -10,7 +10,16 @@ export const fetchShopUsers = async (shopId: string): Promise<ShopUser[]> => {
     return []
   }
 
-  const response = (await http(`${API_BASE}/shops/${encodeURIComponent(sanitizedShopId)}/users`)) as unknown
+  let response: unknown
+
+  try {
+    response = (await http(`${API_BASE}/shops/${encodeURIComponent(sanitizedShopId)}/users`)) as unknown
+  } catch (error) {
+    if (error && typeof error === 'object' && 'status' in error && (error as { status?: number }).status === 404) {
+      ;(error as { __shopNotFound?: boolean }).__shopNotFound = true
+    }
+    throw error
+  }
 
   if (!Array.isArray(response)) {
     return []
