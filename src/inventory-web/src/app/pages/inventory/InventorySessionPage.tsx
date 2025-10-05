@@ -190,8 +190,10 @@ export const InventorySessionPage = () => {
       } catch (error) {
         const err = error as HttpError
         if (isHttpError(err) && err.status === 404) {
+          console.warn('[inventory] produit introuvable ignoré', err)
           return { status: 'not-found' as const, error: err }
         }
+        console.error('[inventory] échec lecture produit', err)
         return { status: 'error' as const, error: err }
       }
     },
