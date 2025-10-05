@@ -17,6 +17,7 @@ using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Mvc;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
@@ -138,10 +139,10 @@ public sealed class InventoryRunLifecycleTests : IAsyncLifetime
         var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/start", request);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        var payload = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>();
-        Assert.NotNull(payload);
-        Assert.True(payload!.TryGetValue("message", out var message));
-        Assert.Equal("La zone demandée est introuvable.", message);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Ressource introuvable", problem!.Title);
+        Assert.Equal("La zone demandée est introuvable.", problem.Detail);
 
         using var scope = _factory.Services.CreateScope();
         var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
@@ -153,6 +154,25 @@ public sealed class InventoryRunLifecycleTests : IAsyncLifetime
             new { LocationId = locationId });
 
         Assert.Equal(0, runsCount);
+    }
+
+    [Fact]
+    public async Task StartInventoryRun_ReturnsBadRequest_ForInvalidPayload()
+    {
+        await ResetDatabaseAsync();
+        var (locationId, shopId) = await SeedLocationAsync("S1", "Zone S1");
+
+        var request = new StartRunRequest(shopId, Guid.Empty, 5);
+
+        var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/start", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.NotEmpty(problem!.Errors);
+        Assert.True(problem.Errors.ContainsKey("OwnerUserId"));
+        Assert.True(problem.Errors.ContainsKey("CountType"));
     }
 
     [Fact]
@@ -188,6 +208,70 @@ public sealed class InventoryRunLifecycleTests : IAsyncLifetime
             "SELECT COUNT(*) FROM \"CountingRun\" WHERE \"LocationId\" = @LocationId",
             new { LocationId = locationId });
         Assert.Equal(0, countRuns);
+    }
+
+    [Fact]
+    public async Task ReleaseInventoryRun_ReturnsNotFound_WhenRunMissing()
+    {
+        await ResetDatabaseAsync();
+        var (locationId, shopId) = await SeedLocationAsync("S1", "Zone S1");
+        var ownerUserId = await SeedShopUserAsync(shopId, "Amélie");
+
+        var request = new ReleaseRunRequest(Guid.NewGuid(), ownerUserId);
+
+        var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/release", request);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Ressource introuvable", problem!.Title);
+        Assert.Equal("Aucun comptage actif pour les critères fournis.", problem.Detail);
+    }
+
+    [Fact]
+    public async Task ReleaseInventoryRun_ReturnsConflict_WhenHeldByOtherOperator()
+    {
+        await ResetDatabaseAsync();
+        var (locationId, shopId) = await SeedLocationAsync("S1", "Zone S1");
+        var ownerAmelie = await SeedShopUserAsync(shopId, "Amélie");
+        var ownerBruno = await SeedShopUserAsync(shopId, "Bruno");
+
+        var startResponse = await _client.PostAsJsonAsync(
+            $"/api/inventories/{locationId}/start",
+            new StartRunRequest(shopId, ownerAmelie, 1));
+        startResponse.EnsureSuccessStatusCode();
+        var startPayload = await startResponse.Content.ReadFromJsonAsync<StartInventoryRunResponse>();
+        Assert.NotNull(startPayload);
+
+        var releaseRequest = new ReleaseRunRequest(startPayload!.RunId, ownerBruno);
+        var releaseResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/release", releaseRequest);
+
+        Assert.Equal(HttpStatusCode.Conflict, releaseResponse.StatusCode);
+
+        var problem = await releaseResponse.Content.ReadFromJsonAsync<ProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.Equal("Conflit", problem!.Title);
+        Assert.NotNull(problem.Detail);
+        Assert.Contains("Comptage détenu", problem.Detail!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ReleaseInventoryRun_ReturnsBadRequest_ForInvalidPayload()
+    {
+        await ResetDatabaseAsync();
+        var (locationId, _) = await SeedLocationAsync("S1", "Zone S1");
+
+        var request = new ReleaseRunRequest(Guid.Empty, Guid.Empty);
+
+        var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/release", request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var problem = await response.Content.ReadFromJsonAsync<ValidationProblemDetails>();
+        Assert.NotNull(problem);
+        Assert.True(problem!.Errors.ContainsKey("RunId"));
+        Assert.True(problem.Errors.ContainsKey("OwnerUserId"));
     }
 
     private async Task ResetDatabaseAsync()

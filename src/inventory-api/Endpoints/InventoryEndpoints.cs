@@ -11,6 +11,8 @@ using CineBoutique.Inventory.Api.Infrastructure;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Models;
 using Dapper;
+using FluentValidation;
+using FluentValidation.Results;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -761,27 +763,22 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
         app.MapPost("/api/inventories/{locationId:guid}/start", async (
             Guid locationId,
             StartRunRequest request,
+            IValidator<StartRunRequest> validator,
             IDbConnection connection,
             CancellationToken cancellationToken) =>
         {
             if (request is null)
             {
-                return Results.BadRequest(new { message = "Le corps de la requête est requis." });
+                return EndpointUtilities.Problem(
+                    "Requête invalide",
+                    "Le corps de la requête est requis.",
+                    StatusCodes.Status400BadRequest);
             }
 
-            if (request.ShopId == Guid.Empty)
+            var validationResult = await validator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!validationResult.IsValid)
             {
-                return Results.BadRequest(new { message = "Le champ shopId est requis." });
-            }
-
-            if (request.OwnerUserId == Guid.Empty)
-            {
-                return Results.BadRequest(new { message = "Le champ ownerUserId est requis." });
-            }
-
-            if (request.CountType is not (1 or 2 or 3))
-            {
-                return Results.BadRequest(new { message = "Le type de comptage doit valoir 1, 2 ou 3." });
+                return EndpointUtilities.ValidationProblem(validationResult);
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -799,7 +796,10 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
 
             if (location is null)
             {
-                return Results.NotFound(new { message = "La zone demandée est introuvable." });
+                return EndpointUtilities.Problem(
+                    "Ressource introuvable",
+                    "La zone demandée est introuvable.",
+                    StatusCodes.Status404NotFound);
             }
 
             var columnsState = await DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -863,20 +863,20 @@ LIMIT 1;";
                 if (columnsState.HasOwnerUserId && active.OwnerUserId is Guid ownerId && ownerId != request.OwnerUserId)
                 {
                     var ownerLabel = active.OperatorDisplayName ?? "un autre utilisateur";
-                    return Results.Conflict(new
-                    {
-                        message = $"Comptage déjà en cours par {ownerLabel}."
-                    });
+                    return EndpointUtilities.Problem(
+                        "Conflit",
+                        $"Comptage déjà en cours par {ownerLabel}.",
+                        StatusCodes.Status409Conflict);
                 }
 
                 if (!columnsState.HasOwnerUserId && !string.IsNullOrWhiteSpace(active.OperatorDisplayName) &&
                     !string.IsNullOrWhiteSpace(ownerDisplayName) &&
                     !string.Equals(active.OperatorDisplayName.Trim(), ownerDisplayName, StringComparison.OrdinalIgnoreCase))
                 {
-                    return Results.Conflict(new
-                    {
-                        message = $"Comptage déjà en cours par {active.OperatorDisplayName}."
-                    });
+                    return EndpointUtilities.Problem(
+                        "Conflit",
+                        $"Comptage déjà en cours par {active.OperatorDisplayName}.",
+                        StatusCodes.Status409Conflict);
                 }
 
                 return Results.Ok(new StartInventoryRunResponse
@@ -986,6 +986,7 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc{ownerValue}{oper
         app.MapPost("/api/inventories/{locationId:guid}/complete", async (
             Guid locationId,
             CompleteRunRequest request,
+            IValidator<CompleteRunRequest> validator,
             IDbConnection connection,
             IAuditLogger auditLogger,
             HttpContext httpContext,
@@ -993,47 +994,60 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc{ownerValue}{oper
         {
             if (request is null)
             {
-                return Results.BadRequest(new { message = "Le corps de la requête est requis." });
+                return EndpointUtilities.Problem(
+                    "Requête invalide",
+                    "Le corps de la requête est requis.",
+                    StatusCodes.Status400BadRequest);
             }
 
-            if (request.OwnerUserId == Guid.Empty)
+            var validationResult = await validator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!validationResult.IsValid)
             {
-                return Results.BadRequest(new { message = "Le champ ownerUserId est requis." });
+                return EndpointUtilities.ValidationProblem(validationResult);
             }
 
-            var countType = request.CountType;
-            if (countType is not (1 or 2 or 3))
-            {
-                return Results.BadRequest(new { message = "Le type de comptage doit valoir 1, 2 ou 3." });
-            }
-
-            var rawItems = request.Items?.ToArray() ?? Array.Empty<CompleteRunItemRequest>();
-            if (rawItems.Length == 0)
-            {
-                return Results.BadRequest(new { message = "Au moins une ligne de comptage doit être fournie." });
-            }
-
+            var rawItems = request.Items!.ToArray();
             var sanitizedItems = new List<SanitizedCountLine>(rawItems.Length);
-            foreach (var item in rawItems)
+            var additionalFailures = new List<ValidationFailure>();
+            for (var index = 0; index < rawItems.Length; index++)
             {
+                var item = rawItems[index];
                 var ean = item.Ean?.Trim();
                 if (string.IsNullOrWhiteSpace(ean))
                 {
-                    return Results.BadRequest(new { message = "Chaque ligne doit contenir un EAN." });
+                    additionalFailures.Add(new ValidationFailure($"items[{index}].ean", "Chaque ligne doit contenir un EAN."));
+                    continue;
                 }
 
                 if (ean.Length is < 8 or > 13 || !ean.All(char.IsDigit))
                 {
-                    return Results.BadRequest(new { message = $"L'EAN {ean} est invalide. Il doit contenir entre 8 et 13 chiffres." });
+                    additionalFailures.Add(new ValidationFailure($"items[{index}].ean", $"L'EAN {ean} est invalide. Il doit contenir entre 8 et 13 chiffres."));
+                    continue;
                 }
 
-                if (item.Quantity <= 0)
+                if (item.Quantity < 0)
                 {
-                    return Results.BadRequest(new { message = $"La quantité pour l'EAN {ean} doit être strictement positive." });
+                    additionalFailures.Add(new ValidationFailure($"items[{index}].quantity", $"La quantité pour l'EAN {ean} doit être positive ou nulle."));
+                    continue;
                 }
 
                 sanitizedItems.Add(new SanitizedCountLine(ean, item.Quantity, item.IsManual));
             }
+
+            if (additionalFailures.Count > 0)
+            {
+                return EndpointUtilities.ValidationProblem(new ValidationResult(additionalFailures));
+            }
+
+            if (sanitizedItems.Count == 0)
+            {
+                return EndpointUtilities.Problem(
+                    "Requête invalide",
+                    "Au moins une ligne de comptage doit être fournie.",
+                    StatusCodes.Status400BadRequest);
+            }
+
+            var countType = request.CountType;
 
             var aggregatedItems = sanitizedItems
                 .GroupBy(line => line.Ean, StringComparer.Ordinal)
@@ -1054,7 +1068,10 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc{ownerValue}{oper
 
             if (location is null)
             {
-                return Results.NotFound(new { message = "La zone demandée est introuvable." });
+                return EndpointUtilities.Problem(
+                    "Ressource introuvable",
+                    "La zone demandée est introuvable.",
+                    StatusCodes.Status404NotFound);
             }
 
             if (connection is not NpgsqlConnection npgsqlConnection)
@@ -1149,17 +1166,26 @@ LIMIT 1;";
 
                 if (existingRun is null)
                 {
-                    return Results.NotFound(new { message = "Le run fourni est introuvable." });
+                    return EndpointUtilities.Problem(
+                        "Ressource introuvable",
+                        "Le run fourni est introuvable.",
+                        StatusCodes.Status404NotFound);
                 }
 
                 if (existingRun.LocationId != locationId)
                 {
-                    return Results.BadRequest(new { message = "Le run ne correspond pas à la zone demandée." });
+                    return EndpointUtilities.Problem(
+                        "Requête invalide",
+                        "Le run ne correspond pas à la zone demandée.",
+                        StatusCodes.Status400BadRequest);
                 }
 
                 if (existingRun.OwnerUserId is Guid ownerId && ownerId != request.OwnerUserId)
                 {
-                    return Results.Conflict(new { message = "Le run est attribué à un autre opérateur." });
+                    return EndpointUtilities.Problem(
+                        "Conflit",
+                        "Le run est attribué à un autre opérateur.",
+                        StatusCodes.Status409Conflict);
                 }
             }
 
@@ -1188,10 +1214,10 @@ LIMIT 1;";
                     if (firstRunOwner is Guid ownerId && ownerId == request.OwnerUserId)
                     {
                         await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-                        return Results.Conflict(new
-                        {
-                            message = "Le deuxième comptage doit être réalisé par un opérateur différent du premier."
-                        });
+                        return EndpointUtilities.Problem(
+                            "Conflit",
+                            "Le deuxième comptage doit être réalisé par un opérateur différent du premier.",
+                            StatusCodes.Status409Conflict);
                     }
                 }
                 else if (columnsState.HasOperatorDisplayName)
@@ -1219,10 +1245,10 @@ LIMIT 1;";
                         string.Equals(firstRunOperator.Trim(), ownerDisplayName, StringComparison.OrdinalIgnoreCase))
                     {
                         await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-                        return Results.Conflict(new
-                        {
-                            message = "Le deuxième comptage doit être réalisé par un opérateur différent du premier."
-                        });
+                        return EndpointUtilities.Problem(
+                            "Conflit",
+                            "Le deuxième comptage doit être réalisé par un opérateur différent du premier.",
+                            StatusCodes.Status409Conflict);
                     }
                 }
             }
@@ -1452,7 +1478,10 @@ LIMIT 1;";
 
             if (run is null)
             {
-                return Results.NotFound(new { message = "Aucun comptage actif pour les critères fournis." });
+                return EndpointUtilities.Problem(
+                    "Ressource introuvable",
+                    "Aucun comptage actif pour les critères fournis.",
+                    StatusCodes.Status404NotFound);
             }
 
             if (connection is NpgsqlConnection npgsqlConnection)
@@ -1468,10 +1497,10 @@ LIMIT 1;";
                 if (run.Value.OwnerUserId is Guid ownerId && ownerId != request.OwnerUserId)
                 {
                     var ownerLabel = run.Value.OperatorDisplayName ?? "un autre utilisateur";
-                    return Results.BadRequest(new
-                    {
-                        message = $"Comptage détenu par {ownerLabel}."
-                    });
+                    return EndpointUtilities.Problem(
+                        "Conflit",
+                        $"Comptage détenu par {ownerLabel}.",
+                        StatusCodes.Status409Conflict);
                 }
             }
             else if (columnsState.HasOperatorDisplayName)
@@ -1489,10 +1518,10 @@ LIMIT 1;";
                     !string.IsNullOrWhiteSpace(requestedDisplayName) &&
                     !string.Equals(existingOperator, requestedDisplayName.Trim(), StringComparison.OrdinalIgnoreCase))
                 {
-                    return Results.BadRequest(new
-                    {
-                        message = $"Comptage détenu par {existingOperator}."
-                    });
+                    return EndpointUtilities.Problem(
+                        "Conflit",
+                        $"Comptage détenu par {existingOperator}.",
+                        StatusCodes.Status409Conflict);
                 }
             }
 
@@ -1516,10 +1545,10 @@ LIMIT 1;";
             if (lineCount > 0)
             {
                 await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-                return Results.Conflict(new
-                {
-                    message = "Impossible de libérer un comptage contenant des lignes enregistrées."
-                });
+                return EndpointUtilities.Problem(
+                    "Conflit",
+                    "Impossible de libérer un comptage contenant des lignes enregistrées.",
+                    StatusCodes.Status409Conflict);
             }
 
             const string deleteRunSql = "DELETE FROM \"CountingRun\" WHERE \"Id\" = @RunId;";
@@ -1561,22 +1590,22 @@ LIMIT 1;";
         app.MapPost("/api/inventories/{locationId:guid}/release", async (
             Guid locationId,
             ReleaseRunRequest request,
+            IValidator<ReleaseRunRequest> validator,
             IDbConnection connection,
             CancellationToken cancellationToken) =>
         {
             if (request is null)
             {
-                return Results.BadRequest(new { message = "Le corps de la requête est requis." });
+                return EndpointUtilities.Problem(
+                    "Requête invalide",
+                    "Le corps de la requête est requis.",
+                    StatusCodes.Status400BadRequest);
             }
 
-            if (request.RunId == Guid.Empty)
+            var validationResult = await validator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!validationResult.IsValid)
             {
-                return Results.BadRequest(new { message = "Le champ runId est requis." });
-            }
-
-            if (request.OwnerUserId == Guid.Empty)
-            {
-                return Results.BadRequest(new { message = "Le champ ownerUserId est requis." });
+                return EndpointUtilities.ValidationProblem(validationResult);
             }
 
             return await HandleReleaseAsync(locationId, request, connection, cancellationToken).ConfigureAwait(false);
@@ -1598,15 +1627,18 @@ LIMIT 1;";
             Guid locationId,
             Guid runId,
             Guid ownerUserId,
+            IValidator<ReleaseRunRequest> validator,
             IDbConnection connection,
             CancellationToken cancellationToken) =>
         {
-            if (ownerUserId == Guid.Empty)
+            var request = new ReleaseRunRequest(runId, ownerUserId);
+
+            var validationResult = await validator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!validationResult.IsValid)
             {
-                return Results.BadRequest(new { message = "Le champ ownerUserId est requis." });
+                return EndpointUtilities.ValidationProblem(validationResult);
             }
 
-            var request = new ReleaseRunRequest(runId, ownerUserId);
             return await HandleReleaseAsync(locationId, request, connection, cancellationToken).ConfigureAwait(false);
         })
         .WithName("AbortInventoryRun")
@@ -1627,18 +1659,54 @@ LIMIT 1;";
     {
         app.MapPost("/api/inventories/{locationId:guid}/restart", async (
             Guid locationId,
-            int countType,
+            RestartRunRequest request,
+            IValidator<RestartRunRequest> validator,
             IDbConnection connection,
             IAuditLogger auditLogger,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            if (countType is not (1 or 2 or 3))
+            if (request is null)
             {
-                return Results.BadRequest(new { message = "Le paramètre countType doit valoir 1, 2 ou 3." });
+                return EndpointUtilities.Problem(
+                    "Requête invalide",
+                    "Le corps de la requête est requis.",
+                    StatusCodes.Status400BadRequest);
             }
 
+            var validationResult = await validator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!validationResult.IsValid)
+            {
+                return EndpointUtilities.ValidationProblem(validationResult);
+            }
+
+            var countType = request.CountType;
+
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+            const string selectLocationSql =
+                "SELECT \"Id\", \"ShopId\", \"Code\", \"Label\" FROM \"Location\" WHERE \"Id\" = @LocationId LIMIT 1;";
+
+            var location = await connection
+                .QuerySingleOrDefaultAsync<LocationMetadataRow>(
+                    new CommandDefinition(selectLocationSql, new { LocationId = locationId }, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (location is null)
+            {
+                return EndpointUtilities.Problem(
+                    "Ressource introuvable",
+                    "La zone demandée est introuvable.",
+                    StatusCodes.Status404NotFound);
+            }
+
+            if (connection is NpgsqlConnection npgsqlConnection)
+            {
+                if (!await ValidateUserBelongsToShop(npgsqlConnection, request.OwnerUserId, location.ShopId, cancellationToken).ConfigureAwait(false))
+                {
+                    return BadOwnerUser(request.OwnerUserId, location.ShopId);
+                }
+            }
 
             const string sql = @"UPDATE ""CountingRun""
 SET ""CompletedAtUtc"" = @NowUtc
@@ -1651,20 +1719,14 @@ WHERE ""LocationId"" = @LocationId
                 .ExecuteAsync(new CommandDefinition(sql, new { LocationId = locationId, CountType = countType, NowUtc = now }, cancellationToken: cancellationToken))
                 .ConfigureAwait(false);
 
-            var locationInfo = await connection
-                .QuerySingleOrDefaultAsync<LocationMetadataRow>(
-                    new CommandDefinition(
-                        "SELECT \"Id\", \"Code\", \"Label\" FROM \"Location\" WHERE \"Id\" = @LocationId LIMIT 1",
-                        new { LocationId = locationId },
-                        cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
-
             var userName = EndpointUtilities.GetAuthenticatedUserName(httpContext);
             var actor = EndpointUtilities.FormatActorLabel(httpContext);
             var timestamp = EndpointUtilities.FormatTimestamp(now);
-            var zoneDescription = locationInfo is not null
-                ? $"la zone {locationInfo.Code} – {locationInfo.Label}"
-                : $"la zone {locationId}";
+            var zoneDescription = !string.IsNullOrWhiteSpace(location.Code)
+                ? $"la zone {location.Code} – {location.Label}"
+                : !string.IsNullOrWhiteSpace(location.Label)
+                    ? $"la zone {location.Label}"
+                    : $"la zone {locationId}";
             var countDescription = EndpointUtilities.DescribeCountType(countType);
             var resultDetails = affected > 0 ? "et clôturé les comptages actifs" : "mais aucun comptage actif n'était ouvert";
             var message = $"{actor} a relancé {zoneDescription} pour un {countDescription} le {timestamp} UTC {resultDetails}.";
@@ -2145,5 +2207,13 @@ ORDER BY cl.""CountingRunId"", p.""Id"", cl.""CountedAtUtc"" DESC, cl.""Id"" DES
     }
 
     private static IResult BadOwnerUser(Guid ownerUserId, Guid shopId) =>
-        Results.BadRequest(new { error = "Invalid ownerUserId for shop", ownerUserId, shopId });
+        EndpointUtilities.Problem(
+            "Requête invalide",
+            "ownerUserId n'appartient pas à la boutique fournie ou est désactivé.",
+            StatusCodes.Status400BadRequest,
+            new Dictionary<string, object?>
+            {
+                [nameof(ownerUserId)] = ownerUserId,
+                [nameof(shopId)] = shopId
+            });
 }
