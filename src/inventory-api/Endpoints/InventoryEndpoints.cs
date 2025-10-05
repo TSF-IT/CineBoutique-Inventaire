@@ -1099,31 +1099,30 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc{ownerValue}{oper
             var runOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
 
             var selectRunSql = $@"SELECT
-    cr.""Id"",
-    l.""ShopId"",
-    cr.""InventorySessionId"",
-    cr.""LocationId"",
-    cr.""CountType"",
+    cr.""Id""                             AS ""Id"",
+    l.""ShopId""                          AS ""ShopId"",
+    cr.""InventorySessionId""             AS ""InventorySessionId"",
+    cr.""LocationId""                     AS ""LocationId"",
+    cr.""CountType""                      AS ""CountType"",
     {(columnsState.HasOwnerUserId ? "cr.\"OwnerUserId\"" : "NULL::uuid")} AS ""OwnerUserId"",
-    {runOperatorSql.Projection} AS ""OperatorDisplayName"",
+    {runOperatorSql.Projection}       AS ""OperatorDisplayName"",
     CASE
         WHEN cr.""CompletedAtUtc"" IS NOT NULL THEN @StatusCompleted
         WHEN cr.""StartedAtUtc""   IS NOT NULL THEN @StatusInProgress
         ELSE @StatusNotStarted
-    END AS ""Status"",
-    COALESCE(lines.""LinesCount"", 0)::int     AS ""LinesCount"",
-    COALESCE(lines.""TotalQuantity"", 0)::numeric AS ""TotalQuantity"",
-    cr.""StartedAtUtc"",
-    cr.""CompletedAtUtc"",
-    NULL::timestamptz AS ""ReleasedAtUtc""
+    END                                 AS ""Status"",
+    COALESCE(lines.""LinesCount"", 0)::int           AS ""LinesCount"",
+    COALESCE(lines.""TotalQuantity"", 0)::numeric    AS ""TotalQuantity"",
+    cr.""StartedAtUtc""                  AS ""StartedAtUtc"",
+    cr.""CompletedAtUtc""                AS ""CompletedAtUtc"",
+    NULL::timestamptz                  AS ""ReleasedAtUtc""
 FROM ""CountingRun"" cr
 JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
 {AppendJoinClause(runOperatorSql.JoinClause)}
 LEFT JOIN (
-    SELECT
-        ""CountingRunId"",
-        COUNT(*)::int                    AS ""LinesCount"",
-        COALESCE(SUM(""Quantity""), 0)::numeric AS ""TotalQuantity""
+    SELECT ""CountingRunId"",
+           COUNT(*)::int                 AS ""LinesCount"",
+           COALESCE(SUM(""Quantity""), 0)::numeric AS ""TotalQuantity""
     FROM ""CountLine""
     GROUP BY ""CountingRunId""
 ) AS lines ON lines.""CountingRunId"" = cr.""Id""
