@@ -137,23 +137,24 @@ export const InventorySessionPage = () => {
   const lastSearchedInputRef = useRef<string | null>(null)
   const previousItemCountRef = useRef(items.length)
 
-  useEffect(() => {
-    if (!selectedUser) {
-      navigate('/inventory/start', { replace: true })
-    } else if (!location) {
-      navigate('/inventory/location', { replace: true })
-    } else if (!countType) {
-      navigate('/inventory/count-type', { replace: true })
-    }
-  }, [countType, location, navigate, selectedUser])
-
-  const displayedItems = items
-
   const selectedUserDisplayName = selectedUser?.displayName ?? null
   const ownerUserId = selectedUser?.id?.trim() ?? ''
   const existingRunId = typeof sessionId === 'string' ? sessionId.trim() : ''
   const locationId = location?.id?.trim() ?? ''
   const shopId = shop?.id?.trim() ?? ''
+
+  useEffect(() => {
+    if (!selectedUser) {
+      navigate('/inventory/start', { replace: true })
+    } else if (!locationId) {
+      navigate('/inventory/location', { replace: true })
+    } else if (!countType) {
+      navigate('/inventory/count-type', { replace: true })
+    }
+  }, [countType, locationId, navigate, selectedUser])
+
+  const displayedItems = items
+
   const isValidCountType =
     countType === CountType.Count1 || countType === CountType.Count2 || countType === CountType.Count3
 
