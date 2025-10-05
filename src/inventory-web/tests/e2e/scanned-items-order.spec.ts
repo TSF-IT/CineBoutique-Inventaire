@@ -146,7 +146,7 @@ test.describe("Ordre d'affichage des articles scannés", () => {
   })
 
   test('maintient un ordre stable lors des ajustements de quantité', async ({ page }) => {
-    await page.goto('/inventory/start')
+    await page.goto('/select-user')
 
     const userButton = page.getByRole('button', { name: mockUsers[0].displayName })
     await expect(userButton).toBeVisible({ timeout: 5000 })

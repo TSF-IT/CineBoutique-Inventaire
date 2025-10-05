@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { useLayoutEffect, useRef, useState } from 'react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppProviders } from '../providers/AppProviders'
 import { InventoryLayout } from '../pages/inventory/InventoryLayout'
@@ -248,9 +248,10 @@ const renderInventoryRoutes = (initialEntry: string, options?: RenderInventoryOp
   const routerTree = (
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
+        <Route path="/select-user" element={<InventoryUserStep />} />
+        <Route path="/inventory/start" element={<Navigate to="/select-user" replace />} />
         <Route path="/inventory" element={<InventoryLayout />}>
-          <Route index element={<InventoryUserStep />} />
-          <Route path="start" element={<InventoryUserStep />} />
+          <Route index element={<Navigate to="count-type" replace />} />
           <Route path="location" element={<InventoryLocationStep />} />
           <Route path="count-type" element={<InventoryCountTypeStep />} />
           <Route path="session" element={<InventorySessionPage />} />
@@ -347,7 +348,7 @@ describe("Workflow d'inventaire", () => {
   })
 
   it('permet de sélectionner utilisateur, zone et type en respectant les statuts', async () => {
-    renderInventoryRoutes('/inventory/start')
+    renderInventoryRoutes('/select-user')
 
     const userButton = await screen.findByRole('button', { name: shopUsers[0].displayName })
     fireEvent.click(userButton)
@@ -442,7 +443,7 @@ describe("Workflow d'inventaire", () => {
       ],
     })
 
-    renderInventoryRoutes('/inventory/start')
+    renderInventoryRoutes('/select-user')
 
     const userButton = await screen.findByRole('button', { name: shopUsers[0].displayName })
     fireEvent.click(userButton)
@@ -507,7 +508,7 @@ describe("Workflow d'inventaire", () => {
       ],
     })
 
-    renderInventoryRoutes('/inventory/start')
+    renderInventoryRoutes('/select-user')
 
     const userButton = await screen.findByRole('button', { name: shopUsers[0].displayName })
     fireEvent.click(userButton)
@@ -554,7 +555,7 @@ describe("Workflow d'inventaire", () => {
       selfRunLocation,
     ])
 
-    renderInventoryRoutes('/inventory/start')
+    renderInventoryRoutes('/select-user')
 
     const userButton = await screen.findByRole('button', { name: shopUsers[0].displayName })
     fireEvent.click(userButton)
@@ -684,7 +685,7 @@ describe("Workflow d'inventaire", () => {
   })
 
   it("enregistre l'utilisateur sélectionné dans la session", async () => {
-    renderInventoryRoutes('/inventory/start')
+    renderInventoryRoutes('/select-user')
 
     const userButton = await screen.findByRole('button', { name: shopUsers[0].displayName })
     fireEvent.click(userButton)
@@ -701,7 +702,7 @@ describe("Workflow d'inventaire", () => {
     const storageKey = `${SELECTED_USER_STORAGE_PREFIX}.${testShop.id}`
     sessionStorage.setItem(storageKey, JSON.stringify({ userId: shopUsers[0].id }))
 
-    renderInventoryRoutes('/inventory/start')
+    renderInventoryRoutes('/select-user')
 
     const userSummaries = await screen.findAllByText((content) =>
       content.replace(/\s+/g, ' ').includes(`Utilisateur : ${shopUsers[0].displayName}`),
