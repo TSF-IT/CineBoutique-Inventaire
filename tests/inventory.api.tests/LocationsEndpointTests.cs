@@ -439,6 +439,106 @@ public class LocationsEndpointTests : IAsyncLifetime
         Assert.Equal(completedAt.ToUnixTimeSeconds(), status.CompletedAtUtc?.ToUnixTimeSeconds());
     }
 
+    [Fact]
+    public async Task GetLocationsV2_ReturnsExpectedContractAndSortsStatuses()
+    {
+        await this.ResetDatabaseAsync();
+
+        using var scope = this._factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        var shopId = await EnsureDefaultShopAsync(connection);
+        var locationId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var activeRunId = Guid.NewGuid();
+        var completedRunId = Guid.NewGuid();
+        var sessionStartedAt = new DateTimeOffset(2024, 12, 30, 8, 0, 0, TimeSpan.Zero);
+        var completedStartedAt = new DateTimeOffset(2024, 12, 30, 9, 0, 0, TimeSpan.Zero);
+        var completedCompletedAt = completedStartedAt.AddMinutes(35);
+        var activeStartedAt = new DateTimeOffset(2024, 12, 30, 11, 45, 0, TimeSpan.Zero);
+
+        await InsertLocationAsync(connection, shopId, locationId, "L1", "Zone L1");
+
+        await connection.ExecuteAsync(
+            "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc);",
+            new { Id = sessionId, Name = "Session de test", StartedAtUtc = sessionStartedAt });
+
+        var completedOwnerId = await InsertShopUserAsync(connection, shopId, "owner.completed", "Alice Terminée");
+        var activeOwnerId = await InsertShopUserAsync(connection, shopId, "owner.active", "  Bob En Cours   ");
+
+        await CountingRunSqlHelper.InsertAsync(
+            connection,
+            new CountingRunInsert(
+                activeRunId,
+                sessionId,
+                locationId,
+                CountType: 2,
+                StartedAtUtc: activeStartedAt,
+                CompletedAtUtc: null,
+                OperatorDisplayName: "  Bob En Cours   ",
+                OwnerUserId: activeOwnerId));
+
+        await CountingRunSqlHelper.InsertAsync(
+            connection,
+            new CountingRunInsert(
+                completedRunId,
+                sessionId,
+                locationId,
+                CountType: 1,
+                StartedAtUtc: completedStartedAt,
+                CompletedAtUtc: completedCompletedAt,
+                OperatorDisplayName: "Alice Terminée",
+                OwnerUserId: completedOwnerId));
+
+        var response = await this._client.GetAsync($"/locations?shopId={shopId:D}");
+
+        response.EnsureSuccessStatusCode();
+
+        var payload = await response.Content.ReadFromJsonAsync<List<LocationV2Response>>();
+
+        Assert.NotNull(payload);
+        var location = Assert.Single(payload!);
+
+        Assert.Equal(locationId, location.Id);
+        Assert.Equal("L1", location.Code);
+        Assert.Equal("Zone L1", location.Label);
+        Assert.True(location.IsBusy);
+        Assert.Equal(activeRunId, location.ActiveRunId);
+        Assert.Equal((short)2, location.ActiveCountType);
+        Assert.NotNull(location.ActiveStartedAtUtc);
+        Assert.Equal(activeStartedAt.ToUnixTimeSeconds(), location.ActiveStartedAtUtc?.ToUnixTimeSeconds());
+        Assert.Equal("Bob En Cours", location.BusyBy);
+
+        Assert.NotNull(location.CountStatuses);
+        var statuses = location.CountStatuses!;
+        Assert.Equal(2, statuses.Count);
+
+        Assert.Collection(
+            statuses,
+            first =>
+            {
+                Assert.Equal((short)1, first.CountType);
+                Assert.Equal("completed", first.Status);
+                Assert.Equal(completedRunId, first.RunId);
+                Assert.Equal(completedOwnerId, first.OwnerUserId);
+                Assert.Equal("Alice Terminée", first.OwnerDisplayName);
+                Assert.Equal(completedStartedAt.ToUnixTimeSeconds(), first.StartedAtUtc?.ToUnixTimeSeconds());
+                Assert.Equal(completedCompletedAt.ToUnixTimeSeconds(), first.CompletedAtUtc?.ToUnixTimeSeconds());
+            },
+            second =>
+            {
+                Assert.Equal((short)2, second.CountType);
+                Assert.Equal("in_progress", second.Status);
+                Assert.Equal(activeRunId, second.RunId);
+                Assert.Equal(activeOwnerId, second.OwnerUserId);
+                Assert.Equal("Bob En Cours", second.OwnerDisplayName);
+                Assert.Equal(activeStartedAt.ToUnixTimeSeconds(), second.StartedAtUtc?.ToUnixTimeSeconds());
+                Assert.Null(second.CompletedAtUtc);
+            });
+    }
+
     private async Task ResetDatabaseAsync()
     {
         using var scope = this._factory.Services.CreateScope();
