@@ -149,19 +149,6 @@ export const InventorySessionPage = () => {
 
   const displayedItems = items
 
-  const searchProductByEan = useCallback(async (ean: string) => {
-    try {
-      const product = await fetchProductByEan(ean)
-      return { status: 'found' as const, product }
-    } catch (error) {
-      const err = error as HttpError
-      if (isHttpError(err) && err.status === 404) {
-        return { status: 'not-found' as const, error: err }
-      }
-      return { status: 'error' as const, error: err }
-    }
-  }, [])
-
   const selectedUserDisplayName = selectedUser?.displayName ?? null
   const ownerUserId = selectedUser?.id?.trim() ?? ''
   const existingRunId = typeof sessionId === 'string' ? sessionId.trim() : ''
@@ -169,6 +156,46 @@ export const InventorySessionPage = () => {
   const shopId = shop?.id?.trim() ?? ''
   const isValidCountType =
     countType === CountType.Count1 || countType === CountType.Count2 || countType === CountType.Count3
+
+  const ensureScanPrerequisites = useCallback(() => {
+    if (!shopId) {
+      throw new Error('Sélectionnez une boutique valide avant de scanner un produit.')
+    }
+
+    if (!ownerUserId) {
+      throw new Error('Sélectionnez un utilisateur avant de scanner un produit.')
+    }
+
+    if (!locationId) {
+      throw new Error('Sélectionnez une zone avant de scanner un produit.')
+    }
+
+    if (!isValidCountType) {
+      throw new Error('Choisissez un type de comptage avant de scanner un produit.')
+    }
+  }, [isValidCountType, locationId, ownerUserId, shopId])
+
+  const searchProductByEan = useCallback(
+    async (ean: string) => {
+      try {
+        ensureScanPrerequisites()
+      } catch (error) {
+        return { status: 'error' as const, error }
+      }
+
+      try {
+        const product = await fetchProductByEan(ean)
+        return { status: 'found' as const, product }
+      } catch (error) {
+        const err = error as HttpError
+        if (isHttpError(err) && err.status === 404) {
+          return { status: 'not-found' as const, error: err }
+        }
+        return { status: 'error' as const, error: err }
+      }
+    },
+    [ensureScanPrerequisites],
+  )
 
   const ensureActiveRun = useCallback(async () => {
     if (items.length > 0) {
@@ -274,11 +301,14 @@ export const InventorySessionPage = () => {
       }
 
       const err = result.error
-      if (isHttpError(err)) {
-        setErrorMessage(buildHttpMessage('Erreur réseau', err))
-      } else {
-        setErrorMessage('Impossible de récupérer le produit. Réessayez ou ajoutez-le manuellement.')
-      }
+      setStatus(null)
+      setErrorMessage(
+        resolveLifecycleErrorMessage(
+          err,
+          'Impossible de récupérer le produit. Réessayez ou ajoutez-le manuellement.',
+        ),
+      )
+      setInputLookupStatus('error')
     },
     [addProductToSession, searchProductByEan],
   )
@@ -329,11 +359,13 @@ export const InventorySessionPage = () => {
           setInputLookupStatus('not-found')
         } else {
           const err = result.error
-          if (isHttpError(err)) {
-            setErrorMessage(buildHttpMessage('Erreur réseau', err))
-          } else {
-            setErrorMessage('Impossible de récupérer le produit. Réessayez ou ajoutez-le manuellement.')
-          }
+          setStatus(null)
+          setErrorMessage(
+            resolveLifecycleErrorMessage(
+              err,
+              'Impossible de récupérer le produit. Réessayez ou ajoutez-le manuellement.',
+            ),
+          )
           setInputLookupStatus('error')
         }
       })()
