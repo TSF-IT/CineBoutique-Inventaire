@@ -57,7 +57,7 @@ describe('SelectShopPage', () => {
 
     await waitFor(() => {
       expect(setShopSpy).toHaveBeenCalledWith(shops[1])
-      expect(navigateMock).toHaveBeenCalledWith('/inventory/start', {
+      expect(navigateMock).toHaveBeenCalledWith('/select-user', {
         replace: true,
         state: { redirectTo: '/' },
       })
@@ -86,7 +86,7 @@ describe('SelectShopPage', () => {
 
     await waitFor(() => {
       expect(setShopSpy).toHaveBeenCalledWith(shops[0])
-      expect(navigateMock).toHaveBeenCalledWith('/inventory/start', {
+      expect(navigateMock).toHaveBeenCalledWith('/select-user', {
         replace: true,
         state: { redirectTo: '/' },
       })
