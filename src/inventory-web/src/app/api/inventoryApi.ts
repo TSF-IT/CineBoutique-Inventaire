@@ -1,4 +1,3 @@
-import { z } from 'zod'
 import { CountType, LocationsSchema } from '../types/inventory'
 import type { CompletedRunDetail, CompletedRunSummary, OpenRunSummary } from '../types/inventory'
 import type {
@@ -10,64 +9,12 @@ import type {
 } from '../types/inventory'
 import http, { HttpError } from '@/lib/api/http'
 import { API_BASE } from '@/lib/api/config'
-import { areDevFixturesEnabled, cloneDevLocations, findDevLocationById } from './dev/fixtures'
 
 const isHttpError = (value: unknown): value is HttpError =>
   typeof value === 'object' &&
   value !== null &&
   typeof (value as { status?: unknown }).status === 'number' &&
   typeof (value as { url?: unknown }).url === 'string'
-
-const toHttpError = (message: string, url: string, problem?: unknown, status = 0): HttpError =>
-  Object.assign(new Error(message), {
-    status,
-    url,
-    problem,
-  })
-
-const shouldUseDevFixtures = (error: unknown, { httpCallSucceeded }: { httpCallSucceeded: boolean }): boolean => {
-  if (!import.meta.env.DEV || !areDevFixturesEnabled()) {
-    return false
-  }
-
-  if (httpCallSucceeded) {
-    return false
-  }
-
-  if (!error) {
-    return true
-  }
-
-  if (!isHttpError(error)) {
-    return true
-  }
-
-  if (error.status === 422) {
-    return false
-  }
-
-  if (error.status === 0 || error.status >= 500) {
-    return true
-  }
-
-  return error.status >= 400
-}
-
-const logDevFallback = (error: unknown, endpoint: string) => {
-  if (!import.meta.env.DEV) {
-    return
-  }
-
-  const details = isHttpError(error)
-    ? `statut HTTP ${error.status}${error.url ? ` (${error.url})` : ''}`
-    : error instanceof Error
-      ? error.message
-      : String(error)
-  console.warn(
-    `[DEV] Fallback fixtures pour ${endpoint} : ${details}. Activez VITE_DISABLE_DEV_FIXTURES=true pour désactiver cette aide.`,
-    error,
-  )
-}
 
 const tryExtractMessage = (value: unknown): string | null => {
   if (typeof value === 'string') {
@@ -128,128 +75,6 @@ const getHttpErrorMessage = (error: HttpError): string | null => {
     return fromProblem
   }
   return tryExtractMessage(error.body)
-}
-
-const generateUuid = (): string => {
-  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-    return crypto.randomUUID()
-  }
-
-  const template = 'xxxxxxxx-xxxx-4xxx-8xxx-xxxxxxxxxxxx'
-  return template.replace(/[xy]/g, (char) => {
-    const random = Math.floor(Math.random() * 16)
-    if (char === 'x') {
-      return random.toString(16)
-    }
-    return ((random & 0x3) | 0x8).toString(16)
-  })
-}
-
-const UPPERCASE_LOCATION_KEY_MAP: Record<string, keyof Location> = {
-  Id: 'id',
-  Code: 'code',
-  Label: 'label',
-  IsBusy: 'isBusy',
-  BusyBy: 'busyBy',
-  ActiveRunId: 'activeRunId',
-  ActiveCountType: 'activeCountType',
-  ActiveStartedAtUtc: 'activeStartedAtUtc',
-}
-
-const UPPERCASE_STATUS_KEY_MAP: Record<string, string> = {
-  CountType: 'countType',
-  Status: 'status',
-  RunId: 'runId',
-  OwnerDisplayName: 'ownerDisplayName',
-  OwnerUserId: 'ownerUserId',
-  StartedAtUtc: 'startedAtUtc',
-  CompletedAtUtc: 'completedAtUtc',
-}
-
-const mapUppercaseStatusObject = (src: unknown): unknown => {
-  if (!src || typeof src !== 'object') return src
-  const o = src as Record<string, unknown>
-  const r: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(o)) {
-    r[UPPERCASE_STATUS_KEY_MAP[k] ?? k] = v
-  }
-  return r
-}
-
-const mapUppercaseLocationKeys = (arr: unknown): unknown => {
-  if (!Array.isArray(arr)) return arr
-  return arr.map((item) => {
-    if (!item || typeof item !== 'object') return item
-    const src = item as Record<string, unknown>
-
-    const mappedEntries = Object.entries(UPPERCASE_LOCATION_KEY_MAP).reduce<Record<string, unknown>>(
-      (acc, [sourceKey, targetKey]) => {
-        if (sourceKey in src) {
-          acc[targetKey] = src[sourceKey]
-        }
-        return acc
-      },
-      {},
-    )
-
-    const statuses = (src.CountStatuses as unknown) ?? (src.countStatuses as unknown) ?? null
-
-    const countStatuses = Array.isArray(statuses)
-      ? statuses.map(mapUppercaseStatusObject)
-      : undefined
-
-    return {
-      ...src,
-      ...mappedEntries,
-      ...(countStatuses ? { countStatuses } : {}),
-    }
-  })
-}
-
-const createDefaultStatuses = () =>
-  [CountType.Count1, CountType.Count2].map((ct) => ({
-    countType: ct,
-    status: 'not_started',
-    runId: null,
-    ownerDisplayName: null,
-    ownerUserId: null,
-    startedAtUtc: null,
-    completedAtUtc: null,
-  }))
-
-const ensureLocationDefaults = (arr: unknown): unknown => {
-  if (!Array.isArray(arr)) return arr
-  return arr.map((loc) => {
-    if (!loc || typeof loc !== 'object') return loc
-    const o = loc as Record<string, unknown>
-    if (!Array.isArray(o.countStatuses)) {
-      o.countStatuses = createDefaultStatuses()
-    }
-    return o
-  })
-}
-
-const normaliseLocationsPayload = (payload: unknown): unknown => {
-  const normaliseArray = (value: unknown): unknown => mapUppercaseLocationKeys(value)
-
-  if (Array.isArray(payload)) {
-    return normaliseArray(payload)
-  }
-  if (payload && typeof payload === 'object') {
-    const candidateKeys = ['items', 'data', 'results', 'locations'] as const
-    for (const key of candidateKeys) {
-      const value = (payload as Record<string, unknown>)[key]
-      if (Array.isArray(value)) {
-        return normaliseArray(value)
-      }
-    }
-
-    const arrayValues = Object.values(payload as Record<string, unknown>).filter(Array.isArray)
-    if (arrayValues.length === 1) {
-      return normaliseArray(arrayValues[0])
-    }
-  }
-  return payload
 }
 
 export const fetchInventorySummary = async (): Promise<InventorySummary> => {
@@ -342,71 +167,14 @@ export const getCompletedRunDetail = async (runId: string): Promise<CompletedRun
   }
 }
 
-export const fetchLocations = async ({ shopId, countType }: { shopId: string; countType?: CountType }): Promise<Location[]> => {
-  const normalisedShopId = shopId?.trim()
-  if (!normalisedShopId) {
-    throw new Error('shopId requis pour récupérer les zones.')
+export const fetchLocations = async (shopId: string): Promise<Location[]> => {
+  if (!shopId) {
+    throw new Error('Aucune boutique sélectionnée.')
   }
 
-  let endpoint = '/locations'
-  let httpCallSucceeded = false
-  try {
-    const searchParams = new URLSearchParams()
-    searchParams.set('shopId', normalisedShopId)
-    if (countType !== undefined) {
-      searchParams.set('countType', String(countType))
-    }
-    const query = searchParams.toString()
-    endpoint = `/locations${query ? `?${query}` : ''}`
-    const raw = await http(`${API_BASE}${endpoint}`)
-    httpCallSucceeded = true
-    const payload = typeof raw === 'string' ? JSON.parse(raw) : raw
-    const normalised = normaliseLocationsPayload(payload)
-    const defaulted = ensureLocationDefaults(normalised)
-    try {
-      return LocationsSchema.parse(defaulted)
-    } catch (e1) {
-      const again = Array.isArray(defaulted)
-        ? defaulted.map((l) => {
-            const o = l as Record<string, unknown>
-            if (Array.isArray(o.countStatuses)) {
-              o.countStatuses = o.countStatuses.map(mapUppercaseStatusObject)
-            }
-            return o
-          })
-        : defaulted
-      try {
-        return LocationsSchema.parse(again)
-      } catch (e2) {
-        if (e2 instanceof z.ZodError) {
-          if (import.meta.env.DEV) {
-            console.warn('Validation /locations failed', e2.flatten())
-          }
-          throw toHttpError(
-            'Réponse /locations invalide.',
-            `${API_BASE}${endpoint}`,
-            e2.flatten(),
-            422,
-          )
-        }
-        throw e2
-      }
-    }
-  } catch (error) {
-    if (shouldUseDevFixtures(error, { httpCallSucceeded })) {
-      logDevFallback(error, `${API_BASE}${endpoint}`)
-      return cloneDevLocations()
-    }
-
-    if (isHttpError(error)) {
-      throw error
-    }
-    if (import.meta.env.DEV) {
-      console.error('Échec de récupération des zones', error)
-    }
-    const problem = error instanceof z.ZodError ? error.flatten() : error
-    throw toHttpError('Impossible de récupérer les zones.', `${API_BASE}${endpoint}`, problem)
-  }
+  const url = `${API_BASE}/locations?shopId=${encodeURIComponent(shopId)}`
+  const response = await http(url)
+  return LocationsSchema.parse(response)
 }
 
 export const fetchProductByEan = async (ean: string): Promise<Product> => {
@@ -479,28 +247,6 @@ export const completeInventoryRun = async (
     })) as CompleteInventoryRunResponse
   } catch (error) {
     if (isHttpError(error)) {
-      if (error.status === 404 && areDevFixturesEnabled()) {
-        const devLocation = findDevLocationById(locationId)
-        if (devLocation) {
-          logDevFallback(error, url)
-          const completionDate = new Date()
-          const runId =
-            typeof payload.runId === 'string' && payload.runId.trim().length > 0
-              ? payload.runId.trim()
-              : generateUuid()
-          const totalQuantity = payload.items.reduce((sum, item) => sum + item.quantity, 0)
-          return {
-            runId,
-            inventorySessionId: generateUuid(),
-            locationId: devLocation.id,
-            countType: payload.countType,
-            completedAtUtc: completionDate.toISOString(),
-            itemsCount: payload.items.length,
-            totalQuantity,
-          }
-        }
-      }
-
       const messageFromBody = getHttpErrorMessage(error)
       const problemPayload = error.problem ?? (error.body ? { body: error.body } : undefined)
 
