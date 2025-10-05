@@ -27,6 +27,15 @@ vi.mock('react-router-dom', async (importOriginal) => {
 })
 
 describe('SelectShopPage', () => {
+  const expectNavigationToUserSelection = () =>
+    expect(navigateMock).toHaveBeenCalledWith(
+      '/select-user',
+      expect.objectContaining({
+        replace: true,
+        state: { redirectTo: '/' },
+      }),
+    )
+
   beforeEach(() => {
     fetchShopsMock.mockReset()
     useShopMock.mockReset()
@@ -57,10 +66,7 @@ describe('SelectShopPage', () => {
 
     await waitFor(() => {
       expect(setShopSpy).toHaveBeenCalledWith(shops[1])
-      expect(navigateMock).toHaveBeenCalledWith('/select-user', {
-        replace: true,
-        state: { redirectTo: '/' },
-      })
+      expectNavigationToUserSelection()
     })
   })
 
@@ -86,10 +92,7 @@ describe('SelectShopPage', () => {
 
     await waitFor(() => {
       expect(setShopSpy).toHaveBeenCalledWith(shops[0])
-      expect(navigateMock).toHaveBeenCalledWith('/select-user', {
-        replace: true,
-        state: { redirectTo: '/' },
-      })
+      expectNavigationToUserSelection()
     })
   })
 
