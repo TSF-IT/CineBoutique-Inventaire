@@ -1,13 +1,14 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { configDefaults } from 'vitest/config'
+const DEV_BACKEND_ORIGIN = process.env.DEV_BACKEND_ORIGIN?.trim() || 'http://localhost:8080'
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: DEV_BACKEND_ORIGIN,
         changeOrigin: true,
         // on conserve /api -> /api (pas de rewrite)
         // rewrite: (path) => path, // inutile ici, juste pour clarifier
