@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { HomePage } from './HomePage'
 import { ShopProvider } from '@/state/ShopContext'
 import type { ConflictZoneDetail, InventorySummary, Location } from '../../types/inventory'
+import type { HttpError } from '@/lib/api/http'
 import { fetchInventorySummary, fetchLocations, getConflictZoneDetail } from '../../api/inventoryApi'
 import { ThemeProvider } from '../../../theme/ThemeProvider'
 
@@ -225,5 +226,45 @@ describe('HomePage', () => {
     fireEvent.click(buttons[0])
 
     expect(navigateMock).toHaveBeenCalledWith('/inventory/start')
+  })
+
+  it('ignore le 404 produit sur la Home', async () => {
+    const productNotFound = Object.assign(new Error('Produit introuvable'), {
+      status: 404,
+      url: 'http://localhost:5173/api/products/0000000000000',
+    }) as HttpError
+
+    mockedFetchSummary.mockRejectedValue(productNotFound)
+    mockedFetchLocations.mockResolvedValue([])
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    try {
+      render(
+        <ThemeProvider>
+          <ShopProvider>
+            <MemoryRouter>
+              <HomePage />
+            </MemoryRouter>
+          </ShopProvider>
+        </ThemeProvider>,
+      )
+
+      await waitFor(() => expect(mockedFetchSummary).toHaveBeenCalled())
+
+      await waitFor(() => {
+        expect(warnSpy).toHaveBeenCalledWith('[home] produit introuvable ignoré', productNotFound)
+      })
+
+      expect(errorSpy).not.toHaveBeenCalledWith('[home] http error', expect.anything())
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(
+        await screen.findByText('Les indicateurs ne sont pas disponibles pour le moment.'),
+      ).toBeInTheDocument()
+    } finally {
+      warnSpy.mockRestore()
+      errorSpy.mockRestore()
+    }
   })
 })
