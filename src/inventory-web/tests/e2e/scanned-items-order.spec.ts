@@ -62,7 +62,8 @@ test.describe("Ordre d'affichage des articles scannés", () => {
           inventorySessionId: '00000000-0000-4000-8000-000000000002',
           locationId: mockLocations[0].id,
           countType: 1,
-          operatorDisplayName: mockUsers[0].displayName,
+          ownerDisplayName: mockUsers[0].displayName,
+          ownerUserId: mockUsers[0].id,
           startedAtUtc: new Date().toISOString(),
         }),
       })

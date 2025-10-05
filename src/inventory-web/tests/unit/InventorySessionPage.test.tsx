@@ -56,8 +56,24 @@ vi.mock('../../src/app/contexts/InventoryContext', () => ({
       activeCountType: null,
       activeStartedAtUtc: null,
       countStatuses: [
-        { countType: 1, status: 'not_started', runId: null, operatorDisplayName: null, startedAtUtc: null, completedAtUtc: null },
-        { countType: 2, status: 'not_started', runId: null, operatorDisplayName: null, startedAtUtc: null, completedAtUtc: null },
+        {
+          countType: 1,
+          status: 'not_started',
+          runId: null,
+          ownerDisplayName: null,
+          ownerUserId: null,
+          startedAtUtc: null,
+          completedAtUtc: null,
+        },
+        {
+          countType: 2,
+          status: 'not_started',
+          runId: null,
+          ownerDisplayName: null,
+          ownerUserId: null,
+          startedAtUtc: null,
+          completedAtUtc: null,
+        },
       ],
     },
     sessionId: null,
@@ -85,7 +101,8 @@ describe('InventorySessionPage - ajout manuel', () => {
       inventorySessionId: 'mock-session',
       locationId: '11111111-1111-4111-8111-111111111111',
       countType: 1,
-      operatorDisplayName: mockShopUser.displayName,
+      ownerDisplayName: mockShopUser.displayName,
+      ownerUserId: mockShopUser.id,
       startedAtUtc: new Date().toISOString(),
     })
     releaseInventoryRunMock.mockReset()

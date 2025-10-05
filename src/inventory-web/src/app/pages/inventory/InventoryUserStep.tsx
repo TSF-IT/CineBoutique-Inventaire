@@ -87,7 +87,7 @@ export const InventoryUserStep = () => {
         </p>
         <Input
           label="Rechercher"
-          name="operatorQuery"
+          name="ownerQuery"
           placeholder="Rechercher un utilisateur"
           value={search}
           onChange={(event) => setSearch(event.target.value)}

@@ -50,15 +50,15 @@ const formatDateTime = (value: string | null | undefined) => {
   }).format(date)
 }
 
-const toValidOperator = (name: string | null | undefined) => {
+const toValidOwnerName = (name: string | null | undefined) => {
   const trimmed = name?.trim()
   return trimmed && trimmed.length > 0 ? trimmed : null
 }
 
-const formatOperator = (name: string | null | undefined) => toValidOperator(name) ?? '—'
+const formatOwnerName = (name: string | null | undefined) => toValidOwnerName(name) ?? '—'
 
-const formatOperatorForTitle = (run: CompletedRunSummary, detail?: CompletedRunDetail | null) =>
-  toValidOperator(detail?.operatorDisplayName ?? run.operatorDisplayName) ?? 'Inconnu'
+const formatOwnerForTitle = (run: CompletedRunSummary, detail?: CompletedRunDetail | null) =>
+  toValidOwnerName(detail?.ownerDisplayName ?? run.ownerDisplayName) ?? 'Inconnu'
 
 const formatDateOnly = (value: string | null | undefined) => {
   if (!value) {
@@ -92,9 +92,9 @@ const formatQuantity = (value: number) =>
   }).format(value)
 
 const buildRunTitle = (run: CompletedRunSummary, detail?: CompletedRunDetail | null) => {
-  const operator = formatOperatorForTitle(run, detail)
+  const owner = formatOwnerForTitle(run, detail)
   const completedOn = formatDateOnly(detail?.completedAtUtc ?? run.completedAtUtc)
-  return `${describeCountType(run.countType)} de la zone ${run.locationCode} par ${operator} le ${completedOn}`
+  return `${describeCountType(run.countType)} de la zone ${run.locationCode} par ${owner} le ${completedOn}`
 }
 
 const escapeCsvValue = (value: string) => `"${value.replace(/"/g, '""')}"`
@@ -406,7 +406,7 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
                 <p>
                   Opérateur :{' '}
                   <span className="font-semibold text-slate-900 dark:text-white">
-                    {formatOperator(runDetail?.operatorDisplayName ?? selectedRun.operatorDisplayName)}
+                  {formatOwnerName(runDetail?.ownerDisplayName ?? selectedRun.ownerDisplayName)}
                   </span>
                 </p>
                 <p className="mt-1">
@@ -498,7 +498,7 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
                             {run.locationCode} · {run.locationLabel}
                           </p>
                           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                            {describeCountType(run.countType)} • Opérateur : {formatOperator(run.operatorDisplayName)} • Terminé le {formatDateTime(run.completedAtUtc)}
+                            {describeCountType(run.countType)} • Opérateur : {formatOwnerName(run.ownerDisplayName)} • Terminé le {formatDateTime(run.completedAtUtc)}
                           </p>
                         </button>
                       </li>
