@@ -57,14 +57,20 @@ export const SelectShopPage = () => {
         if (error instanceof DOMException && error.name === 'AbortError') {
           return
         }
-        console.error('[select-shop] échec du chargement des boutiques', error)
+        if (import.meta.env.DEV) {
+          console.warn('[select-shop] échec du chargement des boutiques', error)
+        }
         setShops([])
         setStatus('error')
         if (error instanceof TypeError) {
-          setErrorMessage('Connexion impossible. Vérifiez votre réseau puis réessayez.')
+          setErrorMessage(
+            'Connexion impossible. Vérifie ta connexion réseau puis réessaie. Vérifie également que l’API est lancée et que le proxy Vite pointe la bonne origine via DEV_BACKEND_ORIGIN.'
+          )
           return
         }
-        setErrorMessage(error instanceof Error ? error.message : DEFAULT_ERROR_MESSAGE)
+        setErrorMessage(
+          'Impossible de charger la liste des boutiques. Vérifie que l’API est lancée et que le proxy Vite pointe la bonne origine via DEV_BACKEND_ORIGIN.'
+        )
       })
 
     return () => {
