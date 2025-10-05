@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { http, type HttpError } from './http'
+import http, { type HttpError } from './http'
 
-const RESPONSE_URL = 'http://example.com/test'
+const API_URL = '/api/test'
 
 const mockResponse = (body: string, options: { status?: number; headers?: Record<string, string> } = {}) => {
   const { status = 200, headers = {} } = options
@@ -9,7 +9,7 @@ const mockResponse = (body: string, options: { status?: number; headers?: Record
     status,
     headers,
   })
-  Object.defineProperty(response, 'url', { value: RESPONSE_URL })
+  Object.defineProperty(response, 'url', { value: API_URL })
   return response
 }
 
@@ -24,40 +24,34 @@ describe('http helper', () => {
       mockResponse(JSON.stringify({ foo: 'bar' }), { headers: { 'Content-Type': 'application/json' } }),
     )
 
-    const result = await http(RESPONSE_URL)
+    const result = await http(API_URL)
 
     expect(result).toEqual({ foo: 'bar' })
   })
 
-  it('ajoute le header X-Shop-Id quand une boutique est sélectionnée', async () => {
+  it("ajoute l'identifiant de boutique dans la requête quand une boutique est sélectionnée", async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       mockResponse(JSON.stringify({ foo: 'bar' }), { headers: { 'Content-Type': 'application/json' } }),
     )
 
     localStorage.setItem('cb.shop', JSON.stringify({ id: 'shop-123', name: 'Shop démo' }))
 
-    await http(RESPONSE_URL)
+    await http(API_URL)
 
-    const [, init] = fetchSpy.mock.calls[0] ?? []
-    const headers = init?.headers as Headers | undefined
+    const [calledUrl] = fetchSpy.mock.calls[0] ?? []
+    const parsedUrl = typeof calledUrl === 'string' ? new URL(calledUrl, window.location.origin) : null
 
-    expect(headers?.get('X-Shop-Id')).toBe('shop-123')
+    expect(parsedUrl?.searchParams.get('shopId')).toBe('shop-123')
   })
 
-  it('lève une HttpError quand le content-type est non JSON', async () => {
+  it('retourne le texte brut quand la réponse est non JSON', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
       mockResponse('<html>oops</html>', { headers: { 'Content-Type': 'text/html' } }),
     )
 
-    const expected: Partial<HttpError> = {
-      message: expect.stringContaining('Réponse non JSON') as unknown as string,
-      problem: expect.objectContaining({
-        contentType: 'text/html',
-        snippet: expect.stringContaining('<html>'),
-      }) as unknown,
-    }
+    const result = await http(API_URL)
 
-    await expect(http(RESPONSE_URL)).rejects.toMatchObject(expected)
+    expect(result).toBe('<html>oops</html>')
   })
 
   it('lève une HttpError quand le JSON est invalide', async () => {
@@ -73,6 +67,6 @@ describe('http helper', () => {
       }) as unknown,
     }
 
-    await expect(http(RESPONSE_URL)).rejects.toMatchObject(expected)
+    await expect(http(API_URL)).rejects.toMatchObject(expected)
   })
 })

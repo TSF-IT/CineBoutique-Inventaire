@@ -161,7 +161,7 @@ test.describe('Scanner avec BarcodeDetector', () => {
       await route.fallback()
     })
 
-    await page.route(`**/api/products/${simulatedEan}`, async (route, request) => {
+    await page.route(`**/api/products/${simulatedEan}**`, async (route, request) => {
       if (request.method() === 'GET') {
         await route.fulfill({
           status: 200,
