@@ -17,6 +17,10 @@ internal sealed class LocationCountStatusRow
 
     public DateTime? CompletedAtUtc { get; set; }
 
+    public string? OwnerDisplayName { get; set; }
+
+    public Guid? OwnerUserId { get; set; }
+
     public string? OperatorDisplayName { get; set; }
 }
 

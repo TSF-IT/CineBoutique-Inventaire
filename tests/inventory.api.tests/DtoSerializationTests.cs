@@ -29,17 +29,20 @@ public sealed class DtoSerializationTests
                     CountType = 1,
                     Status = LocationCountStatus.Completed,
                     RunId = Guid.Parse("bbbbbbbb-2222-4222-8222-555555555555"),
-                    OperatorDisplayName = "louise",
-                    StartedAtUtc = DateTimeOffset.Parse("2024-12-31T08:00:00Z", CultureInfo.InvariantCulture),
-                    CompletedAtUtc = DateTimeOffset.Parse("2024-12-31T09:00:00Z", CultureInfo.InvariantCulture)
+                    OwnerDisplayName = "louise",
+                    OwnerUserId = Guid.Parse("bbbbbbbb-9999-4999-8999-aaaaaaaaaaaa"),
+                    StartedAtUtc = "2024-12-31T08:00:00+00:00",
+                    CompletedAtUtc = "2024-12-31T09:00:00+00:00"
                 },
                 new LocationCountStatusDto
                 {
                     CountType = 2,
                     Status = LocationCountStatus.InProgress,
                     RunId = Guid.Parse("cccccccc-3333-4333-8333-666666666666"),
-                    OperatorDisplayName = "charles",
-                    StartedAtUtc = DateTimeOffset.Parse("2025-01-01T10:00:00Z", CultureInfo.InvariantCulture)
+                    OwnerDisplayName = null,
+                    OwnerUserId = null,
+                    StartedAtUtc = "2025-01-01T10:00:00+00:00",
+                    CompletedAtUtc = string.Empty
                 }
             ]
         };
@@ -57,8 +60,11 @@ public sealed class DtoSerializationTests
         Assert.Contains("\"countStatuses\":[", json, StringComparison.Ordinal);
         Assert.Contains("\"countType\":1", json, StringComparison.Ordinal);
         Assert.Contains("\"status\":\"completed\"", json, StringComparison.Ordinal);
-        Assert.Contains("\"operatorDisplayName\":\"louise\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"ownerDisplayName\":\"louise\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"ownerUserId\":\"bbbbbbbb-9999-4999-8999-aaaaaaaaaaaa\"", json, StringComparison.Ordinal);
         Assert.Contains("\"completedAtUtc\":\"2024-12-31T09:00:00+00:00\"", json, StringComparison.Ordinal);
         Assert.Contains("\"status\":\"in_progress\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"ownerDisplayName\":null", json, StringComparison.Ordinal);
+        Assert.Contains("\"startedAtUtc\":\"2025-01-01T10:00:00+00:00\"", json, StringComparison.Ordinal);
     }
 }

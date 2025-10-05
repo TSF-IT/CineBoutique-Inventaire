@@ -562,7 +562,9 @@ ORDER BY l.""Code"" ASC;";
     cr.""Id""          AS ""RunId"",
     cr.""StartedAtUtc"",
     cr.""CompletedAtUtc"",
-    {openRunsOperatorSql.Projection} AS ""OperatorDisplayName""
+    {openRunsOperatorSql.OwnerDisplayProjection} AS ""OwnerDisplayName"",
+    {openRunsOperatorSql.OperatorDisplayProjection} AS ""OperatorDisplayName"",
+    {openRunsOperatorSql.OwnerUserIdProjection} AS ""OwnerUserId""
 FROM ""CountingRun"" cr
 {AppendJoinClause(openRunsOperatorSql.JoinClause)}
 WHERE cr.""CompletedAtUtc"" IS NULL
@@ -577,7 +579,9 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""StartedAtUtc"" DESC;";
     cr.""Id""           AS ""RunId"",
     cr.""StartedAtUtc"",
     cr.""CompletedAtUtc"",
-    {completedRunsOperatorSql.Projection} AS ""OperatorDisplayName""
+    {completedRunsOperatorSql.OwnerDisplayProjection} AS ""OwnerDisplayName"",
+    {completedRunsOperatorSql.OperatorDisplayProjection} AS ""OperatorDisplayName"",
+    {completedRunsOperatorSql.OwnerUserIdProjection} AS ""OwnerUserId""
 FROM ""CountingRun"" cr
 {AppendJoinClause(completedRunsOperatorSql.JoinClause)}
 WHERE cr.""CompletedAtUtc"" IS NOT NULL
@@ -616,6 +620,15 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                 .OrderBy(value => value)
                 .ToArray();
 
+            static string? NormalizeDisplayName(string? value) =>
+                string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+            static Guid? NormalizeUserId(Guid? value) =>
+                value is { } guid && guid != Guid.Empty ? guid : null;
+
+            static string FormatTimestamp(DateTime? value) =>
+                value.HasValue ? TimeUtil.ToUtcOffset(value.Value).ToString("O") : string.Empty;
+
             foreach (var location in locations)
             {
                 var statuses = new List<LocationCountStatusDto>(targetCountTypes.Length);
@@ -632,8 +645,10 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                     {
                         status.Status = LocationCountStatus.InProgress;
                         status.RunId = EndpointUtilities.SanitizeRunId(open.RunId);
-                        status.OperatorDisplayName = open.OperatorDisplayName;
-                        status.StartedAtUtc = TimeUtil.ToUtcOffset(open.StartedAtUtc);
+                        status.OwnerDisplayName = NormalizeDisplayName(open.OwnerDisplayName);
+                        status.OwnerUserId = NormalizeUserId(open.OwnerUserId);
+                        status.StartedAtUtc = FormatTimestamp(open.StartedAtUtc);
+                        status.CompletedAtUtc = FormatTimestamp(open.CompletedAtUtc);
                     }
                     else
                     {
@@ -642,9 +657,10 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                         {
                             status.Status = LocationCountStatus.Completed;
                             status.RunId = EndpointUtilities.SanitizeRunId(completed.RunId);
-                            status.OperatorDisplayName = completed.OperatorDisplayName;
-                            status.StartedAtUtc = TimeUtil.ToUtcOffset(completed.StartedAtUtc);
-                            status.CompletedAtUtc = TimeUtil.ToUtcOffset(completed.CompletedAtUtc);
+                            status.OwnerDisplayName = NormalizeDisplayName(completed.OwnerDisplayName);
+                            status.OwnerUserId = NormalizeUserId(completed.OwnerUserId);
+                            status.StartedAtUtc = FormatTimestamp(completed.StartedAtUtc);
+                            status.CompletedAtUtc = FormatTimestamp(completed.CompletedAtUtc);
                         }
                     }
 
@@ -673,7 +689,9 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                     location.ActiveRunId = EndpointUtilities.SanitizeRunId(mostRecent?.RunId);
                     location.ActiveCountType = mostRecent?.CountType;
                     location.ActiveStartedAtUtc = TimeUtil.ToUtcOffset(mostRecent?.StartedAtUtc);
-                    location.BusyBy = mostRecent?.OperatorDisplayName;
+                    var normalizedBusy = NormalizeDisplayName(mostRecent?.OwnerDisplayName)
+                        ?? NormalizeDisplayName(mostRecent?.OperatorDisplayName);
+                    location.BusyBy = normalizedBusy;
                 }
                 else
                 {
@@ -686,7 +704,9 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                     location.ActiveRunId = EndpointUtilities.SanitizeRunId(mostRecent?.RunId);
                     location.ActiveCountType = mostRecent?.CountType;
                     location.ActiveStartedAtUtc = TimeUtil.ToUtcOffset(mostRecent?.StartedAtUtc);
-                    location.BusyBy = mostRecent?.OperatorDisplayName;
+                    var normalizedBusy = NormalizeDisplayName(mostRecent?.OwnerDisplayName)
+                        ?? NormalizeDisplayName(mostRecent?.OperatorDisplayName);
+                    location.BusyBy = normalizedBusy;
                 }
             }
 
@@ -2006,7 +2026,12 @@ ORDER BY cl.""CountingRunId"", p.""Id"", cl.""CountedAtUtc"" DESC, cl.""Id"" DES
 
     private sealed record OperatorColumnsState(bool HasOperatorDisplayName, bool OperatorDisplayNameIsNullable, bool HasOwnerUserId);
 
-    private sealed record OperatorSqlFragments(string Projection, string? JoinClause);
+    private sealed record OperatorSqlFragments(
+        string Projection,
+        string OwnerDisplayProjection,
+        string OperatorDisplayProjection,
+        string OwnerUserIdProjection,
+        string? JoinClause);
 
     private static async Task<OperatorColumnsState> DetectOperatorColumnsAsync(
         IDbConnection connection,
@@ -2032,21 +2057,35 @@ ORDER BY cl.""CountingRunId"", p.""Id"", cl.""CountedAtUtc"" DESC, cl.""Id"" DES
         string ownerAlias,
         OperatorColumnsState state)
     {
+        var ownerUserIdProjection = state.HasOwnerUserId
+            ? $"{runAlias}.\"OwnerUserId\""
+            : "NULL::uuid";
+
+        var operatorDisplayProjection = state.HasOperatorDisplayName
+            ? $"{runAlias}.\"OperatorDisplayName\""
+            : "NULL::text";
+
         if (state.HasOwnerUserId)
         {
+            var ownerDisplayProjection = $"{ownerAlias}.\"DisplayName\"";
             var joinClause = $"LEFT JOIN \"ShopUser\" {ownerAlias} ON {ownerAlias}.\"Id\" = {runAlias}.\"OwnerUserId\"";
-            var projection = state.HasOperatorDisplayName
-                ? $"COALESCE({ownerAlias}.\"DisplayName\", {runAlias}.\"OperatorDisplayName\")"
-                : $"{ownerAlias}.\"DisplayName\"";
-            return new OperatorSqlFragments(projection, joinClause);
+            var projection = $"COALESCE({ownerDisplayProjection}, {operatorDisplayProjection})";
+            return new OperatorSqlFragments(
+                projection,
+                ownerDisplayProjection,
+                operatorDisplayProjection,
+                ownerUserIdProjection,
+                joinClause);
         }
 
-        if (state.HasOperatorDisplayName)
-        {
-            return new OperatorSqlFragments($"{runAlias}.\"OperatorDisplayName\"", null);
-        }
-
-        return new OperatorSqlFragments("NULL::text", null);
+        const string ownerDisplayFallback = "NULL::text";
+        var defaultProjection = $"COALESCE({ownerDisplayFallback}, {operatorDisplayProjection})";
+        return new OperatorSqlFragments(
+            defaultProjection,
+            ownerDisplayFallback,
+            operatorDisplayProjection,
+            ownerUserIdProjection,
+            null);
     }
 
     private static string AppendJoinClause(string? joinClause) =>
