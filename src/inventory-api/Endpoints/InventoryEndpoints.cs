@@ -642,27 +642,18 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                     };
                 }
 
-                var runsForLocation = new List<CountingRunRow>(3);
-
                 var run1 = Resolve(1);
-                if (run1 is not null)
-                {
-                    runsForLocation.Add(run1);
-                }
-
                 var run2 = Resolve(2);
-                if (run2 is not null)
-                {
-                    runsForLocation.Add(run2);
-                }
-
                 var run3 = Resolve(3);
-                if (run3 is not null)
-                {
-                    runsForLocation.Add(run3);
-                }
 
-                location.CountStatuses = BuildCountStatuses(runsForLocation);
+                location.CountStatuses = BuildCountStatuses(new[]
+                {
+                    run1,
+                    run2,
+                    run3
+                }
+                .Where(r => r is not null)
+                .Select(r => r!));
 
                 if (countType is { } requestedType)
                 {
@@ -692,12 +683,9 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                 }
             }
 
-            foreach (var dto in locations)
+            foreach (var loc in locations)
             {
-                dto.BusyBy = string.IsNullOrWhiteSpace(dto.BusyBy) ? null : dto.BusyBy;
-                dto.ActiveRunId = dto.ActiveRunId ?? null;
-                dto.ActiveCountType = dto.ActiveCountType is > 0 ? dto.ActiveCountType : null;
-                dto.ActiveStartedAtUtc = dto.ActiveStartedAtUtc == default ? null : dto.ActiveStartedAtUtc;
+                loc.BusyBy = string.IsNullOrWhiteSpace(loc.BusyBy) ? null : loc.BusyBy.Trim();
             }
 
             return Results.Ok(locations);
@@ -754,36 +742,36 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
 
     private static IReadOnlyList<LocationCountStatusDto> BuildCountStatuses(IEnumerable<CountingRunRow> runsForLocation)
     {
-        var statuses = new List<LocationCountStatusDto>(3);
+        var byType = runsForLocation
+            .GroupBy(r => r.CountType)
+            .ToDictionary(group => group.Key, group => group.First());
 
-        LocationCountStatusDto Make(short ct, CountingRunRow? run)
-            => new()
-            {
-                CountType = ct,
-                Status = run is null
-                    ? LocationCountStatus.NotStarted
-                    : run.CompletedAtUtc is not null
-                        ? LocationCountStatus.Completed
-                        : LocationCountStatus.InProgress,
-                RunId = run?.Id,
-                OwnerDisplayName = run?.OperatorDisplayName,
-                OwnerUserId = run?.OwnerUserId,
-                StartedAtUtc = run?.StartedAtUtc,
-                CompletedAtUtc = run?.CompletedAtUtc,
-            };
-
-        var run1 = runsForLocation.FirstOrDefault(r => r.CountType == 1);
-        var run2 = runsForLocation.FirstOrDefault(r => r.CountType == 2);
-        var run3 = runsForLocation.FirstOrDefault(r => r.CountType == 3);
-
-        statuses.Add(Make(1, run1));
-        statuses.Add(Make(2, run2));
-        if (run3 is not null)
+        LocationCountStatusDto Make(short ct, CountingRunRow? run) => new()
         {
-            statuses.Add(Make(3, run3));
+            CountType = ct,
+            Status = run is null
+                ? LocationCountStatus.NotStarted
+                : run.CompletedAtUtc is not null
+                    ? LocationCountStatus.Completed
+                    : LocationCountStatus.InProgress,
+            RunId = run?.Id,
+            OwnerDisplayName = run?.OperatorDisplayName,
+            OwnerUserId = run?.OwnerUserId,
+            StartedAtUtc = run?.StartedAtUtc,
+            CompletedAtUtc = run?.CompletedAtUtc,
+        };
+
+        var s1 = Make(1, byType.GetValueOrDefault(1));
+        var s2 = Make(2, byType.GetValueOrDefault(2));
+
+        var list = new List<LocationCountStatusDto>(3) { s1, s2 };
+
+        if (byType.ContainsKey(3))
+        {
+            list.Add(Make(3, byType[3]));
         }
 
-        return statuses;
+        return list;
     }
 
     private static void MapStartEndpoint(IEndpointRouteBuilder app)
