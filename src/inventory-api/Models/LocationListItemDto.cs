@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace CineBoutique.Inventory.Api.Models;
 
@@ -18,11 +19,15 @@ public sealed class LocationCountStatusDto
 
     public Guid? RunId { get; set; }
 
-    public string? OperatorDisplayName { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public string? OwnerDisplayName { get; set; }
 
-    public DateTimeOffset? StartedAtUtc { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public Guid? OwnerUserId { get; set; }
 
-    public DateTimeOffset? CompletedAtUtc { get; set; }
+    public string StartedAtUtc { get; set; } = string.Empty;
+
+    public string CompletedAtUtc { get; set; } = string.Empty;
 }
 
 public sealed class LocationListItemDto
