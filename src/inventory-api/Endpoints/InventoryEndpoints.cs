@@ -786,14 +786,15 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-            var columnsState = await DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
-
             const string selectLocationSql =
-                "SELECT \"Id\", \"ShopId\", \"Code\", \"Label\" FROM \"Location\" WHERE \"Id\" = @LocationId LIMIT 1;";
+                "SELECT \"Id\", \"ShopId\", \"Code\", \"Label\" FROM \"Location\" WHERE \"Id\" = @LocationId AND \"ShopId\" = @ShopId LIMIT 1;";
 
             var location = await connection
                 .QuerySingleOrDefaultAsync<LocationMetadataRow>(
-                    new CommandDefinition(selectLocationSql, new { LocationId = locationId }, cancellationToken: cancellationToken))
+                    new CommandDefinition(
+                        selectLocationSql,
+                        new { LocationId = locationId, ShopId = request.ShopId },
+                        cancellationToken: cancellationToken))
                 .ConfigureAwait(false);
 
             if (location is null)
@@ -801,10 +802,7 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                 return Results.NotFound(new { message = "La zone demandée est introuvable." });
             }
 
-            if (location.ShopId != request.ShopId)
-            {
-                return Results.BadRequest(new { message = "La zone ne correspond pas à la boutique demandée." });
-            }
+            var columnsState = await DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
 
             if (connection is not NpgsqlConnection npgsqlConnection)
             {
@@ -887,6 +885,10 @@ LIMIT 1;";
                     InventorySessionId = active.InventorySessionId,
                     LocationId = locationId,
                     CountType = request.CountType,
+                    OwnerUserId = columnsState.HasOwnerUserId
+                        ? active.OwnerUserId ?? request.OwnerUserId
+                        : request.OwnerUserId,
+                    OwnerDisplayName = ownerDisplayName,
                     OperatorDisplayName = active.OperatorDisplayName ?? ownerDisplayName,
                     StartedAtUtc = TimeUtil.ToUtcOffset(active.StartedAtUtc)
                 });
@@ -959,6 +961,8 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc{ownerValue}{oper
                 InventorySessionId = sessionId,
                 LocationId = locationId,
                 CountType = request.CountType,
+                OwnerUserId = request.OwnerUserId,
+                OwnerDisplayName = ownerDisplayName,
                 OperatorDisplayName = ownerDisplayName ?? storedOperatorDisplayName,
                 StartedAtUtc = now
             });
