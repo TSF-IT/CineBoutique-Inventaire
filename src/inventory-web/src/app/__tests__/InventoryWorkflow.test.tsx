@@ -91,6 +91,7 @@ const {
   const emptySummary: InventorySummary = {
     activeSessions: 0,
     openRuns: 0,
+    completedRuns: 0,
     conflicts: 0,
     lastActivityUtc: null,
     openRunDetails: [],
@@ -314,6 +315,7 @@ describe("Workflow d'inventaire", () => {
     fetchInventorySummaryMock.mockImplementation(async (): Promise<InventorySummary> => ({
       activeSessions: 0,
       openRuns: 0,
+      completedRuns: 0,
       conflicts: 0,
       lastActivityUtc: null,
       openRunDetails: [],
@@ -425,6 +427,7 @@ describe("Workflow d'inventaire", () => {
     fetchInventorySummaryMock.mockResolvedValueOnce({
       activeSessions: 0,
       openRuns: 0,
+      completedRuns: 0,
       conflicts: 1,
       lastActivityUtc: null,
       openRunDetails: [],
@@ -489,6 +492,7 @@ describe("Workflow d'inventaire", () => {
     fetchInventorySummaryMock.mockResolvedValueOnce({
       activeSessions: 0,
       openRuns: 0,
+      completedRuns: 0,
       conflicts: 1,
       lastActivityUtc: null,
       openRunDetails: [],

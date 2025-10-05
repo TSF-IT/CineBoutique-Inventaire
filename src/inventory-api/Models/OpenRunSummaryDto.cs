@@ -14,7 +14,9 @@ public sealed class OpenRunSummaryDto
 
     public short CountType { get; set; }
 
-    public string? OperatorDisplayName { get; set; }
+    public string? OwnerDisplayName { get; set; }
+
+    public Guid? OwnerUserId { get; set; }
 
     public DateTimeOffset StartedAtUtc { get; set; }
 }

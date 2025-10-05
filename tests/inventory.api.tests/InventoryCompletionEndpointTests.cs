@@ -204,7 +204,7 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
         Assert.Equal(locationId, conflict.LocationId);
         Assert.True(conflict.CountType is 1 or 2, "Le conflit doit provenir d'un des deux premiers comptages.");
 
-        var summaryResponse = await _client.GetAsync("/api/inventories/summary");
+        var summaryResponse = await _client.GetAsync($"/api/inventories/summary?shopId={shopId:D}");
         summaryResponse.EnsureSuccessStatusCode();
         var summary = await summaryResponse.Content.ReadFromJsonAsync<InventorySummaryDto>();
         Assert.NotNull(summary);
