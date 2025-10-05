@@ -129,8 +129,8 @@ describe('completeInventoryRun (dev fixtures)', () => {
 
     const payload: CompleteInventoryRunPayload = {
       runId: 'existing-run-id',
+      ownerUserId: '00000000-0000-0000-0000-000000000001',
       countType: 1,
-      operator: 'Testeur',
       items: [{ ean: '1234567890123', quantity: 2, isManual: false }],
     }
 
@@ -158,7 +158,7 @@ describe('completeInventoryRun (dev fixtures)', () => {
     await expect(
       completeInventoryRun('44444444-4444-4444-8444-444444444444', {
         countType: 1,
-        operator: 'Testeur',
+        ownerUserId: '00000000-0000-0000-0000-000000000001',
         items: [{ ean: '1234567890123', quantity: 1, isManual: false }],
         runId: null,
       }),
@@ -193,12 +193,19 @@ describe('startInventoryRun', () => {
 
     const { startInventoryRun } = await import('./inventoryApi')
 
-    const result = await startInventoryRun('loc-1', { countType: 1, operator: 'Utilisateur Paris' })
+    const result = await startInventoryRun('loc-1', {
+      shopId: 'shop-1',
+      ownerUserId: 'user-1',
+      countType: 1,
+    })
 
     expect(result).toMatchObject({ runId: 'run-1', countType: 1 })
     expect(httpMock).toHaveBeenCalledWith(
       expect.stringContaining('/inventories/loc-1/start'),
-      expect.objectContaining({ method: 'POST' }),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ shopId: 'shop-1', ownerUserId: 'user-1', countType: 1 }),
+      }),
     )
   })
 })
@@ -223,10 +230,14 @@ describe('releaseInventoryRun', () => {
 
     const { releaseInventoryRun } = await import('./inventoryApi')
 
-    await expect(releaseInventoryRun('loc-1', 'run-1', 'Utilisateur Paris')).resolves.toBeUndefined()
+    await expect(releaseInventoryRun('loc-1', 'run-1', '00000000-0000-0000-0000-000000000001')).resolves.toBeUndefined()
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining('/inventories/loc-1/runs/run-1'),
-      expect.objectContaining({ method: 'DELETE' }),
+      expect.stringContaining('/inventories/loc-1/release'),
+      expect.objectContaining({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ runId: 'run-1', ownerUserId: '00000000-0000-0000-0000-000000000001' }),
+      }),
     )
   })
 
@@ -241,7 +252,7 @@ describe('releaseInventoryRun', () => {
 
     const { releaseInventoryRun } = await import('./inventoryApi')
 
-    await expect(releaseInventoryRun('loc-1', 'run-1', 'Utilisateur Paris')).rejects.toMatchObject({
+    await expect(releaseInventoryRun('loc-1', 'run-1', '00000000-0000-0000-0000-000000000001')).rejects.toMatchObject({
       message: 'Comptage détenu par Paul.',
       status: 409,
     })

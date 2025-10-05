@@ -656,7 +656,11 @@ describe("Workflow d'inventaire", () => {
     await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
     expect(startInventoryRunMock).toHaveBeenCalledWith(
       reserveLocation.id,
-      expect.objectContaining({ countType: 1, operator: shopUsers[0].displayName }),
+      expect.objectContaining({
+        countType: 1,
+        ownerUserId: shopUsers[0].id,
+        shopId: testShop.id,
+      }),
     )
   })
 
@@ -685,7 +689,7 @@ describe("Workflow d'inventaire", () => {
     expect(lastCall).toBeDefined()
     const [locationId, payload] = lastCall!
     expect(locationId).toBe(reserveLocation.id)
-    expect(payload).toMatchObject({ countType: 1, operator: shopUsers[0].displayName })
+    expect(payload).toMatchObject({ countType: 1, ownerUserId: shopUsers[0].id, shopId: testShop.id })
   })
 
   it("ne libère pas le run immédiatement après l'avoir démarré", async () => {
@@ -737,7 +741,7 @@ describe("Workflow d'inventaire", () => {
       expect(releaseInventoryRunMock).toHaveBeenCalledWith(
         reserveLocation.id,
         'run-lock-1',
-        shopUsers[0].displayName,
+        shopUsers[0].id,
       ),
     )
 
@@ -817,7 +821,7 @@ describe("Workflow d'inventaire", () => {
     expect(payload).toMatchObject({
       runId: 'run-lock-1',
       countType: CountType.Count2,
-      operator: shopUsers[0].displayName,
+      ownerUserId: shopUsers[0].id,
     })
     expect(payload.items).toEqual(
       expect.arrayContaining([
