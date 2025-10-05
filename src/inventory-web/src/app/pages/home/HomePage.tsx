@@ -103,7 +103,7 @@ export const HomePage = () => {
     if (!shop?.id) {
       return Promise.resolve<Location[]>([])
     }
-    return fetchLocations({ shopId: shop.id })
+    return fetchLocations(shop.id)
   }, [shop?.id])
 
   const {

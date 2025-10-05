@@ -15,6 +15,35 @@ const mockLocations = [
     activeRunId: null,
     activeCountType: 1,
     activeStartedAtUtc: null,
+    countStatuses: [
+      {
+        countType: 1,
+        status: 'not_started',
+        runId: null,
+        ownerDisplayName: null,
+        ownerUserId: null,
+        startedAtUtc: null,
+        completedAtUtc: null,
+      },
+      {
+        countType: 2,
+        status: 'not_started',
+        runId: null,
+        ownerDisplayName: null,
+        ownerUserId: null,
+        startedAtUtc: null,
+        completedAtUtc: null,
+      },
+      {
+        countType: 3,
+        status: 'not_started',
+        runId: null,
+        ownerDisplayName: null,
+        ownerUserId: null,
+        startedAtUtc: null,
+        completedAtUtc: null,
+      },
+    ],
   },
 ]
 

@@ -132,7 +132,7 @@ export const AdminLocationsPage = () => {
     if (!shop?.id) {
       return Promise.resolve<Location[]>([])
     }
-    return fetchLocations({ shopId: shop.id })
+    return fetchLocations(shop.id)
   }, [shop?.id])
 
   const { data, loading, error, execute, setData } = useAsync(loadLocations, [loadLocations], {
