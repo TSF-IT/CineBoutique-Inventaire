@@ -48,5 +48,39 @@ describe('LocationsSchema', () => {
     expect(result[0].countStatuses[0].status).toBe('completed')
     expect(result[0].countStatuses[1].status).toBe('not_started')
     expect(result[0].countStatuses[1]).toHaveProperty('ownerDisplayName', null)
+    expect(result[0].countStatuses[1].startedAtUtc).toBeNull()
+    expect(result[0].countStatuses[1].completedAtUtc).toBeNull()
+  })
+
+  it('normalise les UUID vides ou "null" en null dans les statuts', () => {
+    const sample = [
+      {
+        id: '9c2c1c57-f1fd-4439-a024-73563f0ef6d3',
+        code: 'LOC-02',
+        label: 'Réserve 2',
+        isBusy: false,
+        busyBy: '  null  ',
+        activeRunId: 'null',
+        activeCountType: null,
+        activeStartedAtUtc: null,
+        countStatuses: [
+          {
+            countType: 1,
+            status: 'not_started',
+            runId: '',
+            ownerDisplayName: null,
+            ownerUserId: ' null ',
+            startedAtUtc: null,
+            completedAtUtc: null,
+          },
+        ],
+      },
+    ]
+
+    const [location] = LocationsSchema.parse(sample)
+
+    expect(location.activeRunId).toBeNull()
+    expect(location.countStatuses[0]?.runId).toBeNull()
+    expect(location.countStatuses[0]?.ownerUserId).toBeNull()
   })
 })
