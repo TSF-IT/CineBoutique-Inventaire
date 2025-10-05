@@ -1,5 +1,5 @@
 // Modifications : chargement des zones pour le compteur terminé et panneau enrichi des runs ouverts.
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { Link, useNavigate } from 'react-router-dom'
 import { fetchInventorySummary, fetchLocations } from '../../api/inventoryApi'
@@ -60,11 +60,12 @@ const describeError = (error: unknown): { title: string; details?: string } | nu
 
 export const HomePage = () => {
   const navigate = useNavigate()
-  const { shop, setShop } = useShop()
+  const { shop, setShop, isLoaded } = useShop()
   const [openRunsModalOpen, setOpenRunsModalOpen] = useState(false)
   const [completedRunsModalOpen, setCompletedRunsModalOpen] = useState(false)
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
   const [selectedZone, setSelectedZone] = useState<ConflictZoneSummary | null>(null)
+  const lastLoadedShopIdRef = useRef<string | null>(null)
   const onError = useCallback((error: unknown) => {
     if (isProductNotFoundError(error)) {
       console.warn('[home] produit introuvable ignoré', error)
@@ -74,9 +75,6 @@ export const HomePage = () => {
   }, [])
 
   const fetchSummarySafely = useCallback(async () => {
-    if (!shop?.id) {
-      return null
-    }
     try {
       return await fetchInventorySummary()
     } catch (error) {
@@ -86,17 +84,18 @@ export const HomePage = () => {
       }
       throw error
     }
-  }, [shop?.id])
+  }, [])
 
   const {
     data: summaryData,
     loading: summaryLoading,
     error: summaryError,
     execute: executeSummary,
+    setData: setSummaryData,
   } = useAsync(fetchSummarySafely, [fetchSummarySafely], {
     initialValue: null,
     onError,
-    immediate: Boolean(shop?.id),
+    immediate: false,
   })
 
   const loadLocations = useCallback(() => {
@@ -111,16 +110,42 @@ export const HomePage = () => {
     loading: locationsLoading,
     error: locationsError,
     execute: executeLocations,
+    setData: setLocationsData,
   } = useAsync<Location[]>(loadLocations, [loadLocations], {
     initialValue: [],
     onError,
-    immediate: Boolean(shop?.id),
+    immediate: false,
   })
 
-  const handleRetry = useCallback(() => {
+  useEffect(() => {
+    if (!isLoaded) {
+      return
+    }
+
+    if (!shop?.id) {
+      lastLoadedShopIdRef.current = null
+      setSummaryData(null)
+      setLocationsData([])
+      navigate('/select-shop', { replace: true })
+      return
+    }
+
+    if (lastLoadedShopIdRef.current === shop.id) {
+      return
+    }
+
+    lastLoadedShopIdRef.current = shop.id
     void executeSummary()
     void executeLocations()
-  }, [executeSummary, executeLocations])
+  }, [executeLocations, executeSummary, isLoaded, navigate, setLocationsData, setSummaryData, shop?.id])
+
+  const handleRetry = useCallback(() => {
+    if (!shop?.id) {
+      return
+    }
+    void executeSummary()
+    void executeLocations()
+  }, [executeLocations, executeSummary, shop?.id])
 
   const handleChangeShop = useCallback(() => {
     setShop(null)
