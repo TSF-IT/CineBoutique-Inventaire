@@ -43,16 +43,17 @@ export const AppRoutes = () => {
   return (
     <Routes>
       <Route path="/select-shop" element={<BypassSelect />} />
-      <Route path="/" element={<RequireShop />}>
-        <Route index element={<HomePage />} />
-        <Route path="inventory" element={<InventoryLayout />}>
-          <Route index element={<Navigate to="start" replace />} />
-          <Route path="start" element={<InventoryUserStep />} />
+      <Route element={<RequireShop />}>
+        <Route path="/inventory/start" element={<Navigate to="/select-user" replace />} />
+        <Route path="/select-user" element={<InventoryUserStep />} />
+        <Route path="/" element={<HomePage />} />
+        <Route path="/inventory" element={<InventoryLayout />}>
+          <Route index element={<Navigate to="count-type" replace />} />
           <Route path="location" element={<InventoryLocationStep />} />
           <Route path="count-type" element={<InventoryCountTypeStep />} />
           <Route path="session" element={<InventorySessionPage />} />
         </Route>
-        <Route path="admin" element={<AdminLayout />}>
+        <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<AdminLocationsPage />} />
         </Route>
       </Route>

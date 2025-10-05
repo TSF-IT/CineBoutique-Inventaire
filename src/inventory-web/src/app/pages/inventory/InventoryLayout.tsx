@@ -7,7 +7,6 @@ import { useInventory } from '../../contexts/InventoryContext'
 const STEPS = ['Utilisateur', 'Zone', 'Type de comptage', 'Scan']
 
 const stepIndexByPath: Record<string, number> = {
-  '/inventory/start': 0,
   '/inventory/location': 1,
   '/inventory/count-type': 2,
   '/inventory/session': 3,
@@ -24,14 +23,14 @@ export const InventoryLayout = () => {
     const path = location.pathname
     if (path === '/inventory/location') {
       if (!selectedUser) {
-        navigate('/inventory/start', { replace: true })
+        navigate('/select-user', { replace: true })
       }
       return
     }
 
     if (path === '/inventory/count-type') {
       if (!selectedUser) {
-        navigate('/inventory/start', { replace: true })
+        navigate('/select-user', { replace: true })
         return
       }
 
@@ -43,7 +42,7 @@ export const InventoryLayout = () => {
 
     if (path === '/inventory/session') {
       if (!selectedUser) {
-        navigate('/inventory/start', { replace: true })
+        navigate('/select-user', { replace: true })
         return
       }
 
@@ -77,7 +76,7 @@ export const InventoryLayout = () => {
   }, [location.pathname])
 
   if (location.pathname === '/inventory') {
-    navigate('/inventory/start', { replace: true })
+    navigate('/select-user', { replace: true })
   }
 
   const activeIndex = stepIndexByPath[location.pathname] ?? 0
