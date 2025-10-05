@@ -28,6 +28,7 @@ using Serilog; // requis pour UseSerilog()
 using CineBoutique.Inventory.Api.Infrastructure.Health;
 using AppLog = CineBoutique.Inventory.Api.Hosting.Log;
 using Dapper;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -116,6 +117,10 @@ builder.Services.AddSwaggerGen(c =>
 });
 
 builder.Services.AddControllers();
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+});
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddValidatorsFromAssemblyContaining<CineBoutique.Inventory.Api.Validators.CreateShopRequestValidator>();
 
