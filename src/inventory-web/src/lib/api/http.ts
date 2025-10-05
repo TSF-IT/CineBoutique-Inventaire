@@ -20,7 +20,11 @@ function buildHttpError(message: string, res: Response, body?: string, extra?: R
   return err
 }
 
-export default async function http(url: string, init: RequestInit = {}): Promise<unknown> {
+export type HttpRequestInit = Omit<RequestInit, 'body'> & {
+  body?: RequestInit['body'] | Record<string, unknown> | Array<unknown>
+}
+
+export default async function http(url: string, init: HttpRequestInit = {}): Promise<unknown> {
   // 1) Construire l’URL et injecter shopId si applicable
   let finalUrl = url
   try {
@@ -40,13 +44,14 @@ export default async function http(url: string, init: RequestInit = {}): Promise
 
   // 2) Préparer les headers et le body
   const headers = new Headers(init.headers ?? {})
-  let body = init.body
+  const rawBody = init.body
+  let body: BodyInit | null | undefined = rawBody as BodyInit | null | undefined
 
-  if (body && typeof body === 'object' && !(body instanceof FormData) && !(body instanceof Blob)) {
+  if (rawBody && typeof rawBody === 'object' && !(rawBody instanceof FormData) && !(rawBody instanceof Blob)) {
     if (!headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json')
     }
-    body = JSON.stringify(body)
+    body = JSON.stringify(rawBody)
   }
 
   const res = await fetch(finalUrl, { ...init, headers, body })
