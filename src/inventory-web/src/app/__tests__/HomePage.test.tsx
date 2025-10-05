@@ -45,7 +45,7 @@ const fetchInventorySummaryMock = vi.hoisted(() =>
 )
 
 const fetchLocationsMock = vi.hoisted(() =>
-  vi.fn(async ({ shopId }: { shopId: string }): Promise<Location[]> => {
+  vi.fn(async (shopId: string): Promise<Location[]> => {
     expect(shopId).toBeTruthy()
     return [
       {
@@ -159,7 +159,7 @@ describe('HomePage', () => {
 
     expect(screen.getByRole('button', { name: 'Débuter un inventaire' })).toBeInTheDocument()
     expect(fetchLocationsMock).toHaveBeenCalled()
-    expect(fetchLocationsMock.mock.calls[0]?.[0]).toMatchObject({ shopId: testShop.id })
+    expect(fetchLocationsMock.mock.calls[0]?.[0]).toBe(testShop.id)
   })
 
   it('affiche les messages neutres quand il ne reste plus de conflit ni de comptage', async () => {
