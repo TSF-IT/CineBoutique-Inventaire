@@ -38,7 +38,7 @@ const renderAdminPage = async () => {
     expect(mockedFetchLocations).toHaveBeenCalled()
   })
 
-  expect(mockedFetchLocations.mock.calls[0]?.[0]).toMatchObject({ shopId: testShop.id })
+  expect(mockedFetchLocations.mock.calls[0]?.[0]).toBe(testShop.id)
 
 }
 
