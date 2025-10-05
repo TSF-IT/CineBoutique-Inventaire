@@ -157,35 +157,38 @@ export const HomePage = () => {
 
   return (
     <Page>
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex flex-col gap-4">
-          <p className="text-sm uppercase tracking-[0.3em] text-brand-600 dark:text-brand-200">CinéBoutique</p>
-          <h1 className="text-4xl font-black leading-tight text-slate-900 dark:text-white sm:text-5xl">
-            Inventaire simplifié
-          </h1>
-          <p className="max-w-xl text-base text-slate-600 dark:text-slate-300">
-            Lancez un comptage en quelques gestes, scannez les produits depuis la caméra ou une douchette Bluetooth et
-            assurez un suivi fiable de vos zones.
-          </p>
-        </div>
-        <Button variant="secondary" onClick={handleChangeShop} className="self-start">
-          Changer de boutique
-        </Button>
-      </header>
+      <main className="mx-auto w-full max-w-[1100px] px-3 sm:px-4 lg:px-6">
+        <h1 className="mt-4 mb-4 text-[clamp(18px,4vw,24px)] font-semibold">Accueil</h1>
 
-      <Card className="flex flex-col gap-4">
-        <SectionTitle>État de l’inventaire</SectionTitle>
-        {combinedLoading && <LoadingIndicator label="Chargement des indicateurs" />}
-        {!combinedLoading && errorDetails && (
-          <ErrorPanel title={errorDetails.title} details={errorDetails.details} actionLabel="Réessayer" onAction={handleRetry} />
-        )}
-        {!combinedLoading && !errorDetails && displaySummary && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <button
-              type="button"
-              onClick={handleOpenRunsClick}
-              disabled={!canOpenOpenRunsModal}
-              className={clsx(
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-4">
+            <p className="text-sm uppercase tracking-[0.3em] text-brand-600 dark:text-brand-200">CinéBoutique</p>
+            <h2 className="text-4xl font-black leading-tight text-slate-900 dark:text-white sm:text-5xl">
+              Inventaire simplifié
+            </h2>
+            <p className="max-w-xl text-base text-slate-600 dark:text-slate-300">
+              Lancez un comptage en quelques gestes, scannez les produits depuis la caméra ou une douchette Bluetooth et
+              assurez un suivi fiable de vos zones.
+            </p>
+          </div>
+          <Button variant="secondary" onClick={handleChangeShop} className="self-start">
+            Changer de boutique
+          </Button>
+        </header>
+
+        <Card className="flex flex-col gap-4">
+          <SectionTitle>État de l’inventaire</SectionTitle>
+          {combinedLoading && <LoadingIndicator label="Chargement des indicateurs" />}
+          {!combinedLoading && errorDetails && (
+            <ErrorPanel title={errorDetails.title} details={errorDetails.details} actionLabel="Réessayer" onAction={handleRetry} />
+          )}
+          {!combinedLoading && !errorDetails && displaySummary && (
+            <section className="grid grid-cols-1 [@media(orientation:landscape)]:grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-6">
+              <button
+                type="button"
+                onClick={handleOpenRunsClick}
+                disabled={!canOpenOpenRunsModal}
+                className={clsx(
                 'flex flex-col rounded-2xl border border-brand-300 bg-brand-100/70 p-5 text-left transition dark:border-brand-500/30 dark:bg-brand-500/10',
                 canOpenOpenRunsModal
                   ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2'
@@ -294,39 +297,40 @@ export const HomePage = () => {
                 Progression : {completedRuns} / {totalExpected || 0}
               </p>
             </button>
-          </div>
-        )}
-        {!combinedLoading && !errorDetails && !displaySummary && (
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Les indicateurs ne sont pas disponibles pour le moment.
-          </p>
-        )}
-      </Card>
+            </section>
+          )}
+          {!combinedLoading && !errorDetails && !displaySummary && (
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Les indicateurs ne sont pas disponibles pour le moment.
+            </p>
+          )}
+        </Card>
 
-      <div className="flex flex-col gap-4">
-        <Button
-          fullWidth
-          className="py-5 text-lg"
-          onClick={() => {
-            navigate('/inventory/start')
-          }}
-        >
-          Débuter un inventaire
-        </Button>
-        <Link className="text-center text-sm text-slate-600 underline dark:text-slate-400" to="/admin">
-          Espace administrateur
-        </Link>
-      </div>
+        <div className="flex flex-col gap-4">
+          <Button
+            fullWidth
+            className="py-5 text-lg"
+            onClick={() => {
+              navigate('/inventory/start')
+            }}
+          >
+            Débuter un inventaire
+          </Button>
+          <Link className="text-center text-sm text-slate-600 underline dark:text-slate-400" to="/admin">
+            Espace administrateur
+          </Link>
+        </div>
 
-      <OpenRunsModal open={openRunsModalOpen} openRuns={openRunDetails} onClose={() => setOpenRunsModalOpen(false)} />
+        <OpenRunsModal open={openRunsModalOpen} openRuns={openRunDetails} onClose={() => setOpenRunsModalOpen(false)} />
 
-      <CompletedRunsModal
-        open={completedRunsModalOpen}
-        completedRuns={completedRunDetails}
-        onClose={() => setCompletedRunsModalOpen(false)}
-      />
+        <CompletedRunsModal
+          open={completedRunsModalOpen}
+          completedRuns={completedRunDetails}
+          onClose={() => setCompletedRunsModalOpen(false)}
+        />
 
-      <ConflictZoneModal open={conflictModalOpen} zone={selectedZone} onClose={handleConflictModalClose} />
+        <ConflictZoneModal open={conflictModalOpen} zone={selectedZone} onClose={handleConflictModalClose} />
+      </main>
     </Page>
   )
 }
