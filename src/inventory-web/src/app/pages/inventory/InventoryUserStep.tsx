@@ -7,6 +7,7 @@ import { useInventory } from '../../contexts/InventoryContext'
 import { fetchShopUsers } from '../../api/shopUsers'
 import type { ShopUser } from '@/types/user'
 import { useShop } from '@/state/ShopContext'
+import { clearSelectedUserForShop, loadSelectedUserForShop, saveSelectedUserForShop } from '@/lib/selectedUserStorage'
 
 export const InventoryUserStep = () => {
   const navigate = useNavigate()
@@ -57,6 +58,42 @@ export const InventoryUserStep = () => {
     }
   }, [shop?.id])
 
+  useEffect(() => {
+    if (!shop?.id) {
+      return
+    }
+
+    if (!selectedUser) {
+      clearSelectedUserForShop(shop.id)
+      return
+    }
+
+    saveSelectedUserForShop(shop.id, selectedUser)
+  }, [selectedUser, shop?.id])
+
+  useEffect(() => {
+    if (!shop?.id || loading) {
+      return
+    }
+
+    const stored = loadSelectedUserForShop(shop.id)
+    if (!stored) {
+      return
+    }
+
+    const candidate = users.find((user) => user.id === stored.userId)
+    if (!candidate) {
+      clearSelectedUserForShop(shop.id)
+      return
+    }
+
+    if (selectedUser?.id === candidate.id) {
+      return
+    }
+
+    setSelectedUser(candidate)
+  }, [loading, selectedUser?.id, setSelectedUser, shop?.id, users])
+
   const sortedUsers = useMemo(() => {
     return [...users].sort((left, right) =>
       left.displayName.localeCompare(right.displayName, undefined, { sensitivity: 'accent' }),
@@ -74,6 +111,9 @@ export const InventoryUserStep = () => {
   const handleSelect = (user: ShopUser) => {
     if (user.id !== selectedUser?.id) {
       setSelectedUser(user)
+    }
+    if (shop?.id) {
+      saveSelectedUserForShop(shop.id, user)
     }
     navigate('/inventory/location')
   }
