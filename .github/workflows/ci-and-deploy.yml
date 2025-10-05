@@ -17,28 +17,39 @@ jobs:
 
       - name: Install .NET 8 locally (no sudo)
         shell: bash
+        env:
+          DOTNET_DIR: ${{ github.workspace }}/.dotnet
         run: |
           set -eux
-          DOTNET_DIR="${GITHUB_WORKSPACE}/.dotnet"
           mkdir -p "$DOTNET_DIR"
           curl -sSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh
           bash dotnet-install.sh --channel 8.0 --install-dir "$DOTNET_DIR"
           echo "DOTNET_ROOT=$DOTNET_DIR" >> "$GITHUB_ENV"
           echo "$DOTNET_DIR" >> "$GITHUB_PATH"
-          dotnet --info
+          export DOTNET_ROOT="$DOTNET_DIR"
+          export PATH="$DOTNET_DIR:$PATH"
+          "$DOTNET_DIR/dotnet" --info
 
       - name: Restore
+        env:
+          PATH: ${{ github.workspace }}/.dotnet:${{ env.PATH }}
         run: dotnet restore CineBoutique.Inventory.sln
 
       - name: Build
+        env:
+          PATH: ${{ github.workspace }}/.dotnet:${{ env.PATH }}
         run: dotnet build CineBoutique.Inventory.sln -c Release --no-restore
 
       - name: Test Domain
         working-directory: tests/inventory.domain.tests
+        env:
+          PATH: ${{ github.workspace }}/.dotnet:${{ env.PATH }}
         run: dotnet test -c Release --no-build --logger "trx;LogFileName=domain.trx"
 
       - name: Test API
         working-directory: tests/inventory.api.tests
+        env:
+          PATH: ${{ github.workspace }}/.dotnet:${{ env.PATH }}
         run: dotnet test -c Release --no-build --logger "trx;LogFileName=api.trx"
 
   frontend:
@@ -52,7 +63,7 @@ jobs:
           docker run --rm \
             -v "$PWD":/work \
             -w /work \
-            mcr.microsoft/playwright:v1.47.0-jammy \
+            mcr.microsoft.com/playwright:v1.47.0-jammy \
             bash -lc '
               set -eux
               node -v
