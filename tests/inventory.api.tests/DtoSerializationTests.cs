@@ -1,13 +1,19 @@
 using System;
 using System.Globalization;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using CineBoutique.Inventory.Api.Models;
 
 namespace CineBoutique.Inventory.Api.Tests;
 
 public sealed class DtoSerializationTests
 {
-    private static readonly JsonSerializerOptions WebSerializerOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions WebSerializerOptions = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+        Encoder = JavaScriptEncoder.Default
+    };
 
     [Fact]
     public void LocationListItemDtoSerializesWithExpectedPropertyNames()
