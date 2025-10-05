@@ -32,7 +32,9 @@ internal sealed class OpenRunSummaryRow
 
     public short CountType { get; set; }
 
-    public string? OperatorDisplayName { get; set; }
+    public string? OwnerDisplayName { get; set; }
+
+    public Guid? OwnerUserId { get; set; }
 
     public DateTime StartedAtUtc { get; set; }
 }
@@ -49,7 +51,9 @@ internal sealed class CompletedRunSummaryRow
 
     public short CountType { get; set; }
 
-    public string? OperatorDisplayName { get; set; }
+    public string? OwnerDisplayName { get; set; }
+
+    public Guid? OwnerUserId { get; set; }
 
     public DateTime StartedAtUtc { get; set; }
 

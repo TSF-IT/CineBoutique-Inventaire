@@ -9,6 +9,8 @@ public sealed class InventorySummaryDto
 
     public int OpenRuns { get; set; }
 
+    public int CompletedRuns { get; set; }
+
     public int Conflicts { get; set; }
 
     public DateTimeOffset? LastActivityUtc { get; set; }
