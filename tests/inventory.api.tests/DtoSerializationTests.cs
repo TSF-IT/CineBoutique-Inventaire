@@ -62,9 +62,9 @@ public sealed class DtoSerializationTests
         Assert.Contains("\"status\":\"completed\"", json, StringComparison.Ordinal);
         Assert.Contains("\"ownerDisplayName\":\"louise\"", json, StringComparison.Ordinal);
         Assert.Contains("\"ownerUserId\":\"bbbbbbbb-9999-4999-8999-aaaaaaaaaaaa\"", json, StringComparison.Ordinal);
-        Assert.Contains("\"completedAtUtc\":\"2024-12-31T09:00:00+00:00\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"completedAtUtc\":\"2024-12-31T09:00:00\\u002B00:00\"", json, StringComparison.Ordinal);
         Assert.Contains("\"status\":\"in_progress\"", json, StringComparison.Ordinal);
         Assert.Contains("\"ownerDisplayName\":null", json, StringComparison.Ordinal);
-        Assert.Contains("\"startedAtUtc\":\"2025-01-01T10:00:00+00:00\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"startedAtUtc\":\"2025-01-01T10:00:00\\u002B00:00\"", json, StringComparison.Ordinal);
     }
 }
