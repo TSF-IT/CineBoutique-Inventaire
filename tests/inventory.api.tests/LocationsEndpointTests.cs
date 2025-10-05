@@ -241,6 +241,43 @@ public class LocationsEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetLocations_EmitsOwnerMetadataForStatuses()
+    {
+        await this.ResetDatabaseAsync();
+
+        var seed = await this.SeedDataAsync(countType: 1);
+
+        var response = await this._client.GetAsync($"/api/locations?shopId={seed.ShopId:D}");
+        response.EnsureSuccessStatusCode();
+
+        var json = await response.Content.ReadAsStringAsync();
+        using var document = JsonDocument.Parse(json);
+
+        var root = document.RootElement;
+        Assert.Equal(JsonValueKind.Array, root.ValueKind);
+        Assert.True(root.GetArrayLength() > 0);
+
+        foreach (var location in root.EnumerateArray())
+        {
+            Assert.True(location.TryGetProperty("countStatuses", out var statuses));
+            Assert.Equal(JsonValueKind.Array, statuses.ValueKind);
+            Assert.True(statuses.GetArrayLength() > 0);
+
+            foreach (var status in statuses.EnumerateArray())
+            {
+                Assert.True(status.TryGetProperty("ownerDisplayName", out var ownerDisplayName));
+                Assert.NotEqual(JsonValueKind.Undefined, ownerDisplayName.ValueKind);
+                Assert.True(status.TryGetProperty("ownerUserId", out var ownerUserId));
+                Assert.NotEqual(JsonValueKind.Undefined, ownerUserId.ValueKind);
+                Assert.True(status.TryGetProperty("startedAtUtc", out var startedAt));
+                Assert.NotEqual(JsonValueKind.Undefined, startedAt.ValueKind);
+                Assert.True(status.TryGetProperty("completedAtUtc", out var completedAt));
+                Assert.NotEqual(JsonValueKind.Undefined, completedAt.ValueKind);
+            }
+        }
+    }
+
+    [Fact]
     public async Task RestartInventoryForLocation_ClosesExistingRuns()
     {
         await this.ResetDatabaseAsync();
