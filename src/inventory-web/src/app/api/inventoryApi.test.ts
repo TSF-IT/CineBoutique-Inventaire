@@ -83,7 +83,8 @@ describe('fetchLocations (dev fixtures)', () => {
             countType: 1,
             status: 'not_started',
             runId: '',
-            operatorDisplayName: null,
+            ownerDisplayName: null,
+            ownerUserId: null,
             startedAtUtc: null,
             completedAtUtc: null,
           },
@@ -186,7 +187,8 @@ describe('startInventoryRun', () => {
       inventorySessionId: 'session-1',
       locationId: 'loc-1',
       countType: 1,
-      operatorDisplayName: 'Utilisateur Paris',
+      ownerDisplayName: 'Utilisateur Paris',
+      ownerUserId: '00000000-0000-0000-0000-000000000001',
       startedAtUtc: new Date().toISOString(),
     })
     mockHttpModule(httpMock)

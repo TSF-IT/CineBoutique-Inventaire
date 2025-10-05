@@ -86,6 +86,7 @@ export const InventoryLocationStep = () => {
   const navigate = useNavigate()
   const { selectedUser, location, sessionId, setLocation, setSessionId, clearSession, setCountType } = useInventory()
   const selectedUserDisplayName = selectedUser?.displayName ?? null
+  const selectedUserId = selectedUser?.id?.trim() ?? null
   const { shop } = useShop()
   const [search, setSearch] = useState('')
   const [locations, setLocations] = useState<Location[]>([])
@@ -254,12 +255,15 @@ export const InventoryLocationStep = () => {
       return `${baseLabel} terminé`
     }
     if (status.status === 'in_progress') {
-      const ownerLabel =
-        status.operatorDisplayName && status.operatorDisplayName === selectedUserDisplayName
-          ? 'par vous'
-          : status.operatorDisplayName
-          ? `par ${status.operatorDisplayName}`
-          : null
+      const ownerDisplayName = status.ownerDisplayName?.trim() ?? null
+      const ownerUserId = status.ownerUserId?.trim() ?? null
+      const isCurrentUser =
+        ownerUserId && selectedUserId ? ownerUserId === selectedUserId : ownerDisplayName === selectedUserDisplayName
+      const ownerLabel = isCurrentUser
+        ? 'par vous'
+        : ownerDisplayName
+        ? `par ${ownerDisplayName}`
+        : null
       const duration = computeDurationLabel(status.startedAtUtc ?? null)
       const meta = [ownerLabel, duration].filter(Boolean).join(' • ')
       return `${baseLabel} en cours${meta ? ` (${meta})` : ''}`

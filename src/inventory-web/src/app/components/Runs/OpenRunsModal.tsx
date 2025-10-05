@@ -44,7 +44,7 @@ const formatDateTime = (value: string | null | undefined) => {
   }).format(date)
 }
 
-const formatOperator = (name: string | null | undefined) => {
+const formatOwnerName = (name: string | null | undefined) => {
   const trimmed = name?.trim()
   return trimmed && trimmed.length > 0 ? trimmed : '—'
 }
@@ -184,7 +184,7 @@ export const OpenRunsModal = ({ open, openRuns, onClose }: OpenRunsModalProps) =
                       {run.locationCode} · {run.locationLabel}
                     </p>
                     <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                      {describeCountType(run.countType)} • Opérateur : {formatOperator(run.operatorDisplayName)} • Démarré le {formatDateTime(run.startedAtUtc)}
+                      {describeCountType(run.countType)} • Opérateur : {formatOwnerName(run.ownerDisplayName)} • Démarré le {formatDateTime(run.startedAtUtc)}
                     </p>
                   </li>
                 ))}
