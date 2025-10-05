@@ -156,53 +156,97 @@ const UPPERCASE_LOCATION_KEY_MAP: Record<string, keyof Location> = {
   ActiveStartedAtUtc: 'activeStartedAtUtc',
 }
 
-const mapUppercaseLocationKeys = (value: unknown): unknown => {
-  if (!Array.isArray(value) || value.length === 0) {
-    return value
+const UPPERCASE_STATUS_KEY_MAP: Record<string, string> = {
+  CountType: 'countType',
+  Status: 'status',
+  RunId: 'runId',
+  OwnerDisplayName: 'ownerDisplayName',
+  OwnerUserId: 'ownerUserId',
+  StartedAtUtc: 'startedAtUtc',
+  CompletedAtUtc: 'completedAtUtc',
+}
+
+const mapUppercaseStatusObject = (src: unknown): unknown => {
+  if (!src || typeof src !== 'object') return src
+  const o = src as Record<string, unknown>
+  const r: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(o)) {
+    r[UPPERCASE_STATUS_KEY_MAP[k] ?? k] = v
   }
-  const first = value[0]
-  if (!first || typeof first !== 'object') {
-    return value
-  }
-  const firstKeys = Object.keys(first as Record<string, unknown>)
-  const hasUppercaseKeys = firstKeys.some((key) => key in UPPERCASE_LOCATION_KEY_MAP)
-  if (!hasUppercaseKeys) {
-    return value
-  }
-  return value.map((item) => {
-    if (!item || typeof item !== 'object') {
-      return item
-    }
-    const source = item as Record<string, unknown>
+  return r
+}
+
+const mapUppercaseLocationKeys = (arr: unknown): unknown => {
+  if (!Array.isArray(arr)) return arr
+  return arr.map((item) => {
+    if (!item || typeof item !== 'object') return item
+    const src = item as Record<string, unknown>
+
     const mappedEntries = Object.entries(UPPERCASE_LOCATION_KEY_MAP).reduce<Record<string, unknown>>(
       (acc, [sourceKey, targetKey]) => {
-        if (sourceKey in source) {
-          acc[targetKey] = source[sourceKey]
+        if (sourceKey in src) {
+          acc[targetKey] = src[sourceKey]
         }
         return acc
       },
       {},
     )
-    return { ...source, ...mappedEntries }
+
+    const statuses = (src.CountStatuses as unknown) ?? (src.countStatuses as unknown) ?? null
+
+    const countStatuses = Array.isArray(statuses)
+      ? statuses.map(mapUppercaseStatusObject)
+      : undefined
+
+    return {
+      ...src,
+      ...mappedEntries,
+      ...(countStatuses ? { countStatuses } : {}),
+    }
+  })
+}
+
+const createDefaultStatuses = () =>
+  [CountType.Count1, CountType.Count2].map((ct) => ({
+    countType: ct,
+    status: 'not_started',
+    runId: null,
+    ownerDisplayName: null,
+    ownerUserId: null,
+    startedAtUtc: null,
+    completedAtUtc: null,
+  }))
+
+const ensureLocationDefaults = (arr: unknown): unknown => {
+  if (!Array.isArray(arr)) return arr
+  return arr.map((loc) => {
+    if (!loc || typeof loc !== 'object') return loc
+    const o = loc as Record<string, unknown>
+    if (!Array.isArray(o.countStatuses)) {
+      o.countStatuses = createDefaultStatuses()
+    }
+    return o
   })
 }
 
 const normaliseLocationsPayload = (payload: unknown): unknown => {
+  const normaliseArray = (value: unknown): unknown => mapUppercaseLocationKeys(value)
+
   if (Array.isArray(payload)) {
-    return mapUppercaseLocationKeys(payload)
+    return normaliseArray(payload)
   }
   if (payload && typeof payload === 'object') {
     const candidateKeys = ['items', 'data', 'results', 'locations'] as const
     for (const key of candidateKeys) {
       const value = (payload as Record<string, unknown>)[key]
       if (Array.isArray(value)) {
-        return mapUppercaseLocationKeys(value)
+        return normaliseArray(value)
       }
     }
 
     const arrayValues = Object.values(payload as Record<string, unknown>).filter(Array.isArray)
     if (arrayValues.length === 1) {
-      return mapUppercaseLocationKeys(arrayValues[0])
+      return normaliseArray(arrayValues[0])
     }
   }
   return payload
@@ -318,21 +362,35 @@ export const fetchLocations = async ({ shopId, countType }: { shopId: string; co
     httpCallSucceeded = true
     const payload = typeof raw === 'string' ? JSON.parse(raw) : raw
     const normalised = normaliseLocationsPayload(payload)
+    const defaulted = ensureLocationDefaults(normalised)
     try {
-      return LocationsSchema.parse(normalised)
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        if (import.meta.env.DEV) {
-          console.warn('Validation /locations failed', error.flatten())
+      return LocationsSchema.parse(defaulted)
+    } catch (e1) {
+      const again = Array.isArray(defaulted)
+        ? defaulted.map((l) => {
+            const o = l as Record<string, unknown>
+            if (Array.isArray(o.countStatuses)) {
+              o.countStatuses = o.countStatuses.map(mapUppercaseStatusObject)
+            }
+            return o
+          })
+        : defaulted
+      try {
+        return LocationsSchema.parse(again)
+      } catch (e2) {
+        if (e2 instanceof z.ZodError) {
+          if (import.meta.env.DEV) {
+            console.warn('Validation /locations failed', e2.flatten())
+          }
+          throw toHttpError(
+            'Réponse /locations invalide.',
+            `${API_BASE}${endpoint}`,
+            e2.flatten(),
+            422,
+          )
         }
-        throw toHttpError(
-          'Réponse /locations invalide.',
-          `${API_BASE}${endpoint}`,
-          error.flatten(),
-          422,
-        )
+        throw e2
       }
-      throw error
     }
   } catch (error) {
     if (shouldUseDevFixtures(error, { httpCallSucceeded })) {
