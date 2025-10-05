@@ -101,6 +101,10 @@ export const HomePage = () => {
     navigate('/select-shop')
   }, [navigate, setShop])
 
+  const handleStartInventory = useCallback(() => {
+    navigate('/inventory/start')
+  }, [navigate])
+
   const combinedError = summaryError ?? locationsError
   const combinedLoading = summaryLoading || locationsLoading
 
@@ -113,11 +117,7 @@ export const HomePage = () => {
   const completedRunDetails = displaySummary?.completedRunDetails ?? []
   const conflictZones = useMemo(() => displaySummary?.conflictZones ?? [], [displaySummary])
   const locations = useMemo(() => locationsData ?? [], [locationsData])
-  const completedRuns = useMemo(() => {
-    if (displaySummary) {
-      return displaySummary.completedRuns
-    }
-
+  const completedRunsFromLocations = useMemo(() => {
     return locations.reduce((acc, location) => {
       const statuses = location.countStatuses ?? []
       const completedTypes = statuses.reduce<Set<number>>((set, status) => {
@@ -128,7 +128,15 @@ export const HomePage = () => {
       }, new Set<number>())
       return acc + completedTypes.size
     }, 0)
-  }, [displaySummary, locations])
+  }, [locations])
+  const completedRuns = useMemo(() => {
+    if (!displaySummary) {
+      return completedRunsFromLocations
+    }
+
+    const summaryValue = typeof displaySummary.completedRuns === 'number' ? displaySummary.completedRuns : 0
+    return Math.max(summaryValue, completedRunsFromLocations)
+  }, [completedRunsFromLocations, displaySummary])
 
   const totalExpected = useMemo(() => locations.length * 2, [locations.length])
   const hasOpenRuns = openRunsCount > 0
@@ -311,9 +319,7 @@ export const HomePage = () => {
         <Button
           fullWidth
           className="py-5 text-lg"
-          onClick={() => {
-            navigate('/inventory/start')
-          }}
+          onClick={handleStartInventory}
         >
           Débuter un inventaire
         </Button>

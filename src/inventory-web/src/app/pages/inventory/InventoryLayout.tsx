@@ -17,6 +17,7 @@ export const InventoryLayout = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const { selectedUser, countType, location: selectedLocation } = useInventory()
+  const locationId = selectedLocation?.id?.trim() ?? ''
   const stepperContainerRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -34,7 +35,7 @@ export const InventoryLayout = () => {
         return
       }
 
-      if (!selectedLocation) {
+      if (!locationId) {
         navigate('/inventory/location', { replace: true })
       }
       return
@@ -46,7 +47,7 @@ export const InventoryLayout = () => {
         return
       }
 
-      if (!selectedLocation) {
+      if (!locationId) {
         navigate('/inventory/location', { replace: true })
         return
       }
@@ -55,7 +56,7 @@ export const InventoryLayout = () => {
         navigate('/inventory/count-type', { replace: true })
       }
     }
-  }, [countType, location.pathname, navigate, selectedLocation, selectedUser])
+  }, [countType, location.pathname, locationId, navigate, selectedUser])
 
   useEffect(() => {
     const container = stepperContainerRef.current
