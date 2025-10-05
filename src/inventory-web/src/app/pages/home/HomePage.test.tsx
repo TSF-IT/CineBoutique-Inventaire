@@ -45,6 +45,26 @@ describe('HomePage', () => {
     vi.clearAllMocks()
   })
 
+  it('redirige vers la sélection de boutique si aucune boutique n’est mémorisée', async () => {
+    localStorage.removeItem('cb.shop')
+    render(
+      <ThemeProvider>
+        <ShopProvider>
+          <MemoryRouter>
+            <HomePage />
+          </MemoryRouter>
+        </ShopProvider>
+      </ThemeProvider>,
+    )
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith('/select-shop', { replace: true })
+    })
+
+    expect(mockedFetchSummary).not.toHaveBeenCalled()
+    expect(mockedFetchLocations).not.toHaveBeenCalled()
+  })
+
   it('affiche les zones en conflit et ouvre la modale de détail', async () => {
     const summary: InventorySummary = {
       activeSessions: 0,
@@ -194,6 +214,37 @@ describe('HomePage', () => {
     expect(within(completedRunsModal).getByText(/Opérateur : Utilisateur Nice 1/i)).toBeInTheDocument()
   })
 
+  it('ne charge les emplacements qu’une seule fois', async () => {
+    const summary: InventorySummary = {
+      activeSessions: 0,
+      openRuns: 0,
+      completedRuns: 0,
+      conflicts: 0,
+      lastActivityUtc: null,
+      openRunDetails: [],
+      completedRunDetails: [],
+      conflictZones: [],
+    }
+
+    mockedFetchSummary.mockResolvedValue(summary)
+    mockedFetchLocations.mockResolvedValue([])
+
+    render(
+      <ThemeProvider>
+        <ShopProvider>
+          <MemoryRouter>
+            <HomePage />
+          </MemoryRouter>
+        </ShopProvider>
+      </ThemeProvider>,
+    )
+
+    await waitFor(() => {
+      expect(mockedFetchSummary).toHaveBeenCalledTimes(1)
+      expect(mockedFetchLocations).toHaveBeenCalledTimes(1)
+    })
+  })
+
   it("redirige vers l'assistant d'inventaire au clic sur le CTA principal", async () => {
     const summary: InventorySummary = {
       activeSessions: 0,
@@ -254,17 +305,16 @@ describe('HomePage', () => {
       await waitFor(() => expect(mockedFetchSummary).toHaveBeenCalled())
 
       await waitFor(() => {
-        expect(warnSpy).toHaveBeenCalledWith('[home] produit introuvable ignoré', productNotFound)
-      })
+      expect(warnSpy).toHaveBeenCalledWith('[home] produit introuvable ignoré', productNotFound)
+    })
 
-      expect(errorSpy).not.toHaveBeenCalledWith('[home] http error', expect.anything())
-      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-      expect(
-        await screen.findByText('Les indicateurs ne sont pas disponibles pour le moment.'),
-      ).toBeInTheDocument()
-    } finally {
-      warnSpy.mockRestore()
-      errorSpy.mockRestore()
-    }
-  })
+    expect(errorSpy).not.toHaveBeenCalledWith('[home] http error', expect.anything())
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+    const placeholders = await screen.findAllByText('Les indicateurs ne sont pas disponibles pour le moment.')
+    expect(placeholders.length).toBeGreaterThan(0)
+  } finally {
+    warnSpy.mockRestore()
+    errorSpy.mockRestore()
+  }
+})
 })

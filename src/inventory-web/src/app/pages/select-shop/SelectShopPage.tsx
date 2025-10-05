@@ -9,6 +9,9 @@ import { Button } from '@/app/components/ui/Button'
 import clsx from 'clsx'
 
 const DEFAULT_ERROR_MESSAGE = "Impossible de charger les boutiques."
+const GUID_REGEX = /^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$/i
+
+const isValidGuid = (value: string) => GUID_REGEX.test(value)
 
 type LoadingState = 'idle' | 'loading' | 'error'
 
@@ -21,6 +24,7 @@ export const SelectShopPage = () => {
   const [retryCount, setRetryCount] = useState(0)
   const [selectedId, setSelectedId] = useState(() => shop?.id ?? '')
   const [isRedirecting, setIsRedirecting] = useState(false)
+  const [selectionError, setSelectionError] = useState<string | null>(null)
   const labelId = useId()
   const cardsLabelId = useId()
   const selectRef = useRef<HTMLSelectElement | null>(null)
@@ -88,13 +92,20 @@ export const SelectShopPage = () => {
 
   const handleRetry = useCallback(() => {
     setRetryCount((count) => count + 1)
+    setSelectionError(null)
   }, [])
 
   const navigateToShop = useCallback(
     (shopToNavigate: Shop) => {
+      if (!isValidGuid(shopToNavigate.id)) {
+        setSelectionError('Identifiant de boutique invalide. Vérifiez le code et réessayez.')
+        return
+      }
+
       setIsRedirecting(true)
+      setSelectionError(null)
       setShop(shopToNavigate)
-      navigate('/', { replace: true })
+      navigate('/inventory/start', { replace: true, state: { redirectTo: '/' } })
     },
     [navigate, setShop],
   )
@@ -103,6 +114,7 @@ export const SelectShopPage = () => {
     (event: ChangeEvent<HTMLSelectElement>) => {
       const id = event.target.value
       setSelectedId(id)
+      setSelectionError(null)
 
       if (!id) {
         return
@@ -149,6 +161,7 @@ export const SelectShopPage = () => {
   const handleCardSelect = useCallback(
     (id: string) => {
       setSelectedId(id)
+      setSelectionError(null)
 
       const shopToNavigate = shops.find((item) => item.id === id)
 
@@ -272,6 +285,11 @@ export const SelectShopPage = () => {
               {shops.length === 0 && (
                 <p id="shop-help" className="text-sm text-slate-500 dark:text-slate-300">
                   Aucune boutique n’est disponible pour le moment.
+                </p>
+              )}
+              {selectionError && (
+                <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+                  {selectionError}
                 </p>
               )}
             </div>
