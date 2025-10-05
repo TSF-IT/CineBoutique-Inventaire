@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { Link, useNavigate } from 'react-router-dom'
-import { fetchInventorySummary, fetchLocations } from '../../api/inventoryApi'
+import { fetchInventorySummary, fetchLocationSummaries, fetchLocations } from '../../api/inventoryApi'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/Card'
 import { ErrorPanel } from '../../components/ErrorPanel'
@@ -14,6 +14,7 @@ import { CompletedRunsModal } from '../../components/Runs/CompletedRunsModal'
 import { OpenRunsModal } from '../../components/Runs/OpenRunsModal'
 import { useAsync } from '../../hooks/useAsync'
 import type { ConflictZoneSummary, InventorySummary, Location } from '../../types/inventory'
+import type { LocationSummary } from '@/types/summary'
 import type { HttpError } from '@/lib/api/http'
 import { useShop } from '@/state/ShopContext'
 
@@ -105,6 +106,13 @@ export const HomePage = () => {
     return fetchLocations(shop.id)
   }, [shop?.id])
 
+  const loadSummaries = useCallback(() => {
+    if (!shop?.id) {
+      return Promise.resolve<LocationSummary[]>([])
+    }
+    return fetchLocationSummaries(shop.id)
+  }, [shop?.id])
+
   const {
     data: locationsData,
     loading: locationsLoading,
@@ -112,6 +120,18 @@ export const HomePage = () => {
     execute: executeLocations,
     setData: setLocationsData,
   } = useAsync<Location[]>(loadLocations, [loadLocations], {
+    initialValue: [],
+    onError,
+    immediate: false,
+  })
+
+  const {
+    data: locationSummariesData,
+    loading: locationSummariesLoading,
+    error: locationSummariesError,
+    execute: executeLocationSummaries,
+    setData: setLocationSummariesData,
+  } = useAsync<LocationSummary[]>(loadSummaries, [loadSummaries], {
     initialValue: [],
     onError,
     immediate: false,
@@ -126,6 +146,7 @@ export const HomePage = () => {
       lastLoadedShopIdRef.current = null
       setSummaryData(null)
       setLocationsData([])
+      setLocationSummariesData([])
       navigate('/select-shop', { replace: true })
       return
     }
@@ -137,7 +158,18 @@ export const HomePage = () => {
     lastLoadedShopIdRef.current = shop.id
     void executeSummary()
     void executeLocations()
-  }, [executeLocations, executeSummary, isLoaded, navigate, setLocationsData, setSummaryData, shop?.id])
+    void executeLocationSummaries()
+  }, [
+    executeLocationSummaries,
+    executeLocations,
+    executeSummary,
+    isLoaded,
+    navigate,
+    setLocationSummariesData,
+    setLocationsData,
+    setSummaryData,
+    shop?.id,
+  ])
 
   const handleRetry = useCallback(() => {
     if (!shop?.id) {
@@ -145,7 +177,8 @@ export const HomePage = () => {
     }
     void executeSummary()
     void executeLocations()
-  }, [executeLocations, executeSummary, shop?.id])
+    void executeLocationSummaries()
+  }, [executeLocationSummaries, executeLocations, executeSummary, shop?.id])
 
   const handleChangeShop = useCallback(() => {
     setShop(null)
@@ -156,8 +189,8 @@ export const HomePage = () => {
     navigate('/select-user')
   }, [navigate])
 
-  const combinedError = summaryError ?? locationsError
-  const combinedLoading = summaryLoading || locationsLoading
+  const combinedError = summaryError ?? locationsError ?? locationSummariesError
+  const combinedLoading = summaryLoading || locationsLoading || locationSummariesLoading
 
   const errorDetails = useMemo(() => describeError(combinedError), [combinedError])
 
@@ -168,6 +201,7 @@ export const HomePage = () => {
   const completedRunDetails = displaySummary?.completedRunDetails ?? []
   const conflictZones = useMemo(() => displaySummary?.conflictZones ?? [], [displaySummary])
   const locations = useMemo(() => locationsData ?? [], [locationsData])
+  const locationSummaries = useMemo(() => locationSummariesData ?? [], [locationSummariesData])
   const completedRunsFromLocations = useMemo(() => {
     return locations.reduce((acc, location) => {
       const statuses = location.countStatuses ?? []
@@ -195,6 +229,7 @@ export const HomePage = () => {
   const canOpenOpenRunsModal = openRunDetails.length > 0
   const canOpenCompletedRunsModal = completedRunDetails.length > 0
   const canOpenConflicts = hasConflicts && conflictZones.length > 0
+  const hasLocationSummaries = locationSummaries.length > 0
 
   const handleOpenRunsClick = useCallback(() => {
     if (canOpenOpenRunsModal) {
@@ -363,6 +398,19 @@ export const HomePage = () => {
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Les indicateurs ne sont pas disponibles pour le moment.
           </p>
+        )}
+        {!combinedLoading && !errorDetails && !hasLocationSummaries && (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-white/70 p-5 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/30 dark:text-slate-300">
+            <p className="font-medium text-slate-700 dark:text-slate-100">
+              Aucun comptage en cours pour cette boutique.
+            </p>
+            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+              Démarrez un nouveau comptage pour suivre la progression des zones en temps réel.
+            </p>
+            <Button className="mt-4" onClick={handleStartInventory}>
+              Débuter un inventaire
+            </Button>
+          </div>
         )}
       </Card>
 

@@ -1,4 +1,5 @@
 import { CountType, LocationsSchema } from '../types/inventory'
+import { LocationSummaryListSchema, type LocationSummaryList } from '@/types/summary'
 import type { CompletedRunDetail, CompletedRunSummary, OpenRunSummary } from '../types/inventory'
 import type {
   ConflictZoneDetail,
@@ -122,6 +123,22 @@ export const fetchInventorySummary = async (): Promise<InventorySummary> => {
     completedRunDetails,
     conflictZones,
   }
+}
+
+export const fetchLocationSummaries = async (
+  shopId: string,
+  signal?: AbortSignal,
+): Promise<LocationSummaryList> => {
+  if (!shopId) {
+    throw new Error('Aucune boutique sélectionnée.')
+  }
+
+  const searchParams = new URLSearchParams({ shopId })
+  const raw = await http(`${API_BASE}/inventory/locations/summary?${searchParams.toString()}`, {
+    signal,
+  })
+
+  return LocationSummaryListSchema.parse(Array.isArray(raw) ? raw : [])
 }
 
 export const getConflictZonesSummary = async (): Promise<ConflictZoneSummary[]> => {
