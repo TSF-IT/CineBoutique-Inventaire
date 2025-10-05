@@ -16,6 +16,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
@@ -282,8 +283,10 @@ public class LocationsEndpointTests : IAsyncLifetime
     {
         await this.ResetDatabaseAsync();
         var seed = await this.SeedDataAsync(countType: 1);
+        var ownerUserId = await this.SeedShopUserAsync(seed.ShopId, "Opérateur");
+        var request = new RestartRunRequest(ownerUserId, 1);
 
-        var response = await this._client.PostAsync($"/api/inventories/{seed.BusyLocationId}/restart?countType=1", null);
+        var response = await this._client.PostAsJsonAsync($"/api/inventories/{seed.BusyLocationId}/restart", request);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
         using var scope = this._factory.Services.CreateScope();
@@ -315,9 +318,11 @@ public class LocationsEndpointTests : IAsyncLifetime
         await this.ResetDatabaseAsync();
         var locationId = Guid.NewGuid();
 
-        await this.SeedLocationAsync(locationId, code: "S3", label: "Zone S3");
+        var shopId = await this.SeedLocationAsync(locationId, code: "S3", label: "Zone S3");
+        var ownerUserId = await this.SeedShopUserAsync(shopId, "Opérateur");
+        var request = new RestartRunRequest(ownerUserId, 1);
 
-        var response = await this._client.PostAsync($"/api/inventories/{locationId}/restart?countType=1", null);
+        var response = await this._client.PostAsJsonAsync($"/api/inventories/{locationId}/restart", request);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
     }
 
@@ -459,6 +464,31 @@ TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
 """;
 
         await connection.ExecuteAsync(cleanupSql);
+    }
+
+    private async Task<Guid> SeedShopUserAsync(Guid shopId, string displayName)
+    {
+        using var scope = this._factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        var userId = Guid.NewGuid();
+        const string insertSql =
+            "INSERT INTO \"ShopUser\" (\"Id\", \"ShopId\", \"Login\", \"DisplayName\", \"IsAdmin\", \"Secret_Hash\", \"Disabled\")" +
+            " VALUES (@Id, @ShopId, @Login, @DisplayName, FALSE, '', FALSE);";
+
+        await connection.ExecuteAsync(
+            insertSql,
+            new
+            {
+                Id = userId,
+                ShopId = shopId,
+                Login = $"user_{Guid.NewGuid():N}",
+                DisplayName = displayName
+            });
+
+        return userId;
     }
 
     private async Task<Guid> SeedLocationAsync(Guid id, string code, string label)

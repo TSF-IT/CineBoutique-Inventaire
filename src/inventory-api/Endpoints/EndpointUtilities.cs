@@ -1,13 +1,19 @@
 // Modifications : centralisation des utilitaires partagés entre les endpoints minimal API.
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Infrastructure.Middleware;
 using Dapper;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using FluentValidation.Results;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace CineBoutique.Inventory.Api.Endpoints;
 
@@ -94,6 +100,60 @@ WHERE LOWER(table_name) = LOWER(@TableName)
 
         return runId;
     }
+
+    public static IResult ValidationProblem(ValidationResult validationResult)
+    {
+        ArgumentNullException.ThrowIfNull(validationResult);
+
+        var errors = validationResult.Errors
+            .GroupBy(error => string.IsNullOrWhiteSpace(error.PropertyName) ? string.Empty : error.PropertyName)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(error => error.ErrorMessage).Distinct().ToArray(),
+                StringComparer.Ordinal);
+
+        if (validationResult.IsValid)
+        {
+            errors = new Dictionary<string, string[]>(StringComparer.Ordinal);
+        }
+
+        var problemDetails = new ValidationProblemDetails(errors)
+        {
+            Status = StatusCodes.Status400BadRequest,
+            Title = "Requête invalide",
+            Type = "https://datatracker.ietf.org/doc/html/rfc9110#section-15.5.1"
+        };
+
+        return Results.Json(
+            problemDetails,
+            ValidationProblemSerializerOptions,
+            contentType: "application/problem+json",
+            statusCode: problemDetails.Status ?? StatusCodes.Status400BadRequest);
+    }
+
+    private static readonly JsonSerializerOptions ValidationProblemSerializerOptions = CreateValidationProblemSerializerOptions();
+
+    private static JsonSerializerOptions CreateValidationProblemSerializerOptions()
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            DictionaryKeyPolicy = null
+        };
+
+        if (!options.Converters.OfType<JsonStringEnumConverter>().Any())
+        {
+            options.Converters.Add(new JsonStringEnumConverter());
+        }
+
+        return options;
+    }
+
+    public static IResult Problem(string title, string detail, int statusCode, IDictionary<string, object?>? extensions = null) =>
+        Results.Problem(
+            title: title,
+            detail: detail,
+            statusCode: statusCode,
+            extensions: extensions);
 
     public static string? GetAuthenticatedUserName(HttpContext context)
     {

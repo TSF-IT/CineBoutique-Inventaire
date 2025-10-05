@@ -37,3 +37,5 @@ public sealed class StartInventoryRunResponse
 
     public DateTimeOffset StartedAtUtc { get; set; }
 }
+
+public sealed record RestartRunRequest(Guid OwnerUserId, short CountType);
