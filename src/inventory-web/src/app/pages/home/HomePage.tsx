@@ -16,6 +16,7 @@ import { useAsync } from '../../hooks/useAsync'
 import type { ConflictZoneSummary, InventorySummary, Location } from '../../types/inventory'
 import type { HttpError } from '@/lib/api/http'
 import { useShop } from '@/state/ShopContext'
+import { appStore } from '@/lib/context/appContext'
 
 const isHttpError = (value: unknown): value is HttpError =>
   typeof value === 'object' &&
@@ -98,7 +99,8 @@ export const HomePage = () => {
 
   const handleChangeShop = useCallback(() => {
     setShop(null)
-    navigate('/select-shop')
+    appStore.clearAll()
+    navigate('/select-shop', { replace: true })
   }, [navigate, setShop])
 
   const combinedError = summaryError ?? locationsError
@@ -171,9 +173,13 @@ export const HomePage = () => {
               assurez un suivi fiable de vos zones.
             </p>
           </div>
-          <Button variant="secondary" onClick={handleChangeShop} className="self-start">
+          <button
+            type="button"
+            onClick={handleChangeShop}
+            className="ml-auto rounded-xl border px-3 py-2 text-sm hover:bg-gray-50 focus:outline focus:outline-2 focus:outline-offset-1"
+          >
             Changer de boutique
-          </Button>
+          </button>
         </header>
 
         <Card className="flex flex-col gap-4">
