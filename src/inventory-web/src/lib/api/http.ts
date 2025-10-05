@@ -82,6 +82,10 @@ export default async function http(url: string, init: RequestInit = {}): Promise
   try {
     return JSON.parse(text)
   } catch {
-    throw buildHttpError('JSON invalide', res, text, { contentType, snippet })
+    throw buildHttpError('JSON invalide', res, text, {
+      problem: { contentType, snippet },
+      contentType,
+      snippet,
+    })
   }
 }
