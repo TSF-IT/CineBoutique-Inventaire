@@ -1,4 +1,4 @@
-// src/lib/api/http.ts
+// src/inventory-web/src/lib/api/http.ts
 import { loadShop } from '@/lib/shopStorage'
 
 export interface HttpError extends Error {
@@ -9,66 +9,79 @@ export interface HttpError extends Error {
 }
 
 const SNIPPET_MAX_LENGTH = 512
+const truncateSnippet = (v: string) => (v.length <= SNIPPET_MAX_LENGTH ? v : v.slice(0, SNIPPET_MAX_LENGTH))
 
-const truncateSnippet = (value: string) =>
-  value.length <= SNIPPET_MAX_LENGTH ? value : value.slice(0, SNIPPET_MAX_LENGTH)
+function buildHttpError(message: string, res: Response, body?: string, extra?: Record<string, unknown>): HttpError {
+  const err = new Error(message) as HttpError
+  err.status = res.status
+  err.url = res.url
+  if (body != null) err.body = truncateSnippet(body)
+  if (extra && 'problem' in extra) err.problem = (extra as { problem?: unknown }).problem
+  return err
+}
 
-const buildHttpError = (
-  message: string,
-  res: Response,
-  bodyText: string,
-  problem?: unknown,
-): HttpError =>
-  Object.assign(new Error(message), {
-    status: res.status ?? 0,
-    url: res.url,
-    body: truncateSnippet(bodyText),
-    problem,
-  })
+export default async function http(url: string, init: RequestInit = {}): Promise<unknown> {
+  // 1) Construire l’URL et injecter shopId si applicable
+  let finalUrl = url
+  try {
+    const u = new URL(url, window.location.origin)
+    const path = u.pathname
+    const isApi = path.startsWith('/api')
+    const isShops = path.startsWith('/api/shops')
 
-export async function http(input: string, init: RequestInit = {}) {
-  const headers = new Headers(init.headers)
-  const shop = loadShop()
-  if (shop?.id) {
-    headers.set('X-Shop-Id', shop.id)
+    const shop = loadShop()
+    if (isApi && !isShops && shop?.id && !u.searchParams.has('shopId')) {
+      u.searchParams.set('shopId', shop.id)
+    }
+    finalUrl = u.toString()
+  } catch {
+    // Si l’URL est relative “bizarre”, on laisse passer tel quel.
   }
 
-  const res = await fetch(input, {
-    ...init,
-    headers,
-  })
-  if (!res.ok) {
-    const bodyText = await res.text().catch(() => '')
-    const err: HttpError = buildHttpError(`HTTP ${res.status}`, res, bodyText, (() => {
-      try { return JSON.parse(bodyText) } catch { return undefined }
-    })())
-    throw err
+  // 2) Préparer les headers et le body
+  const headers = new Headers(init.headers ?? {})
+  let body = init.body
+
+  if (body && typeof body === 'object' && !(body instanceof FormData) && !(body instanceof Blob)) {
+    if (!headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json')
+    }
+    body = JSON.stringify(body)
   }
 
-  const contentType = res.headers.get('content-type') ?? ''
+  const res = await fetch(finalUrl, { ...init, headers, body })
+
+  const contentType = res.headers.get('Content-Type') ?? ''
+  const isJson = contentType.includes('application/json')
   const text = await res.text()
   const snippet = truncateSnippet(text)
 
-  if (!contentType.toLowerCase().startsWith('application/json')) {
-    throw buildHttpError(
-      `Réponse non JSON (content-type: ${contentType || 'inconnu'})`,
-      res,
-      text,
-      {
-        contentType,
-        snippet,
-      },
-    )
+  if (!res.ok) {
+    // Essayer d’extraire un “problem+json” pour enrichir l’erreur
+    let problem: unknown = undefined
+    if (isJson && text) {
+      try {
+        problem = JSON.parse(text)
+      } catch {
+        // rien
+      }
+    }
+    const defaultMsg = `HTTP ${res.status}`
+    const detail =
+      (problem as { detail?: string } | undefined)?.detail ||
+      (problem as { title?: string } | undefined)?.title ||
+      snippet ||
+      defaultMsg
+
+    throw buildHttpError(detail, res, text, { problem, contentType, snippet })
   }
+
+  if (!text) return null
+  if (!isJson) return text
 
   try {
     return JSON.parse(text)
   } catch {
-    throw buildHttpError('JSON invalide', res, text, {
-      contentType,
-      snippet,
-    })
+    throw buildHttpError('JSON invalide', res, text, { contentType, snippet })
   }
 }
-
-export default http
