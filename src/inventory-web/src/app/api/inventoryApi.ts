@@ -173,6 +173,7 @@ export const fetchInventorySummary = async (): Promise<InventorySummary> => {
   return {
     activeSessions: data?.activeSessions ?? 0,
     openRuns: data?.openRuns ?? 0,
+    completedRuns: data?.completedRuns ?? completedRunDetails.length,
     conflicts: data?.conflicts ?? 0,
     lastActivityUtc: data?.lastActivityUtc ?? null,
     openRunDetails,
