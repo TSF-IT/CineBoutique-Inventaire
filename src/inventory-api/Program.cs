@@ -339,6 +339,7 @@ app.Use(async (ctx, next) =>
 
 app.MapHealthEndpoints();
 app.MapDiagnosticsEndpoints();
+app.MapLocationsQueryEndpoints();
 app.MapInventoryEndpoints();
 app.MapProductEndpoints();
 
