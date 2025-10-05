@@ -23,10 +23,17 @@ const isHttpError = (value: unknown): value is HttpError =>
   typeof (value as { status?: unknown }).status === 'number' &&
   typeof (value as { url?: unknown }).url === 'string'
 
+const isProductNotFoundError = (error: unknown): error is HttpError =>
+  isHttpError(error) && error.status === 404 && /\/products\//.test(error.url)
+
 const describeError = (error: unknown): { title: string; details?: string } | null => {
   if (!error) {
     return null
   }
+  if (isProductNotFoundError(error)) {
+    return null
+  }
+
   if (isHttpError(error)) {
     const detail =
       (error.problem as { detail?: string; title?: string } | undefined)?.detail ||
@@ -58,16 +65,27 @@ export const HomePage = () => {
   const [completedRunsModalOpen, setCompletedRunsModalOpen] = useState(false)
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
   const [selectedZone, setSelectedZone] = useState<ConflictZoneSummary | null>(null)
-  const onError = useCallback((e: unknown) => {
-    const err = e as HttpError
-    console.error('[home] http error', err)
+  const onError = useCallback((error: unknown) => {
+    if (isProductNotFoundError(error)) {
+      console.warn('[home] produit introuvable ignoré', error)
+      return
+    }
+    console.error('[home] http error', error)
   }, [])
 
-  const fetchSummarySafely = useCallback(() => {
+  const fetchSummarySafely = useCallback(async () => {
     if (!shop?.id) {
-      return Promise.resolve<InventorySummary | null>(null)
+      return null
     }
-    return fetchInventorySummary()
+    try {
+      return await fetchInventorySummary()
+    } catch (error) {
+      if (isProductNotFoundError(error)) {
+        console.warn('[home] produit introuvable ignoré', error)
+        return null
+      }
+      throw error
+    }
   }, [shop?.id])
 
   const {
