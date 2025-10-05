@@ -9,6 +9,7 @@ export enum CountType {
 export interface InventorySummary {
   activeSessions: number
   openRuns: number
+  completedRuns: number
   conflicts: number
   lastActivityUtc: string | null
   openRunDetails: OpenRunSummary[]
