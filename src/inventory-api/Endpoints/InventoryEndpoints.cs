@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Infrastructure;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Models;
-using CineBoutique.Inventory.Api.Responses;
 using Dapper;
 using FluentValidation;
 using FluentValidation.Results;
@@ -552,7 +551,7 @@ ORDER BY l.""Code"" ASC;";
 
             if (locations.Count == 0)
             {
-                return Results.Ok(Array.Empty<LocationSummaryResponse>());
+                return Results.Ok(Array.Empty<LocationListItemDto>());
             }
 
             var locationIds = locations.Select(location => location.Id).ToArray();
@@ -638,40 +637,47 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
 
                 foreach (var type in targetCountTypes)
                 {
+                    var status = new LocationCountStatusDto
+                    {
+                        CountType = type,
+                        Status = LocationCountStatus.NotStarted,
+                        RunId = null,
+                        OwnerDisplayName = null,
+                        OwnerUserId = null,
+                        StartedAtUtc = null,
+                        CompletedAtUtc = null
+                    };
+
                     var open = openLookup[(location.Id, type)].FirstOrDefault();
                     if (open is not null)
                     {
-                        statuses.Add(new LocationCountStatusDto
-                        {
-                            CountType = type,
-                            Status = LocationCountStatus.InProgress,
-                            RunId = EndpointUtilities.SanitizeRunId(open.RunId),
-                            OwnerDisplayName = NormalizeDisplayName(open.OwnerDisplayName),
-                            OwnerUserId = NormalizeUserId(open.OwnerUserId),
-                            StartedAtUtc = ConvertToUtcTimestamp(open.StartedAtUtc),
-                            CompletedAtUtc = ConvertToUtcTimestamp(open.CompletedAtUtc)
-                        });
-
-                        continue;
+                        status.Status = LocationCountStatus.InProgress;
+                        status.RunId = EndpointUtilities.SanitizeRunId(open.RunId);
+                        status.OwnerDisplayName = NormalizeDisplayName(open.OwnerDisplayName);
+                        status.OwnerUserId = NormalizeUserId(open.OwnerUserId);
+                        status.StartedAtUtc = ConvertToUtcTimestamp(open.StartedAtUtc);
+                        status.CompletedAtUtc = ConvertToUtcTimestamp(open.CompletedAtUtc);
                     }
-
-                    var completed = completedLookup[(location.Id, type)].FirstOrDefault();
-                    if (completed is not null)
+                    else
                     {
-                        statuses.Add(new LocationCountStatusDto
+                        var completed = completedLookup[(location.Id, type)].FirstOrDefault();
+                        if (completed is not null)
                         {
-                            CountType = type,
-                            Status = LocationCountStatus.Completed,
-                            RunId = EndpointUtilities.SanitizeRunId(completed.RunId),
-                            OwnerDisplayName = NormalizeDisplayName(completed.OwnerDisplayName),
-                            OwnerUserId = NormalizeUserId(completed.OwnerUserId),
-                            StartedAtUtc = ConvertToUtcTimestamp(completed.StartedAtUtc),
-                            CompletedAtUtc = ConvertToUtcTimestamp(completed.CompletedAtUtc)
-                        });
+                            status.Status = LocationCountStatus.Completed;
+                            status.RunId = EndpointUtilities.SanitizeRunId(completed.RunId);
+                            status.OwnerDisplayName = NormalizeDisplayName(completed.OwnerDisplayName);
+                            status.OwnerUserId = NormalizeUserId(completed.OwnerUserId);
+                            status.StartedAtUtc = ConvertToUtcTimestamp(completed.StartedAtUtc);
+                            status.CompletedAtUtc = ConvertToUtcTimestamp(completed.CompletedAtUtc);
+                        }
                     }
+
+                    statuses.Add(status);
                 }
 
-                location.CountStatuses = statuses;
+                location.CountStatuses = statuses.Count > 0
+                    ? statuses
+                    : Array.Empty<LocationCountStatusDto>();
 
                 var openRunsForLocation = openRuns
                     .Where(r => r.LocationId == location.Id)
@@ -714,31 +720,11 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                 }
             }
 
-            var response = locations
-                .Select(location =>
-                {
-                    var countStatuses = location.CountStatuses is { } existingStatuses && existingStatuses.Count > 0
-                        ? existingStatuses
-                            .Select(status => new CountStatusItem(status.RunId, status.StartedAtUtc, status.CompletedAtUtc))
-                            .ToArray()
-                        : Array.Empty<CountStatusItem>();
-
-                    return new LocationSummaryResponse(
-                        location.Id,
-                        location.Label,
-                        location.BusyBy,
-                        location.ActiveRunId,
-                        location.ActiveCountType,
-                        location.ActiveStartedAtUtc,
-                        countStatuses);
-                })
-                .ToList();
-
-            return Results.Ok(response);
+            return Results.Ok(locations);
         })
         .WithName("GetLocations")
         .WithTags("Locations")
-        .Produces<IEnumerable<LocationSummaryResponse>>(StatusCodes.Status200OK)
+        .Produces<IEnumerable<LocationListItemDto>>(StatusCodes.Status200OK)
         .WithOpenApi(op =>
         {
             op.Summary = "Liste les emplacements (locations)";
