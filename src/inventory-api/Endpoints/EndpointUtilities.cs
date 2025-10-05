@@ -1,13 +1,17 @@
 // Modifications : centralisation des utilitaires partagés entre les endpoints minimal API.
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
 using System.Globalization;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Infrastructure.Middleware;
 using Dapper;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using FluentValidation.Results;
 
 namespace CineBoutique.Inventory.Api.Endpoints;
 
@@ -94,6 +98,34 @@ WHERE LOWER(table_name) = LOWER(@TableName)
 
         return runId;
     }
+
+    public static IResult ValidationProblem(ValidationResult validationResult)
+    {
+        ArgumentNullException.ThrowIfNull(validationResult);
+
+        if (validationResult.IsValid)
+        {
+            return Results.ValidationProblem(statusCode: StatusCodes.Status400BadRequest);
+        }
+
+        var errors = validationResult.Errors
+            .GroupBy(error => string.IsNullOrWhiteSpace(error.PropertyName) ? string.Empty : error.PropertyName)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(error => error.ErrorMessage).Distinct().ToArray());
+
+        return Results.ValidationProblem(
+            errors,
+            statusCode: StatusCodes.Status400BadRequest,
+            title: "Requête invalide");
+    }
+
+    public static IResult Problem(string title, string detail, int statusCode, IDictionary<string, object?>? extensions = null) =>
+        Results.Problem(
+            title: title,
+            detail: detail,
+            statusCode: statusCode,
+            extensions: extensions);
 
     public static string? GetAuthenticatedUserName(HttpContext context)
     {

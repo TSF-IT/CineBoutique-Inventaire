@@ -62,6 +62,7 @@ public sealed class AuditLoggingTests : IAsyncLifetime
         var sessionId = Guid.NewGuid();
         var runId = Guid.NewGuid();
         var startedAt = DateTimeOffset.UtcNow.AddMinutes(-2);
+        var ownerUserId = Guid.NewGuid();
 
         using (var scope = _factory.Services.CreateScope())
         {
@@ -69,8 +70,26 @@ public sealed class AuditLoggingTests : IAsyncLifetime
             await using var connection = connectionFactory.CreateConnection();
             await EnsureConnectionOpenAsync(connection);
 
-            const string insertLocationSql = "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\") VALUES (@Id, @Code, @Label);";
-            await connection.ExecuteAsync(insertLocationSql, new { Id = locationId, Code = "S1", Label = "Zone S1" });
+            var shopId = Guid.NewGuid();
+            const string insertShopSql = "INSERT INTO \"Shop\" (\"Id\", \"Name\") VALUES (@Id, @Name);";
+            await connection.ExecuteAsync(insertShopSql, new { Id = shopId, Name = "Audit Shop" });
+
+            const string insertLocationSql =
+                "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\", \"ShopId\") VALUES (@Id, @Code, @Label, @ShopId);";
+            await connection.ExecuteAsync(insertLocationSql, new { Id = locationId, Code = "S1", Label = "Zone S1", ShopId = shopId });
+
+            const string insertUserSql =
+                "INSERT INTO \"ShopUser\" (\"Id\", \"ShopId\", \"Login\", \"DisplayName\", \"IsAdmin\", \"Secret_Hash\", \"Disabled\")" +
+                " VALUES (@Id, @ShopId, @Login, @DisplayName, FALSE, '', FALSE);";
+            await connection.ExecuteAsync(
+                insertUserSql,
+                new
+                {
+                    Id = ownerUserId,
+                    ShopId = shopId,
+                    Login = $"user_{Guid.NewGuid():N}",
+                    DisplayName = "Amélie"
+                });
 
             const string insertSessionSql = "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc);";
             await connection.ExecuteAsync(insertSessionSql, new { Id = sessionId, Name = "Session principale", StartedAtUtc = startedAt });
@@ -84,10 +103,12 @@ public sealed class AuditLoggingTests : IAsyncLifetime
                     CountType: 1,
                     startedAt,
                     CompletedAtUtc: null,
-                    OperatorDisplayName: "Amélie"));
+                    OperatorDisplayName: "Amélie",
+                    OwnerUserId: ownerUserId));
         }
 
-        var response = await _client.PostAsync($"/api/inventories/{locationId}/restart?countType=1", null);
+        var restartRequest = new RestartRunRequest(ownerUserId, 1);
+        var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/restart", restartRequest);
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
 
         var auditLogs = await GetAuditLogsAsync();
