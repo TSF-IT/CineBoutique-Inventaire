@@ -29,8 +29,8 @@ describe('LocationsSchema', () => {
             runId: null,
             ownerDisplayName: null,
             ownerUserId: null,
-            startedAtUtc: null,
-            completedAtUtc: null,
+            startedAtUtc: '',
+            completedAtUtc: '',
           },
         ],
       },
@@ -47,5 +47,6 @@ describe('LocationsSchema', () => {
     expect(result[0].countStatuses).toHaveLength(2)
     expect(result[0].countStatuses[0].status).toBe('completed')
     expect(result[0].countStatuses[1].status).toBe('not_started')
+    expect(result[0].countStatuses[1]).toHaveProperty('ownerDisplayName', null)
   })
 })
