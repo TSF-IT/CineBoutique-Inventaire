@@ -114,6 +114,10 @@ export const HomePage = () => {
   const conflictZones = useMemo(() => displaySummary?.conflictZones ?? [], [displaySummary])
   const locations = useMemo(() => locationsData ?? [], [locationsData])
   const completedRuns = useMemo(() => {
+    if (displaySummary) {
+      return displaySummary.completedRuns
+    }
+
     return locations.reduce((acc, location) => {
       const statuses = location.countStatuses ?? []
       const completedTypes = statuses.reduce<Set<number>>((set, status) => {
@@ -124,7 +128,7 @@ export const HomePage = () => {
       }, new Set<number>())
       return acc + completedTypes.size
     }, 0)
-  }, [locations])
+  }, [displaySummary, locations])
 
   const totalExpected = useMemo(() => locations.length * 2, [locations.length])
   const hasOpenRuns = openRunsCount > 0
