@@ -122,6 +122,64 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task CompleteInventoryRun_CompletesExistingRunWithLines()
+    {
+        await ResetDatabaseAsync();
+        var (locationId, shopId) = await SeedLocationAsync("S2", "Zone S2");
+        var ownerUserId = await SeedShopUserAsync(shopId, "Camille");
+
+        var startRequest = new StartRunRequest(shopId, ownerUserId, 1);
+        var startResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/start", startRequest);
+        startResponse.EnsureSuccessStatusCode();
+
+        var startPayload = await startResponse.Content.ReadFromJsonAsync<StartInventoryRunResponse>();
+        Assert.NotNull(startPayload);
+        var runId = startPayload!.RunId;
+        Assert.NotEqual(Guid.Empty, runId);
+
+        const string ean = "12345671";
+        var productSku = $"SKU-{Guid.NewGuid():N}"[..11];
+        var productId = await SeedProductAsync(productSku, "Produit existant", ean);
+
+        using (var scope = _factory.Services.CreateScope())
+        {
+            var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+            await using var connection = connectionFactory.CreateConnection();
+            await EnsureConnectionOpenAsync(connection);
+
+            const string insertLineSql =
+                "INSERT INTO \"CountLine\" (\"Id\", \"CountingRunId\", \"ProductId\", \"Quantity\", \"CountedAtUtc\") VALUES (@Id, @RunId, @ProductId, @Quantity, @CountedAtUtc);";
+
+            await connection.ExecuteAsync(
+                insertLineSql,
+                new
+                {
+                    Id = Guid.NewGuid(),
+                    RunId = runId,
+                    ProductId = productId,
+                    Quantity = 1.25m,
+                    CountedAtUtc = DateTimeOffset.UtcNow
+                });
+        }
+
+        var completePayload = new CompleteRunRequest(
+            runId,
+            ownerUserId,
+            1,
+            new[] { new CompleteRunItemRequest(ean, 2m, false) });
+
+        var completeResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", completePayload);
+        Assert.Equal(HttpStatusCode.OK, completeResponse.StatusCode);
+
+        var payload = await completeResponse.Content.ReadFromJsonAsync<CompleteInventoryRunResponse>();
+        Assert.NotNull(payload);
+        Assert.Equal(runId, payload!.RunId);
+        Assert.Equal(locationId, payload.LocationId);
+        Assert.True(payload.ItemsCount > 0);
+        Assert.True(payload.TotalQuantity > 0);
+    }
+
+    [Fact]
     public async Task CompleteInventoryRun_CreatesUnknownProduct_WhenEanNotFound()
     {
         await ResetDatabaseAsync();
