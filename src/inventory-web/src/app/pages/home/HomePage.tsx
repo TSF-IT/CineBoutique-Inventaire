@@ -1,5 +1,5 @@
 // Modifications : chargement des zones pour le compteur terminé et panneau enrichi des runs ouverts.
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import clsx from 'clsx'
 import { Link, useNavigate } from 'react-router-dom'
 import { fetchInventorySummary, fetchLocations } from '../../api/inventoryApi'
@@ -60,11 +60,18 @@ const describeError = (error: unknown): { title: string; details?: string } | nu
 
 export const HomePage = () => {
   const navigate = useNavigate()
-  const { shop, setShop } = useShop()
+  const { shop, setShop, isLoaded } = useShop()
+  const shopId = shop?.id?.trim() ?? ''
   const [openRunsModalOpen, setOpenRunsModalOpen] = useState(false)
   const [completedRunsModalOpen, setCompletedRunsModalOpen] = useState(false)
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
   const [selectedZone, setSelectedZone] = useState<ConflictZoneSummary | null>(null)
+
+  useEffect(() => {
+    if (isLoaded && !shopId) {
+      navigate('/select-shop', { replace: true })
+    }
+  }, [isLoaded, navigate, shopId])
   const onError = useCallback((error: unknown) => {
     if (isProductNotFoundError(error)) {
       console.warn('[home] produit introuvable ignoré', error)
@@ -74,7 +81,7 @@ export const HomePage = () => {
   }, [])
 
   const fetchSummarySafely = useCallback(async () => {
-    if (!shop?.id) {
+    if (!isLoaded || !shopId) {
       return null
     }
     try {
@@ -86,7 +93,7 @@ export const HomePage = () => {
       }
       throw error
     }
-  }, [shop?.id])
+  }, [isLoaded, shopId])
 
   const {
     data: summaryData,
@@ -96,25 +103,29 @@ export const HomePage = () => {
   } = useAsync(fetchSummarySafely, [fetchSummarySafely], {
     initialValue: null,
     onError,
-    immediate: Boolean(shop?.id),
+    immediate: Boolean(isLoaded && shopId),
   })
 
-  const loadLocations = useCallback(() => {
-    if (!shop?.id) {
+  const loadLocations = useCallback((currentShopId: string) => {
+    return fetchLocations(currentShopId)
+  }, [])
+
+  const fetchLocationsForCurrentShop = useCallback(() => {
+    if (!isLoaded || !shopId) {
       return Promise.resolve<Location[]>([])
     }
-    return fetchLocations({ shopId: shop.id })
-  }, [shop?.id])
+    return loadLocations(shopId)
+  }, [isLoaded, loadLocations, shopId])
 
   const {
     data: locationsData,
     loading: locationsLoading,
     error: locationsError,
     execute: executeLocations,
-  } = useAsync<Location[]>(loadLocations, [loadLocations], {
+  } = useAsync<Location[]>(fetchLocationsForCurrentShop, [fetchLocationsForCurrentShop], {
     initialValue: [],
     onError,
-    immediate: Boolean(shop?.id),
+    immediate: Boolean(isLoaded && shopId),
   })
 
   const handleRetry = useCallback(() => {

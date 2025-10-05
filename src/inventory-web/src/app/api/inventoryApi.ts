@@ -342,19 +342,22 @@ export const getCompletedRunDetail = async (runId: string): Promise<CompletedRun
   }
 }
 
-export const fetchLocations = async ({ shopId, countType }: { shopId: string; countType?: CountType }): Promise<Location[]> => {
+export const fetchLocations = async (
+  shopId: string,
+  options?: { countType?: CountType },
+): Promise<Location[]> => {
   const normalisedShopId = shopId?.trim()
   if (!normalisedShopId) {
-    throw new Error('shopId requis pour récupérer les zones.')
+    throw new Error('Aucune boutique sélectionnée.')
   }
 
-  let endpoint = '/locations'
+  let endpoint = `/locations?shopId=${encodeURIComponent(normalisedShopId)}`
   let httpCallSucceeded = false
   try {
     const searchParams = new URLSearchParams()
     searchParams.set('shopId', normalisedShopId)
-    if (countType !== undefined) {
-      searchParams.set('countType', String(countType))
+    if (options?.countType !== undefined) {
+      searchParams.set('countType', String(options.countType))
     }
     const query = searchParams.toString()
     endpoint = `/locations${query ? `?${query}` : ''}`

@@ -41,7 +41,7 @@ describe('fetchLocations (dev fixtures)', () => {
 
     const { fetchLocations } = await import('./inventoryApi')
 
-    const locations = await fetchLocations({ shopId: defaultShopId })
+    const locations = await fetchLocations(defaultShopId)
 
     expect(locations).toHaveLength(39)
     expect(locations[0].code).toBe('B1')
@@ -56,7 +56,7 @@ describe('fetchLocations (dev fixtures)', () => {
 
     const { fetchLocations } = await import('./inventoryApi')
 
-    const locations = await fetchLocations({ shopId: defaultShopId })
+    const locations = await fetchLocations(defaultShopId)
 
     expect(locations).toHaveLength(39)
     expect(locations[0].code).toBe('B1')
@@ -71,7 +71,7 @@ describe('fetchLocations (dev fixtures)', () => {
 
     const { fetchLocations } = await import('./inventoryApi')
 
-    await expect(fetchLocations({ shopId: defaultShopId })).rejects.toMatchObject({ status: 500 })
+    await expect(fetchLocations(defaultShopId)).rejects.toMatchObject({ status: 500 })
   })
 
   it('normalise les identifiants de run vides en null', async () => {
@@ -102,7 +102,7 @@ describe('fetchLocations (dev fixtures)', () => {
 
     const { fetchLocations } = await import('./inventoryApi')
 
-    const [location] = await fetchLocations({ shopId: defaultShopId })
+    const [location] = await fetchLocations(defaultShopId)
 
     expect(location.activeRunId).toBeNull()
     expect(location.countStatuses[0]?.runId).toBeNull()
@@ -121,7 +121,7 @@ describe('fetchLocations (dev fixtures)', () => {
 
     const { fetchLocations } = await import('./inventoryApi')
 
-    await expect(fetchLocations({ shopId: defaultShopId })).rejects.toMatchObject({
+    await expect(fetchLocations(defaultShopId)).rejects.toMatchObject({
       status: 422,
       problem: expect.objectContaining({
         fieldErrors: expect.any(Object),
@@ -173,7 +173,7 @@ describe('fetchLocations (parsing)', () => {
 
     const { fetchLocations } = await import('./inventoryApi')
 
-    const [location] = await fetchLocations({ shopId: defaultShopId })
+    const [location] = await fetchLocations(defaultShopId)
 
     expect(location.code).toBe('Z2')
     expect(location.countStatuses).toHaveLength(1)
@@ -204,7 +204,7 @@ describe('fetchLocations (parsing)', () => {
 
     const { fetchLocations } = await import('./inventoryApi')
 
-    const [location] = await fetchLocations({ shopId: defaultShopId })
+    const [location] = await fetchLocations(defaultShopId)
 
     expect(location.countStatuses).toHaveLength(2)
     expect(location.countStatuses.map((s) => s.countType)).toEqual([

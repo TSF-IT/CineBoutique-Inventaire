@@ -45,6 +45,57 @@ describe('HomePage', () => {
     vi.clearAllMocks()
   })
 
+  it('redirige vers la sélection de boutique lorsqu’aucune boutique n’est disponible', async () => {
+    localStorage.clear()
+    mockedFetchSummary.mockResolvedValue(null)
+    mockedFetchLocations.mockResolvedValue([])
+
+    render(
+      <ThemeProvider>
+        <ShopProvider>
+          <MemoryRouter>
+            <HomePage />
+          </MemoryRouter>
+        </ShopProvider>
+      </ThemeProvider>,
+    )
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith('/select-shop', { replace: true })
+    })
+
+    expect(mockedFetchLocations).not.toHaveBeenCalled()
+  })
+
+  it('charge les zones exactement une fois pour la boutique sélectionnée', async () => {
+    mockedFetchSummary.mockResolvedValue({
+      activeSessions: 0,
+      openRuns: 0,
+      completedRuns: 0,
+      conflicts: 0,
+      lastActivityUtc: null,
+      openRunDetails: [],
+      completedRunDetails: [],
+      conflictZones: [],
+    })
+    mockedFetchLocations.mockResolvedValue([])
+
+    render(
+      <ThemeProvider>
+        <ShopProvider>
+          <MemoryRouter>
+            <HomePage />
+          </MemoryRouter>
+        </ShopProvider>
+      </ThemeProvider>,
+    )
+
+    await waitFor(() => {
+      expect(mockedFetchLocations).toHaveBeenCalledTimes(1)
+    })
+    expect(mockedFetchLocations).toHaveBeenCalledWith(testShop.id)
+  })
+
   it('affiche les zones en conflit et ouvre la modale de détail', async () => {
     const summary: InventorySummary = {
       activeSessions: 0,
@@ -93,7 +144,8 @@ describe('HomePage', () => {
       expect(mockedFetchSummary).toHaveBeenCalled()
     })
 
-    expect(await screen.findByText('Conflits')).toBeInTheDocument()
+    const conflictLabels = await screen.findAllByText('Conflits')
+    expect(conflictLabels.length).toBeGreaterThan(0)
     expect(screen.getByText('1')).toBeInTheDocument()
     const zoneButton = await screen.findByRole('button', { name: /B1 · Zone B1/i })
     fireEvent.click(zoneButton)
@@ -259,9 +311,10 @@ describe('HomePage', () => {
 
       expect(errorSpy).not.toHaveBeenCalledWith('[home] http error', expect.anything())
       expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-      expect(
-        await screen.findByText('Les indicateurs ne sont pas disponibles pour le moment.'),
-      ).toBeInTheDocument()
+      const neutralMessages = await screen.findAllByText(
+        'Les indicateurs ne sont pas disponibles pour le moment.',
+      )
+      expect(neutralMessages.length).toBeGreaterThan(0)
     } finally {
       warnSpy.mockRestore()
       errorSpy.mockRestore()

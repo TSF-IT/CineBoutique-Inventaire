@@ -141,7 +141,7 @@ const {
     },
   ]
   return {
-    fetchLocationsMock: vi.fn(async ({ shopId }: { shopId: string }): Promise<Location[]> => {
+    fetchLocationsMock: vi.fn(async (shopId: string): Promise<Location[]> => {
       expect(shopId).toBeTruthy()
       return [
         { ...reserveLocation },
@@ -273,7 +273,7 @@ describe("Workflow d'inventaire", () => {
     fetchShopUsersMock.mockReset()
     fetchShopUsersMock.mockResolvedValue(shopUsers)
     fetchLocationsMock.mockReset()
-    fetchLocationsMock.mockImplementation(async ({ shopId }: { shopId: string }): Promise<Location[]> => {
+    fetchLocationsMock.mockImplementation(async (shopId: string): Promise<Location[]> => {
       expect(shopId).toBeTruthy()
       return [
         { ...reserveLocation },
@@ -356,7 +356,7 @@ describe("Workflow d'inventaire", () => {
     expect(locationPages).not.toHaveLength(0)
 
     await waitFor(() => expect(fetchLocationsMock).toHaveBeenCalledTimes(1))
-    expect(fetchLocationsMock.mock.calls[0]?.[0]).toMatchObject({ shopId: testShop.id })
+    expect(fetchLocationsMock).toHaveBeenCalledWith(testShop.id)
 
     await waitFor(() => expect(fetchInventorySummaryMock).toHaveBeenCalledTimes(1))
 

@@ -35,10 +35,8 @@ const renderAdminPage = async () => {
   )
 
   await waitFor(() => {
-    expect(mockedFetchLocations).toHaveBeenCalled()
+    expect(mockedFetchLocations).toHaveBeenCalledWith(testShop.id)
   })
-
-  expect(mockedFetchLocations.mock.calls[0]?.[0]).toMatchObject({ shopId: testShop.id })
 
 }
 

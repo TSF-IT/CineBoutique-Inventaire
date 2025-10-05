@@ -103,7 +103,7 @@ export const InventoryLocationStep = () => {
         if (!shop?.id) {
           throw new Error('Aucune boutique sélectionnée.')
         }
-        const data = await fetchLocations({ shopId: shop.id })
+        const data = await fetchLocations(shop.id)
         if (!isCancelled()) {
           setLocations(Array.isArray(data) ? data : [])
         }
