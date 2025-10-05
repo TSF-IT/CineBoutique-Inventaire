@@ -105,7 +105,7 @@ export const SelectShopPage = () => {
       setIsRedirecting(true)
       setSelectionError(null)
       setShop(shopToNavigate)
-      navigate('/inventory/start', { replace: true, state: { redirectTo: '/' } })
+      navigate('/select-user', { replace: true, state: { redirectTo: '/' } })
     },
     [navigate, setShop],
   )
