@@ -16,15 +16,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Show runner info
+      - name: Install .NET 8 locally (no sudo)
+        shell: bash
         run: |
-          uname -a || true
-          dotnet --info || true
-          docker version || true
-          docker compose version || true
+          set -eux
+          DOTNET_DIR="${GITHUB_WORKSPACE}/.dotnet"
+          mkdir -p "$DOTNET_DIR"
+          curl -sSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh
+          bash dotnet-install.sh --channel 8.0 --install-dir "$DOTNET_DIR"
+          echo "DOTNET_ROOT=$DOTNET_DIR" >> "$GITHUB_ENV"
+          echo "$DOTNET_DIR" >> "$GITHUB_PATH"
+          dotnet --info
 
-      # On suit la solution du repo: script qui installe le SDK local si besoin et exécute les tests Domain
-      - name: Run Domain tests (scripts/test-codex.sh)
+      - name: Run Domain tests (make test)
         shell: bash
         run: |
           make test
@@ -32,3 +36,83 @@ jobs:
       - name: Publish test results (Domain)
         if: always()
         uses: actions/upload-artifact@v4
+        with:
+          name: domain-test-results
+          path: |
+            **/TestResults/*.trx
+            **/TestResults/*.xml
+          if-no-files-found: ignore
+
+  api-tests:
+    name: API Tests (with Testcontainers/Postgres)
+    runs-on: [self-hosted, Linux, X64, tsf, docker]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install .NET 8 locally (no sudo)
+        shell: bash
+        run: |
+          set -eux
+          DOTNET_DIR="${GITHUB_WORKSPACE}/.dotnet"
+          mkdir -p "$DOTNET_DIR"
+          curl -sSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh
+          bash dotnet-install.sh --channel 8.0 --install-dir "$DOTNET_DIR"
+          echo "DOTNET_ROOT=$DOTNET_DIR" >> "$GITHUB_ENV"
+          echo "$DOTNET_DIR" >> "$GITHUB_PATH"
+          dotnet --info
+
+      - name: Show Docker
+        run: |
+          docker version || true
+          docker images  || true
+
+      - name: Restore
+        run: dotnet restore CineBoutique.Inventory.sln
+
+      - name: Build (Release)
+        run: dotnet build CineBoutique.Inventory.sln -c Release --no-restore
+
+      - name: Run API tests
+        working-directory: tests/inventory.api.tests
+        run: dotnet test -c Release --no-build --logger "trx;LogFileName=api-tests.trx"
+
+      - name: Publish test results (API)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-test-results
+          path: |
+            **/TestResults/*.trx
+            **/TestResults/*.xml
+          if-no-files-found: ignore
+
+  frontend:
+    name: Frontend (Vite + Playwright in container)
+    runs-on: [self-hosted, Linux, X64, tsf, docker]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run web build + tests inside Playwright container
+        working-directory: src/inventory-web
+        run: |
+          docker run --rm \
+            -v "$PWD":/work \
+            -w /work \
+            mcr.microsoft/playwright:v1.47.0-jammy \
+            bash -lc '
+              set -eux
+              node -v
+              npm -v
+              npm ci
+              npm run build
+              npx playwright install
+              npx playwright test
+            '
+
+      - name: Upload Playwright report (si présent)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: src/inventory-web/playwright-report
+          if-no-files-found: ignore

@@ -14,18 +14,29 @@ jobs:
     runs-on: [self-hosted, Linux, X64, tsf, docker]
     steps:
       - uses: actions/checkout@v4
-      - name: Setup .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: |
-            8.0.x
+
+      - name: Install .NET 8 locally (no sudo)
+        shell: bash
+        run: |
+          set -eux
+          DOTNET_DIR="${GITHUB_WORKSPACE}/.dotnet"
+          mkdir -p "$DOTNET_DIR"
+          curl -sSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh
+          bash dotnet-install.sh --channel 8.0 --install-dir "$DOTNET_DIR"
+          echo "DOTNET_ROOT=$DOTNET_DIR" >> "$GITHUB_ENV"
+          echo "$DOTNET_DIR" >> "$GITHUB_PATH"
+          dotnet --info
+
       - name: Restore
         run: dotnet restore CineBoutique.Inventory.sln
+
       - name: Build
         run: dotnet build CineBoutique.Inventory.sln -c Release --no-restore
+
       - name: Test Domain
         working-directory: tests/inventory.domain.tests
         run: dotnet test -c Release --no-build --logger "trx;LogFileName=domain.trx"
+
       - name: Test API
         working-directory: tests/inventory.api.tests
         run: dotnet test -c Release --no-build --logger "trx;LogFileName=api.trx"
@@ -35,27 +46,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Si tu as réellement besoin de Playwright sur le runner, garde ces étapes.
-      # ATTENTION: sur un self-hosted, l’install des deps système peut nécessiter sudo et casser.
-      # Si ton runner n’est pas prêt pour Playwright, commente ces steps le temps d’installer proprement les deps.
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Run web build + tests inside Playwright container
+        working-directory: src/inventory-web
+        run: |
+          docker run --rm \
+            -v "$PWD":/work \
+            -w /work \
+            mcr.microsoft/playwright:v1.47.0-jammy \
+            bash -lc '
+              set -eux
+              node -v
+              npm -v
+              npm ci
+              npm run build
+              npx playwright install
+              npx playwright test
+            '
+
+      - name: Upload Playwright report (si présent)
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: 'src/inventory-web/package-lock.json'
-      - name: Install deps
-        working-directory: src/inventory-web
-        run: npm ci
-      - name: Build web
-        working-directory: src/inventory-web
-        run: npm run build
-      - name: Install Playwright (with deps)
-        working-directory: src/inventory-web
-        run: npx playwright install --with-deps
-      - name: Run Playwright tests
-        working-directory: src/inventory-web
-        run: npx playwright test
+          name: playwright-report
+          path: src/inventory-web/playwright-report
+          if-no-files-found: ignore
 
   deploy:
     runs-on: [self-hosted, Linux, X64, tsf, docker]
