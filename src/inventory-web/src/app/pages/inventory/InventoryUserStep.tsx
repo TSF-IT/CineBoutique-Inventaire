@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
@@ -12,8 +12,8 @@ import { clearSelectedUserForShop, loadSelectedUserForShop, saveSelectedUserForS
 export const InventoryUserStep = () => {
   const navigate = useNavigate()
   const location = useLocation()
-  const { selectedUser, setSelectedUser } = useInventory()
-  const { shop } = useShop()
+  const { selectedUser, setSelectedUser, reset } = useInventory()
+  const { shop, setShop } = useShop()
   const [search, setSearch] = useState('')
   const [users, setUsers] = useState<ShopUser[]>([])
   const [loading, setLoading] = useState(false)
@@ -26,6 +26,12 @@ export const InventoryUserStep = () => {
     const target = state.redirectTo.trim()
     return target.length > 0 ? target : null
   }, [location.state])
+
+  const resetRef = useRef(reset)
+
+  useEffect(() => {
+    resetRef.current = reset
+  }, [reset])
 
   useEffect(() => {
     let isCancelled = false
@@ -46,13 +52,33 @@ export const InventoryUserStep = () => {
           setUsers(data.filter((user) => !user.disabled))
         }
       } catch (err) {
-        if (!isCancelled) {
-          if (import.meta.env.DEV) {
-            console.error('Impossible de charger les utilisateurs de la boutique.', err)
-          }
-          setUsers([])
-          setError('Impossible de charger la liste des utilisateurs. Réessayez plus tard.')
+        if (isCancelled) {
+          return
         }
+
+        const error = err as { __shopNotFound?: boolean }
+
+        if (
+          error &&
+          typeof error === 'object' &&
+          '__shopNotFound' in error &&
+          (error as { __shopNotFound?: boolean }).__shopNotFound
+        ) {
+          if (shop?.id) {
+            clearSelectedUserForShop(shop.id)
+          }
+          resetRef.current?.()
+          setShop(null)
+          alert("La boutique enregistrée n'existe plus. Merci de la re-sélectionner.")
+          navigate('/select-shop', { replace: true })
+          return
+        }
+
+        if (import.meta.env.DEV) {
+          console.error('Impossible de charger les utilisateurs de la boutique.', err)
+        }
+        setUsers([])
+        setError('Impossible de charger la liste des utilisateurs. Réessayez plus tard.')
       } finally {
         if (!isCancelled) {
           setLoading(false)
