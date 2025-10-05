@@ -3,13 +3,13 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
-using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Infrastructure;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Models;
+using CineBoutique.Inventory.Api.Responses;
 using Dapper;
 using FluentValidation;
 using FluentValidation.Results;
@@ -552,7 +552,7 @@ ORDER BY l.""Code"" ASC;";
 
             if (locations.Count == 0)
             {
-                return Results.Ok(locations);
+                return Results.Ok(Array.Empty<LocationSummaryResponse>());
             }
 
             var locationIds = locations.Select(location => location.Id).ToArray();
@@ -629,16 +629,8 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
             static Guid? NormalizeUserId(Guid? value) =>
                 value is { } guid && guid != Guid.Empty ? guid : null;
 
-            static string FormatTimestamp(DateTime? value)
-            {
-                if (!value.HasValue)
-                {
-                    return string.Empty;
-                }
-
-                var utcValue = TimeUtil.ToUtcOffset(value.Value);
-                return utcValue.ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture);
-            }
+            static DateTimeOffset? ConvertToUtcTimestamp(DateTime? value)
+                => value.HasValue ? TimeUtil.ToUtcOffset(value.Value) : (DateTimeOffset?)null;
 
             foreach (var location in locations)
             {
@@ -646,36 +638,37 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
 
                 foreach (var type in targetCountTypes)
                 {
-                    var status = new LocationCountStatusDto
-                    {
-                        CountType = type
-                    };
-
                     var open = openLookup[(location.Id, type)].FirstOrDefault();
                     if (open is not null)
                     {
-                        status.Status = LocationCountStatus.InProgress;
-                        status.RunId = EndpointUtilities.SanitizeRunId(open.RunId);
-                        status.OwnerDisplayName = NormalizeDisplayName(open.OwnerDisplayName);
-                        status.OwnerUserId = NormalizeUserId(open.OwnerUserId);
-                        status.StartedAtUtc = FormatTimestamp(open.StartedAtUtc);
-                        status.CompletedAtUtc = FormatTimestamp(open.CompletedAtUtc);
-                    }
-                    else
-                    {
-                        var completed = completedLookup[(location.Id, type)].FirstOrDefault();
-                        if (completed is not null)
+                        statuses.Add(new LocationCountStatusDto
                         {
-                            status.Status = LocationCountStatus.Completed;
-                            status.RunId = EndpointUtilities.SanitizeRunId(completed.RunId);
-                            status.OwnerDisplayName = NormalizeDisplayName(completed.OwnerDisplayName);
-                            status.OwnerUserId = NormalizeUserId(completed.OwnerUserId);
-                            status.StartedAtUtc = FormatTimestamp(completed.StartedAtUtc);
-                            status.CompletedAtUtc = FormatTimestamp(completed.CompletedAtUtc);
-                        }
+                            CountType = type,
+                            Status = LocationCountStatus.InProgress,
+                            RunId = EndpointUtilities.SanitizeRunId(open.RunId),
+                            OwnerDisplayName = NormalizeDisplayName(open.OwnerDisplayName),
+                            OwnerUserId = NormalizeUserId(open.OwnerUserId),
+                            StartedAtUtc = ConvertToUtcTimestamp(open.StartedAtUtc),
+                            CompletedAtUtc = ConvertToUtcTimestamp(open.CompletedAtUtc)
+                        });
+
+                        continue;
                     }
 
-                    statuses.Add(status);
+                    var completed = completedLookup[(location.Id, type)].FirstOrDefault();
+                    if (completed is not null)
+                    {
+                        statuses.Add(new LocationCountStatusDto
+                        {
+                            CountType = type,
+                            Status = LocationCountStatus.Completed,
+                            RunId = EndpointUtilities.SanitizeRunId(completed.RunId),
+                            OwnerDisplayName = NormalizeDisplayName(completed.OwnerDisplayName),
+                            OwnerUserId = NormalizeUserId(completed.OwnerUserId),
+                            StartedAtUtc = ConvertToUtcTimestamp(completed.StartedAtUtc),
+                            CompletedAtUtc = ConvertToUtcTimestamp(completed.CompletedAtUtc)
+                        });
+                    }
                 }
 
                 location.CountStatuses = statuses;
@@ -721,11 +714,31 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                 }
             }
 
-            return Results.Ok(locations);
+            var response = locations
+                .Select(location =>
+                {
+                    var countStatuses = location.CountStatuses is { } existingStatuses && existingStatuses.Count > 0
+                        ? existingStatuses
+                            .Select(status => new CountStatusItem(status.RunId, status.StartedAtUtc, status.CompletedAtUtc))
+                            .ToArray()
+                        : Array.Empty<CountStatusItem>();
+
+                    return new LocationSummaryResponse(
+                        location.Id,
+                        location.Label,
+                        location.BusyBy,
+                        location.ActiveRunId,
+                        location.ActiveCountType,
+                        location.ActiveStartedAtUtc,
+                        countStatuses);
+                })
+                .ToList();
+
+            return Results.Ok(response);
         })
         .WithName("GetLocations")
         .WithTags("Locations")
-        .Produces<IEnumerable<LocationListItemDto>>(StatusCodes.Status200OK)
+        .Produces<IEnumerable<LocationSummaryResponse>>(StatusCodes.Status200OK)
         .WithOpenApi(op =>
         {
             op.Summary = "Liste les emplacements (locations)";

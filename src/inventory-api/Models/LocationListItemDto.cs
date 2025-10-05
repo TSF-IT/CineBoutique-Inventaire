@@ -25,9 +25,9 @@ public sealed class LocationCountStatusDto
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Guid? OwnerUserId { get; set; }
 
-    public string StartedAtUtc { get; set; } = string.Empty;
+    public DateTimeOffset? StartedAtUtc { get; set; }
 
-    public string CompletedAtUtc { get; set; } = string.Empty;
+    public DateTimeOffset? CompletedAtUtc { get; set; }
 }
 
 public sealed class LocationListItemDto
