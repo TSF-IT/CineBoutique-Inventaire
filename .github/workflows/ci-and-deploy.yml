@@ -1,4 +1,4 @@
-name: CI & Deploy (to deploy branch)
+name: "CI & Deploy (to deploy branch)"
 
 on:
   push:
@@ -12,10 +12,23 @@ permissions:
 jobs:
   backend:
     runs-on: [self-hosted, Linux, X64, tsf, docker]
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+      DOTNET_ROLL_FORWARD: Major
     steps:
-      - uses: actions/checkout@v4
+      - name: "Pre-clean: take ownership of workspace"
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE":/work \
+            alpine:3.20 \
+            sh -lc "chown -R $(id -u):$(id -g) /work || true"
 
-      - name: Install .NET 8 locally (no sudo)
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: "Install .NET 8 locally (no sudo)"
         shell: bash
         env:
           DOTNET_DIR: ${{ github.workspace }}/.dotnet
@@ -30,23 +43,23 @@ jobs:
           export PATH="$DOTNET_DIR:$PATH"
           "$DOTNET_DIR/dotnet" --info
 
-      - name: Restore
+      - name: "Restore"
         env:
           PATH: ${{ github.workspace }}/.dotnet:${{ env.PATH }}
         run: dotnet restore CineBoutique.Inventory.sln
 
-      - name: Build
+      - name: "Build"
         env:
           PATH: ${{ github.workspace }}/.dotnet:${{ env.PATH }}
         run: dotnet build CineBoutique.Inventory.sln -c Release --no-restore
 
-      - name: Test Domain
+      - name: "Test Domain"
         working-directory: tests/inventory.domain.tests
         env:
           PATH: ${{ github.workspace }}/.dotnet:${{ env.PATH }}
         run: dotnet test -c Release --no-build --logger "trx;LogFileName=domain.trx"
 
-      - name: Test API
+      - name: "Test API"
         working-directory: tests/inventory.api.tests
         env:
           PATH: ${{ github.workspace }}/.dotnet:${{ env.PATH }}
@@ -55,12 +68,25 @@ jobs:
   frontend:
     runs-on: [self-hosted, Linux, X64, tsf, docker]
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Run web build + tests inside Playwright container
-        working-directory: src/inventory-web
+      - name: "Pre-clean: take ownership of workspace"
         run: |
           docker run --rm \
+            -v "$GITHUB_WORKSPACE":/work \
+            alpine:3.20 \
+            sh -lc "chown -R $(id -u):$(id -g) /work || true"
+
+      - uses: actions/checkout@v4
+
+      - name: "Run web build + tests inside Playwright container (non-root)"
+        working-directory: src/inventory-web
+        env:
+          CI: "true"
+        run: |
+          UID_GID="$(id -u):$(id -g)"
+          docker run --rm \
+            --ipc=host \
+            --dns=1.1.1.1 \
+            -u "$UID_GID" \
             -v "$PWD":/work \
             -w /work \
             mcr.microsoft.com/playwright:v1.47.0-jammy \
@@ -71,30 +97,39 @@ jobs:
               npm ci
               npm run build
               npx playwright install
-              npx playwright test
+              npx playwright test --reporter=list
             '
 
-      - name: Upload Playwright report (si présent)
+      - name: "Normalize permissions (post)"
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: src/inventory-web/playwright-report
-          if-no-files-found: ignore
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE":/work \
+            alpine:3.20 \
+            sh -lc "chown -R $(id -u):$(id -g) /work || true"
 
   deploy:
     runs-on: [self-hosted, Linux, X64, tsf, docker]
     needs: [backend, frontend]
     if: github.ref == 'refs/heads/main'
     steps:
+      - name: "Pre-clean: take ownership of workspace"
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE":/work \
+            alpine:3.20 \
+            sh -lc "chown -R $(id -u):$(id -g) /work || true"
+
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Configure Git
+
+      - name: "Configure Git"
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-      - name: Force-update deploy branch to this commit
+
+      - name: "Force-update deploy branch to this commit"
         run: |
           git push origin HEAD:refs/heads/deploy --force
           echo "Branch 'deploy' is now at $GITHUB_SHA"
