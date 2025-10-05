@@ -105,7 +105,10 @@ WHERE LOWER(table_name) = LOWER(@TableName)
 
         if (validationResult.IsValid)
         {
-            return Results.ValidationProblem(statusCode: StatusCodes.Status400BadRequest);
+            return Results.ValidationProblem(
+                new Dictionary<string, string[]>(StringComparer.Ordinal),
+                statusCode: StatusCodes.Status400BadRequest,
+                title: "Requête invalide");
         }
 
         var errors = validationResult.Errors
