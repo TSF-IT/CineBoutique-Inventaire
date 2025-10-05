@@ -38,6 +38,10 @@ vi.mock('../../src/app/api/inventoryApi', () => ({
   releaseInventoryRun: (...args: unknown[]) => releaseInventoryRunMock(...args),
 }))
 
+vi.mock('../../src/state/ShopContext', () => ({
+  useShop: () => ({ shop: { id: mockShopUser.shopId, name: 'Boutique Test' }, setShop: vi.fn(), isLoaded: true }),
+}))
+
 vi.mock('../../src/app/contexts/InventoryContext', () => ({
   useInventory: () => ({
     selectedUser: mockShopUser,

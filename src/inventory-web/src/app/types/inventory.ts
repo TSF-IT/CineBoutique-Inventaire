@@ -163,7 +163,7 @@ export interface InventoryCountSubmissionItem {
 export interface CompleteInventoryRunPayload {
   runId?: string | null
   countType: CountType
-  operator: string
+  ownerUserId: string
   items: InventoryCountSubmissionItem[]
 }
 

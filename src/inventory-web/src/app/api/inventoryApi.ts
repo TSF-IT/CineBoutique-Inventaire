@@ -251,14 +251,15 @@ export interface CompleteInventoryRunItem {
 
 export interface CompleteInventoryRunPayload {
   runId?: string | null
+  ownerUserId: string
   countType: 1 | 2 | 3
-  operator: string
   items: CompleteInventoryRunItem[]
 }
 
 export interface StartInventoryRunPayload {
+  shopId: string
+  ownerUserId: string
   countType: 1 | 2 | 3
-  operator: string
 }
 
 export interface StartInventoryRunResponse {
@@ -397,44 +398,34 @@ export const restartInventoryRun = async (locationId: string, countType: CountTy
   })
 }
 
-export const releaseInventoryRun = async (locationId: string, runId: string, operator: string): Promise<void> => {
-  const searchParams = new URLSearchParams({ operatorName: operator })
-  const url = `${API_BASE}/inventories/${encodeURIComponent(locationId)}/runs/${encodeURIComponent(runId)}?${searchParams.toString()}`
-  const res = await fetch(url, { method: 'DELETE' })
+export const releaseInventoryRun = async (
+  locationId: string,
+  runId: string,
+  ownerUserId: string,
+): Promise<void> => {
+  const url = `${API_BASE}/inventories/${encodeURIComponent(locationId)}/release`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ runId, ownerUserId }),
+  })
   if (!res.ok) {
-    let problem: unknown
     let messageFromBody: string | null = null
     try {
-      const contentType = res.headers.get('content-type') ?? ''
-      if (contentType.toLowerCase().includes('application/json')) {
-        problem = await res.json()
-        if (problem && typeof problem === 'object') {
-          const candidate = (problem as { message?: unknown }).message
-          if (typeof candidate === 'string' && candidate.trim().length > 0) {
-            messageFromBody = candidate.trim()
-          }
-        }
-      } else {
-        const bodyText = await res.text()
-        if (bodyText.trim().length > 0) {
-          messageFromBody = bodyText.trim()
-        }
+      const ct = res.headers.get('content-type') ?? ''
+      if (ct.toLowerCase().includes('application/json')) {
+        const problem = await res.json()
+        const candidate = (problem as { message?: unknown })?.message
+        if (typeof candidate === 'string' && candidate.trim()) messageFromBody = candidate.trim()
       }
     } catch {
       // lecture best effort
     }
-
     let message = `Impossible de libérer le comptage (HTTP ${res.status}).`
-    if (res.status === 404) {
-      message = messageFromBody ?? 'Comptage introuvable.'
-    } else if (res.status === 409) {
-      message = messageFromBody ?? 'Comptage déjà détenu par un autre opérateur.'
-    } else if (res.status === 400) {
-      message = messageFromBody ?? 'Requête invalide.'
-    } else if (messageFromBody) {
-      message = messageFromBody
-    }
-
-    throw Object.assign(new Error(message), { status: res.status, url, problem })
+    if (res.status === 404) message = messageFromBody ?? 'Comptage introuvable.'
+    else if (res.status === 409) message = messageFromBody ?? 'Comptage déjà détenu par un autre opérateur.'
+    else if (res.status === 400) message = messageFromBody ?? 'Requête invalide.'
+    else if (messageFromBody) message = messageFromBody
+    throw Object.assign(new Error(message), { status: res.status, url })
   }
 }
