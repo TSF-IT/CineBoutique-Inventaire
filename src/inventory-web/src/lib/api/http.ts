@@ -20,11 +20,54 @@ function buildHttpError(message: string, res: Response, body?: string, extra?: R
   return err
 }
 
-export type HttpRequestInit = Omit<RequestInit, 'body'> & {
-  body?: RequestInit['body'] | Record<string, unknown> | Array<unknown>
+export type HttpRequestInit<TBody = unknown> = Omit<RequestInit, 'body'> & {
+  body?: RequestInit['body'] | TBody
 }
 
-export default async function http(url: string, init: HttpRequestInit = {}): Promise<unknown> {
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+  if (Object.prototype.toString.call(value) !== '[object Object]') {
+    return false
+  }
+  const prototype = Object.getPrototypeOf(value)
+  return prototype === null || prototype === Object.prototype
+}
+
+const shouldJsonStringify = (value: unknown): value is Record<string, unknown> | unknown[] => {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+
+  if (Array.isArray(value)) {
+    return true
+  }
+
+  if (value instanceof FormData || value instanceof Blob) {
+    return false
+  }
+
+  if (typeof URLSearchParams !== 'undefined' && value instanceof URLSearchParams) {
+    return false
+  }
+
+  if (typeof ReadableStream !== 'undefined' && value instanceof ReadableStream) {
+    return false
+  }
+
+  if (value instanceof ArrayBuffer) {
+    return false
+  }
+
+  if (ArrayBuffer.isView(value)) {
+    return false
+  }
+
+  return isPlainObject(value)
+}
+
+export default async function http<TBody = unknown>(
+  url: string,
+  init: HttpRequestInit<TBody> = {},
+): Promise<unknown> {
   // 1) Construire l’URL et injecter shopId si applicable
   let finalUrl = url
   try {
@@ -47,7 +90,7 @@ export default async function http(url: string, init: HttpRequestInit = {}): Pro
   const rawBody = init.body
   let body: BodyInit | null | undefined = rawBody as BodyInit | null | undefined
 
-  if (rawBody && typeof rawBody === 'object' && !(rawBody instanceof FormData) && !(rawBody instanceof Blob)) {
+  if (shouldJsonStringify(rawBody)) {
     if (!headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json')
     }
