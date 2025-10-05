@@ -31,6 +31,58 @@ const mockShopUser = {
   disabled: false,
 } as const
 
+const defaultLocation = {
+  id: '11111111-1111-4111-8111-111111111111',
+  code: 'B1',
+  label: 'Zone B1',
+  isBusy: false,
+  busyBy: null,
+  activeRunId: null,
+  activeCountType: null,
+  activeStartedAtUtc: null,
+  countStatuses: [
+    {
+      countType: 1,
+      status: 'not_started',
+      runId: null,
+      ownerDisplayName: null,
+      ownerUserId: null,
+      startedAtUtc: null,
+      completedAtUtc: null,
+    },
+    {
+      countType: 2,
+      status: 'not_started',
+      runId: null,
+      ownerDisplayName: null,
+      ownerUserId: null,
+      startedAtUtc: null,
+      completedAtUtc: null,
+    },
+  ],
+} as const
+
+const defaultInventoryContext = {
+  selectedUser: mockShopUser,
+  countType: 1,
+  location: defaultLocation,
+  sessionId: null,
+  items: [] as Array<{ product: { ean: string; name: string }; quantity: number }>,
+  addOrIncrementItem: addOrIncrementItemMock,
+  setQuantity: vi.fn(),
+  removeItem: vi.fn(),
+  setSelectedUser: vi.fn(),
+  setCountType: vi.fn(),
+  setLocation: vi.fn(),
+  setSessionId: vi.fn(),
+  reset: vi.fn(),
+  clearSession: vi.fn(),
+}
+
+type InventoryContextMock = typeof defaultInventoryContext
+
+let inventoryStateOverride: Partial<InventoryContextMock> = {}
+
 vi.mock('../../src/app/api/inventoryApi', () => ({
   fetchProductByEan: (...args: unknown[]) => fetchProductByEanMock(...args),
   completeInventoryRun: vi.fn(),
@@ -44,49 +96,8 @@ vi.mock('../../src/state/ShopContext', () => ({
 
 vi.mock('../../src/app/contexts/InventoryContext', () => ({
   useInventory: () => ({
-    selectedUser: mockShopUser,
-    countType: 1,
-    location: {
-      id: '11111111-1111-4111-8111-111111111111',
-      code: 'B1',
-      label: 'Zone B1',
-      isBusy: false,
-      busyBy: null,
-      activeRunId: null,
-      activeCountType: null,
-      activeStartedAtUtc: null,
-      countStatuses: [
-        {
-          countType: 1,
-          status: 'not_started',
-          runId: null,
-          ownerDisplayName: null,
-          ownerUserId: null,
-          startedAtUtc: null,
-          completedAtUtc: null,
-        },
-        {
-          countType: 2,
-          status: 'not_started',
-          runId: null,
-          ownerDisplayName: null,
-          ownerUserId: null,
-          startedAtUtc: null,
-          completedAtUtc: null,
-        },
-      ],
-    },
-    sessionId: null,
-    items: [],
-    addOrIncrementItem: addOrIncrementItemMock,
-    setQuantity: vi.fn(),
-    removeItem: vi.fn(),
-    setSelectedUser: vi.fn(),
-    setCountType: vi.fn(),
-    setLocation: vi.fn(),
-    setSessionId: vi.fn(),
-    reset: vi.fn(),
-    clearSession: vi.fn(),
+    ...defaultInventoryContext,
+    ...inventoryStateOverride,
   }),
 }))
 
@@ -107,6 +118,7 @@ describe('InventorySessionPage - ajout manuel', () => {
     })
     releaseInventoryRunMock.mockReset()
     releaseInventoryRunMock.mockResolvedValue(undefined)
+    inventoryStateOverride = {}
   })
 
   it("ajoute immédiatement un produit inconnu lorsqu’un code non référencé est validé manuellement", async () => {
@@ -120,7 +132,7 @@ describe('InventorySessionPage - ajout manuel', () => {
 
     render(<InventorySessionPage />)
 
-    const input = screen.getByLabelText(/Scanner/)
+    const [input] = screen.getAllByLabelText(/Scanner/)
     fireEvent.change(input, { target: { value: '12345678' } })
     fireEvent.keyDown(input, { key: 'Enter' })
 
@@ -141,5 +153,22 @@ describe('InventorySessionPage - ajout manuel', () => {
       )
     })
     expect((input as HTMLInputElement).value).toBe('')
+  })
+
+  it("n'initialise pas de comptage lorsqu'aucune zone n'est sélectionnée", async () => {
+    inventoryStateOverride = { location: null }
+
+    render(<InventorySessionPage />)
+
+    const [input] = screen.getAllByLabelText(/Scanner/)
+    fireEvent.change(input, { target: { value: '1234567890123' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() => {
+      expect(screen.getByText('Sélectionnez une zone avant de scanner un produit.')).toBeInTheDocument()
+    })
+
+    expect(startInventoryRunMock).not.toHaveBeenCalled()
+    expect(fetchProductByEanMock).not.toHaveBeenCalled()
   })
 })
