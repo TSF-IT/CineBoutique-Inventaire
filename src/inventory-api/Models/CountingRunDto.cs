@@ -2,17 +2,23 @@ using System;
 
 namespace CineBoutique.Inventory.Api.Models;
 
-public sealed record CountingRunDto(
-    Guid Id,
-    Guid ShopId,
-    Guid InventorySessionId,
-    Guid LocationId,
-    short CountType,
-    Guid? OwnerUserId,
-    string? OperatorDisplayName,
-    string Status,
-    int LinesCount,
-    decimal TotalQuantity,
-    DateTimeOffset StartedAtUtc,
-    DateTimeOffset? CompletedAtUtc,
-    DateTimeOffset? ReleasedAtUtc);
+public sealed class CountingRunDto
+{
+    public Guid Id { get; set; }
+    public Guid ShopId { get; set; }
+    public Guid InventorySessionId { get; set; }
+    public Guid LocationId { get; set; }
+    public short CountType { get; set; }
+    public Guid? OwnerUserId { get; set; }
+    public string? OperatorDisplayName { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public int LinesCount { get; set; }
+    public decimal TotalQuantity { get; set; }
+    public DateTime StartedAtUtc { get; set; }
+    public DateTime? CompletedAtUtc { get; set; }
+    public DateTime? ReleasedAtUtc { get; set; }
+
+    public CountingRunDto()
+    {
+    }
+}
