@@ -47,7 +47,6 @@ describe('HomePage', () => {
 
   it('redirige vers la sélection de boutique lorsqu’aucune boutique n’est disponible', async () => {
     localStorage.clear()
-    mockedFetchSummary.mockResolvedValue(null)
     mockedFetchLocations.mockResolvedValue([])
 
     render(
@@ -64,6 +63,7 @@ describe('HomePage', () => {
       expect(navigateMock).toHaveBeenCalledWith('/select-shop', { replace: true })
     })
 
+    expect(mockedFetchSummary).not.toHaveBeenCalled()
     expect(mockedFetchLocations).not.toHaveBeenCalled()
   })
 
