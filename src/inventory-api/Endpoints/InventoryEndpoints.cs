@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -626,8 +627,16 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
             static Guid? NormalizeUserId(Guid? value) =>
                 value is { } guid && guid != Guid.Empty ? guid : null;
 
-            static string FormatTimestamp(DateTime? value) =>
-                value.HasValue ? TimeUtil.ToUtcOffset(value.Value).ToString("O") : string.Empty;
+            static string FormatTimestamp(DateTime? value)
+            {
+                if (!value.HasValue)
+                {
+                    return string.Empty;
+                }
+
+                var utcValue = TimeUtil.ToUtcOffset(value.Value);
+                return utcValue.ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture);
+            }
 
             foreach (var location in locations)
             {
