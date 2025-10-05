@@ -18,15 +18,19 @@ const isHttpError = (value: unknown): value is HttpError =>
   typeof (value as { status?: unknown }).status === 'number' &&
   typeof (value as { url?: unknown }).url === 'string'
 
-const toHttpError = (message: string, url: string, problem?: unknown): HttpError =>
+const toHttpError = (message: string, url: string, problem?: unknown, status = 0): HttpError =>
   Object.assign(new Error(message), {
-    status: 0,
+    status,
     url,
     problem,
   })
 
-const shouldUseDevFixtures = (error: unknown): boolean => {
-  if (!areDevFixturesEnabled()) {
+const shouldUseDevFixtures = (error: unknown, { httpCallSucceeded }: { httpCallSucceeded: boolean }): boolean => {
+  if (!import.meta.env.DEV || !areDevFixturesEnabled()) {
+    return false
+  }
+
+  if (httpCallSucceeded) {
     return false
   }
 
@@ -38,7 +42,15 @@ const shouldUseDevFixtures = (error: unknown): boolean => {
     return true
   }
 
-  return error.status === 0 || error.status >= 500
+  if (error.status === 422) {
+    return false
+  }
+
+  if (error.status === 0 || error.status >= 500) {
+    return true
+  }
+
+  return error.status >= 400
 }
 
 const logDevFallback = (error: unknown, endpoint: string) => {
@@ -232,6 +244,7 @@ export const fetchLocations = async ({ shopId, countType }: { shopId: string; co
   }
 
   let endpoint = '/locations'
+  let httpCallSucceeded = false
   try {
     const searchParams = new URLSearchParams()
     searchParams.set('shopId', normalisedShopId)
@@ -241,18 +254,27 @@ export const fetchLocations = async ({ shopId, countType }: { shopId: string; co
     const query = searchParams.toString()
     endpoint = `/locations${query ? `?${query}` : ''}`
     const raw = await http(`${API_BASE}${endpoint}`)
+    httpCallSucceeded = true
     const payload = typeof raw === 'string' ? JSON.parse(raw) : raw
     const normalised = normaliseLocationsPayload(payload)
     try {
       return LocationsSchema.parse(normalised)
     } catch (error) {
       if (error instanceof z.ZodError) {
-        console.warn('Validation /locations failed', error.flatten())
+        if (import.meta.env.DEV) {
+          console.warn('Validation /locations failed', error.flatten())
+        }
+        throw toHttpError(
+          'Réponse /locations invalide.',
+          `${API_BASE}${endpoint}`,
+          error.flatten(),
+          422,
+        )
       }
       throw error
     }
   } catch (error) {
-    if (shouldUseDevFixtures(error)) {
+    if (shouldUseDevFixtures(error, { httpCallSucceeded })) {
       logDevFallback(error, `${API_BASE}${endpoint}`)
       return cloneDevLocations()
     }
