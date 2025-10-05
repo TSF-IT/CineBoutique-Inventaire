@@ -8,6 +8,7 @@ import { fetchInventorySummary, fetchLocations, getConflictZoneDetail } from '..
 import { ThemeProvider } from '../../../theme/ThemeProvider'
 
 const navigateMock = vi.fn()
+const testShop = { id: 'shop-1', name: 'Boutique de test' }
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
@@ -32,6 +33,7 @@ const {
 describe('HomePage', () => {
   beforeEach(() => {
     localStorage.clear()
+    localStorage.setItem('cb.shop', JSON.stringify(testShop))
     mockedFetchSummary.mockReset()
     mockedFetchLocations.mockReset()
     mockedGetDetail.mockReset()

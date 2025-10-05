@@ -69,6 +69,67 @@ const logDevFallback = (error: unknown, endpoint: string) => {
   )
 }
 
+const tryExtractMessage = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : null
+  }
+  return null
+}
+
+const extractProblemMessage = (problem: unknown): string | null => {
+  if (!problem) {
+    return null
+  }
+
+  if (typeof problem === 'string') {
+    return tryExtractMessage(problem)
+  }
+
+  if (Array.isArray(problem)) {
+    for (const item of problem) {
+      const message = extractProblemMessage(item)
+      if (message) {
+        return message
+      }
+    }
+    return null
+  }
+
+  if (typeof problem !== 'object') {
+    return null
+  }
+
+  const record = problem as Record<string, unknown>
+  const candidateKeys = ['message', 'detail', 'title', 'error', 'error_description'] as const
+  for (const key of candidateKeys) {
+    const message = tryExtractMessage(record[key])
+    if (message) {
+      return message
+    }
+  }
+
+  const errors = record.errors
+  if (Array.isArray(errors)) {
+    for (const item of errors) {
+      const message = extractProblemMessage(item)
+      if (message) {
+        return message
+      }
+    }
+  }
+
+  return null
+}
+
+const getHttpErrorMessage = (error: HttpError): string | null => {
+  const fromProblem = extractProblemMessage(error.problem)
+  if (fromProblem) {
+    return fromProblem
+  }
+  return tryExtractMessage(error.body)
+}
+
 const generateUuid = (): string => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
@@ -352,96 +413,63 @@ export const completeInventoryRun = async (
   signal?: AbortSignal,
 ): Promise<CompleteInventoryRunResponse> => {
   const url = `${API_BASE}/inventories/${encodeURIComponent(locationId)}/complete`
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-    signal,
-  })
-
-  if (!res.ok) {
-    if (res.status === 404 && areDevFixturesEnabled()) {
-      const devLocation = findDevLocationById(locationId)
-      if (devLocation) {
-        const fallbackError = Object.assign(new Error('HTTP 404'), { status: res.status, url })
-        logDevFallback(fallbackError, url)
-        const completionDate = new Date()
-        const runId =
-          typeof payload.runId === 'string' && payload.runId.trim().length > 0
-            ? payload.runId.trim()
-            : generateUuid()
-        const totalQuantity = payload.items.reduce((sum, item) => sum + item.quantity, 0)
-        return {
-          runId,
-          inventorySessionId: generateUuid(),
-          locationId: devLocation.id,
-          countType: payload.countType,
-          completedAtUtc: completionDate.toISOString(),
-          itemsCount: payload.items.length,
-          totalQuantity,
-        }
-      }
-    }
-
-    let parsedBody: unknown = null
-    let bodyText = ''
-    let messageFromBody: string | null = null
-
-    try {
-      const contentType = res.headers.get('content-type') ?? ''
-      if (contentType.toLowerCase().includes('application/json')) {
-        parsedBody = await res.json()
-        if (parsedBody && typeof parsedBody === 'object') {
-          const candidates = [
-            (parsedBody as { message?: unknown }).message,
-            (parsedBody as { detail?: unknown }).detail,
-            (parsedBody as { title?: unknown }).title,
-          ]
-          const chosen = candidates.find((value) => typeof value === 'string' && value.trim().length > 0) as
-            | string
-            | undefined
-          if (chosen) {
-            messageFromBody = chosen.trim()
+  try {
+    return (await http(url, {
+      method: 'POST',
+      body: payload,
+      signal,
+    })) as CompleteInventoryRunResponse
+  } catch (error) {
+    if (isHttpError(error)) {
+      if (error.status === 404 && areDevFixturesEnabled()) {
+        const devLocation = findDevLocationById(locationId)
+        if (devLocation) {
+          logDevFallback(error, url)
+          const completionDate = new Date()
+          const runId =
+            typeof payload.runId === 'string' && payload.runId.trim().length > 0
+              ? payload.runId.trim()
+              : generateUuid()
+          const totalQuantity = payload.items.reduce((sum, item) => sum + item.quantity, 0)
+          return {
+            runId,
+            inventorySessionId: generateUuid(),
+            locationId: devLocation.id,
+            countType: payload.countType,
+            completedAtUtc: completionDate.toISOString(),
+            itemsCount: payload.items.length,
+            totalQuantity,
           }
         }
-      } else {
-        bodyText = await res.text()
-        if (bodyText.trim()) {
-          messageFromBody = bodyText.trim()
-        }
       }
-    } catch {
-      // Lecture best effort, status traité ci-dessous
+
+      const messageFromBody = getHttpErrorMessage(error)
+      const problemPayload = error.problem ?? (error.body ? { body: error.body } : undefined)
+
+      if (error.status === 415) {
+        throw Object.assign(
+          new Error('Unsupported Media Type: requête JSON attendue (Content-Type: application/json).'),
+          { status: error.status, problem: problemPayload },
+        )
+      }
+
+      let message: string
+      if (error.status === 400) {
+        message = messageFromBody ?? 'Requête invalide.'
+      } else if (error.status === 404) {
+        message = 'Zone introuvable pour ce comptage.'
+      } else {
+        message = messageFromBody ?? `Impossible de terminer le comptage (HTTP ${error.status}).`
+      }
+
+      throw Object.assign(new Error(message), {
+        status: error.status,
+        problem: problemPayload,
+      })
     }
 
-    const problemPayload = parsedBody ?? (bodyText ? { body: bodyText } : undefined)
-
-    if (res.status === 415) {
-      throw Object.assign(
-        new Error('Unsupported Media Type: requête JSON attendue (Content-Type: application/json).'),
-        { status: res.status, problem: problemPayload },
-      )
-    }
-
-    let message: string
-    if (res.status === 400) {
-      message = messageFromBody ?? 'Requête invalide.'
-    } else if (res.status === 404) {
-      message = 'Zone introuvable pour ce comptage.'
-    } else {
-      message = messageFromBody ?? `Impossible de terminer le comptage (HTTP ${res.status}).`
-    }
-
-    throw Object.assign(new Error(message), {
-      status: res.status,
-      problem: problemPayload,
-    })
+    throw error
   }
-
-  return (await res.json()) as CompleteInventoryRunResponse
 }
 
 export const restartInventoryRun = async (locationId: string, countType: CountType): Promise<void> => {
@@ -457,28 +485,27 @@ export const releaseInventoryRun = async (
   ownerUserId: string,
 ): Promise<void> => {
   const url = `${API_BASE}/inventories/${encodeURIComponent(locationId)}/release`
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ runId, ownerUserId }),
-  })
-  if (!res.ok) {
-    let messageFromBody: string | null = null
-    try {
-      const ct = res.headers.get('content-type') ?? ''
-      if (ct.toLowerCase().includes('application/json')) {
-        const problem = await res.json()
-        const candidate = (problem as { message?: unknown })?.message
-        if (typeof candidate === 'string' && candidate.trim()) messageFromBody = candidate.trim()
-      }
-    } catch {
-      // lecture best effort
+  try {
+    await http(url, {
+      method: 'POST',
+      body: { runId, ownerUserId },
+    })
+  } catch (error) {
+    if (isHttpError(error)) {
+      const messageFromBody = getHttpErrorMessage(error)
+      let message = `Impossible de libérer le comptage (HTTP ${error.status}).`
+      if (error.status === 404) message = messageFromBody ?? 'Comptage introuvable.'
+      else if (error.status === 409)
+        message = messageFromBody ?? 'Comptage déjà détenu par un autre utilisateur.'
+      else if (error.status === 400) message = messageFromBody ?? 'Requête invalide.'
+      else if (messageFromBody) message = messageFromBody
+      throw Object.assign(new Error(message), {
+        status: error.status,
+        url: error.url,
+        problem: error.problem,
+      })
     }
-    let message = `Impossible de libérer le comptage (HTTP ${res.status}).`
-    if (res.status === 404) message = messageFromBody ?? 'Comptage introuvable.'
-    else if (res.status === 409) message = messageFromBody ?? 'Comptage déjà détenu par un autre utilisateur.'
-    else if (res.status === 400) message = messageFromBody ?? 'Requête invalide.'
-    else if (messageFromBody) message = messageFromBody
-    throw Object.assign(new Error(message), { status: res.status, url })
+
+    throw error
   }
 }
