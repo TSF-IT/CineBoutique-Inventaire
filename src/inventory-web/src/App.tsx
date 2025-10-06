@@ -13,8 +13,8 @@ import { ScanSimulationPage } from './app/pages/debug/ScanSimulationPage'
 import { LoadingIndicator } from './app/components/LoadingIndicator'
 import { SelectShopPage } from './app/pages/select-shop/SelectShopPage'
 import { useShop } from '@/state/ShopContext'
-import { RequireShop } from '@/app/router/RequireShop'
-import { RequireUser } from '@/app/router/RequireUser'
+import RequireShop from '@/app/router/RequireShop'
+import RequireUser from '@/app/router/RequireUser'
 
 const BypassSelect = () => {
   const { shop, isLoaded } = useShop()
