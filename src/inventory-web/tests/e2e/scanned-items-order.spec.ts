@@ -202,22 +202,22 @@ test.describe("Ordre d'affichage des articles scannés", () => {
     expect(firstRowEan).toBe('0000')
     expect(secondRowEan).toBe('001')
 
-    const secondRow = page.getByTestId('scanned-item').nth(1)
+    const product001Row = page.locator('[data-testid="scanned-item"][data-ean="001"]')
 
-    await secondRow.getByRole('button', { name: 'Ajouter' }).click()
-    await expect(secondRow.getByTestId('quantity-input')).toHaveValue('2')
+    await product001Row.getByRole('button', { name: 'Ajouter' }).click()
+    await expect(product001Row.getByTestId('quantity-input')).toHaveValue('2')
 
     const firstRowAfterIncrement = await page.getByTestId('scanned-item').nth(0).getAttribute('data-ean')
     const secondRowAfterIncrement = await page.getByTestId('scanned-item').nth(1).getAttribute('data-ean')
-    expect(firstRowAfterIncrement).toBe('0000')
-    expect(secondRowAfterIncrement).toBe('001')
+    expect(firstRowAfterIncrement).toBe('001')
+    expect(secondRowAfterIncrement).toBe('0000')
 
-    await secondRow.getByRole('button', { name: 'Retirer' }).click()
-    await expect(secondRow.getByTestId('quantity-input')).toHaveValue('1')
+    await product001Row.getByRole('button', { name: 'Retirer' }).click()
+    await expect(product001Row.getByTestId('quantity-input')).toHaveValue('1')
 
     const firstRowAfterDecrement = await page.getByTestId('scanned-item').nth(0).getAttribute('data-ean')
     const secondRowAfterDecrement = await page.getByTestId('scanned-item').nth(1).getAttribute('data-ean')
-    expect(firstRowAfterDecrement).toBe('0000')
-    expect(secondRowAfterDecrement).toBe('001')
+    expect(firstRowAfterDecrement).toBe('001')
+    expect(secondRowAfterDecrement).toBe('0000')
   })
 })
