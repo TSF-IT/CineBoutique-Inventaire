@@ -20,6 +20,7 @@ const {
   fetchLocationsMock,
   fetchProductMock,
   fetchInventorySummaryMock,
+  getConflictZonesSummaryMock,
   completeInventoryRunMock,
   startInventoryRunMock,
   releaseInventoryRunMock,
@@ -149,6 +150,7 @@ const {
     }),
     fetchProductMock: vi.fn(() => Promise.resolve({ ean: '123', name: 'Popcorn caramel' })),
     fetchInventorySummaryMock: vi.fn(async (): Promise<InventorySummary> => ({ ...emptySummary })),
+    getConflictZonesSummaryMock: vi.fn(async () => [] as InventorySummary['conflictZones']),
     completeInventoryRunMock: vi.fn<(locationId: string, payload: CompleteInventoryRunPayload) => Promise<{
         runId: string;
         inventorySessionId: string;
@@ -202,6 +204,7 @@ vi.mock('../api/inventoryApi', async (importOriginal) => {
     completeInventoryRun: completeInventoryRunMock,
     startInventoryRun: startInventoryRunMock,
     releaseInventoryRun: releaseInventoryRunMock,
+    getConflictZonesSummary: getConflictZonesSummaryMock,
   }
 })
 
@@ -332,6 +335,8 @@ describe("Workflow d'inventaire", () => {
       completedRunDetails: [],
       conflictZones: [],
     }))
+    getConflictZonesSummaryMock.mockReset()
+    getConflictZonesSummaryMock.mockResolvedValue([])
     completeInventoryRunMock.mockReset()
     completeInventoryRunMock.mockImplementation(async () => ({
       runId: 'run-1',
@@ -493,7 +498,7 @@ describe("Workflow d'inventaire", () => {
       conflictZone,
     ])
 
-    fetchInventorySummaryMock.mockResolvedValueOnce({
+    const conflictSummary: InventorySummary = {
       activeSessions: 0,
       openRuns: 0,
       completedRuns: 0,
@@ -509,7 +514,11 @@ describe("Workflow d'inventaire", () => {
           conflictLines: 3,
         },
       ],
-    })
+    }
+
+    fetchInventorySummaryMock.mockResolvedValueOnce(conflictSummary)
+    fetchInventorySummaryMock.mockResolvedValueOnce(conflictSummary)
+    getConflictZonesSummaryMock.mockResolvedValueOnce(conflictSummary.conflictZones)
 
     renderInventoryRoutes('/inventory/location')
 
@@ -523,6 +532,14 @@ describe("Workflow d'inventaire", () => {
     const sessionPages = await screen.findAllByTestId('page-session')
     const activeSession = sessionPages[sessionPages.length - 1]
     await waitFor(() => expect(within(activeSession).getByText(/3 comptages/i)).toBeInTheDocument())
+    await waitFor(() =>
+      expect(within(activeSession).getByTestId('btn-open-conflict-summary')).toBeInTheDocument(),
+    )
+    const divergenceMessages = within(activeSession).getAllByText(
+      (_, element) =>
+        element?.textContent?.replace(/\s+/g, ' ').includes('3 références divergent entre les comptages 1 et 2.') ?? false,
+    )
+    expect(divergenceMessages.length).toBeGreaterThan(0)
   })
 
   it('autorise la reprise de son propre comptage', async () => {

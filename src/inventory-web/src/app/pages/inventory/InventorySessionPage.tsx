@@ -7,18 +7,20 @@ import { BarcodeFormat, DecodeHintType } from '@zxing/library'
 import {
   completeInventoryRun,
   fetchProductByEan,
+  getConflictZonesSummary,
   releaseInventoryRun,
   startInventoryRun,
   type CompleteInventoryRunPayload,
 } from '../../api/inventoryApi'
 import { BarcodeScanner } from '../../components/BarcodeScanner'
 import { Button } from '../../components/ui/Button'
+import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
 import { Input } from '../../components/ui/Input'
 import { Card } from '../../components/Card'
 import { EmptyState } from '../../components/EmptyState'
 import { useInventory } from '../../contexts/InventoryContext'
 import type { HttpError } from '@/lib/api/http'
-import type { Product } from '../../types/inventory'
+import type { ConflictZoneSummary, Product } from '../../types/inventory'
 import { CountType } from '../../types/inventory'
 import { useShop } from '@/state/ShopContext'
 
@@ -141,6 +143,10 @@ export const InventorySessionPage = () => {
   const lastSearchedInputRef = useRef<string | null>(null)
   const previousItemCountRef = useRef(items.length)
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
+  const [conflictSummary, setConflictSummary] = useState<ConflictZoneSummary | null>(null)
+  const [conflictStatus, setConflictStatus] = useState<'idle' | 'loading' | 'success' | 'empty' | 'error'>('idle')
+  const [conflictModalOpen, setConflictModalOpen] = useState(false)
+  const [conflictReloadToken, setConflictReloadToken] = useState(0)
 
   const updateStatus = useCallback(
     (message: string | null) => {
@@ -681,6 +687,69 @@ export const InventorySessionPage = () => {
     void handleCompleteRun()
   }, [handleCompleteRun])
 
+  const isThirdCount = countType === CountType.Count3
+
+  useEffect(() => {
+    if (!isThirdCount || !location?.id) {
+      setConflictSummary(null)
+      setConflictStatus('idle')
+      return
+    }
+
+    let cancelled = false
+
+    setConflictStatus('loading')
+
+    void getConflictZonesSummary()
+      .then((zones) => {
+        if (cancelled) {
+          return
+        }
+        const match = zones.find((zone) => zone.locationId === location.id)
+        if (match) {
+          setConflictSummary(match)
+          setConflictStatus('success')
+        } else {
+          setConflictSummary(null)
+          setConflictStatus('empty')
+        }
+      })
+      .catch((error: unknown) => {
+        if (cancelled) {
+          return
+        }
+        if (import.meta.env.DEV) {
+          console.error('[inventory] Impossible de charger le résumé de conflit.', error)
+        }
+        setConflictSummary(null)
+        setConflictStatus('error')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [isThirdCount, location?.id, conflictReloadToken])
+
+  const handleOpenConflictModal = useCallback(() => {
+    if (conflictStatus === 'success') {
+      setConflictModalOpen(true)
+    }
+  }, [conflictStatus])
+
+  const handleCloseConflictModal = useCallback(() => {
+    setConflictModalOpen(false)
+  }, [])
+
+  const handleRetryConflictSummary = useCallback(() => {
+    setConflictReloadToken((value) => value + 1)
+  }, [])
+
+  useEffect(() => {
+    if (!isThirdCount) {
+      setConflictModalOpen(false)
+    }
+  }, [isThirdCount, location?.id])
+
   useEffect(() => {
     const previousCount = previousItemCountRef.current
     previousItemCountRef.current = items.length
@@ -735,6 +804,11 @@ export const InventorySessionPage = () => {
   const adjustQuantity = (ean: string, delta: number) => {
     const item = items.find((entry) => entry.product.ean === ean)
     if (!item) return
+    if (delta > 0) {
+      addOrIncrementItem(item.product, { isManual: item.isManual })
+      clearQuantityDraft(ean)
+      return
+    }
     const nextQuantity = item.quantity + delta
     if (nextQuantity <= 0) {
       clearQuantityDraft(ean)
@@ -867,6 +941,67 @@ export const InventorySessionPage = () => {
             Journal des actions ({logs.length})
           </Button>
         </div>
+        {isThirdCount && (
+          <div
+            className="rounded-2xl border border-rose-200/80 bg-rose-50/80 p-4 text-sm text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-100"
+            role="status"
+            aria-live="polite"
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <span aria-hidden className="text-lg sm:text-xl">
+                  ⚠️
+                </span>
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs font-semibold uppercase tracking-wide">Zone en conflit</p>
+                  {conflictStatus === 'loading' && (
+                    <p className="text-xs sm:text-sm">
+                      Chargement des écarts des comptages précédents…
+                    </p>
+                  )}
+                  {conflictStatus === 'success' && conflictSummary && (
+                    <p className="text-xs sm:text-sm">
+                      {conflictSummary.conflictLines}{' '}
+                      référence{conflictSummary.conflictLines > 1 ? 's' : ''} divergent entre les comptages 1 et 2.
+                    </p>
+                  )}
+                  {conflictStatus === 'empty' && (
+                    <p className="text-xs sm:text-sm">
+                      Aucun détail d’écart n’est disponible pour cette zone.
+                    </p>
+                  )}
+                  {conflictStatus === 'error' && (
+                    <p className="text-xs sm:text-sm">
+                      Impossible de charger les écarts. Réessaie dans un instant.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                {conflictStatus === 'error' && (
+                  <Button
+                    variant="ghost"
+                    onClick={handleRetryConflictSummary}
+                    className="px-3 py-2 text-xs font-semibold"
+                    data-testid="btn-retry-conflict-summary"
+                  >
+                    Réessayer
+                  </Button>
+                )}
+                {conflictStatus === 'success' && conflictSummary && (
+                  <Button
+                    variant="ghost"
+                    onClick={handleOpenConflictModal}
+                    className="px-3 py-2 text-xs font-semibold"
+                    data-testid="btn-open-conflict-summary"
+                  >
+                    Voir les écarts
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
         <Input
           ref={inputRef}
           name="scanInput"
@@ -908,6 +1043,8 @@ export const InventorySessionPage = () => {
           </div>
         )}
       </Card>
+
+      <ConflictZoneModal open={conflictModalOpen} zone={conflictSummary} onClose={handleCloseConflictModal} />
 
       <dialog
         ref={logsDialogRef}
