@@ -160,7 +160,10 @@ test.describe("Ordre d'affichage des articles scannés", () => {
   test('maintient un ordre stable lors des ajustements de quantité', async ({ page }) => {
     await page.goto('/inventory/location')
 
-    await expect(page).toHaveURL(/\/select-shop/, { timeout: 5000 })
+    await expect(page).toHaveURL(/\/select-user/, { timeout: 5000 })
+
+    const identifyHeading = page.getByRole('heading', { name: 'Merci de vous identifier' })
+    await expect(identifyHeading).toBeVisible({ timeout: 5000 })
 
     const userRadio = page.getByRole('radio', { name: mockUsers[0].displayName })
     await expect(userRadio).toBeVisible({ timeout: 5000 })
