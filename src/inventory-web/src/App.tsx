@@ -11,6 +11,7 @@ import { AppErrorBoundary } from './app/components/AppErrorBoundary'
 import { ScanSimulationPage } from './app/pages/debug/ScanSimulationPage'
 import { LoadingIndicator } from './app/components/LoadingIndicator'
 import { SelectShopPage } from './app/pages/select-shop/SelectShopPage'
+import SelectUserPage from './app/pages/SelectUserPage'
 import { useShop } from '@/state/ShopContext'
 import RequireShop from '@/app/router/RequireShop'
 import RequireUser from '@/app/router/RequireUser'
@@ -68,6 +69,7 @@ export const AppRoutes = () => {
     <Routes>
       <Route path="/select-shop" element={<BypassSelect />} />
       <Route element={<RequireShop />}>
+        <Route path="/select-user" element={<SelectUserPage />} />
         <Route path="/inventory/start" element={<Navigate to="/select-shop" replace />} />
         {/* Tout ce qui nécessite un user va ici */}
         <Route element={<RequireUser />}>
