@@ -15,6 +15,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 20
+    restart: unless-stopped
 
   api:
     build:
@@ -25,7 +26,6 @@ services:
       db:
         condition: service_healthy
     environment:
-      ASPNETCORE_URLS: http://+:8080
       ASPNETCORE_ENVIRONMENT: Docker
       ASPNETCORE_DETAILEDERRORS: "true"
       ConnectionStrings__Default: "Host=db;Port=5432;Database=inventory;Username=postgres;Password=postgres;Include Error Detail=true"
@@ -34,20 +34,24 @@ services:
       AppSettings__SeedOnStartup: "true"
       DISABLE_SERILOG: "false"
     expose:
-      - "8080:8080"
+      - "8080"   # visible par 'web' via le réseau docker, pas publié vers l'hôte
+    restart: unless-stopped
+    # Pas de healthcheck ici: il est désormais défini dans l'image (Dockerfile)
 
   web:
     build:
-      context: ./src/inventory-web        # <<< ICI : context pointant sur le dossier web
-      dockerfile: Dockerfile              # <<< Dockerfile à la racine de ce dossier
+      context: ./src/inventory-web
+      dockerfile: Dockerfile
     container_name: inventory-web
     depends_on:
-      - api
+      api:
+        condition: service_healthy   # attend que l'API passe healthy (grâce au HEALTHCHECK image)
     environment:
       PUBLIC_HOST: ${PUBLIC_HOST}
     ports:
       - "80:80"
       - "443:443"
+    restart: unless-stopped
 
 volumes:
   dbdata:
