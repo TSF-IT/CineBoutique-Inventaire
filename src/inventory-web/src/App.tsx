@@ -2,7 +2,6 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppProviders } from './app/providers/AppProviders'
 import { HomePage } from './app/pages/home/HomePage'
 import { InventoryLayout } from './app/pages/inventory/InventoryLayout'
-import { InventoryUserStep } from './app/pages/inventory/InventoryUserStep'
 import { InventoryCountTypeStep } from './app/pages/inventory/InventoryCountTypeStep'
 import { InventoryLocationStep } from './app/pages/inventory/InventoryLocationStep'
 import { InventorySessionPage } from './app/pages/inventory/InventorySessionPage'
@@ -15,9 +14,29 @@ import { SelectShopPage } from './app/pages/select-shop/SelectShopPage'
 import { useShop } from '@/state/ShopContext'
 import RequireShop from '@/app/router/RequireShop'
 import RequireUser from '@/app/router/RequireUser'
+import { loadSelectedUserForShop } from '@/lib/selectedUserStorage'
 
 const BypassSelect = () => {
   const { shop, isLoaded } = useShop()
+
+  const hasSelectedUser = shop
+    ? Boolean(
+        (() => {
+          const stored = loadSelectedUserForShop(shop.id)
+          if (!stored) {
+            return null
+          }
+
+          const candidate =
+            (typeof (stored as { userId?: unknown }).userId === 'string'
+              ? (stored as { userId: string }).userId
+              : null) ??
+            (typeof (stored as { id?: unknown }).id === 'string' ? (stored as { id: string }).id : null)
+
+          return candidate && candidate.trim().length > 0 ? candidate : null
+        })(),
+      )
+    : false
 
   if (!isLoaded) {
     return (
@@ -27,7 +46,7 @@ const BypassSelect = () => {
     )
   }
 
-  if (shop) {
+  if (shop && hasSelectedUser) {
     return <Navigate to="/" replace />
   }
 
@@ -45,8 +64,7 @@ export const AppRoutes = () => {
     <Routes>
       <Route path="/select-shop" element={<BypassSelect />} />
       <Route element={<RequireShop />}>
-        <Route path="/inventory/start" element={<Navigate to="/select-user" replace />} />
-        <Route path="/select-user" element={<InventoryUserStep />} />
+        <Route path="/inventory/start" element={<Navigate to="/select-shop" replace />} />
         {/* Tout ce qui nécessite un user va ici */}
         <Route element={<RequireUser />}>
           <Route path="/" element={<HomePage />} />
