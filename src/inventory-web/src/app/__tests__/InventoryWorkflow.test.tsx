@@ -805,7 +805,7 @@ describe("Workflow d'inventaire", () => {
     expect(within(activeSessionPage).queryByText(/Session existante/)).not.toBeInTheDocument()
   })
 
-  it("conserve l'ordre d'insertion des articles lors des ajustements de quantité", async () => {
+  it("place l'article modifié en premier et conserve un journal des actions", async () => {
     renderInventoryRoutes('/inventory/session', {
       initialize: (inventory) => {
         inventory.setSelectedUser(shopUsers[0])
@@ -825,7 +825,7 @@ describe("Workflow d'inventaire", () => {
         .queryAllByTestId('scanned-item')
         .map((element) => element.getAttribute('data-ean') ?? '')
 
-    await waitFor(() => expect(readRenderedEans()).toEqual(['001', '0000']))
+    await waitFor(() => expect(readRenderedEans()).toEqual(['0000', '001']))
 
     const initialRows = within(activeSessionPage).getAllByTestId('scanned-item')
     expect(initialRows).toHaveLength(2)
@@ -838,13 +838,20 @@ describe("Workflow d'inventaire", () => {
     await waitFor(() => expect(readRenderedEans()).toEqual(['001', '0000']))
 
     const updatedRows = within(activeSessionPage).getAllByTestId('scanned-item')
-    const updatedSecondRow = updatedRows[1]
-    const decrementButton = within(updatedSecondRow).getByRole('button', { name: 'Retirer' })
+    const updatedFirstRow = updatedRows[0]
+    const decrementButton = within(updatedFirstRow).getByRole('button', { name: 'Retirer' })
 
     fireEvent.click(decrementButton)
 
-    await waitFor(() => expect(within(updatedSecondRow).getByDisplayValue('1')).toBeInTheDocument())
+    await waitFor(() => expect(within(updatedFirstRow).getByDisplayValue('1')).toBeInTheDocument())
     await waitFor(() => expect(readRenderedEans()).toEqual(['001', '0000']))
+
+    const openLogsButton = within(activeSessionPage).getByRole('button', { name: /journal des actions/i })
+    fireEvent.click(openLogsButton)
+
+    const logsDialog = await screen.findByRole('dialog', { name: 'Journal de session' })
+    const logItems = within(logsDialog).getAllByRole('listitem')
+    expect(logItems[0]).toHaveTextContent('Quantité mise à jour pour Produit A (EAN 001) → 1')
   })
 
   it('permet de saisir directement une quantité élevée', async () => {

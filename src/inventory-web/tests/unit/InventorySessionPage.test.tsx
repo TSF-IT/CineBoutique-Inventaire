@@ -77,6 +77,9 @@ const defaultInventoryContext = {
   setSessionId: vi.fn(),
   reset: vi.fn(),
   clearSession: vi.fn(),
+  logs: [] as Array<unknown>,
+  logEvent: vi.fn(),
+  clearLogs: vi.fn(),
 }
 
 type InventoryContextMock = typeof defaultInventoryContext

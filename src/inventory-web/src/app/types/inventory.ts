@@ -149,6 +149,28 @@ export interface InventoryItem {
   addedAt: number
 }
 
+export type InventoryLogEventType =
+  | 'status'
+  | 'item-added'
+  | 'item-incremented'
+  | 'item-quantity-updated'
+  | 'item-removed'
+
+export interface InventoryLogEntryContext {
+  ean?: string
+  productName?: string
+  quantity?: number
+  isManual?: boolean
+}
+
+export interface InventoryLogEntry {
+  id: string
+  timestamp: string
+  type: InventoryLogEventType
+  message: string
+  context?: InventoryLogEntryContext
+}
+
 export interface InventoryCountSubmissionItem {
   ean: string
   quantity: number

@@ -118,10 +118,13 @@ export const InventorySessionPage = () => {
     sessionId,
     setSessionId,
     clearSession,
+    logs,
+    logEvent,
+    clearLogs,
   } = useInventory()
   const { shop } = useShop()
   const [useCamera, setUseCamera] = useState(false)
-  const [status, setStatus] = useState<string | null>(null)
+  const [status, setStatusState] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [scanValue, setScanValue] = useState('')
   const [manualEan, setManualEan] = useState('')
@@ -132,11 +135,68 @@ export const InventorySessionPage = () => {
   const completionOkButtonRef = useRef<HTMLButtonElement | null>(null)
   const completionConfirmButtonRef = useRef<HTMLButtonElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const logsDialogRef = useRef<HTMLDialogElement | null>(null)
   const [recentScans, setRecentScans] = useState<string[]>([])
   const manualLookupIdRef = useRef(0)
   const lastSearchedInputRef = useRef<string | null>(null)
   const previousItemCountRef = useRef(items.length)
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
+
+  const updateStatus = useCallback(
+    (message: string | null) => {
+      setStatusState(message)
+      if (message) {
+        logEvent({
+          type: 'status',
+          message,
+        })
+      }
+    },
+    [logEvent],
+  )
+
+  const handleOpenLogsDialog = useCallback(() => {
+    const dialog = logsDialogRef.current
+    if (!dialog) {
+      return
+    }
+
+    if (typeof dialog.showModal === 'function') {
+      dialog.showModal()
+      return
+    }
+
+    dialog.setAttribute('open', '')
+  }, [])
+
+  const handleCloseLogsDialog = useCallback(() => {
+    const dialog = logsDialogRef.current
+    if (!dialog) {
+      return
+    }
+
+    if (typeof dialog.close === 'function') {
+      dialog.close()
+      return
+    }
+
+    dialog.removeAttribute('open')
+  }, [])
+
+  const handleClearLogs = useCallback(() => {
+    clearLogs()
+  }, [clearLogs])
+
+  const formatLogTimestamp = useCallback((value: string) => {
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) {
+      return value
+    }
+    return new Intl.DateTimeFormat('fr-FR', {
+      dateStyle: 'short',
+      timeStyle: 'medium',
+    }).format(date)
+  }, [])
 
   const selectedUserDisplayName = selectedUser?.displayName ?? null
   const ownerUserId = selectedUser?.id?.trim() ?? ''
@@ -257,7 +317,7 @@ export const InventorySessionPage = () => {
           await ensureActiveRun()
         } catch (error) {
           const message = resolveLifecycleErrorMessage(error, 'Impossible de démarrer le comptage.')
-          setStatus(null)
+          updateStatus(null)
           setErrorMessage(message)
           return false
         }
@@ -267,7 +327,7 @@ export const InventorySessionPage = () => {
       addOrIncrementItem(product, options)
       return true
     },
-    [addOrIncrementItem, ensureActiveRun, items.length, setErrorMessage, setStatus],
+    [addOrIncrementItem, ensureActiveRun, items.length, setErrorMessage, updateStatus],
   )
 
   const handleDetected = useCallback(
@@ -276,7 +336,7 @@ export const InventorySessionPage = () => {
       if (!value) {
         return
       }
-      setStatus(`Recherche du code ${value}`)
+      updateStatus(`Recherche du code ${value}`)
       setErrorMessage(null)
       setRecentScans((previous) => {
         if (!import.meta.env.DEV) {
@@ -292,20 +352,20 @@ export const InventorySessionPage = () => {
         const product: Product = result.product
         const added = await addProductToSession(product)
         if (added) {
-          setStatus(`${product.name} ajouté`)
+          updateStatus(`${product.name} ajouté`)
         }
         return
       }
 
       if (result.status === 'not-found') {
-        setStatus(null)
+        updateStatus(null)
         setManualEan(value)
         setInputLookupStatus('not-found')
         return
       }
 
       const err = result.error
-      setStatus(null)
+      updateStatus(null)
       setErrorMessage(
         resolveLifecycleErrorMessage(
           err,
@@ -314,7 +374,7 @@ export const InventorySessionPage = () => {
       )
       setInputLookupStatus('error')
     },
-    [addProductToSession, searchProductByEan],
+    [addProductToSession, searchProductByEan, updateStatus],
   )
 
   const trimmedScanValue = scanValue.trim()
@@ -335,7 +395,7 @@ export const InventorySessionPage = () => {
     lastSearchedInputRef.current = trimmedScanValue
     const currentLookupId = ++manualLookupIdRef.current
     setInputLookupStatus('loading')
-    setStatus(`Recherche du code ${trimmedScanValue}`)
+    updateStatus(`Recherche du code ${trimmedScanValue}`)
     setErrorMessage(null)
 
     const timeoutId = window.setTimeout(() => {
@@ -350,20 +410,20 @@ export const InventorySessionPage = () => {
           const product: Product = result.product
           const added = await addProductToSession(product)
           if (added) {
-            setStatus(`${product.name} ajouté`)
+            updateStatus(`${product.name} ajouté`)
             setScanValue('')
             setInputLookupStatus('found')
           } else {
             setInputLookupStatus('error')
           }
         } else if (result.status === 'not-found') {
-          setStatus(null)
+          updateStatus(null)
           setManualEan(trimmedScanValue)
           setErrorMessage('Aucun produit trouvé pour cet EAN. Ajoutez-le manuellement.')
           setInputLookupStatus('not-found')
         } else {
           const err = result.error
-          setStatus(null)
+          updateStatus(null)
           setErrorMessage(
             resolveLifecycleErrorMessage(
               err,
@@ -378,11 +438,11 @@ export const InventorySessionPage = () => {
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [addProductToSession, searchProductByEan, trimmedScanValue])
+  }, [addProductToSession, searchProductByEan, trimmedScanValue, updateStatus])
 
   const handleImagePicked = useCallback(
     async (file: File) => {
-      setStatus('Analyse de la photo en cours…')
+      updateStatus('Analyse de la photo en cours…')
       setErrorMessage(null)
 
       let decoded: string | null = null
@@ -428,18 +488,18 @@ export const InventorySessionPage = () => {
         if (decoded) {
           await handleDetected(decoded)
         } else {
-          setStatus(null)
+          updateStatus(null)
           setErrorMessage('Impossible de lire ce code-barres sur la photo. Essayez une prise plus nette ou mieux éclairée.')
         }
       } catch (error) {
-        setStatus(null)
+        updateStatus(null)
         if (import.meta.env.DEV) {
           console.error('[scanner] Analyse photo impossible', error)
         }
         setErrorMessage("Échec de l'analyse de la photo. Réessayez avec un autre cliché.")
       }
     },
-    [handleDetected],
+    [handleDetected, updateStatus],
   )
 
   const handleInputKeyDown = useCallback(
@@ -493,12 +553,12 @@ export const InventorySessionPage = () => {
       return
     }
 
-    setStatus(`${product.name} ajouté manuellement`)
+    updateStatus(`${product.name} ajouté manuellement`)
     setManualEan('')
     setScanValue('')
     setInputLookupStatus('idle')
     inputRef.current?.focus()
-  }, [addProductToSession, manualCandidateEan])
+  }, [addProductToSession, manualCandidateEan, updateStatus])
 
   const canCompleteRun =
     locationId.length > 0 &&
@@ -535,7 +595,7 @@ export const InventorySessionPage = () => {
     }
     setCompletionLoading(true)
     setErrorMessage(null)
-    setStatus('Envoi du comptage…')
+    updateStatus('Envoi du comptage…')
     try {
       const payloadItems = items
         .map((item) => ({
@@ -557,7 +617,7 @@ export const InventorySessionPage = () => {
       }
 
       await completeInventoryRun(locationId, payload)
-      setStatus('Comptage terminé avec succès.')
+      updateStatus('Comptage terminé avec succès.')
       setManualEan('')
       clearSession()
       setScanValue('')
@@ -573,7 +633,7 @@ export const InventorySessionPage = () => {
         navigate('/', { replace: true })
       }
     } catch (error) {
-      setStatus(null)
+      updateStatus(null)
       const message =
         error instanceof Error && error.message.trim().length > 0
           ? error.message
@@ -592,6 +652,7 @@ export const InventorySessionPage = () => {
     navigate,
     ownerUserId,
     shopId,
+    updateStatus,
   ])
 
   const handleOpenCompletionConfirmation = useCallback(() => {
@@ -785,14 +846,26 @@ export const InventorySessionPage = () => {
   return (
     <div className="flex flex-col gap-6" data-testid="page-session">
       <Card className="space-y-4">
-        <div className="flex flex-col gap-2">
-          <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Session de comptage</h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            {location?.label} • {countType} comptage{countType && countType > 1 ? 's' : ''} •
-            {' '}
-            {selectedUserDisplayName ?? '–'}
-          </p>
-          {sessionId && <p className="text-xs text-slate-500 dark:text-slate-400">Session existante #{sessionId}</p>}
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex flex-col gap-2">
+            <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Session de comptage</h2>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              {location?.label} • {countType} comptage{countType && countType > 1 ? 's' : ''} •
+              {' '}
+              {selectedUserDisplayName ?? '–'}
+            </p>
+            {sessionId && <p className="text-xs text-slate-500 dark:text-slate-400">Session existante #{sessionId}</p>}
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            className="self-start"
+            onClick={handleOpenLogsDialog}
+            aria-haspopup="dialog"
+            data-testid="btn-open-logs"
+          >
+            Journal des actions ({logs.length})
+          </Button>
         </div>
         <Input
           ref={inputRef}
@@ -831,6 +904,56 @@ export const InventorySessionPage = () => {
           </div>
         )}
       </Card>
+
+      <dialog
+        ref={logsDialogRef}
+        aria-modal="true"
+        aria-labelledby="session-log-title"
+        className="max-w-2xl rounded-2xl border border-slate-300 bg-white p-6 text-slate-900 shadow-xl backdrop:bg-black/40 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p id="session-log-title" className="text-lg font-semibold">
+              Journal de session
+            </p>
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              Historique des scans, ajouts et ajustements réalisés pendant ce comptage.
+            </p>
+          </div>
+          <Button type="button" variant="ghost" onClick={handleCloseLogsDialog}>
+            Fermer
+          </Button>
+        </div>
+        <div className="mt-4 max-h-96 overflow-y-auto">
+          {logs.length === 0 ? (
+            <p className="text-sm text-slate-600 dark:text-slate-400">Aucun évènement enregistré pour l’instant.</p>
+          ) : (
+            <ul className="space-y-3" data-testid="logs-list">
+              {logs.map((entry) => (
+                <li
+                  key={entry.id}
+                  className="rounded-xl border border-slate-200 bg-white p-3 text-sm dark:border-slate-600 dark:bg-slate-900/60"
+                >
+                  <p className="font-semibold text-slate-900 dark:text-white">{entry.message}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{formatLogTimestamp(entry.timestamp)}</p>
+                  {entry.context?.ean && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      EAN {entry.context.ean}
+                      {typeof entry.context.quantity === 'number' ? ` • Quantité ${entry.context.quantity}` : ''}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="mt-6 flex items-center justify-between gap-3">
+          <p className="text-xs text-slate-500 dark:text-slate-400">Le journal est réinitialisé quand le comptage est terminé.</p>
+          <Button type="button" variant="secondary" onClick={handleClearLogs} disabled={logs.length === 0}>
+            Effacer le journal
+          </Button>
+        </div>
+      </dialog>
 
       <Card className="space-y-4">
         <div className="flex items-center justify-between">
@@ -966,7 +1089,7 @@ export const InventorySessionPage = () => {
           active={useCamera}
           onDetected={handleDetected}
           onError={(message) => {
-            setStatus(null)
+            updateStatus(null)
             setErrorMessage(message)
           }}
           onPickImage={(file) => void handleImagePicked(file)}
