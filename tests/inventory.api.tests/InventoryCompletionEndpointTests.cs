@@ -358,6 +358,157 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task CompleteInventoryRun_ResolvesConflict_WhenThirdRunMatchesExisting()
+    {
+        await ResetDatabaseAsync();
+        var (locationId, shopId) = await SeedLocationAsync("Z4", "Zone Z4");
+
+        var ownerAlice = await SeedShopUserAsync(shopId, "Alice");
+        var ownerBob = await SeedShopUserAsync(shopId, "Bob");
+
+        const string ean = "55555555";
+
+        var firstPayload = new CompleteRunRequest(
+            null,
+            ownerAlice,
+            1,
+            new[] { new CompleteRunItemRequest(ean, 12m, false) });
+
+        var firstResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", firstPayload);
+        firstResponse.EnsureSuccessStatusCode();
+
+        var secondPayload = new CompleteRunRequest(
+            null,
+            ownerBob,
+            2,
+            new[] { new CompleteRunItemRequest(ean, 7m, false) });
+
+        var secondResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", secondPayload);
+        secondResponse.EnsureSuccessStatusCode();
+
+        var thirdPayload = new CompleteRunRequest(
+            null,
+            ownerAlice,
+            3,
+            new[] { new CompleteRunItemRequest(ean, 12m, false) });
+
+        var thirdResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", thirdPayload);
+        thirdResponse.EnsureSuccessStatusCode();
+
+        using var scope = _factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        const string unresolvedSql = """
+            SELECT COUNT(*)
+            FROM "Conflict" c
+            JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
+            JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
+            WHERE c."ResolvedAtUtc" IS NULL
+              AND cr."LocationId" = @LocationId;
+            """;
+
+        var unresolvedAfterThird = await connection.ExecuteScalarAsync<int>(
+            unresolvedSql,
+            new { LocationId = locationId });
+
+        Assert.Equal(0, unresolvedAfterThird);
+
+        var summaryResponse = await _client.GetAsync($"/api/inventories/summary?shopId={shopId:D}");
+        summaryResponse.EnsureSuccessStatusCode();
+        var summary = await summaryResponse.Content.ReadFromJsonAsync<InventorySummaryDto>();
+        Assert.NotNull(summary);
+        Assert.Equal(0, summary!.Conflicts);
+    }
+
+    [Fact]
+    public async Task CompleteInventoryRun_KeepsConflict_WhenThirdRunDiffers_AndResolvesWithFourth()
+    {
+        await ResetDatabaseAsync();
+        var (locationId, shopId) = await SeedLocationAsync("Z5", "Zone Z5");
+
+        var ownerAnna = await SeedShopUserAsync(shopId, "Anna");
+        var ownerBastien = await SeedShopUserAsync(shopId, "Bastien");
+
+        const string ean = "66666666";
+
+        var firstPayload = new CompleteRunRequest(
+            null,
+            ownerAnna,
+            1,
+            new[] { new CompleteRunItemRequest(ean, 20m, false) });
+
+        var firstResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", firstPayload);
+        firstResponse.EnsureSuccessStatusCode();
+
+        var secondPayload = new CompleteRunRequest(
+            null,
+            ownerBastien,
+            2,
+            new[] { new CompleteRunItemRequest(ean, 5m, false) });
+
+        var secondResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", secondPayload);
+        secondResponse.EnsureSuccessStatusCode();
+
+        var thirdPayload = new CompleteRunRequest(
+            null,
+            ownerAnna,
+            3,
+            new[] { new CompleteRunItemRequest(ean, 9m, false) });
+
+        var thirdResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", thirdPayload);
+        thirdResponse.EnsureSuccessStatusCode();
+
+        using var scope = _factory.Services.CreateScope();
+        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
+        await using var connection = connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection);
+
+        const string unresolvedSql = """
+            SELECT COUNT(*)
+            FROM "Conflict" c
+            JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
+            JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
+            WHERE c."ResolvedAtUtc" IS NULL
+              AND cr."LocationId" = @LocationId;
+            """;
+
+        var unresolvedAfterThird = await connection.ExecuteScalarAsync<int>(
+            unresolvedSql,
+            new { LocationId = locationId });
+
+        Assert.Equal(1, unresolvedAfterThird);
+
+        var summaryAfterThird = await _client.GetAsync($"/api/inventories/summary?shopId={shopId:D}");
+        summaryAfterThird.EnsureSuccessStatusCode();
+        var thirdSummary = await summaryAfterThird.Content.ReadFromJsonAsync<InventorySummaryDto>();
+        Assert.NotNull(thirdSummary);
+        Assert.Equal(1, thirdSummary!.Conflicts);
+
+        var fourthPayload = new CompleteRunRequest(
+            null,
+            ownerBastien,
+            4,
+            new[] { new CompleteRunItemRequest(ean, 5m, false) });
+
+        var fourthResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", fourthPayload);
+        fourthResponse.EnsureSuccessStatusCode();
+
+        var unresolvedAfterFourth = await connection.ExecuteScalarAsync<int>(
+            unresolvedSql,
+            new { LocationId = locationId });
+
+        Assert.Equal(0, unresolvedAfterFourth);
+
+        var summaryAfterFourth = await _client.GetAsync($"/api/inventories/summary?shopId={shopId:D}");
+        summaryAfterFourth.EnsureSuccessStatusCode();
+        var fourthSummary = await summaryAfterFourth.Content.ReadFromJsonAsync<InventorySummaryDto>();
+        Assert.NotNull(fourthSummary);
+        Assert.Equal(0, fourthSummary!.Conflicts);
+    }
+
+    [Fact]
     public async Task CompleteInventoryRun_RejectsSecondRun_WhenOperatorMatchesFirst()
     {
         await ResetDatabaseAsync();
