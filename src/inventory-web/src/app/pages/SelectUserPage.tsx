@@ -18,7 +18,10 @@ type ShopUser = {
 // Schéma tolérant pour l’API users, sans any
 const ShopUserApiSchema = z
   .object({
-    id: z.string().uuid(),
+    id: z
+      .string()
+      .trim()
+      .min(1, 'Identifiant utilisateur manquant'),
     displayName: z
       .string()
       .min(1)
