@@ -5,7 +5,12 @@ import { HomePage } from './HomePage'
 import { ShopProvider } from '@/state/ShopContext'
 import type { ConflictZoneDetail, InventorySummary, Location } from '../../types/inventory'
 import type { HttpError } from '@/lib/api/http'
-import { fetchInventorySummary, fetchLocations, getConflictZoneDetail } from '../../api/inventoryApi'
+import {
+  fetchInventorySummary,
+  fetchLocationSummaries,
+  fetchLocations,
+  getConflictZoneDetail,
+} from '../../api/inventoryApi'
 import { ThemeProvider } from '../../../theme/ThemeProvider'
 
 const navigateMock = vi.fn()
@@ -21,21 +26,29 @@ vi.mock('react-router-dom', async () => {
 
 vi.mock('../../api/inventoryApi', () => ({
   fetchInventorySummary: vi.fn(),
+  fetchLocationSummaries: vi.fn(),
   fetchLocations: vi.fn(),
   getConflictZoneDetail: vi.fn(),
 }))
 
 const {
   fetchInventorySummary: mockedFetchSummary,
+  fetchLocationSummaries: mockedFetchLocationSummaries,
   fetchLocations: mockedFetchLocations,
   getConflictZoneDetail: mockedGetDetail,
-} = vi.mocked({ fetchInventorySummary, fetchLocations, getConflictZoneDetail })
+} = vi.mocked({
+  fetchInventorySummary,
+  fetchLocationSummaries,
+  fetchLocations,
+  getConflictZoneDetail,
+})
 
 describe('HomePage', () => {
   beforeEach(() => {
     localStorage.clear()
     localStorage.setItem('cb.shop', JSON.stringify(testShop))
     mockedFetchSummary.mockReset()
+    mockedFetchLocationSummaries.mockReset()
     mockedFetchLocations.mockReset()
     mockedGetDetail.mockReset()
     navigateMock.mockReset()
@@ -96,6 +109,7 @@ describe('HomePage', () => {
     }
 
     mockedFetchSummary.mockResolvedValue(summary)
+    mockedFetchLocationSummaries.mockResolvedValue([])
     mockedFetchLocations.mockResolvedValue(locations)
     mockedGetDetail.mockResolvedValue(detail)
 
