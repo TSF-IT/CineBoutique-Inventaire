@@ -8,6 +8,7 @@ import { Page } from '@/app/components/Page'
 import { LoadingIndicator } from '@/app/components/LoadingIndicator'
 import { Button } from '@/app/components/ui/Button'
 import clsx from 'clsx'
+import { clearSelectedUserForShop } from '@/lib/selectedUserStorage'
 
 const DEFAULT_ERROR_MESSAGE = "Impossible de charger les boutiques."
 const GUID_REGEX = /^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$/i
@@ -107,19 +108,24 @@ export const SelectShopPage = () => {
   }, [])
 
   const navigateToShop = useCallback(
-    (shopToNavigate: Shop) => {
-      if (!isValidGuid(shopToNavigate.id)) {
-        setSelectionError('Identifiant de boutique invalide. Vérifiez le code et réessayez.')
-        return
-      }
+  (shopToNavigate: Shop) => {
+    if (!isValidGuid(shopToNavigate.id)) {
+      setSelectionError('Identifiant de boutique invalide. Vérifiez le code et réessayez.')
+      return
+    }
 
-      setIsRedirecting(true)
-      setSelectionError(null)
-      setShop(shopToNavigate)
-      navigate('/select-user', { replace: true, state: { redirectTo: '/' } })
-    },
-    [navigate, setShop],
-  )
+    setIsRedirecting(true)
+    setSelectionError(null)
+    setShop(shopToNavigate)
+
+    // >>> ajout: force la re-sélection utilisateur pour cette boutique
+    clearSelectedUserForShop(shopToNavigate.id)
+    
+    navigate('/select-user', { replace: true, state: { redirectTo: '/' } })
+  },
+  [navigate, setShop],
+)
+
 
   const onSelectChange = useCallback(
     (event: ChangeEvent<HTMLSelectElement>) => {
