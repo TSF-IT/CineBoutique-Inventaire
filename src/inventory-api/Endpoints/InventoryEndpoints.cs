@@ -3,7 +3,6 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
-using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -552,7 +551,7 @@ ORDER BY l.""Code"" ASC;";
 
             if (locations.Count == 0)
             {
-                return Results.Ok(locations);
+                return Results.Ok(Array.Empty<LocationListItemDto>());
             }
 
             var locationIds = locations.Select(location => location.Id).ToArray();
@@ -629,16 +628,8 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
             static Guid? NormalizeUserId(Guid? value) =>
                 value is { } guid && guid != Guid.Empty ? guid : null;
 
-            static string FormatTimestamp(DateTime? value)
-            {
-                if (!value.HasValue)
-                {
-                    return string.Empty;
-                }
-
-                var utcValue = TimeUtil.ToUtcOffset(value.Value);
-                return utcValue.ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture);
-            }
+            static DateTimeOffset? ConvertToUtcTimestamp(DateTime? value)
+                => value.HasValue ? TimeUtil.ToUtcOffset(value.Value) : (DateTimeOffset?)null;
 
             foreach (var location in locations)
             {
@@ -648,7 +639,13 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                 {
                     var status = new LocationCountStatusDto
                     {
-                        CountType = type
+                        CountType = type,
+                        Status = LocationCountStatus.NotStarted,
+                        RunId = null,
+                        OwnerDisplayName = null,
+                        OwnerUserId = null,
+                        StartedAtUtc = null,
+                        CompletedAtUtc = null
                     };
 
                     var open = openLookup[(location.Id, type)].FirstOrDefault();
@@ -658,8 +655,8 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                         status.RunId = EndpointUtilities.SanitizeRunId(open.RunId);
                         status.OwnerDisplayName = NormalizeDisplayName(open.OwnerDisplayName);
                         status.OwnerUserId = NormalizeUserId(open.OwnerUserId);
-                        status.StartedAtUtc = FormatTimestamp(open.StartedAtUtc);
-                        status.CompletedAtUtc = FormatTimestamp(open.CompletedAtUtc);
+                        status.StartedAtUtc = ConvertToUtcTimestamp(open.StartedAtUtc);
+                        status.CompletedAtUtc = ConvertToUtcTimestamp(open.CompletedAtUtc);
                     }
                     else
                     {
@@ -670,15 +667,17 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                             status.RunId = EndpointUtilities.SanitizeRunId(completed.RunId);
                             status.OwnerDisplayName = NormalizeDisplayName(completed.OwnerDisplayName);
                             status.OwnerUserId = NormalizeUserId(completed.OwnerUserId);
-                            status.StartedAtUtc = FormatTimestamp(completed.StartedAtUtc);
-                            status.CompletedAtUtc = FormatTimestamp(completed.CompletedAtUtc);
+                            status.StartedAtUtc = ConvertToUtcTimestamp(completed.StartedAtUtc);
+                            status.CompletedAtUtc = ConvertToUtcTimestamp(completed.CompletedAtUtc);
                         }
                     }
 
                     statuses.Add(status);
                 }
 
-                location.CountStatuses = statuses;
+                location.CountStatuses = statuses.Count > 0
+                    ? statuses
+                    : Array.Empty<LocationCountStatusDto>();
 
                 var openRunsForLocation = openRuns
                     .Where(r => r.LocationId == location.Id)

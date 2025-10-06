@@ -1,13 +1,19 @@
 using System;
 using System.Globalization;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using CineBoutique.Inventory.Api.Models;
 
 namespace CineBoutique.Inventory.Api.Tests;
 
 public sealed class DtoSerializationTests
 {
-    private static readonly JsonSerializerOptions WebSerializerOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions WebSerializerOptions = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+        Encoder = JavaScriptEncoder.Default
+    };
 
     [Fact]
     public void LocationListItemDtoSerializesWithExpectedPropertyNames()
@@ -31,8 +37,8 @@ public sealed class DtoSerializationTests
                     RunId = Guid.Parse("bbbbbbbb-2222-4222-8222-555555555555"),
                     OwnerDisplayName = "louise",
                     OwnerUserId = Guid.Parse("bbbbbbbb-9999-4999-8999-aaaaaaaaaaaa"),
-                    StartedAtUtc = "2024-12-31T08:00:00+00:00",
-                    CompletedAtUtc = "2024-12-31T09:00:00+00:00"
+                    StartedAtUtc = DateTimeOffset.Parse("2024-12-31T08:00:00Z", CultureInfo.InvariantCulture),
+                    CompletedAtUtc = DateTimeOffset.Parse("2024-12-31T09:00:00Z", CultureInfo.InvariantCulture)
                 },
                 new LocationCountStatusDto
                 {
@@ -41,8 +47,8 @@ public sealed class DtoSerializationTests
                     RunId = Guid.Parse("cccccccc-3333-4333-8333-666666666666"),
                     OwnerDisplayName = null,
                     OwnerUserId = null,
-                    StartedAtUtc = "2025-01-01T10:00:00+00:00",
-                    CompletedAtUtc = string.Empty
+                    StartedAtUtc = DateTimeOffset.Parse("2025-01-01T10:00:00Z", CultureInfo.InvariantCulture),
+                    CompletedAtUtc = null
                 }
             ]
         };
@@ -62,9 +68,10 @@ public sealed class DtoSerializationTests
         Assert.Contains("\"status\":\"completed\"", json, StringComparison.Ordinal);
         Assert.Contains("\"ownerDisplayName\":\"louise\"", json, StringComparison.Ordinal);
         Assert.Contains("\"ownerUserId\":\"bbbbbbbb-9999-4999-8999-aaaaaaaaaaaa\"", json, StringComparison.Ordinal);
-        Assert.Contains("\"completedAtUtc\":\"2024-12-31T09:00:00\\u002B00:00\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"completedAtUtc\":\"2024-12-31T09:00:00+00:00\"", json, StringComparison.Ordinal);
         Assert.Contains("\"status\":\"in_progress\"", json, StringComparison.Ordinal);
         Assert.Contains("\"ownerDisplayName\":null", json, StringComparison.Ordinal);
-        Assert.Contains("\"startedAtUtc\":\"2025-01-01T10:00:00\\u002B00:00\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"startedAtUtc\":\"2025-01-01T10:00:00+00:00\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"completedAtUtc\":null", json, StringComparison.Ordinal);
     }
 }
