@@ -110,6 +110,18 @@ test.describe("Ordre d'affichage des articles scannés", () => {
       await route.fallback()
     })
 
+    await page.route('**/api/shops', async (route, request) => {
+      if (request.method() === 'GET') {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify([testShop]),
+        })
+        return
+      }
+      await route.fallback()
+    })
+
     await page.route('**/api/locations**', async (route, request) => {
       if (request.method() === 'GET') {
         await route.fulfill({
@@ -146,11 +158,13 @@ test.describe("Ordre d'affichage des articles scannés", () => {
   })
 
   test('maintient un ordre stable lors des ajustements de quantité', async ({ page }) => {
-    await page.goto('/select-user')
+    await page.goto('/inventory/location')
 
-    const userButton = page.getByRole('button', { name: mockUsers[0].displayName })
-    await expect(userButton).toBeVisible({ timeout: 5000 })
-    await userButton.click()
+    await expect(page).toHaveURL(/\/select-shop/, { timeout: 5000 })
+
+    const userRadio = page.getByRole('radio', { name: mockUsers[0].displayName })
+    await expect(userRadio).toBeVisible({ timeout: 5000 })
+    await userRadio.click()
 
     await expect(page).toHaveURL(/\/inventory\/location/, { timeout: 5000 })
     const zoneCard = page.getByTestId(`zone-card-${mockLocations[0].id}`)
