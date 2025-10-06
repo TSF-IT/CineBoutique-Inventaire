@@ -1,5 +1,5 @@
 // Modifications : forcer l'inclusion de runId=null lors de la complétion sans run existant.
-import type { KeyboardEvent, ChangeEvent } from 'react'
+import type { KeyboardEvent, ChangeEvent, FocusEvent } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrowserMultiFormatReader } from '@zxing/browser'
@@ -136,6 +136,7 @@ export const InventorySessionPage = () => {
   const manualLookupIdRef = useRef(0)
   const lastSearchedInputRef = useRef<string | null>(null)
   const previousItemCountRef = useRef(items.length)
+  const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
 
   const selectedUserDisplayName = selectedUser?.displayName ?? null
   const ownerUserId = selectedUser?.id?.trim() ?? ''
@@ -660,16 +661,111 @@ export const InventorySessionPage = () => {
     navigate('/', { replace: true })
   }
 
+  const clearQuantityDraft = useCallback((ean: string) => {
+    setQuantityDrafts((prev) => {
+      if (!(ean in prev)) {
+        return prev
+      }
+      const { [ean]: _discarded, ...rest } = prev
+      return rest
+    })
+  }, [])
+
   const adjustQuantity = (ean: string, delta: number) => {
     const item = items.find((entry) => entry.product.ean === ean)
     if (!item) return
     const nextQuantity = item.quantity + delta
     if (nextQuantity <= 0) {
+      clearQuantityDraft(ean)
       removeItem(ean)
     } else {
       setQuantity(ean, nextQuantity)
+      clearQuantityDraft(ean)
     }
   }
+
+  const commitQuantity = useCallback(
+    (ean: string, rawValue: string | undefined) => {
+      const sanitized = (rawValue ?? '').replace(/\D+/g, '').slice(0, 4)
+
+      if (sanitized.length === 0) {
+        clearQuantityDraft(ean)
+        return
+      }
+
+      const parsed = Number.parseInt(sanitized, 10)
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        clearQuantityDraft(ean)
+        removeItem(ean)
+        return
+      }
+
+      setQuantity(ean, parsed)
+      clearQuantityDraft(ean)
+    },
+    [clearQuantityDraft, removeItem, setQuantity],
+  )
+
+  const handleQuantityInputChange = useCallback(
+    (ean: string, event: ChangeEvent<HTMLInputElement>) => {
+      const sanitized = event.target.value.replace(/\D+/g, '').slice(0, 4)
+
+      setQuantityDrafts((prev) => {
+        const nextValue = sanitized
+        const previousValue = prev[ean] ?? ''
+        if (nextValue === previousValue) {
+          return prev
+        }
+        return { ...prev, [ean]: nextValue }
+      })
+    },
+    [],
+  )
+
+  const handleQuantityBlur = useCallback(
+    (ean: string, event: FocusEvent<HTMLInputElement>) => {
+      commitQuantity(ean, event.currentTarget.value)
+    },
+    [commitQuantity],
+  )
+
+  const handleQuantityKeyDown = useCallback(
+    (ean: string, event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        commitQuantity(ean, event.currentTarget.value)
+      }
+
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        clearQuantityDraft(ean)
+        event.currentTarget.blur()
+      }
+    },
+    [clearQuantityDraft, commitQuantity],
+  )
+
+  useEffect(() => {
+    setQuantityDrafts((prev) => {
+      const validEans = new Set(items.map((entry) => entry.product.ean))
+      let changed = false
+      const next: Record<string, string> = {}
+
+      for (const [ean, value] of Object.entries(prev)) {
+        if (validEans.has(ean)) {
+          next[ean] = value
+        } else {
+          changed = true
+        }
+      }
+
+      if (!changed && Object.keys(next).length === Object.keys(prev).length) {
+        return prev
+      }
+
+      return next
+    })
+  }, [items])
 
   return (
     <div className="flex flex-col gap-6" data-testid="page-session">
@@ -756,7 +852,20 @@ export const InventorySessionPage = () => {
                 >
                   −
                 </Button>
-                <span className="text-2xl font-bold text-slate-900 dark:text-white">{item.quantity}</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={4}
+                  data-testid="quantity-input"
+                  aria-label={`Quantité pour ${item.product.name}`}
+                  value={quantityDrafts[item.product.ean] ?? String(item.quantity)}
+                  onChange={(event) => handleQuantityInputChange(item.product.ean, event)}
+                  onBlur={(event) => handleQuantityBlur(item.product.ean, event)}
+                  onKeyDown={(event) => handleQuantityKeyDown(item.product.ean, event)}
+                  className="h-12 w-20 rounded-xl border border-slate-300 bg-white text-center text-2xl font-bold text-slate-900 outline-none focus-visible:border-brand-400 focus-visible:ring-2 focus-visible:ring-brand-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                  autoComplete="off"
+                />
                 <Button
                   type="button"
                   className="tap-highlight-none no-focus-ring btn-glyph-center h-10 w-10 text-xl font-semibold"
