@@ -166,7 +166,8 @@ export const fetchLocationSummaries = async (
   const searchParams = new URLSearchParams({ shopId })
   const raw = await http(`${API_BASE}/locations?${searchParams.toString()}`, { signal })
 
-  const apiItems = z.array(LocationApiItemSchema).parse(raw)
+  const normalized = Array.isArray(raw) ? raw : []
+  const apiItems = z.array(LocationApiItemSchema).parse(normalized)
 
   const adapted = apiItems.map((it) => ({
     locationId: it.id,

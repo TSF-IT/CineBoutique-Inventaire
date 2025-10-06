@@ -174,7 +174,7 @@ export const InventoryLocationStep = () => {
 
   useEffect(() => {
     if (!selectedUser) {
-      navigate('/select-user', { replace: true })
+      navigate('/select-shop', { replace: true })
     }
   }, [navigate, selectedUser])
 

@@ -4,12 +4,12 @@ import { Stepper } from '../../components/Stepper'
 import { Page } from '../../components/Page'
 import { useInventory } from '../../contexts/InventoryContext'
 
-const STEPS = ['Utilisateur', 'Zone', 'Type de comptage', 'Scan']
+const STEPS = ['Zone', 'Type de comptage', 'Scan']
 
 const stepIndexByPath: Record<string, number> = {
-  '/inventory/location': 1,
-  '/inventory/count-type': 2,
-  '/inventory/session': 3,
+  '/inventory/location': 0,
+  '/inventory/count-type': 1,
+  '/inventory/session': 2,
 }
 
 export const InventoryLayout = () => {
@@ -23,14 +23,14 @@ export const InventoryLayout = () => {
     const path = location.pathname
     if (path === '/inventory/location') {
       if (!selectedUser) {
-        navigate('/select-user', { replace: true })
+        navigate('/select-shop', { replace: true })
       }
       return
     }
 
     if (path === '/inventory/count-type') {
       if (!selectedUser) {
-        navigate('/select-user', { replace: true })
+        navigate('/select-shop', { replace: true })
         return
       }
 
@@ -42,7 +42,7 @@ export const InventoryLayout = () => {
 
     if (path === '/inventory/session') {
       if (!selectedUser) {
-        navigate('/select-user', { replace: true })
+        navigate('/select-shop', { replace: true })
         return
       }
 
@@ -64,20 +64,16 @@ export const InventoryLayout = () => {
     }
 
     const zoneStepButton = container.querySelector<HTMLElement>(
-      'li:nth-of-type(2) button, li:nth-of-type(2) a, li:nth-of-type(2) [role="button"]',
+      'li:nth-of-type(1) button, li:nth-of-type(1) a, li:nth-of-type(1) [role="button"]',
     )
     if (zoneStepButton) {
       zoneStepButton.setAttribute('data-testid', 'step-nav-location')
       return
     }
 
-    const zoneStepFallback = container.querySelector<HTMLElement>('li:nth-of-type(2)')
+    const zoneStepFallback = container.querySelector<HTMLElement>('li:nth-of-type(1)')
     zoneStepFallback?.setAttribute('data-testid', 'step-nav-location')
   }, [location.pathname])
-
-  if (location.pathname === '/inventory') {
-    navigate('/select-user', { replace: true })
-  }
 
   const activeIndex = stepIndexByPath[location.pathname] ?? 0
 
