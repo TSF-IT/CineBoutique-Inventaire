@@ -522,7 +522,7 @@ describe("Workflow d'inventaire", () => {
 
     const sessionPages = await screen.findAllByTestId('page-session')
     const activeSession = sessionPages[sessionPages.length - 1]
-    await waitFor(() => expect(within(activeSession).getByText(/3 comptages/i)).toBeInTheDocument())
+    await waitFor(() => expect(within(activeSession).getByText(/Comptage n°3/i)).toBeInTheDocument())
   })
 
   it('autorise la reprise de son propre comptage', async () => {
