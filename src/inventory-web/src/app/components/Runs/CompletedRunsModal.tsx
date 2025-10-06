@@ -100,11 +100,10 @@ const buildRunTitle = (run: CompletedRunSummary, detail?: CompletedRunDetail | n
 const escapeCsvValue = (value: string) => `"${value.replace(/"/g, '""')}"`
 
 const buildCsvContent = (title: string, detail: CompletedRunDetail) => {
-  const header = ['EAN', 'SKU', 'Libellé', 'Quantité']
+  const header = ['EAN', 'Libellé', 'Quantité']
   const lines = detail.items.map((item) =>
     [
       escapeCsvValue(item.ean ?? ''),
-      escapeCsvValue(item.sku),
       escapeCsvValue(item.name),
       escapeCsvValue(formatQuantity(item.quantity)),
     ].join(';'),
@@ -367,7 +366,7 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
               Comptages terminés
             </h2>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              Consultez les 20 derniers comptages finalisés.
+              Consultez les comptages finalisés.
             </p>
           </div>
           <button
@@ -392,7 +391,7 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
                     {selectedRun.locationCode} · {selectedRun.locationLabel}
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap justify-end gap-2">
                   <Button variant="secondary" onClick={handleBackToList}>
                     Retour à la liste
                   </Button>
@@ -443,7 +442,6 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
                       <thead className="bg-emerald-50/80 text-left text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-200">
                         <tr>
                           <th scope="col" className="px-4 py-3">EAN</th>
-                          <th scope="col" className="px-4 py-3">SKU</th>
                           <th scope="col" className="px-4 py-3">Libellé</th>
                           <th scope="col" className="px-4 py-3 text-right">Quantité</th>
                         </tr>
@@ -453,9 +451,6 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
                           <tr key={item.productId}>
                             <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">
                               {item.ean ?? '—'}
-                            </td>
-                            <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">
-                              {item.sku}
                             </td>
                             <td className="px-4 py-3 text-sm text-slate-800 dark:text-slate-100">{item.name}</td>
                             <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-semibold text-emerald-700 dark:text-emerald-200">
@@ -476,7 +471,7 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
           ) : (
             <section className="flex flex-col gap-3">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-200">
-                Comptages terminés (20 plus récents)
+                Comptages terminés
               </h3>
               {hasCompletedRuns ? (
                 <ul className="space-y-2">

@@ -224,7 +224,7 @@ describe('HomePage', () => {
     const completedRunsModalTitle = await screen.findByRole('heading', { level: 2, name: /Comptages terminés/i })
     expect(completedRunsModalTitle).toBeInTheDocument()
     const completedRunsModal = await screen.findByRole('dialog', { name: /Comptages terminés/i })
-    expect(within(completedRunsModal).getByText(/Comptages terminés \(20 plus récents\)/i)).toBeInTheDocument()
+    expect(within(completedRunsModal).getByText(/Consultez les comptages finalisés\./i)).toBeInTheDocument()
     expect(within(completedRunsModal).getByText(/Opérateur : Utilisateur Nice 1/i)).toBeInTheDocument()
   })
 

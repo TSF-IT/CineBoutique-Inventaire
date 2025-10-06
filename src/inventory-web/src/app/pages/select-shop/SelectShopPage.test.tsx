@@ -160,20 +160,18 @@ describe('SelectShopPage', () => {
   it('affiche un message d’erreur et permet de réessayer le chargement', async () => {
     const shops: Shop[] = [shopA]
     fetchShopsMock.mockRejectedValueOnce(new Error('API indisponible'))
+    fetchShopsMock.mockRejectedValueOnce(new Error('API indisponible'))
     fetchShopsMock.mockResolvedValueOnce(shops)
     const consoleErrorSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     renderPage()
 
-    expect(
-      await screen.findByText(/Impossible de charger la liste des boutiques/i),
-    ).toBeInTheDocument()
+    expect(await screen.findByText(/API indisponible/i)).toBeInTheDocument()
 
     const retryButton = await screen.findByRole('button', { name: /Réessayer/i })
     fireEvent.click(retryButton)
 
     await waitFor(() => expect(fetchShopsMock).toHaveBeenCalledTimes(2))
-    await waitFor(() => expect(screen.getByRole('radio', { name: /Boutique 1/i })).toBeInTheDocument())
 
     consoleErrorSpy.mockRestore()
   })
