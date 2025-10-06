@@ -9,7 +9,7 @@ import { InventoryUserStep } from '@/app/pages/inventory/InventoryUserStep'
 import SelectShopPage from '@/app/pages/select-shop/SelectShopPage'
 
 // Déjà présent dans ton projet (tu l’utilises ailleurs) ; garde-le tel quel
-import { RequireShop } from '@/app/router/RequireShop'
+import RequireShop from '@/app/router/RequireShop'
 
 // On s'appuie sur le contexte boutique existant, pas sur un pseudo storage maison
 import { useShop } from '@/state/ShopContext'
