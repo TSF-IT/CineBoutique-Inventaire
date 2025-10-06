@@ -187,7 +187,7 @@ describe('HomePage', () => {
       expect(screen.getByText(/Progression\s*:\s*2\s*\/\s*4/)).toBeInTheDocument()
     })
 
-    expect(screen.getByRole('button', { name: 'Débuter un inventaire' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Débuter un comptage' })).toBeInTheDocument()
     expect(fetchLocationsMock).toHaveBeenCalled()
     expect(fetchLocationsMock.mock.calls[0]?.[0]).toBe(testShop.id)
   })

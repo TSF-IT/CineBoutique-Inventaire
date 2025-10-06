@@ -5,6 +5,10 @@ import { Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom'
 import { HomePage } from '@/app/pages/home/HomePage'
 // Celui-ci est un default export dans ton repo → import sans accolades
 import SelectShopPage from '@/app/pages/select-shop/SelectShopPage'
+import { InventoryLayout } from '@/app/pages/inventory/InventoryLayout'
+import { InventoryLocationStep } from '@/app/pages/inventory/InventoryLocationStep'
+import { InventoryCountTypeStep } from '@/app/pages/inventory/InventoryCountTypeStep'
+import { InventorySessionPage } from '@/app/pages/inventory/InventorySessionPage'
 
 // Déjà présent dans ton projet (tu l’utilises ailleurs) ; garde-le tel quel
 import RequireShop from '@/app/router/RequireShop'
@@ -51,19 +55,12 @@ export default function AppRoutes() {
         <Route element={<RequireUser />}>
           <Route path="/" element={<HomePage />} />
 
-          {/* Tes routes inventaire existantes, inchangées */}
-          <Route path="/inventory">
-            <Route index element={<Navigate to="count-type" replace />} />
-            {/* si dans ton projet ces routes sont organisées via un layout, garde ton layout existant */}
-            {/* Ex:
-                <Route path="/inventory" element={<InventoryLayout />}>
-                  <Route index element={<Navigate to="count-type" replace />} />
-                  <Route path="location" element={<InventoryLocationStep />} />
-                  <Route path="count-type" element={<InventoryCountTypeStep />} />
-                  <Route path="session" element={<InventorySessionPage />} />
-                </Route>
-            */}
-          </Route>
+            <Route path="/inventory" element={<InventoryLayout />}>
+              <Route index element={<Navigate to="location" replace />} />
+              <Route path="location" element={<InventoryLocationStep />} />
+              <Route path="count-type" element={<InventoryCountTypeStep />} />
+              <Route path="session" element={<InventorySessionPage />} />
+            </Route>
 
           {/* Admin: à toi de décider si RequireUser est nécessaire ou non. Si oui, laisse ici. */}
           {/* <Route path="/admin" element={<AdminLayout />}>
