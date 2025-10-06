@@ -1,6 +1,6 @@
 // Modifications : forcer l'inclusion de runId=null lors de la complétion sans run existant.
 import type { KeyboardEvent, ChangeEvent, FocusEvent, PointerEvent } from 'react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import { BarcodeFormat, DecodeHintType } from '@zxing/library'
@@ -16,9 +16,10 @@ import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Card } from '../../components/Card'
 import { EmptyState } from '../../components/EmptyState'
+import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
 import { useInventory } from '../../contexts/InventoryContext'
 import type { HttpError } from '@/lib/api/http'
-import type { Product } from '../../types/inventory'
+import type { ConflictZoneSummary, Product } from '../../types/inventory'
 import { CountType } from '../../types/inventory'
 import { useShop } from '@/state/ShopContext'
 
@@ -140,6 +141,7 @@ export const InventorySessionPage = () => {
   const lastSearchedInputRef = useRef<string | null>(null)
   const previousItemCountRef = useRef(items.length)
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
+  const [conflictModalOpen, setConflictModalOpen] = useState(false)
 
   const updateStatus = useCallback(
     (message: string | null) => {
@@ -199,6 +201,24 @@ export const InventorySessionPage = () => {
   const existingRunId = typeof sessionId === 'string' ? sessionId.trim() : ''
   const locationId = location?.id?.trim() ?? ''
   const shopId = shop?.id?.trim() ?? ''
+  const conflictZoneSummary = useMemo<ConflictZoneSummary | null>(() => {
+    if (countType !== CountType.Count3 || !location) {
+      return null
+    }
+
+    return {
+      locationId: location.id,
+      locationCode: location.code,
+      locationLabel: location.label,
+      conflictLines: 0,
+    }
+  }, [countType, location])
+
+  useEffect(() => {
+    if (countType !== CountType.Count3 || !location) {
+      setConflictModalOpen(false)
+    }
+  }, [countType, location])
 
   useEffect(() => {
     if (!selectedUser) {
@@ -950,9 +970,27 @@ export const InventorySessionPage = () => {
       </dialog>
 
       <Card className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-xl font-semibold text-slate-900 dark:text-white">Articles scannés</h3>
-          <span className="text-sm text-slate-600 dark:text-slate-400">{items.length} références</span>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-1">
+            <h3 className="text-xl font-semibold text-slate-900 dark:text-white">Articles scannés</h3>
+            <span className="text-sm text-slate-600 dark:text-slate-400">{items.length} références</span>
+          </div>
+          {conflictZoneSummary && (
+            <div className="flex flex-col items-start gap-2 sm:items-end">
+              <span className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-500/50 dark:bg-rose-500/10 dark:text-rose-200">
+                <span aria-hidden>⚠️</span>
+                Zone en conflit
+              </span>
+              <Button
+                variant="ghost"
+                className="inline-flex items-center gap-2 self-start rounded-2xl border border-rose-200/80 bg-white/70 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/20"
+                onClick={() => setConflictModalOpen(true)}
+                data-testid="btn-view-conflicts"
+              >
+                Voir les écarts C1/C2
+              </Button>
+            </div>
+          )}
         </div>
         {displayedItems.length === 0 && (
           <EmptyState
@@ -1090,6 +1128,12 @@ export const InventorySessionPage = () => {
           preferredFormats={['EAN_13', 'EAN_8', 'CODE_128', 'CODE_39', 'ITF', 'QR_CODE']}
         />
       </Card>
+
+      <ConflictZoneModal
+        open={Boolean(conflictZoneSummary) && conflictModalOpen}
+        zone={conflictZoneSummary}
+        onClose={() => setConflictModalOpen(false)}
+      />
 
     </div>
   )
