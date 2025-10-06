@@ -83,6 +83,13 @@ const ZXING_IMAGE_HINTS = (() => {
   return hints
 })()
 
+const MIN_EAN_LENGTH = 8
+const MAX_EAN_LENGTH = 13
+
+const sanitizeEan = (value: string) => value.replace(/\D+/g, '')
+
+const isEanLengthValid = (ean: string) => ean.length >= MIN_EAN_LENGTH && ean.length <= MAX_EAN_LENGTH
+
 const resolveLifecycleErrorMessage = (error: unknown, fallback: string): string => {
   if (isHttpError(error)) {
     const problem = error.problem as { message?: unknown; detail?: unknown; title?: unknown } | undefined
@@ -147,10 +154,14 @@ export const InventorySessionPage = () => {
     (message: string | null) => {
       setStatusState(message)
       if (message) {
-        logEvent({
-          type: 'status',
-          message,
-        })
+        const normalized = message.trim().toLowerCase()
+        const isLookupMessage = normalized.startsWith('recherche du code')
+        if (!isLookupMessage) {
+          logEvent({
+            type: 'status',
+            message,
+          })
+        }
       }
     },
     [logEvent],
@@ -348,10 +359,21 @@ export const InventorySessionPage = () => {
 
   const handleDetected = useCallback(
     async (rawValue: string) => {
-      const value = rawValue.trim()
+      const value = sanitizeEan(rawValue.trim())
       if (!value) {
         return
       }
+
+      if (!isEanLengthValid(value)) {
+        updateStatus(null)
+        setErrorMessage(
+          `EAN ${value} invalide : saisissez un code entre ${MIN_EAN_LENGTH} et ${MAX_EAN_LENGTH} chiffres.`,
+        )
+        setManualEan('')
+        setInputLookupStatus('idle')
+        return
+      }
+
       updateStatus(`Recherche du code ${value}`)
       setErrorMessage(null)
       setRecentScans((previous) => {
@@ -393,14 +415,37 @@ export const InventorySessionPage = () => {
     [addProductToSession, searchProductByEan, updateStatus],
   )
 
-  const trimmedScanValue = scanValue.trim()
-  const manualCandidateEan = manualEan.trim() || trimmedScanValue
+  const trimmedScanValue = sanitizeEan(scanValue.trim())
+  const scanInputError = useMemo(() => {
+    if (!trimmedScanValue) {
+      return null
+    }
+    if (trimmedScanValue.length < MIN_EAN_LENGTH) {
+      const remaining = MIN_EAN_LENGTH - trimmedScanValue.length
+      return `Ajoutez encore ${remaining} chiffre${remaining > 1 ? 's' : ''} pour valider l’EAN.`
+    }
+    if (trimmedScanValue.length > MAX_EAN_LENGTH) {
+      return `EAN trop long : ${MAX_EAN_LENGTH} chiffres maximum.`
+    }
+    return null
+  }, [trimmedScanValue])
+
+  const manualCandidateEan = (manualEan ? sanitizeEan(manualEan) : trimmedScanValue).trim()
+  const isManualCandidateValid = manualCandidateEan.length > 0 && isEanLengthValid(manualCandidateEan)
 
   useEffect(() => {
     if (!trimmedScanValue) {
       manualLookupIdRef.current += 1
       lastSearchedInputRef.current = null
       setInputLookupStatus('idle')
+      return
+    }
+
+    if (scanInputError) {
+      manualLookupIdRef.current += 1
+      lastSearchedInputRef.current = null
+      setInputLookupStatus('idle')
+      setErrorMessage(null)
       return
     }
 
@@ -454,7 +499,7 @@ export const InventorySessionPage = () => {
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [addProductToSession, searchProductByEan, trimmedScanValue, updateStatus])
+  }, [addProductToSession, scanInputError, searchProductByEan, trimmedScanValue, updateStatus])
 
   const handleImagePicked = useCallback(
     async (file: File) => {
@@ -538,24 +583,30 @@ export const InventorySessionPage = () => {
       if (value.includes('\n') || value.includes('\r')) {
         const [code] = value.split(/\s+/)
         setScanValue('')
+        setManualEan('')
         if (code.trim()) {
           void handleDetected(code)
         }
         return
       }
-      setScanValue(value)
+      const sanitized = sanitizeEan(value)
+      setScanValue(sanitized)
+      setManualEan('')
+      setErrorMessage(null)
     },
     [handleDetected],
   )
 
   const handleManualAdd = useCallback(async () => {
-    const sanitizedEan = manualCandidateEan.trim()
+    const sanitizedEan = sanitizeEan(manualCandidateEan)
     if (!sanitizedEan) {
       setErrorMessage('Indiquez un EAN pour ajouter le produit à la session.')
       return
     }
-    if (!/^\d{4,18}$/.test(sanitizedEan)) {
-      setErrorMessage("L'EAN doit contenir uniquement des chiffres (4 à 18 caractères).")
+    if (!isEanLengthValid(sanitizedEan)) {
+      setErrorMessage(
+        `Un EAN doit contenir entre ${MIN_EAN_LENGTH} et ${MAX_EAN_LENGTH} chiffres (code saisi : ${sanitizedEan.length}).`,
+      )
       return
     }
 
@@ -882,16 +933,31 @@ export const InventorySessionPage = () => {
             Journal des actions ({logs.length})
           </Button>
         </div>
-        <Input
-          ref={inputRef}
-          name="scanInput"
-          label="Scanner (douchette ou saisie)"
-          placeholder="Scannez un EAN et validez avec Entrée"
-          value={scanValue}
-          onChange={handleInputChange}
-          onKeyDown={handleInputKeyDown}
-          autoFocus
-        />
+        <div className="space-y-1">
+          <Input
+            ref={inputRef}
+            name="scanInput"
+            label="Scanner (douchette ou saisie)"
+            placeholder="Scannez un EAN et validez avec Entrée"
+            value={scanValue}
+            onChange={handleInputChange}
+            onKeyDown={handleInputKeyDown}
+            inputMode="numeric"
+            pattern="\d*"
+            maxLength={MAX_EAN_LENGTH}
+            autoComplete="off"
+            aria-invalid={Boolean(scanInputError)}
+            autoFocus
+          />
+          <p
+            className={`text-xs ${
+              scanInputError ? 'text-rose-600 dark:text-rose-300' : 'text-slate-500 dark:text-slate-400'
+            }`}
+            aria-live="polite"
+          >
+            {scanInputError ?? `EAN attendu : ${MIN_EAN_LENGTH} à ${MAX_EAN_LENGTH} chiffres.`}
+          </p>
+        </div>
         <div className="flex justify-end">
           <Button
             variant="ghost"
@@ -899,7 +965,7 @@ export const InventorySessionPage = () => {
               void handleManualAdd()
             }}
             data-testid="btn-open-manual"
-            disabled={!manualCandidateEan || inputLookupStatus !== 'not-found'}
+            disabled={!manualCandidateEan || inputLookupStatus !== 'not-found' || !isManualCandidateValid}
           >
             Ajouter manuellement
           </Button>

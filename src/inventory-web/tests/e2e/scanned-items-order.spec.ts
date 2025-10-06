@@ -48,8 +48,8 @@ const mockLocations = [
 ]
 
 const productsByEan: Record<string, { ean: string; name: string }> = {
-  '001': { ean: '001', name: 'Produit 001' },
-  '0000': { ean: '0000', name: 'Produit 0000' },
+  '00000001': { ean: '00000001', name: 'Produit 00000001' },
+  '00000002': { ean: '00000002', name: 'Produit 00000002' },
 }
 
 const mockUsers = [
@@ -191,33 +191,33 @@ test.describe("Ordre d'affichage des articles scannés", () => {
 
     const scannerInput = page.getByLabel('Scanner (douchette ou saisie)')
 
-    await scannerInput.fill('001')
-    await expect(page.locator('[data-testid="scanned-item"][data-ean="001"]')).toBeVisible({ timeout: 5000 })
+    await scannerInput.fill('00000001')
+    await expect(page.locator('[data-testid="scanned-item"][data-ean="00000001"]').first()).toBeVisible({ timeout: 5000 })
 
-    await scannerInput.fill('0000')
-    await expect(page.locator('[data-testid="scanned-item"][data-ean="0000"]')).toBeVisible({ timeout: 5000 })
+    await scannerInput.fill('00000002')
+    await expect(page.locator('[data-testid="scanned-item"][data-ean="00000002"]').first()).toBeVisible({ timeout: 5000 })
 
     const firstRowEan = await page.getByTestId('scanned-item').nth(0).getAttribute('data-ean')
     const secondRowEan = await page.getByTestId('scanned-item').nth(1).getAttribute('data-ean')
-    expect(firstRowEan).toBe('0000')
-    expect(secondRowEan).toBe('001')
+    expect(firstRowEan).toBe('00000002')
+    expect(secondRowEan).toBe('00000001')
 
-    const product001Row = page.locator('[data-testid="scanned-item"][data-ean="001"]')
+    const productFirstRow = page.locator('[data-testid="scanned-item"][data-ean="00000001"]')
 
-    await product001Row.getByRole('button', { name: 'Ajouter' }).click()
-    await expect(product001Row.getByTestId('quantity-input')).toHaveValue('2')
+    await productFirstRow.getByRole('button', { name: 'Ajouter' }).click()
+    await expect(productFirstRow.getByTestId('quantity-input')).toHaveValue('2')
 
     const firstRowAfterIncrement = await page.getByTestId('scanned-item').nth(0).getAttribute('data-ean')
     const secondRowAfterIncrement = await page.getByTestId('scanned-item').nth(1).getAttribute('data-ean')
-    expect(firstRowAfterIncrement).toBe('001')
-    expect(secondRowAfterIncrement).toBe('0000')
+    expect(firstRowAfterIncrement).toBe('00000001')
+    expect(secondRowAfterIncrement).toBe('00000002')
 
-    await product001Row.getByRole('button', { name: 'Retirer' }).click()
-    await expect(product001Row.getByTestId('quantity-input')).toHaveValue('1')
+    await productFirstRow.getByRole('button', { name: 'Retirer' }).click()
+    await expect(productFirstRow.getByTestId('quantity-input')).toHaveValue('1')
 
     const firstRowAfterDecrement = await page.getByTestId('scanned-item').nth(0).getAttribute('data-ean')
     const secondRowAfterDecrement = await page.getByTestId('scanned-item').nth(1).getAttribute('data-ean')
-    expect(firstRowAfterDecrement).toBe('001')
-    expect(secondRowAfterDecrement).toBe('0000')
+    expect(firstRowAfterDecrement).toBe('00000001')
+    expect(secondRowAfterDecrement).toBe('00000002')
   })
 })
