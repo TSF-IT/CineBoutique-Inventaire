@@ -16,7 +16,6 @@ import { LoadingIndicator } from '@/app/components/LoadingIndicator'
 import { Button } from '@/app/components/ui/Button'
 import type { Shop } from '@/types/shop'
 import { useShop } from '@/state/ShopContext'
-import { clearShop, loadShop } from '@/lib/shopStorage'
 import { clearSelectedUserForShop } from '@/lib/selectedUserStorage'
 import { useInventory } from '@/app/contexts/InventoryContext'
 
@@ -40,7 +39,7 @@ export const SelectShopPage = () => {
   const [shops, setShops] = useState<Shop[]>([])
   const [status, setStatus] = useState<LoadingState>('loading')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [retryCount, setRetryCount] = useState(0)
+  const [retryCount, setRetryCount] = useState<number>(0)
   const [selectedShopId, setSelectedShopId] = useState(() => shop?.id ?? '')
   const [selectionError, setSelectionError] = useState<string | null>(null)
   const [isRedirecting, setIsRedirecting] = useState(false)
@@ -61,26 +60,47 @@ export const SelectShopPage = () => {
 
   useEffect(() => {
   const ac = new AbortController()
-  setStatus('loading')
-  setErrorMessage(null)
+  let disposed = false
 
-  fetchShops(ac.signal)
-    .then((list) => {
+  const run = async () => {
+    try {
+      setStatus('loading')
+      setErrorMessage(null)
+
+      const list = await fetchShops(ac.signal)
+      if (disposed) return
+
       setShops(list)
       setStatus('idle')
-    })
-    .catch((e: any) => {
-      const msg = String(e?.message || '')
-      if (e?.name === 'AbortError' || msg === 'ABORTED' || msg.toLowerCase().includes('aborted')) {
+    } catch (e: unknown) {
+      if (disposed) return
+
+      if (
+        (e instanceof DOMException && e.name === 'AbortError') ||
+        (e instanceof Error && e.name === 'AbortError')
+      ) {
         return
       }
+
+      let msg = ''
+      if (e instanceof Error) msg = e.message
+      else if (typeof e === 'string') msg = e
+      else if (typeof e === 'object' && e !== null && 'message' in e)
+        msg = String((e as { message?: string }).message ?? '')
+
+      if (msg === 'ABORTED' || msg.toLowerCase().includes('aborted')) return
+
       setErrorMessage(msg || 'Erreur de chargement')
       setStatus('error')
-    })
+    }
+  }
 
-  return () => ac.abort('route-change')
-}, [])
-
+  run()
+  return () => {
+    disposed = true
+    ac.abort('route-change')
+  }
+}, [retryCount]) 
   useEffect(() => {
     setSelectedShopId((current) => {
       if (shops.length === 0) {
@@ -154,6 +174,7 @@ export const SelectShopPage = () => {
     setRetryCount((count) => count + 1)
     setSelectionError(null)
   }, [])
+
 
   const handleShopSelection = useCallback((id: string) => {
     setSelectedShopId(id)
