@@ -217,7 +217,7 @@ export const InventoryLocationStep = () => {
     }
     const totalMinutes = Math.floor(diffMs / 60000)
     if (totalMinutes <= 0) {
-      return 'depuis moins d\'1 min'
+      return "depuis moins d'1 min"
     }
     if (totalMinutes < 60) {
       return `depuis ${totalMinutes} min`
@@ -228,6 +228,37 @@ export const InventoryLocationStep = () => {
       return `depuis ${hours} h`
     }
     return `depuis ${hours} h ${minutes} min`
+  }
+
+  const resolveOwnerNameForMessage = (
+    status: LocationCountStatus,
+    selectedUserId: string | null,
+    selectedUserDisplayName: string | null,
+  ): string | null => {
+    const ownerDisplayName = status.ownerDisplayName?.trim() ?? null
+    const ownerUserId = status.ownerUserId?.trim() ?? null
+    if (ownerUserId && selectedUserId && ownerUserId === selectedUserId) {
+      return 'vous'
+    }
+    if (!ownerUserId && ownerDisplayName && selectedUserDisplayName && ownerDisplayName === selectedUserDisplayName) {
+      return 'vous'
+    }
+    if (ownerDisplayName) {
+      return ownerDisplayName
+    }
+    if (ownerUserId) {
+      return 'un opérateur inconnu'
+    }
+    return 'un opérateur non identifié'
+  }
+
+  const formatOwnerLabel = (
+    status: LocationCountStatus,
+    selectedUserId: string | null,
+    selectedUserDisplayName: string | null,
+  ) => {
+    const ownerName = resolveOwnerNameForMessage(status, selectedUserId, selectedUserDisplayName)
+    return ownerName ? `par ${ownerName}` : null
   }
 
   const getRelevantStatuses = (zone: Location): LocationCountStatus[] => {
@@ -252,18 +283,11 @@ export const InventoryLocationStep = () => {
   const describeCountStatus = (status: LocationCountStatus) => {
     const baseLabel = `Comptage n°${status.countType}`
     if (status.status === 'completed') {
-      return `${baseLabel} terminé`
+      const ownerLabel = formatOwnerLabel(status, selectedUserId, selectedUserDisplayName)
+      return `${baseLabel} terminé${ownerLabel ? ` (${ownerLabel})` : ''}`
     }
     if (status.status === 'in_progress') {
-      const ownerDisplayName = status.ownerDisplayName?.trim() ?? null
-      const ownerUserId = status.ownerUserId?.trim() ?? null
-      const isCurrentUser =
-        ownerUserId && selectedUserId ? ownerUserId === selectedUserId : ownerDisplayName === selectedUserDisplayName
-      const ownerLabel = isCurrentUser
-        ? 'par vous'
-        : ownerDisplayName
-        ? `par ${ownerDisplayName}`
-        : null
+      const ownerLabel = formatOwnerLabel(status, selectedUserId, selectedUserDisplayName)
       const duration = computeDurationLabel(status.startedAtUtc ?? null)
       const meta = [ownerLabel, duration].filter(Boolean).join(' • ')
       return `${baseLabel} en cours${meta ? ` (${meta})` : ''}`

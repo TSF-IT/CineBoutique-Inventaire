@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/Card'
@@ -36,6 +36,62 @@ const computeDurationLabel = (startedAtUtc: string | Date | null | undefined) =>
   return `depuis ${hours} h ${minutes} min`
 }
 
+const resolveOwnerNameForMessage = (
+  status: LocationCountStatus | undefined,
+  selectedUserId: string | null,
+  selectedUserDisplayName: string | null,
+): string | null => {
+  if (!status) {
+    return null
+  }
+  const ownerDisplayName = status.ownerDisplayName?.trim() ?? null
+  const ownerUserId = status.ownerUserId?.trim() ?? null
+  if (ownerUserId && selectedUserId && ownerUserId === selectedUserId) {
+    return 'vous'
+  }
+  if (!ownerUserId && ownerDisplayName && selectedUserDisplayName && ownerDisplayName === selectedUserDisplayName) {
+    return 'vous'
+  }
+  if (ownerDisplayName) {
+    return ownerDisplayName
+  }
+  if (ownerUserId) {
+    return 'un opérateur inconnu'
+  }
+  return 'un opérateur non identifié'
+}
+
+const formatOwnerLabel = (
+  status: LocationCountStatus,
+  selectedUserId: string | null,
+  selectedUserDisplayName: string | null,
+) => {
+  const ownerName = resolveOwnerNameForMessage(status, selectedUserId, selectedUserDisplayName)
+  return ownerName ? `par ${ownerName}` : null
+}
+
+const isStatusOwnedByUser = (
+  status: LocationCountStatus | undefined,
+  selectedUserId: string | null,
+  selectedUserDisplayName: string | null,
+) => {
+  if (!status) {
+    return false
+  }
+  const ownerDisplayName = status.ownerDisplayName?.trim() ?? null
+  const ownerUserId = status.ownerUserId?.trim() ?? null
+  if (ownerUserId && selectedUserId) {
+    return ownerUserId === selectedUserId
+  }
+  if (!ownerUserId && ownerDisplayName && selectedUserDisplayName) {
+    return ownerDisplayName === selectedUserDisplayName
+  }
+  if (!ownerUserId && !ownerDisplayName) {
+    return true
+  }
+  return false
+}
+
 const statusTextClass = (status: LocationCountStatus) => {
   if (status.status === 'completed') {
     return 'text-sm font-medium text-emerald-700 dark:text-emerald-200'
@@ -63,18 +119,11 @@ const describeCountStatus = (
 ) => {
   const baseLabel = `Comptage n°${status.countType}`
   if (status.status === 'completed') {
-    return `${baseLabel} terminé`
+    const ownerLabel = formatOwnerLabel(status, selectedUserId, selectedUserDisplayName)
+    return `${baseLabel} terminé${ownerLabel ? ` (${ownerLabel})` : ''}`
   }
   if (status.status === 'in_progress') {
-    const ownerDisplayName = status.ownerDisplayName?.trim() ?? null
-    const ownerUserId = status.ownerUserId?.trim() ?? null
-    const isCurrentUser =
-      ownerUserId && selectedUserId ? ownerUserId === selectedUserId : ownerDisplayName === selectedUserDisplayName
-    const ownerLabel = isCurrentUser
-      ? 'par vous'
-      : ownerDisplayName
-        ? `par ${ownerDisplayName}`
-        : null
+    const ownerLabel = formatOwnerLabel(status, selectedUserId, selectedUserDisplayName)
     const duration = computeDurationLabel(status.startedAtUtc ?? null)
     const meta = [ownerLabel, duration].filter(Boolean).join(' • ')
     return `${baseLabel} en cours${meta ? ` (${meta})` : ''}`
@@ -134,6 +183,18 @@ export const InventoryCountTypeStep = () => {
     [countStatuses],
   )
 
+  const hasUserCompletedOtherEligibleCount = useCallback(
+    (type: CountType) =>
+      DISPLAYED_COUNT_TYPES.filter((candidate) => candidate !== type).some((candidate) => {
+        const otherStatus = countStatuses.find((item) => item.countType === candidate)
+        if (otherStatus?.status !== 'completed') {
+          return false
+        }
+        return resolveOwnerNameForMessage(otherStatus, selectedUserId, selectedUserDisplayName) === 'vous'
+      }),
+    [countStatuses, selectedUserDisplayName, selectedUserId],
+  )
+
   const displayName = location ? getLocationDisplayName(location.code, location.label) : ''
   const shouldDisplayLabel = location ? !isLocationLabelRedundant(location.code, location.label) : false
 
@@ -144,6 +205,10 @@ export const InventoryCountTypeStep = () => {
     }
 
     if (status.status === 'completed') {
+      return
+    }
+
+    if ((type === CountType.Count1 || type === CountType.Count2) && hasUserCompletedOtherEligibleCount(type)) {
       return
     }
 
@@ -217,31 +282,37 @@ export const InventoryCountTypeStep = () => {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {DISPLAYED_COUNT_TYPES.map((option) => {
             const status = countStatuses.find((item) => item.countType === option)
-            const ownerDisplayName = status?.ownerDisplayName?.trim() ?? null
-            const ownerUserId = status?.ownerUserId?.trim() ?? null
             const isSelected = countType === option
             const isCompleted = status?.status === 'completed'
             const isInProgress = status?.status === 'in_progress'
-            const isInProgressByOther =
-              Boolean(
-                isInProgress &&
-                  ((ownerUserId && selectedUserId && ownerUserId !== selectedUserId) ||
-                    (!ownerUserId && ownerDisplayName && ownerDisplayName !== selectedUserDisplayName)),
-              )
-            const isInProgressByUser =
-              Boolean(
-                isInProgress &&
-                  (!ownerUserId && !ownerDisplayName) ||
-                    (ownerUserId && selectedUserId && ownerUserId === selectedUserId) ||
-                    (!ownerUserId && ownerDisplayName === selectedUserDisplayName),
-              )
-            const isDisabled = zoneCompleted || isCompleted || isInProgressByOther
+            const isOwnedByUser = isStatusOwnedByUser(status, selectedUserId, selectedUserDisplayName)
+            const ownerNameForMessage = resolveOwnerNameForMessage(status, selectedUserId, selectedUserDisplayName)
+            const isCompletedByUser = Boolean(isCompleted && ownerNameForMessage === 'vous')
+            const isInProgressByUser = Boolean(isInProgress && isOwnedByUser)
+            const isInProgressByOther = Boolean(isInProgress && !isOwnedByUser)
+            const userHasCompletedOtherEligibleCount = hasUserCompletedOtherEligibleCount(option)
+            const isUserExcludedForThisCount =
+              (option === CountType.Count1 || option === CountType.Count2) &&
+              userHasCompletedOtherEligibleCount &&
+              !isCompletedByUser
+            const isDisabled = zoneCompleted || isCompleted || isInProgressByOther || isUserExcludedForThisCount
             const helperMessage = (() => {
-              if (zoneCompleted || isCompleted) {
-                return 'Comptage terminé.'
+              if (zoneCompleted) {
+                return 'Comptages terminés.'
+              }
+              if (isCompleted) {
+                if (isCompletedByUser) {
+                  return 'Vous avez déjà effectué ce comptage.'
+                }
+                const label = ownerNameForMessage ?? 'un opérateur inconnu'
+                return `Comptage terminé par ${label}.`
+              }
+              if (isUserExcludedForThisCount) {
+                return 'Vous avez déjà effectué un autre comptage pour cette zone.'
               }
               if (isInProgressByOther) {
-                return `En cours par ${ownerDisplayName ?? 'un autre utilisateur'}.`
+                const label = ownerNameForMessage ?? 'un autre opérateur'
+                return `En cours par ${label}.`
               }
               if (isInProgressByUser) {
                 return 'Reprenez votre comptage en cours.'
@@ -253,6 +324,7 @@ export const InventoryCountTypeStep = () => {
                 key={option}
                 type="button"
                 onClick={() => handleSelect(option)}
+                title={isDisabled ? helperMessage : undefined}
                 className={`flex flex-col gap-2 rounded-3xl border px-6 py-6 text-left transition-all ${
                   isDisabled
                     ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-500'
