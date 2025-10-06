@@ -30,7 +30,7 @@ export default function RequireUser(): ReactElement | null {
   const selectedUserId = extractStoredUserId(stored)
   if (!selectedUserId) {
     const redirectTarget = `${loc.pathname}${loc.search}${loc.hash}`
-    return <Navigate to="/select-shop" state={{ from: loc, redirectTo: redirectTarget }} replace />
+    return <Navigate to="/select-user" state={{ from: loc, redirectTo: redirectTarget }} replace />
   }
   return <Outlet />
 }
