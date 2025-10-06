@@ -394,6 +394,47 @@ describe("Workflow d'inventaire", () => {
     )
   })
 
+  it("grise le second comptage pour l'opérateur ayant déjà terminé le premier", async () => {
+    const completedByUser: Location = {
+      ...reserveLocation,
+      countStatuses: [
+        {
+          countType: CountType.Count1,
+          status: 'completed',
+          runId: 'run-user-1',
+          ownerDisplayName: shopUsers[0].displayName,
+          ownerUserId: shopUsers[0].id,
+          startedAtUtc: new Date(),
+          completedAtUtc: new Date(),
+        },
+        {
+          countType: CountType.Count2,
+          status: 'not_started',
+          runId: null,
+          ownerDisplayName: null,
+          ownerUserId: null,
+          startedAtUtc: null,
+          completedAtUtc: null,
+        },
+      ],
+    }
+
+    renderInventoryRoutes('/inventory/count-type', {
+      initialize: (inventory) => {
+        inventory.setSelectedUser(shopUsers[0])
+        inventory.setLocation(completedByUser)
+        inventory.setCountType(null)
+      },
+    })
+
+    const page = await screen.findByTestId('page-count-type')
+    expect(within(page).getByText(/Comptage n°1 terminé par vous/i)).toBeInTheDocument()
+
+    const countTwoButton = within(page).getByTestId('btn-count-type-2')
+    expect(countTwoButton).toBeDisabled()
+    expect(countTwoButton).toHaveAttribute('title', 'Vous avez déjà réalisé un comptage pour cette zone.')
+  })
+
   it("affiche l'état de conflit pour une zone terminée", async () => {
     const completedZone: Location = {
       id: 'zone-4',
@@ -591,9 +632,9 @@ describe("Workflow d'inventaire", () => {
     })
 
     const [input] = await screen.findAllByLabelText('Scanner (douchette ou saisie)')
-    fireEvent.change(input, { target: { value: '123' } })
+    fireEvent.change(input, { target: { value: '12345678' } })
 
-    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('123'))
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('12345678'))
     await waitFor(() => expect(screen.getByText('Popcorn caramel')).toBeInTheDocument())
     await waitFor(() => expect((input as HTMLInputElement).value).toBe(''))
   })
@@ -707,9 +748,9 @@ describe("Workflow d'inventaire", () => {
     const activeSessionPage = sessionPages[sessionPages.length - 1]
     const input = within(activeSessionPage).getByLabelText('Scanner (douchette ou saisie)')
 
-    fireEvent.change(input, { target: { value: '123456' } })
+    fireEvent.change(input, { target: { value: '12345678' } })
 
-    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('123456'))
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('12345678'))
     await within(activeSessionPage).findByText('Popcorn caramel')
 
     await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
@@ -737,12 +778,43 @@ describe("Workflow d'inventaire", () => {
     const activeSessionPage = sessionPages[sessionPages.length - 1]
     const input = within(activeSessionPage).getByLabelText('Scanner (douchette ou saisie)')
 
-    fireEvent.change(input, { target: { value: '123456' } })
+    fireEvent.change(input, { target: { value: '12345678' } })
     fireEvent.keyDown(input, { key: 'Enter' })
 
     await waitFor(() =>
       expect(
         within(activeSessionPage).getByText('Sélectionnez une boutique valide avant de scanner un produit.'),
+      ).toBeInTheDocument(),
+    )
+
+    expect(fetchProductMock).not.toHaveBeenCalled()
+  })
+
+  it("bloque la recherche lorsqu'un EAN saisi est trop court", async () => {
+    renderInventoryRoutes('/inventory/session', {
+      initialize: (inventory) => {
+        inventory.setSelectedUser(shopUsers[0])
+        inventory.setCountType(CountType.Count1)
+        inventory.setLocation({ ...reserveLocation })
+        inventory.clearSession()
+      },
+    })
+
+    const sessionPages = await screen.findAllByTestId('page-session')
+    const activeSessionPage = sessionPages[sessionPages.length - 1]
+    const input = within(activeSessionPage).getByLabelText('Scanner (douchette ou saisie)')
+
+    fireEvent.change(input, { target: { value: '12345' } })
+
+    expect(
+      within(activeSessionPage).getByText('Un code EAN valide comporte entre 8 et 13 chiffres.'),
+    ).toBeInTheDocument()
+
+    fireEvent.keyDown(input, { key: 'Enter' })
+
+    await waitFor(() =>
+      expect(
+        within(activeSessionPage).getByText('Le code EAN doit comporter entre 8 et 13 chiffres.'),
       ).toBeInTheDocument(),
     )
 
@@ -763,7 +835,7 @@ describe("Workflow d'inventaire", () => {
     const activeSessionPage = sessionPages[sessionPages.length - 1]
     const input = within(activeSessionPage).getByLabelText('Scanner (douchette ou saisie)')
 
-    fireEvent.change(input, { target: { value: '123456' } })
+    fireEvent.change(input, { target: { value: '12345678' } })
 
     await within(activeSessionPage).findByText('Popcorn caramel')
     await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
@@ -893,9 +965,9 @@ describe("Workflow d'inventaire", () => {
     const sessionPages = await screen.findAllByTestId('page-session')
     const activeSessionPage = sessionPages[sessionPages.length - 1]
     const input = within(activeSessionPage).getByLabelText('Scanner (douchette ou saisie)')
-    fireEvent.change(input, { target: { value: '123' } })
+    fireEvent.change(input, { target: { value: '12345678' } })
 
-    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('123'))
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('12345678'))
     await within(activeSessionPage).findByText('Popcorn caramel')
     await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
     const finishButton = await within(activeSessionPage).findByTestId('btn-complete-run')

@@ -6,6 +6,7 @@ import { useInventory } from '../../contexts/InventoryContext'
 import { CountType } from '../../types/inventory'
 import type { LocationCountStatus } from '../../types/inventory'
 import { getLocationDisplayName, isLocationLabelRedundant } from '../../utils/locationDisplay'
+import { formatOwnerSuffix, isStatusOwnedByCurrentUser, resolveStatusOwnerInfo } from '../../utils/countStatus'
 
 const DISPLAYED_COUNT_TYPES: CountType[] = [CountType.Count1, CountType.Count2]
 
@@ -63,18 +64,12 @@ const describeCountStatus = (
 ) => {
   const baseLabel = `Comptage n°${status.countType}`
   if (status.status === 'completed') {
-    return `${baseLabel} terminé`
+    const ownerSuffix = formatOwnerSuffix(status, selectedUserId, selectedUserDisplayName)
+    return `${baseLabel} terminé${ownerSuffix ? ` ${ownerSuffix}` : ''}`
   }
   if (status.status === 'in_progress') {
-    const ownerDisplayName = status.ownerDisplayName?.trim() ?? null
-    const ownerUserId = status.ownerUserId?.trim() ?? null
-    const isCurrentUser =
-      ownerUserId && selectedUserId ? ownerUserId === selectedUserId : ownerDisplayName === selectedUserDisplayName
-    const ownerLabel = isCurrentUser
-      ? 'par vous'
-      : ownerDisplayName
-        ? `par ${ownerDisplayName}`
-        : null
+    const ownerInfo = resolveStatusOwnerInfo(status, selectedUserId, selectedUserDisplayName)
+    const ownerLabel = ownerInfo.label ? `par ${ownerInfo.label}` : null
     const duration = computeDurationLabel(status.startedAtUtc ?? null)
     const meta = [ownerLabel, duration].filter(Boolean).join(' • ')
     return `${baseLabel} en cours${meta ? ` (${meta})` : ''}`
@@ -217,34 +212,41 @@ export const InventoryCountTypeStep = () => {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {DISPLAYED_COUNT_TYPES.map((option) => {
             const status = countStatuses.find((item) => item.countType === option)
-            const ownerDisplayName = status?.ownerDisplayName?.trim() ?? null
-            const ownerUserId = status?.ownerUserId?.trim() ?? null
+            const ownerInfo = status
+              ? resolveStatusOwnerInfo(status, selectedUserId, selectedUserDisplayName)
+              : { label: null, isCurrentUser: false }
             const isSelected = countType === option
             const isCompleted = status?.status === 'completed'
             const isInProgress = status?.status === 'in_progress'
-            const isInProgressByOther =
-              Boolean(
-                isInProgress &&
-                  ((ownerUserId && selectedUserId && ownerUserId !== selectedUserId) ||
-                    (!ownerUserId && ownerDisplayName && ownerDisplayName !== selectedUserDisplayName)),
-              )
-            const isInProgressByUser =
-              Boolean(
-                isInProgress &&
-                  (!ownerUserId && !ownerDisplayName) ||
-                    (ownerUserId && selectedUserId && ownerUserId === selectedUserId) ||
-                    (!ownerUserId && ownerDisplayName === selectedUserDisplayName),
-              )
-            const isDisabled = zoneCompleted || isCompleted || isInProgressByOther
+            const hasKnownOwner = Boolean(status?.ownerDisplayName || status?.ownerUserId)
+            const isInProgressByUser = Boolean(isInProgress && ownerInfo.isCurrentUser)
+            const isInProgressByOther = Boolean(isInProgress && !ownerInfo.isCurrentUser && hasKnownOwner)
+            const restrictedCountType = option === CountType.Count1 || option === CountType.Count2
+            const userCompletedOtherCount = restrictedCountType
+              ? countStatuses.some(
+                  (candidate) =>
+                    candidate.countType !== option &&
+                    DISPLAYED_COUNT_TYPES.includes(candidate.countType as CountType) &&
+                    candidate.status === 'completed' &&
+                    isStatusOwnedByCurrentUser(candidate, selectedUserId, selectedUserDisplayName),
+                )
+              : false
+            const isDisabled = zoneCompleted || isCompleted || isInProgressByOther || userCompletedOtherCount
+            const ownerSuffix = status
+              ? formatOwnerSuffix(status, selectedUserId, selectedUserDisplayName, { fallback: 'un opérateur' })
+              : null
             const helperMessage = (() => {
               if (zoneCompleted || isCompleted) {
-                return 'Comptage terminé.'
+                return `Comptage terminé${ownerSuffix ? ` ${ownerSuffix}` : ''}.`
               }
               if (isInProgressByOther) {
-                return `En cours par ${ownerDisplayName ?? 'un autre utilisateur'}.`
+                return `En cours par ${ownerInfo.label ?? 'un autre utilisateur'}.`
               }
               if (isInProgressByUser) {
                 return 'Reprenez votre comptage en cours.'
+              }
+              if (userCompletedOtherCount) {
+                return 'Vous avez déjà réalisé un comptage pour cette zone.'
               }
               return 'Disponible.'
             })()
@@ -263,6 +265,7 @@ export const InventoryCountTypeStep = () => {
                 data-testid={option === CountType.Count1 ? 'btn-count-type-1' : 'btn-count-type-2'}
                 disabled={isDisabled}
                 aria-disabled={isDisabled}
+                title={isDisabled ? helperMessage : undefined}
               >
                 <span className="text-4xl font-bold">Comptage n°{option}</span>
                 <span className="text-sm text-slate-500 dark:text-slate-400">

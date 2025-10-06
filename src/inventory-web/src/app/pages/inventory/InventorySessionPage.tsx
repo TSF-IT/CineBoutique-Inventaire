@@ -82,6 +82,8 @@ const ZXING_IMAGE_HINTS = (() => {
   return hints
 })()
 
+const EAN_LENGTH_ERROR_MESSAGE = 'Le code EAN doit comporter entre 8 et 13 chiffres.'
+
 const resolveLifecycleErrorMessage = (error: unknown, fallback: string): string => {
   if (isHttpError(error)) {
     const problem = error.problem as { message?: unknown; detail?: unknown; title?: unknown } | undefined
@@ -125,6 +127,7 @@ export const InventorySessionPage = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [scanValue, setScanValue] = useState('')
   const [manualEan, setManualEan] = useState('')
+  const [eanHelpText, setEanHelpText] = useState<string | null>(null)
   const [inputLookupStatus, setInputLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not-found' | 'error'>('idle')
   const [completionLoading, setCompletionLoading] = useState(false)
   const completionDialogRef = useRef<HTMLDialogElement | null>(null)
@@ -155,6 +158,21 @@ export const InventorySessionPage = () => {
   }, [countType, locationId, navigate, selectedUser])
 
   const displayedItems = items
+
+  const sanitizeEanInput = useCallback((value: string) => value.replace(/\D/g, '').slice(0, 13), [])
+  const isEanLengthValid = useCallback((value: string) => value.length >= 8 && value.length <= 13, [])
+  const buildEanHelpText = useCallback(
+    (value: string) => {
+      if (value.length === 0) {
+        return null
+      }
+      if (!isEanLengthValid(value)) {
+        return 'Un code EAN valide comporte entre 8 et 13 chiffres.'
+      }
+      return null
+    },
+    [isEanLengthValid],
+  )
 
   const isValidCountType =
     countType === CountType.Count1 || countType === CountType.Count2 || countType === CountType.Count3
@@ -272,21 +290,30 @@ export const InventorySessionPage = () => {
 
   const handleDetected = useCallback(
     async (rawValue: string) => {
-      const value = rawValue.trim()
-      if (!value) {
+      const sanitizedValue = sanitizeEanInput(rawValue)
+      if (!sanitizedValue) {
         return
       }
-      setStatus(`Recherche du code ${value}`)
+      if (!isEanLengthValid(sanitizedValue)) {
+        setStatus(null)
+        setErrorMessage(EAN_LENGTH_ERROR_MESSAGE)
+        setInputLookupStatus('error')
+        setEanHelpText(buildEanHelpText(sanitizedValue))
+        setManualEan(sanitizedValue)
+        return
+      }
+      setStatus(`Recherche du code ${sanitizedValue}`)
       setErrorMessage(null)
+      setEanHelpText(null)
       setRecentScans((previous) => {
         if (!import.meta.env.DEV) {
           return previous
         }
-        const next = [value, ...previous.filter((item) => item !== value)]
+        const next = [sanitizedValue, ...previous.filter((item) => item !== sanitizedValue)]
         return next.slice(0, 5)
       })
 
-      const result = await searchProductByEan(value)
+      const result = await searchProductByEan(sanitizedValue)
 
       if (result.status === 'found') {
         const product: Product = result.product
@@ -299,7 +326,7 @@ export const InventorySessionPage = () => {
 
       if (result.status === 'not-found') {
         setStatus(null)
-        setManualEan(value)
+        setManualEan(sanitizedValue)
         setInputLookupStatus('not-found')
         return
       }
@@ -314,33 +341,47 @@ export const InventorySessionPage = () => {
       )
       setInputLookupStatus('error')
     },
-    [addProductToSession, searchProductByEan],
+    [
+      addProductToSession,
+      buildEanHelpText,
+      isEanLengthValid,
+      sanitizeEanInput,
+      searchProductByEan,
+    ],
   )
 
-  const trimmedScanValue = scanValue.trim()
-  const manualCandidateEan = manualEan.trim() || trimmedScanValue
+  const normalizedScanValue = sanitizeEanInput(scanValue)
+  const normalizedManualEan = sanitizeEanInput(manualEan)
+  const manualCandidateEan = normalizedManualEan || normalizedScanValue
 
   useEffect(() => {
-    if (!trimmedScanValue) {
+    if (!normalizedScanValue) {
       manualLookupIdRef.current += 1
       lastSearchedInputRef.current = null
       setInputLookupStatus('idle')
       return
     }
 
-    if (lastSearchedInputRef.current === trimmedScanValue) {
+    if (!isEanLengthValid(normalizedScanValue)) {
+      manualLookupIdRef.current += 1
+      lastSearchedInputRef.current = null
+      setInputLookupStatus('idle')
       return
     }
 
-    lastSearchedInputRef.current = trimmedScanValue
+    if (lastSearchedInputRef.current === normalizedScanValue) {
+      return
+    }
+
+    lastSearchedInputRef.current = normalizedScanValue
     const currentLookupId = ++manualLookupIdRef.current
     setInputLookupStatus('loading')
-    setStatus(`Recherche du code ${trimmedScanValue}`)
+    setStatus(`Recherche du code ${normalizedScanValue}`)
     setErrorMessage(null)
 
     const timeoutId = window.setTimeout(() => {
       void (async () => {
-        const result = await searchProductByEan(trimmedScanValue)
+        const result = await searchProductByEan(normalizedScanValue)
 
         if (manualLookupIdRef.current !== currentLookupId) {
           return
@@ -358,7 +399,7 @@ export const InventorySessionPage = () => {
           }
         } else if (result.status === 'not-found') {
           setStatus(null)
-          setManualEan(trimmedScanValue)
+          setManualEan(normalizedScanValue)
           setErrorMessage('Aucun produit trouvé pour cet EAN. Ajoutez-le manuellement.')
           setInputLookupStatus('not-found')
         } else {
@@ -378,7 +419,12 @@ export const InventorySessionPage = () => {
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [addProductToSession, searchProductByEan, trimmedScanValue])
+  }, [
+    addProductToSession,
+    isEanLengthValid,
+    normalizedScanValue,
+    searchProductByEan,
+  ])
 
   const handleImagePicked = useCallback(
     async (file: File) => {
@@ -446,14 +492,21 @@ export const InventorySessionPage = () => {
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (event.key === 'Enter') {
         event.preventDefault()
-        const value = trimmedScanValue
-        if (value) {
-          setScanValue('')
-          void handleDetected(value)
+        const value = normalizedScanValue
+        if (!value) {
+          return
         }
+        if (!isEanLengthValid(value)) {
+          setErrorMessage(EAN_LENGTH_ERROR_MESSAGE)
+          setInputLookupStatus('error')
+          setEanHelpText(buildEanHelpText(value))
+          return
+        }
+        setScanValue('')
+        void handleDetected(value)
       }
     },
-    [handleDetected, trimmedScanValue],
+    [buildEanHelpText, handleDetected, isEanLengthValid, normalizedScanValue],
   )
 
   const handleInputChange = useCallback(
@@ -462,24 +515,52 @@ export const InventorySessionPage = () => {
       if (value.includes('\n') || value.includes('\r')) {
         const [code] = value.split(/\s+/)
         setScanValue('')
-        if (code.trim()) {
-          void handleDetected(code)
+        const sanitizedCode = sanitizeEanInput(code)
+        if (!sanitizedCode) {
+          setEanHelpText(null)
+          return
         }
+        if (!isEanLengthValid(sanitizedCode)) {
+          setStatus(null)
+          setErrorMessage(EAN_LENGTH_ERROR_MESSAGE)
+          setInputLookupStatus('error')
+          setEanHelpText(buildEanHelpText(sanitizedCode))
+          setManualEan(sanitizedCode)
+          return
+        }
+        setEanHelpText(null)
+        setErrorMessage((prev) => (prev === EAN_LENGTH_ERROR_MESSAGE ? null : prev))
+        setManualEan('')
+        void handleDetected(sanitizedCode)
         return
       }
-      setScanValue(value)
+      const sanitizedValue = sanitizeEanInput(value)
+      setScanValue(sanitizedValue)
+      const helpText = buildEanHelpText(sanitizedValue)
+      setEanHelpText(helpText)
+      if (helpText) {
+        setStatus(null)
+      }
+      if (!sanitizedValue) {
+        setInputLookupStatus('idle')
+        setManualEan('')
+      }
+      if (!sanitizedValue || isEanLengthValid(sanitizedValue)) {
+        setErrorMessage((prev) => (prev === EAN_LENGTH_ERROR_MESSAGE ? null : prev))
+      }
     },
-    [handleDetected],
+    [buildEanHelpText, handleDetected, isEanLengthValid, sanitizeEanInput],
   )
 
   const handleManualAdd = useCallback(async () => {
-    const sanitizedEan = manualCandidateEan.trim()
+    const sanitizedEan = sanitizeEanInput(manualCandidateEan)
     if (!sanitizedEan) {
       setErrorMessage('Indiquez un EAN pour ajouter le produit à la session.')
       return
     }
-    if (!/^\d{4,18}$/.test(sanitizedEan)) {
-      setErrorMessage("L'EAN doit contenir uniquement des chiffres (4 à 18 caractères).")
+    if (!isEanLengthValid(sanitizedEan)) {
+      setErrorMessage(EAN_LENGTH_ERROR_MESSAGE)
+      setEanHelpText(buildEanHelpText(sanitizedEan))
       return
     }
 
@@ -496,9 +577,10 @@ export const InventorySessionPage = () => {
     setStatus(`${product.name} ajouté manuellement`)
     setManualEan('')
     setScanValue('')
+    setEanHelpText(null)
     setInputLookupStatus('idle')
     inputRef.current?.focus()
-  }, [addProductToSession, manualCandidateEan])
+  }, [addProductToSession, buildEanHelpText, isEanLengthValid, manualCandidateEan, sanitizeEanInput])
 
   const canCompleteRun =
     locationId.length > 0 &&
@@ -803,6 +885,7 @@ export const InventorySessionPage = () => {
           onChange={handleInputChange}
           onKeyDown={handleInputKeyDown}
           autoFocus
+          helpText={eanHelpText ?? undefined}
         />
         <div className="flex justify-end">
           <Button
@@ -811,7 +894,7 @@ export const InventorySessionPage = () => {
               void handleManualAdd()
             }}
             data-testid="btn-open-manual"
-            disabled={!manualCandidateEan || inputLookupStatus !== 'not-found'}
+            disabled={!manualCandidateEan || inputLookupStatus !== 'not-found' || !isEanLengthValid(manualCandidateEan)}
           >
             Ajouter manuellement
           </Button>

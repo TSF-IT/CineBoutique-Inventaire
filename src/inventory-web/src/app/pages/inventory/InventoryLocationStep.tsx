@@ -11,6 +11,7 @@ import { useInventory } from '../../contexts/InventoryContext'
 import { CountType } from '../../types/inventory'
 import type { Location, LocationCountStatus } from '../../types/inventory'
 import { getLocationDisplayName, isLocationLabelRedundant } from '../../utils/locationDisplay'
+import { formatOwnerSuffix, resolveStatusOwnerInfo } from '../../utils/countStatus'
 import type { HttpError } from '@/lib/api/http'
 import { useShop } from '@/state/ShopContext'
 
@@ -252,18 +253,12 @@ export const InventoryLocationStep = () => {
   const describeCountStatus = (status: LocationCountStatus) => {
     const baseLabel = `Comptage n°${status.countType}`
     if (status.status === 'completed') {
-      return `${baseLabel} terminé`
+      const ownerSuffix = formatOwnerSuffix(status, selectedUserId, selectedUserDisplayName)
+      return `${baseLabel} terminé${ownerSuffix ? ` ${ownerSuffix}` : ''}`
     }
     if (status.status === 'in_progress') {
-      const ownerDisplayName = status.ownerDisplayName?.trim() ?? null
-      const ownerUserId = status.ownerUserId?.trim() ?? null
-      const isCurrentUser =
-        ownerUserId && selectedUserId ? ownerUserId === selectedUserId : ownerDisplayName === selectedUserDisplayName
-      const ownerLabel = isCurrentUser
-        ? 'par vous'
-        : ownerDisplayName
-        ? `par ${ownerDisplayName}`
-        : null
+      const ownerInfo = resolveStatusOwnerInfo(status, selectedUserId, selectedUserDisplayName)
+      const ownerLabel = ownerInfo.label ? `par ${ownerInfo.label}` : null
       const duration = computeDurationLabel(status.startedAtUtc ?? null)
       const meta = [ownerLabel, duration].filter(Boolean).join(' • ')
       return `${baseLabel} en cours${meta ? ` (${meta})` : ''}`
