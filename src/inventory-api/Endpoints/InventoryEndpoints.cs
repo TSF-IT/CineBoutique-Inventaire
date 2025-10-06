@@ -485,9 +485,9 @@ ORDER BY p.""Ean"";";
                     statusCode: StatusCodes.Status400BadRequest);
             }
 
-            if (countType.HasValue && countType is not (1 or 2 or 3))
+            if (countType.HasValue && countType.Value < 1)
             {
-                return Results.BadRequest(new { message = "Le paramètre countType doit valoir 1, 2 ou 3." });
+                return Results.BadRequest(new { message = "Le paramètre countType doit être supérieur ou égal à 1." });
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -750,7 +750,7 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                     In = ParameterLocation.Query,
                     Required = false,
                     Description = "Type de comptage ciblé (1 pour premier passage, 2 pour second, 3 pour contrôle).",
-                    Schema = new OpenApiSchema { Type = "integer", Minimum = 1, Maximum = 3 }
+                    Schema = new OpenApiSchema { Type = "integer", Minimum = 1 }
                 });
             }
             return op;
@@ -1756,8 +1756,8 @@ WHERE ""LocationId"" = @LocationId
             IDbConnection connection,
             CancellationToken cancellationToken) =>
         {
-            if (countType is not (1 or 2 or 3))
-                return Results.BadRequest(new { message = "countType doit valoir 1, 2 ou 3." });
+            if (countType < 1)
+                return Results.BadRequest(new { message = "countType doit être supérieur ou égal à 1." });
 
             if (ownerUserId == Guid.Empty)
                 return Results.BadRequest(new { message = "ownerUserId est requis." });
@@ -1914,7 +1914,7 @@ WHERE ""LocationId"" = @LocationId
         return sku[^32..];
     }
 
-    private static async Task ManageConflictsAsync(
+    private static async Task ManageInitialConflictsAsync(
         IDbConnection connection,
         IDbTransaction transaction,
         Guid locationId,
@@ -1990,15 +1990,7 @@ GROUP BY cl.""CountingRunId"", p.""Id"", p.""Ean"";";
                     cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
-        var quantityByRun = aggregatedRows
-            .GroupBy(row => row.CountingRunId)
-            .ToDictionary(
-                group => group.Key,
-                group => group.ToDictionary(
-                    row => BuildProductKey(row.ProductId, row.Ean),
-                    row => row.Quantity,
-                    StringComparer.Ordinal),
-                EqualityComparer<Guid>.Default);
+        var quantityByRun = BuildQuantityLookup(aggregatedRows);
 
         const string lineLookupSql = @"SELECT DISTINCT ON (cl.""CountingRunId"", p.""Id"")
     cl.""CountingRunId"",
@@ -2081,11 +2073,119 @@ ORDER BY cl.""CountingRunId"", p.""Id"", cl.""CountedAtUtc"" DESC, cl.""Id"" DES
         }
     }
 
+    private static async Task ManageAdditionalConflictsAsync(
+        IDbConnection connection,
+        IDbTransaction transaction,
+        Guid locationId,
+        Guid currentRunId,
+        CancellationToken cancellationToken)
+    {
+        const string completedRunsSql = @"SELECT ""Id"" FROM ""CountingRun"" WHERE ""LocationId"" = @LocationId AND ""CompletedAtUtc"" IS NOT NULL";
+
+        var completedRunIds = (await connection
+                .QueryAsync<Guid>(
+                    new CommandDefinition(
+                        completedRunsSql,
+                        new { LocationId = locationId },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false))
+            .ToArray();
+
+        if (completedRunIds.Length <= 1 || !completedRunIds.Contains(currentRunId))
+        {
+            return;
+        }
+
+        const string aggregateSql = @"SELECT
+    cl.""CountingRunId"",
+    p.""Ean"",
+    p.""Id"" AS ""ProductId"",
+    SUM(cl.""Quantity"") AS ""Quantity""
+FROM ""CountLine"" cl
+JOIN ""Product"" p ON p.""Id"" = cl.""ProductId""
+WHERE cl.""CountingRunId"" = ANY(@RunIds::uuid[])
+GROUP BY cl.""CountingRunId"", p.""Id"", p.""Ean"";";
+
+        var aggregatedRows = await connection
+            .QueryAsync<AggregatedCountRow>(
+                new CommandDefinition(
+                    aggregateSql,
+                    new { RunIds = completedRunIds },
+                    transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        var quantitiesByRun = BuildQuantityLookup(aggregatedRows);
+
+        var currentQuantities = quantitiesByRun.GetValueOrDefault(currentRunId, new Dictionary<string, decimal>(StringComparer.Ordinal));
+        var previousRunIds = completedRunIds.Where(id => id != currentRunId).ToArray();
+
+        var hasMatch = previousRunIds.Any(previousRunId =>
+        {
+            var otherQuantities = quantitiesByRun.GetValueOrDefault(previousRunId, new Dictionary<string, decimal>(StringComparer.Ordinal));
+            return HaveIdenticalQuantities(currentQuantities, otherQuantities);
+        });
+
+        if (!hasMatch)
+        {
+            return;
+        }
+
+        const string resolveConflictsSql = @"DELETE FROM ""Conflict""
+USING ""CountLine"" cl
+JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
+WHERE ""Conflict"".""CountLineId"" = cl.""Id""
+  AND cr.""LocationId"" = @LocationId
+  AND ""Conflict"".""ResolvedAtUtc"" IS NULL;";
+
+        await connection.ExecuteAsync(
+                new CommandDefinition(
+                    resolveConflictsSql,
+                    new { LocationId = locationId },
+                    transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+    }
+
+    private static Dictionary<Guid, Dictionary<string, decimal>> BuildQuantityLookup(IEnumerable<AggregatedCountRow> aggregatedRows)
+        => aggregatedRows
+            .GroupBy(row => row.CountingRunId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.ToDictionary(
+                    row => BuildProductKey(row.ProductId, row.Ean),
+                    row => row.Quantity,
+                    StringComparer.Ordinal),
+                EqualityComparer<Guid>.Default);
+
+    private static bool HaveIdenticalQuantities(
+        IDictionary<string, decimal> current,
+        IDictionary<string, decimal> reference)
+    {
+        var keys = current.Keys
+            .Union(reference.Keys, StringComparer.Ordinal)
+            .ToArray();
+
+        foreach (var key in keys)
+        {
+            var currentValue = current.TryGetValue(key, out var value) ? value : 0m;
+            var referenceValue = reference.TryGetValue(key, out var other) ? other : 0m;
+
+            if (currentValue != referenceValue)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static Guid? ResolveCountLineId<TInner>(
-    IDictionary<Guid, TInner> lookup,
-    Guid currentRunId,
-    Guid counterpartRunId,
-    string key)
+        IDictionary<Guid, TInner> lookup,
+        Guid currentRunId,
+        Guid counterpartRunId,
+        string key)
     where TInner : IDictionary<string, Guid>
     {
         if (lookup.TryGetValue(currentRunId, out var currentLines) && currentLines.TryGetValue(key, out var currentLineId))
@@ -2172,6 +2272,26 @@ ORDER BY cl.""CountingRunId"", p.""Id"", cl.""CountedAtUtc"" DESC, cl.""Id"" DES
         }
 
         return productId.ToString("D");
+    }
+
+    private static async Task ManageConflictsAsync(
+        IDbConnection connection,
+        IDbTransaction transaction,
+        Guid locationId,
+        Guid currentRunId,
+        short countType,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        if (countType is 1 or 2)
+        {
+            await ManageInitialConflictsAsync(connection, transaction, locationId, currentRunId, countType, now, cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        await ManageAdditionalConflictsAsync(connection, transaction, locationId, currentRunId, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private sealed record SanitizedCountLine(string Ean, decimal Quantity, bool IsManual);
