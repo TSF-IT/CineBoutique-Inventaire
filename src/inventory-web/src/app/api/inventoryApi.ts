@@ -10,6 +10,7 @@ import type {
 } from '../types/inventory'
 import http, { HttpError } from '@/lib/api/http'
 import { API_BASE } from '@/lib/api/config'
+import { z } from 'zod'
 
 const isHttpError = (value: unknown): value is HttpError =>
   typeof value === 'object' &&
@@ -26,44 +27,31 @@ const tryExtractMessage = (value: unknown): string | null => {
 }
 
 const extractProblemMessage = (problem: unknown): string | null => {
-  if (!problem) {
-    return null
-  }
-
-  if (typeof problem === 'string') {
-    return tryExtractMessage(problem)
-  }
+  if (!problem) return null
+  if (typeof problem === 'string') return tryExtractMessage(problem)
 
   if (Array.isArray(problem)) {
     for (const item of problem) {
       const message = extractProblemMessage(item)
-      if (message) {
-        return message
-      }
+      if (message) return message
     }
     return null
   }
 
-  if (typeof problem !== 'object') {
-    return null
-  }
+  if (typeof problem !== 'object') return null
 
   const record = problem as Record<string, unknown>
   const candidateKeys = ['message', 'detail', 'title', 'error', 'error_description'] as const
   for (const key of candidateKeys) {
     const message = tryExtractMessage(record[key])
-    if (message) {
-      return message
-    }
+    if (message) return message
   }
 
-  const errors = record.errors
+  const errors = (record as { errors?: unknown }).errors
   if (Array.isArray(errors)) {
     for (const item of errors) {
       const message = extractProblemMessage(item)
-      if (message) {
-        return message
-      }
+      if (message) return message
     }
   }
 
@@ -72,9 +60,7 @@ const extractProblemMessage = (problem: unknown): string | null => {
 
 const getHttpErrorMessage = (error: HttpError): string | null => {
   const fromProblem = extractProblemMessage(error.problem)
-  if (fromProblem) {
-    return fromProblem
-  }
+  if (fromProblem) return fromProblem
   return tryExtractMessage(error.body)
 }
 
@@ -107,10 +93,9 @@ export const fetchInventorySummary = async (): Promise<InventorySummary> => {
   })
 
   const openRunDetails = (Array.isArray(data?.openRunDetails) ? data.openRunDetails : []).map(sanitizeOpenRun)
-  const completedRunDetails = (Array.isArray(data?.completedRunDetails)
-    ? data.completedRunDetails
-    : []
-  ).map(sanitizeCompletedRun)
+  const completedRunDetails = (Array.isArray(data?.completedRunDetails) ? data.completedRunDetails : []).map(
+    sanitizeCompletedRun,
+  )
   const conflictZones = Array.isArray(data?.conflictZones) ? data!.conflictZones : []
 
   return {
@@ -125,6 +110,46 @@ export const fetchInventorySummary = async (): Promise<InventorySummary> => {
   }
 }
 
+/**
+ * Schéma de la réponse backend /api/locations
+ * (id/label + métadonnées)
+ */
+const LocationApiItemSchema = z.object({
+  id: z.string().uuid(),
+  label: z.string(),
+  isBusy: z.boolean().optional().default(false),
+  busyBy: z.string().nullable().optional(),
+  activeRunId: z.string().uuid().nullable().optional(),
+  activeCountType: z.number().int().nullable().optional(),
+  activeStartedAtUtc: z.string().nullable().optional(), // ISO string côté API
+  countStatuses: z
+    .array(
+      z.object({
+        countType: z.number().int(),
+        status: z.string(),
+        runId: z.string().uuid().nullable().optional(),
+        ownerDisplayName: z.string().nullable().optional(),
+        ownerUserId: z.string().nullable().optional(),
+        startedAtUtc: z.string().nullable().optional(),
+        completedAtUtc: z.string().nullable().optional(),
+      }),
+    )
+    .optional()
+    .default([]),
+})
+
+type LocationApiItem = z.infer<typeof LocationApiItemSchema>
+
+// helper, mets-le au-dessus de fetchLocationSummaries
+const toDateOrNull = (v: unknown): Date | null =>
+  typeof v === 'string' && v.length > 0 ? new Date(v) : null
+
+const UUID_RE =
+  /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/;
+
+const toUuidOrNull = (v: unknown): string | null =>
+  typeof v === 'string' && UUID_RE.test(v) ? v : null;
+
 export const fetchLocationSummaries = async (
   shopId: string,
   signal?: AbortSignal,
@@ -134,12 +159,34 @@ export const fetchLocationSummaries = async (
   }
 
   const searchParams = new URLSearchParams({ shopId })
-  const raw = await http(`${API_BASE}/inventory/locations/summary?${searchParams.toString()}`, {
-    signal,
-  })
+  const raw = await http(`${API_BASE}/locations?${searchParams.toString()}`, { signal })
 
-  return LocationSummaryListSchema.parse(Array.isArray(raw) ? raw : [])
+  // 1) Parse strict de la réponse API (id/label/etc.)
+  const apiItems: LocationApiItem[] = z.array(LocationApiItemSchema).parse(raw)
+
+  // 2) Mapping vers le modèle front attendu
+  //    - activeStartedAtUtc: Date|null
+  //    - countStatuses: uniquement { runId, startedAtUtc: Date|null, completedAtUtc: Date|null }
+  const adapted = apiItems.map((it) => ({
+  locationId: it.id,
+  locationName: it.label,
+  busyBy: it.busyBy ?? null,
+  activeRunId: it.activeRunId ?? null,
+  activeCountType: it.activeCountType ?? null,
+  activeStartedAtUtc: toDateOrNull(it.activeStartedAtUtc),
+  countStatuses: (it.countStatuses ?? []).map((s) => ({
+    // si ton LocationSummaryListSchema attend ces trois là + ownerUserId, on les fournit
+    runId: s.runId ?? null,
+    ownerUserId: toUuidOrNull(s.ownerUserId),
+    startedAtUtc: toDateOrNull(s.startedAtUtc),
+    completedAtUtc: toDateOrNull(s.completedAtUtc),
+  })),
+  }))
+
+  // 3) Validation finale et typage via Zod
+  return LocationSummaryListSchema.parse(adapted)
 }
+
 
 export const getConflictZonesSummary = async (): Promise<ConflictZoneSummary[]> => {
   const summary = await fetchInventorySummary()
@@ -150,9 +197,7 @@ export const getConflictZoneDetail = async (
   locationId: string,
   signal?: AbortSignal,
 ): Promise<ConflictZoneDetail> => {
-  const data = await http(`${API_BASE}/conflicts/${encodeURIComponent(locationId)}`, {
-    signal,
-  })
+  const data = await http(`${API_BASE}/conflicts/${encodeURIComponent(locationId)}`, { signal })
   return data as ConflictZoneDetail
 }
 
@@ -191,11 +236,32 @@ export const fetchLocations = async (shopId: string): Promise<Location[]> => {
 
   const url = `${API_BASE}/locations?shopId=${encodeURIComponent(shopId)}`
   const response = await http(url)
-  return LocationsSchema.parse(response)
+
+  const sanitized =
+    Array.isArray(response)
+      ? response.map((loc: any) => ({
+          ...loc,
+          countStatuses: Array.isArray(loc?.countStatuses)
+            ? loc.countStatuses.map((s: any) => ({
+                ...s,
+                ownerUserId: toUuidOrNull(s?.ownerUserId),
+              }))
+            : [],
+        }))
+      : []
+
+  return LocationsSchema.parse(sanitized)
 }
 
 export const fetchProductByEan = async (ean: string): Promise<Product> => {
-  const data = await http(`${API_BASE}/products/${encodeURIComponent(ean)}`)
+  const trimmed = (ean ?? '').trim()
+  // ignore EAN trop court ou non numérique
+  if (trimmed.length < 8 || !/^\d+$/.test(trimmed)) {
+    // tu peux retourner un faux Product ou lever une petite erreur contrôlée
+    throw new Error('EAN invalide (trop court ou non numérique)')
+  }
+
+  const data = await http(`${API_BASE}/products/${encodeURIComponent(trimmed)}`)
   return data as Product
 }
 
@@ -275,13 +341,9 @@ export const completeInventoryRun = async (
       }
 
       let message: string
-      if (error.status === 400) {
-        message = messageFromBody ?? 'Requête invalide.'
-      } else if (error.status === 404) {
-        message = 'Zone introuvable pour ce comptage.'
-      } else {
-        message = messageFromBody ?? `Impossible de terminer le comptage (HTTP ${error.status}).`
-      }
+      if (error.status === 400) message = messageFromBody ?? 'Requête invalide.'
+      else if (error.status === 404) message = 'Zone introuvable pour ce comptage.'
+      else message = messageFromBody ?? `Impossible de terminer le comptage (HTTP ${error.status}).`
 
       throw Object.assign(new Error(message), {
         status: error.status,
@@ -316,14 +378,14 @@ export const releaseInventoryRun = async (
       const messageFromBody = getHttpErrorMessage(error)
       let message = `Impossible de libérer le comptage (HTTP ${error.status}).`
       if (error.status === 404) message = messageFromBody ?? 'Comptage introuvable.'
-      else if (error.status === 409)
-        message = messageFromBody ?? 'Comptage déjà détenu par un autre utilisateur.'
+      else if (error.status === 409) message = messageFromBody ?? 'Comptage déjà détenu par un autre utilisateur.'
       else if (error.status === 400) message = messageFromBody ?? 'Requête invalide.'
       else if (messageFromBody) message = messageFromBody
+
       throw Object.assign(new Error(message), {
         status: error.status,
-        url: error.url,
-        problem: error.problem,
+        url: url,
+        problem: (error as HttpError).problem,
       })
     }
 
