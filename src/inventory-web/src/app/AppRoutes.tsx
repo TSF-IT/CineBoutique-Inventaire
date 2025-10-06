@@ -3,8 +3,6 @@ import { Routes, Route, Navigate, useLocation, Outlet } from 'react-router-dom'
 
 // Ces deux-là sont des NAMED exports dans ton repo → import avec accolades
 import { HomePage } from '@/app/pages/home/HomePage'
-import { InventoryUserStep } from '@/app/pages/inventory/InventoryUserStep'
-
 // Celui-ci est un default export dans ton repo → import sans accolades
 import SelectShopPage from '@/app/pages/select-shop/SelectShopPage'
 
@@ -35,7 +33,8 @@ function RequireUser(): ReactElement | null {
   const selectedUserId = pickSelectedUserId(stored)
 
   if (!selectedUserId) {
-    return <Navigate to="/select-user" state={{ from: loc, redirectTo: '/' }} replace />
+    const redirectTarget = `${loc.pathname}${loc.search}${loc.hash}`
+    return <Navigate to="/select-shop" state={{ from: loc, redirectTo: redirectTarget }} replace />
   }
 
   return <Outlet />
@@ -47,12 +46,7 @@ export default function AppRoutes() {
       {/* Étape 1 : choix de la boutique */}
       <Route path="/select-shop" element={<SelectShopPage />} />
 
-      {/* Étape 2 : choix de l’utilisateur (réutilise InventoryUserStep que tu as déjà) */}
-      <Route element={<RequireShop />}>
-        <Route path="/select-user" element={<InventoryUserStep />} />
-      </Route>
-
-      {/* Étape 3 : tout le reste requiert shop + user */}
+      {/* Étape 2 : tout le reste requiert shop + user */}
       <Route element={<RequireShop />}>
         <Route element={<RequireUser />}>
           <Route path="/" element={<HomePage />} />

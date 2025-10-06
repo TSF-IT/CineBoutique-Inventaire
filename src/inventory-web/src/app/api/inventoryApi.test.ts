@@ -126,8 +126,8 @@ describe('fetchLocationSummaries', () => {
   it('valide la réponse et convertit les dates ISO', async () => {
     const httpMock = vi.fn().mockResolvedValue([
       {
-        locationId: '00000000-0000-4000-8000-000000000111',
-        locationName: 'Zone principale',
+        id: '00000000-0000-4000-8000-000000000111',
+        label: 'Zone principale',
         busyBy: null,
         activeRunId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
         activeCountType: 1,
@@ -153,7 +153,7 @@ describe('fetchLocationSummaries', () => {
     const [summary] = await fetchLocationSummaries(defaultShopId)
 
     expect(httpMock).toHaveBeenCalledWith(
-      expect.stringContaining(`/inventory/locations/summary?shopId=${encodeURIComponent(defaultShopId)}`),
+      expect.stringContaining(`/locations?shopId=${encodeURIComponent(defaultShopId)}`),
       expect.objectContaining({ signal: undefined }),
     )
     expect(summary.activeStartedAtUtc).toBeInstanceOf(Date)
