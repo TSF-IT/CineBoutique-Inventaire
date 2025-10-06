@@ -14,7 +14,7 @@ type FeedbackState = { type: 'success' | 'error'; message: string } | null
 
 const formatBusyStatus = (location: Location) => {
   if (!location.isBusy) {
-    return 'Libre'
+    return null
   }
   return location.busyBy ? `Occupée par ${location.busyBy}` : 'Occupée'
 }
@@ -77,6 +77,8 @@ const LocationListItem = ({
     }
   }
 
+  const busyStatus = formatBusyStatus(location)
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
       {isEditing ? (
@@ -115,7 +117,7 @@ const LocationListItem = ({
           <div>
             <p className="text-sm font-semibold uppercase tracking-widest text-brand-500">{location.code}</p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white">{location.label}</p>
-            <p className="text-sm text-slate-600 dark:text-slate-400">{formatBusyStatus(location)}</p>
+            {busyStatus && <p className="text-sm text-slate-600 dark:text-slate-400">{busyStatus}</p>}
           </div>
           <Button variant="secondary" onClick={() => setIsEditing(true)}>
             Modifier

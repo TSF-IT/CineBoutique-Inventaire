@@ -1,5 +1,5 @@
 // Modifications : forcer l'inclusion de runId=null lors de la complétion sans run existant.
-import type { KeyboardEvent, ChangeEvent, FocusEvent } from 'react'
+import type { KeyboardEvent, ChangeEvent, FocusEvent, PointerEvent } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrowserMultiFormatReader } from '@zxing/browser'
@@ -745,6 +745,21 @@ export const InventorySessionPage = () => {
     [clearQuantityDraft, commitQuantity],
   )
 
+  const handleQuantityFocus = useCallback((event: FocusEvent<HTMLInputElement>) => {
+    const input = event.currentTarget
+    requestAnimationFrame(() => {
+      input.select()
+    })
+  }, [])
+
+  const handleQuantityPointerDown = useCallback((event: PointerEvent<HTMLInputElement>) => {
+    const input = event.currentTarget
+    if (document.activeElement !== input) {
+      event.preventDefault()
+      input.focus()
+    }
+  }, [])
+
   useEffect(() => {
     setQuantityDrafts((prev) => {
       const validEans = new Set(items.map((entry) => entry.product.ean))
@@ -863,6 +878,8 @@ export const InventorySessionPage = () => {
                   onChange={(event) => handleQuantityInputChange(item.product.ean, event)}
                   onBlur={(event) => handleQuantityBlur(item.product.ean, event)}
                   onKeyDown={(event) => handleQuantityKeyDown(item.product.ean, event)}
+                  onFocus={handleQuantityFocus}
+                  onPointerDown={handleQuantityPointerDown}
                   className="h-12 w-20 rounded-xl border border-slate-300 bg-white text-center text-2xl font-bold text-slate-900 outline-none focus-visible:border-brand-400 focus-visible:ring-2 focus-visible:ring-brand-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
                   autoComplete="off"
                 />
