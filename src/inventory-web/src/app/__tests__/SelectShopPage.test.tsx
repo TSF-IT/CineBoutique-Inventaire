@@ -88,9 +88,6 @@ describe('SelectShopPage (routing)', () => {
     const shopButton = await screen.findByRole('radio', { name: /boutique 1/i })
     fireEvent.click(shopButton)
 
-    const continueButton = await screen.findByRole('button', { name: /Continuer/i })
-    fireEvent.click(continueButton)
-
     await waitFor(() => expect(setShopFn).toHaveBeenCalledWith(shop))
     await waitFor(() => expect(resetInventoryFn).toHaveBeenCalledTimes(1))
     await waitFor(() => expect(clearSelectedUserMock).toHaveBeenCalledWith(shop.id))
@@ -120,9 +117,6 @@ describe('SelectShopPage (routing)', () => {
 
     const shopButton = await screen.findByRole('radio', { name: /boutique 1/i })
     fireEvent.click(shopButton)
-
-    const continueButton = await screen.findByRole('button', { name: /Continuer/i })
-    fireEvent.click(continueButton)
 
     await waitFor(() => expect(locations.at(-1)?.pathname).toBe('/select-user'))
     expect(locations.at(-1)?.state).toMatchObject({ redirectTo: '/inventory/location' })
