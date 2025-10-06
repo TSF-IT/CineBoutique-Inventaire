@@ -31,8 +31,6 @@ using Dapper;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using FluentMigrator.Runner;
-using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -69,57 +67,28 @@ else
     builder.Logging.AddConsole();
 }
 
-var cs = builder.Configuration.GetConnectionString("InventoryDb");
-
-// Runner FluentMigrator pour Postgres
-builder.Services
-    .AddFluentMigratorCore()
-    .ConfigureRunner(rb => rb
-        .AddPostgres()
-        .WithGlobalConnectionString(cs)
-        .ScanIn(typeof(CineBoutique.Inventory.Infrastructure.Migrations.Migration_202404010002_SeedLocations).Assembly)
-        .For.Migrations()
-    )
-    .AddLogging(lb => lb.AddFluentMigratorConsole());
-
-builder.Services.Configure<AppSettingsOptions>(builder.Configuration.GetSection("AppSettings"));
-
-builder.Services.AddHttpContextAccessor();
-
+// === CHAÎNE DE CONNEXION UNIQUE POUR TOUT ===
 var connectionString = builder.Configuration.GetConnectionString("Default");
 if (string.IsNullOrWhiteSpace(connectionString))
 {
     throw new InvalidOperationException("La chaîne de connexion 'Default' doit être configurée.");
 }
 
-builder.Services
-    .AddFluentMigratorCore()
-    .ConfigureRunner(rb => rb
-        .AddPostgres()
-        .WithGlobalConnectionString(connectionString)
-        .ScanIn(typeof(Program).Assembly, typeof(MigrationsAssemblyMarker).Assembly).For.Migrations())
-    .AddLogging(lb => lb.AddFluentMigratorConsole());
-
-builder.Services.Configure<SelectingProcessorAccessorOptions>(options =>
+// Log de contrôle au démarrage (host/db utilisateur/ssl)
+try
 {
-    options.ProcessorId = "Postgres";
-});
-
-builder.Services
-    .AddOptions<ProcessorOptions>()
-    .Configure(options =>
-    {
-        options.Timeout = TimeSpan.FromSeconds(90);
-        options.ProviderSwitches = string.Empty;
-        options.PreviewOnly = false;
-    });
-
-builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<ProcessorOptions>>().Value);
+    var csb = new NpgsqlConnectionStringBuilder(connectionString);
+    Console.WriteLine($"[DB] Host={csb.Host} Db={csb.Database} User={csb.Username} SSL={csb.SslMode}");
+}
+catch { /* pas bloquant en tests */ }
 
 // Infrastructure + seeder
 builder.Services.AddInventoryInfrastructure(builder.Configuration);
 builder.Services.AddTransient<InventoryDataSeeder>();
 
+builder.Services.AddHttpContextAccessor();
+
+// --- Swagger ---
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -133,6 +102,7 @@ builder.Services.AddSwaggerGen(c =>
     }
 });
 
+// --- JSON options ---
 builder.Services
     .AddControllers()
     .AddJsonOptions(o =>
@@ -154,6 +124,7 @@ builder.Services.ConfigureHttpJsonOptions(o =>
     o.SerializerOptions.Encoder = JavaScriptEncoder.Default;
     o.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
 });
+
 builder.Services.AddFluentValidationAutoValidation();
 builder.Services.AddValidatorsFromAssemblyContaining<CineBoutique.Inventory.Api.Validators.CreateShopRequestValidator>();
 
@@ -163,6 +134,7 @@ builder.Services
     .AddCheck("self", () => HealthCheckResult.Healthy())
     .AddCheck<DatabaseHealthCheck>("db", tags: ["ready"]);
 
+// --- Dapper connection ---
 builder.Services.AddScoped<IDbConnection>(sp =>
 {
     var factory = sp.GetRequiredService<IDbConnectionFactory>();
@@ -178,6 +150,7 @@ builder.Services.AddScoped<CineBoutique.Inventory.Domain.Auditing.IAuditLogger, 
 builder.Services.AddScoped<IShopService, ShopService>();
 builder.Services.AddScoped<IShopUserService, ShopUserService>();
 
+// --- CORS ---
 const string PublicApiCorsPolicy = "PublicApi";
 const string DevCorsPolicy = "AllowDev";
 builder.Services.AddCors(options =>
@@ -209,6 +182,7 @@ builder.Services.AddCors(options =>
     });
 });
 
+// --- Logging ---
 builder.Logging.ClearProviders();
 builder.Logging.AddSimpleConsole(options =>
 {
@@ -217,8 +191,35 @@ builder.Logging.AddSimpleConsole(options =>
 });
 builder.Logging.SetMinimumLevel(LogLevel.Information);
 
+// === FluentMigrator: UN SEUL BLOC, SUR 'Default' ===
+builder.Services
+    .AddFluentMigratorCore()
+    .ConfigureRunner(rb => rb
+        .AddPostgres()
+        .WithGlobalConnectionString(connectionString)
+        .ScanIn(typeof(Program).Assembly, typeof(MigrationsAssemblyMarker).Assembly).For.Migrations())
+    .AddLogging(lb => lb.AddFluentMigratorConsole());
+
+builder.Services.Configure<SelectingProcessorAccessorOptions>(options =>
+{
+    options.ProcessorId = "Postgres";
+});
+
+builder.Services
+    .AddOptions<ProcessorOptions>()
+    .Configure(options =>
+    {
+        options.Timeout = TimeSpan.FromSeconds(90);
+        options.ProviderSwitches = string.Empty;
+        options.PreviewOnly = false;
+    });
+
+builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<ProcessorOptions>>().Value);
+
+// --- App ---
 var app = builder.Build();
 
+// Migrations au démarrage
 using (var scope = app.Services.CreateScope())
 {
     var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
@@ -234,6 +235,7 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// Seeding en dev
 if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();
@@ -308,6 +310,7 @@ app.Use(async (context, next) =>
     await next().ConfigureAwait(false);
 });
 
+// Flags migrations depuis config (conservés)
 var applyMigrations = app.Configuration.GetValue<bool>("APPLY_MIGRATIONS");
 var disableMigrations = app.Configuration.GetValue<bool>("DISABLE_MIGRATIONS");
 AppLog.MigrationsFlags(app.Logger, applyMigrations, disableMigrations);
@@ -444,4 +447,3 @@ internal static class AppDefaults
         "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"
     ];
 }
-

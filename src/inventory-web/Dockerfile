@@ -24,7 +24,11 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # Script de génération auto du cert
 COPY docker-entrypoint.d/50-ssl-selfsigned.sh /docker-entrypoint.d/50-ssl-selfsigned.sh
-RUN chmod +x /docker-entrypoint.d/50-ssl-selfsigned.sh && mkdir -p /etc/nginx/certs
+
+# Strip CRLF si jamais Git t’a “aidé”, puis exécutable
+RUN sed -i 's/\r$//' /docker-entrypoint.d/50-ssl-selfsigned.sh \
+    && chmod +x /docker-entrypoint.d/50-ssl-selfsigned.sh \
+    && mkdir -p /etc/nginx/certs
 
 EXPOSE 80 443
 
