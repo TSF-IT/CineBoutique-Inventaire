@@ -2,7 +2,11 @@ import { defineConfig, configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { fileURLToPath, URL } from 'node:url'
 
-const DEV_BACKEND_ORIGIN = process.env.DEV_BACKEND_ORIGIN?.trim() || 'http://localhost:8080'
+// src/inventory-web/vite.config.ts
+const DEV_BACKEND_ORIGIN =
+  process.env.DEV_BACKEND_ORIGIN?.trim()
+  || 'http://localhost:8080'
+
 
 export default defineConfig({
   plugins: [react()],

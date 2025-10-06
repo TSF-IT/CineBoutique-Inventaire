@@ -9,6 +9,7 @@ import { Page } from '@/app/components/Page'
 import { LoadingIndicator } from '@/app/components/LoadingIndicator'
 import { Button } from '@/app/components/ui/Button'
 import { useInventory } from '@/app/contexts/InventoryContext'
+import { clearShop } from '@/lib/shopStorage'
 
 type ShopUser = {
   id: string
@@ -66,6 +67,7 @@ export default function SelectUserPage() {
 
     const abort = new AbortController()
     setLoading(true)
+    setErr(null) // nettoie une éventuelle erreur précédente
 
     http(`${API_BASE}/shops/${encodeURIComponent(shop.id)}/users`, { signal: abort.signal })
       .then((res) => (Array.isArray(res) ? res : []))
@@ -78,11 +80,32 @@ export default function SelectUserPage() {
         })),
       )
       .then(setUsers)
-      .catch((e) => setErr(e?.message ?? 'Erreur de chargement'))
+      .catch((e: any) => {
+        const rawMsg = String(e?.message || '')
+        const status = typeof e?.status === 'number' ? e.status : undefined
+
+        // 1) Aborts React dev: on ignore
+        if (e?.name === 'AbortError' || rawMsg === 'ABORTED' || rawMsg.toLowerCase().includes('aborted')) {
+          return
+        }
+
+        // 2) Si la boutique n'existe plus OU si le serveur est malade => on purge et on renvoie choisir
+        const msg = rawMsg || 'Erreur de chargement'
+        if (status === 404 || /introuvable/i.test(msg) || (status && status >= 500)) {
+          console.error('[users] backend error', { status, msg, url: `${API_BASE}/shops/${shop?.id}/users` })
+          clearShop()
+          navigate('/select-shop', redirectTo ? { replace: true, state: { redirectTo } } : { replace: true })
+          return
+        }
+
+        // 3) Sinon, erreur affichable
+        setErr(msg)
+      })
       .finally(() => setLoading(false))
 
-    return () => abort.abort()
+    return () => abort.abort('route-change')
   }, [shop, isLoaded, navigate, redirectTo])
+
 
   const onPick = (u: ShopUser) => {
     if (!shop) return
