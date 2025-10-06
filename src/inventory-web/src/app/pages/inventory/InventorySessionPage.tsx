@@ -145,7 +145,7 @@ export const InventorySessionPage = () => {
 
   useEffect(() => {
     if (!selectedUser) {
-      navigate('/select-user', { replace: true })
+      navigate('/select-shop', { replace: true })
     } else if (!locationId) {
       navigate('/inventory/location', { replace: true })
     } else if (!countType) {

@@ -290,7 +290,7 @@ describe('HomePage', () => {
     expect(buttons.length).toBeGreaterThan(0)
     fireEvent.click(buttons[0])
 
-    expect(navigateMock).toHaveBeenCalledWith('/select-user')
+    expect(navigateMock).toHaveBeenCalledWith('/inventory/location')
   })
 
   it('ignore le 404 produit sur la Home', async () => {
