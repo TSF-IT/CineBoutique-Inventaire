@@ -186,7 +186,7 @@ export const HomePage = () => {
   }, [navigate, setShop])
 
   const handleStartInventory = useCallback(() => {
-    navigate('/select-user')
+    navigate('/inventory/location')
   }, [navigate])
 
   const combinedError = summaryError ?? locationsError ?? locationSummariesError

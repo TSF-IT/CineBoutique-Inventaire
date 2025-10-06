@@ -5,7 +5,6 @@ import { MemoryRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppProviders } from '../providers/AppProviders'
 import { InventoryLayout } from '../pages/inventory/InventoryLayout'
-import { InventoryUserStep } from '../pages/inventory/InventoryUserStep'
 import { InventoryCountTypeStep } from '../pages/inventory/InventoryCountTypeStep'
 import { InventoryLocationStep } from '../pages/inventory/InventoryLocationStep'
 import { InventorySessionPage } from '../pages/inventory/InventorySessionPage'
@@ -214,25 +213,32 @@ interface RenderInventoryOptions {
   initialize?: (inventory: ReturnType<typeof useInventory>) => void
 }
 
+const applyDefaultInitialization = (inventory: ReturnType<typeof useInventory>) => {
+  const defaultUser = shopUsers[0]
+  if (defaultUser) {
+    inventory.setSelectedUser(defaultUser)
+  }
+}
+
 const renderInventoryRoutes = (initialEntry: string, options?: RenderInventoryOptions) => {
-  const initialize = options?.initialize
+  const customInitialize = options?.initialize
 
   const Bootstrapper = ({ children }: { children: ReactNode }) => {
     const inventory = useInventory()
     const initializedRef = useRef(false)
-    const [ready, setReady] = useState(!initialize)
-    const initializeRef = useRef(initialize)
+    const [ready, setReady] = useState(false)
+    const initializeRef = useRef(customInitialize)
 
     useLayoutEffect(() => {
-      initializeRef.current = initialize
-    })
+      initializeRef.current = customInitialize
+    }, [customInitialize])
 
     useLayoutEffect(() => {
-      const initializer = initializeRef.current
-
-      if (initializedRef.current || !initializer) {
+      if (initializedRef.current) {
         return
       }
+
+      const initializer = initializeRef.current ?? applyDefaultInitialization
       initializer(inventory)
       initializedRef.current = true
       setReady(true)
@@ -248,8 +254,7 @@ const renderInventoryRoutes = (initialEntry: string, options?: RenderInventoryOp
   const routerTree = (
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
-        <Route path="/select-user" element={<InventoryUserStep />} />
-        <Route path="/inventory/start" element={<Navigate to="/select-user" replace />} />
+        <Route path="/inventory/start" element={<Navigate to="/select-shop" replace />} />
         <Route path="/inventory" element={<InventoryLayout />}>
           <Route index element={<Navigate to="count-type" replace />} />
           <Route path="location" element={<InventoryLocationStep />} />
@@ -262,7 +267,7 @@ const renderInventoryRoutes = (initialEntry: string, options?: RenderInventoryOp
 
   return render(
     <AppProviders>
-      {initialize ? <Bootstrapper>{routerTree}</Bootstrapper> : routerTree}
+      <Bootstrapper>{routerTree}</Bootstrapper>
     </AppProviders>,
   )
 }
@@ -271,6 +276,10 @@ describe("Workflow d'inventaire", () => {
   beforeEach(() => {
     localStorage.setItem('cb.shop', JSON.stringify(testShop))
     sessionStorage.clear()
+    sessionStorage.setItem(
+      `${SELECTED_USER_STORAGE_PREFIX}.${testShop.id}`,
+      JSON.stringify({ userId: shopUsers[0]?.id ?? 'user-paris' }),
+    )
     fetchShopUsersMock.mockReset()
     fetchShopUsersMock.mockResolvedValue(shopUsers)
     fetchLocationsMock.mockReset()
@@ -347,11 +356,8 @@ describe("Workflow d'inventaire", () => {
     releaseInventoryRunMock.mockResolvedValue()
   })
 
-  it('permet de sélectionner utilisateur, zone et type en respectant les statuts', async () => {
-    renderInventoryRoutes('/select-user')
-
-    const userButton = await screen.findByRole('button', { name: shopUsers[0].displayName })
-    fireEvent.click(userButton)
+  it('permet de sélectionner zone et type en respectant les statuts', async () => {
+    renderInventoryRoutes('/inventory/location')
 
     const locationPages = await screen.findAllByTestId('page-location')
     expect(locationPages).not.toHaveLength(0)
@@ -443,10 +449,7 @@ describe("Workflow d'inventaire", () => {
       ],
     })
 
-    renderInventoryRoutes('/select-user')
-
-    const userButton = await screen.findByRole('button', { name: shopUsers[0].displayName })
-    fireEvent.click(userButton)
+    renderInventoryRoutes('/inventory/location')
 
     const conflictZoneCard = await screen.findByTestId(`zone-card-${completedZone.id}`)
     await waitFor(() => expect(within(conflictZoneCard).getByText('Conflit détecté')).toBeInTheDocument())
@@ -508,10 +511,7 @@ describe("Workflow d'inventaire", () => {
       ],
     })
 
-    renderInventoryRoutes('/select-user')
-
-    const userButton = await screen.findByRole('button', { name: shopUsers[0].displayName })
-    fireEvent.click(userButton)
+    renderInventoryRoutes('/inventory/location')
 
     const conflictCard = await screen.findByTestId(`zone-card-${conflictZone.id}`)
     const actionButton = within(conflictCard).getByTestId('btn-select-zone')
@@ -555,10 +555,7 @@ describe("Workflow d'inventaire", () => {
       selfRunLocation,
     ])
 
-    renderInventoryRoutes('/select-user')
-
-    const userButton = await screen.findByRole('button', { name: shopUsers[0].displayName })
-    fireEvent.click(userButton)
+    renderInventoryRoutes('/inventory/location')
 
     const selfZoneCard = await screen.findByTestId('zone-card-zone-3')
     fireEvent.click(within(selfZoneCard).getByTestId('btn-select-zone'))
@@ -684,25 +681,11 @@ describe("Workflow d'inventaire", () => {
     )
   })
 
-  it("enregistre l'utilisateur sélectionné dans la session", async () => {
-    renderInventoryRoutes('/select-user')
-
-    const userButton = await screen.findByRole('button', { name: shopUsers[0].displayName })
-    fireEvent.click(userButton)
-
-    const storageKey = `${SELECTED_USER_STORAGE_PREFIX}.${testShop.id}`
-    await waitFor(() =>
-      expect(sessionStorage.getItem(storageKey)).toBe(
-        JSON.stringify({ userId: shopUsers[0].id }),
-      ),
-    )
-  })
-
   it("restaure l'utilisateur sélectionné depuis la session", async () => {
     const storageKey = `${SELECTED_USER_STORAGE_PREFIX}.${testShop.id}`
     sessionStorage.setItem(storageKey, JSON.stringify({ userId: shopUsers[0].id }))
 
-    renderInventoryRoutes('/select-user')
+    renderInventoryRoutes('/inventory/location')
 
     const userSummaries = await screen.findAllByText((content) =>
       content.replace(/\s+/g, ' ').includes(`Utilisateur : ${shopUsers[0].displayName}`),
