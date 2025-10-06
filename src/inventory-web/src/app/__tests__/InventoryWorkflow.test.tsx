@@ -147,7 +147,7 @@ const {
         { ...busyLocation },
       ]
     }),
-    fetchProductMock: vi.fn(() => Promise.resolve({ ean: '123', name: 'Popcorn caramel' })),
+    fetchProductMock: vi.fn(() => Promise.resolve({ ean: '12345678', name: 'Popcorn caramel' })),
     fetchInventorySummaryMock: vi.fn(async (): Promise<InventorySummary> => ({ ...emptySummary })),
     completeInventoryRunMock: vi.fn<(locationId: string, payload: CompleteInventoryRunPayload) => Promise<{
         runId: string;
@@ -320,7 +320,7 @@ describe("Workflow d'inventaire", () => {
       ]
     })
     fetchProductMock.mockReset()
-    fetchProductMock.mockImplementation(() => Promise.resolve({ ean: '123', name: 'Popcorn caramel' }))
+    fetchProductMock.mockImplementation(() => Promise.resolve({ ean: '12345678', name: 'Popcorn caramel' }))
     fetchInventorySummaryMock.mockReset()
     fetchInventorySummaryMock.mockImplementation(async (): Promise<InventorySummary> => ({
       activeSessions: 0,
@@ -591,9 +591,9 @@ describe("Workflow d'inventaire", () => {
     })
 
     const [input] = await screen.findAllByLabelText('Scanner (douchette ou saisie)')
-    fireEvent.change(input, { target: { value: '123' } })
+    fireEvent.change(input, { target: { value: '12345678' } })
 
-    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('123'))
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('12345678'))
     await waitFor(() => expect(screen.getByText('Popcorn caramel')).toBeInTheDocument())
     await waitFor(() => expect((input as HTMLInputElement).value).toBe(''))
   })
@@ -707,9 +707,9 @@ describe("Workflow d'inventaire", () => {
     const activeSessionPage = sessionPages[sessionPages.length - 1]
     const input = within(activeSessionPage).getByLabelText('Scanner (douchette ou saisie)')
 
-    fireEvent.change(input, { target: { value: '123456' } })
+    fireEvent.change(input, { target: { value: '87654321' } })
 
-    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('123456'))
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('87654321'))
     await within(activeSessionPage).findByText('Popcorn caramel')
 
     await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
@@ -737,7 +737,7 @@ describe("Workflow d'inventaire", () => {
     const activeSessionPage = sessionPages[sessionPages.length - 1]
     const input = within(activeSessionPage).getByLabelText('Scanner (douchette ou saisie)')
 
-    fireEvent.change(input, { target: { value: '123456' } })
+    fireEvent.change(input, { target: { value: '87654321' } })
     fireEvent.keyDown(input, { key: 'Enter' })
 
     await waitFor(() =>
@@ -763,7 +763,7 @@ describe("Workflow d'inventaire", () => {
     const activeSessionPage = sessionPages[sessionPages.length - 1]
     const input = within(activeSessionPage).getByLabelText('Scanner (douchette ou saisie)')
 
-    fireEvent.change(input, { target: { value: '123456' } })
+    fireEvent.change(input, { target: { value: '87654321' } })
 
     await within(activeSessionPage).findByText('Popcorn caramel')
     await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
@@ -900,9 +900,9 @@ describe("Workflow d'inventaire", () => {
     const sessionPages = await screen.findAllByTestId('page-session')
     const activeSessionPage = sessionPages[sessionPages.length - 1]
     const input = within(activeSessionPage).getByLabelText('Scanner (douchette ou saisie)')
-    fireEvent.change(input, { target: { value: '123' } })
+    fireEvent.change(input, { target: { value: '12345678' } })
 
-    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('123'))
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('12345678'))
     await within(activeSessionPage).findByText('Popcorn caramel')
     await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
     const finishButton = await within(activeSessionPage).findByTestId('btn-complete-run')
@@ -923,7 +923,7 @@ describe("Workflow d'inventaire", () => {
     expect(payload.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          ean: '123',
+          ean: '12345678',
           isManual: false,
         }),
       ]),
