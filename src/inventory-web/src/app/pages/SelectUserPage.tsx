@@ -5,6 +5,9 @@ import { API_BASE } from '@/lib/api/config'
 import { useShop } from '@/state/ShopContext'
 import { saveSelectedUserForShop } from '@/lib/selectedUserStorage'
 import { z } from 'zod'
+import { Page } from '@/app/components/Page'
+import { LoadingIndicator } from '@/app/components/LoadingIndicator'
+import { Button } from '@/app/components/ui/Button'
 
 type ShopUser = {
   id: string
@@ -23,6 +26,8 @@ const ShopUserApiSchema = z
     email: z.string().email().nullable().optional(),
   })
   .passthrough()
+
+const DEFAULT_ERROR_MESSAGE = "Impossible de charger les utilisateurs."
 
 export default function SelectUserPage() {
   const navigate = useNavigate()
@@ -58,62 +63,89 @@ export default function SelectUserPage() {
     return () => abort.abort()
   }, [shop, isLoaded, navigate])
 
-const onPick = (u: ShopUser) => {
-  if (!shop) return
+  const onPick = (u: ShopUser) => {
+    if (!shop) return
 
-  // Infère le type du second paramètre exigé par saveSelectedUserForShop
-  type Snapshot = Parameters<typeof saveSelectedUserForShop>[1]
+    // Infère le type du second paramètre exigé par saveSelectedUserForShop
+    type Snapshot = Parameters<typeof saveSelectedUserForShop>[1]
 
-  const snapshot: Snapshot = {
-    id: u.id,
-    displayName: u.displayName,
-    shopId: shop.id,
-    // on propose un login simple: email si dispo sinon le displayName
-    login: (u.email && u.email.trim().length > 0) ? u.email : u.displayName,
-    isAdmin: false,
-    disabled: false,
+    const snapshot: Snapshot = {
+      id: u.id,
+      displayName: u.displayName,
+      shopId: shop.id,
+      // on propose un login simple: email si dispo sinon le displayName
+      login: u.email && u.email.trim().length > 0 ? u.email : u.displayName,
+      isAdmin: false,
+      disabled: false,
+    }
+
+    saveSelectedUserForShop(shop.id, snapshot)
+    navigate('/', { replace: true })
   }
-
-  saveSelectedUserForShop(shop.id, snapshot)
-  navigate('/', { replace: true })
-}
 
   if (!isLoaded) return null
   if (!shop) return null
-  if (loading) return <div className="p-4">Chargement des utilisateurs…</div>
-  if (err) {
-    return (
-      <div className="p-4 text-red-600">
-        {err}{' '}
-        <button type="button" className="underline" onClick={() => navigate('/select-shop')}>
-          Changer de boutique
-        </button>
-      </div>
-    )
-  }
+
+  const shouldShowList = !loading && !err
+  const hasUsers = users.length > 0
 
   return (
-    <div className="p-4 max-w-md mx-auto">
-      <h1 className="text-xl font-semibold mb-4">Choisir l’utilisateur</h1>
-      <ul className="space-y-2">
-        {users.map((u) => (
-          <li key={u.id}>
-            <button
-              type="button"
-              className="w-full rounded-2xl shadow p-3 text-left hover:shadow-md"
-              onClick={() => onPick(u)}
-            >
-              <div className="font-medium">{u.displayName}</div>
-              {u.email ? <div className="text-sm opacity-70">{u.email}</div> : null}
-            </button>
-          </li>
-        ))}
-      </ul>
-      <div className="mt-6 text-sm">
-        <button type="button" className="underline" onClick={() => navigate('/select-shop')}>
-          Changer de boutique
-        </button>
-      </div>
-    </div>
+    <Page className="px-4 py-6 sm:px-6">
+      <main className="flex flex-1 flex-col justify-center gap-8">
+        <div>
+          <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
+            Choisir l’utilisateur
+          </h1>
+        </div>
+
+        {loading && <LoadingIndicator label="Chargement des utilisateurs…" />}
+
+        {!loading && err && (
+          <div
+            className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-200"
+            role="alert"
+          >
+            <p className="font-semibold">{err || DEFAULT_ERROR_MESSAGE}</p>
+            <p className="mt-1">Vérifiez votre connexion puis réessayez.</p>
+            <Button className="mt-4" variant="secondary" onClick={() => navigate('/select-shop')}>
+              Changer de boutique
+            </Button>
+          </div>
+        )}
+
+        {shouldShowList && (
+          <div className="space-y-4">
+            <ul className="grid gap-3 sm:grid-cols-2">
+              {users.map((u) => (
+                <li key={u.id}>
+                  <button
+                    type="button"
+                    onClick={() => onPick(u)}
+                    className="block w-full rounded-2xl border border-slate-300 bg-white px-5 py-4 text-left text-base text-slate-900 shadow-sm transition hover:border-brand-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                  >
+                    <span className="block text-lg font-medium">{u.displayName}</span>
+                    {u.email ? (
+                      <span className="mt-1 block text-sm text-slate-600 dark:text-slate-300">{u.email}</span>
+                    ) : null}
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            {!hasUsers && (
+              <p className="text-sm text-slate-500 dark:text-slate-300">
+                Aucun utilisateur n’est disponible pour cette boutique.
+              </p>
+            )}
+
+            <div>
+              <Button variant="secondary" onClick={() => navigate('/select-shop')}>
+                Changer de boutique
+              </Button>
+            </div>
+          </div>
+        )}
+      </main>
+    </Page>
   )
 }
