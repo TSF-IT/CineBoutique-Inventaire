@@ -5,8 +5,25 @@ import { useEffect } from 'react'
 import type { Shop } from '@/types/shop'
 import { SELECTED_USER_STORAGE_PREFIX } from '@/lib/selectedUserStorage'
 
+type UseShopValue = {
+  shop: Shop | null
+  setShop: (shop: Shop | null) => void
+  isLoaded: boolean
+}
+
+const createUseShopValue = (overrides: Partial<UseShopValue> = {}): UseShopValue => ({
+  shop: null,
+  setShop: (_shop: Shop | null) => undefined,
+  isLoaded: true,
+  ...overrides,
+})
+
 const useShopMock = vi.hoisted(() =>
-  vi.fn(() => ({ shop: null, setShop: () => undefined, isLoaded: true })),
+  vi.fn(() => ({
+    shop: null,
+    setShop: (_shop: Shop | null) => undefined,
+    isLoaded: true,
+  } as UseShopValue)),
 )
 
 vi.mock('@/state/ShopContext', () => ({
@@ -55,7 +72,13 @@ describe('AppRoutes', () => {
   })
 
   it('redirige vers la page de sélection quand aucune boutique n’est définie', async () => {
-    useShopMock.mockReturnValue({ shop: null, setShop: vi.fn(), isLoaded: true })
+    useShopMock.mockReturnValue(
+      createUseShopValue({
+        shop: null,
+        setShop: vi.fn() as unknown as UseShopValue['setShop'],
+        isLoaded: true,
+      }),
+    )
 
     render(
       <MemoryRouter initialEntries={['/']}>
@@ -68,7 +91,13 @@ describe('AppRoutes', () => {
 
   it('affiche la page d’accueil quand une boutique est disponible', async () => {
     const shop: Shop = { id: 'shop-1', name: 'Boutique 1' }
-    useShopMock.mockReturnValue({ shop, setShop: vi.fn(), isLoaded: true })
+    useShopMock.mockReturnValue(
+      createUseShopValue({
+        shop,
+        setShop: vi.fn() as unknown as UseShopValue['setShop'],
+        isLoaded: true,
+      }),
+    )
     sessionStorage.setItem(`${SELECTED_USER_STORAGE_PREFIX}.${shop.id}`, JSON.stringify({ userId: 'user-1' }))
 
     const seenPaths: string[] = []
@@ -93,7 +122,13 @@ describe('AppRoutes', () => {
   })
 
   it('affiche le chargement tant que la boutique n’est pas initialisée', async () => {
-    useShopMock.mockReturnValue({ shop: null, setShop: vi.fn(), isLoaded: false })
+    useShopMock.mockReturnValue(
+      createUseShopValue({
+        shop: null,
+        setShop: vi.fn() as unknown as UseShopValue['setShop'],
+        isLoaded: false,
+      }),
+    )
 
     render(
       <MemoryRouter initialEntries={['/']}>
@@ -108,7 +143,13 @@ describe('AppRoutes', () => {
 
   it('affiche la sélection de boutique quand aucun utilisateur n’est mémorisé', async () => {
     const shop: Shop = { id: 'shop-2', name: 'Boutique 2' }
-    useShopMock.mockReturnValue({ shop, setShop: vi.fn(), isLoaded: true })
+    useShopMock.mockReturnValue(
+      createUseShopValue({
+        shop,
+        setShop: vi.fn() as unknown as UseShopValue['setShop'],
+        isLoaded: true,
+      }),
+    )
 
     render(
       <MemoryRouter initialEntries={['/']}>

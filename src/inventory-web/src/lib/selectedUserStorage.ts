@@ -19,15 +19,28 @@ const getSessionStorage = (): Storage | null => {
   }
 }
 
-interface StoredSelectedUserSnapshot {
+type StoredSelectedUserSnapshotV2 = {
   userId: string
 }
+
+type StoredSelectedUserSnapshotLegacy = {
+  id: string
+  userId?: never
+}
+
+export type StoredSelectedUserSnapshot =
+  | StoredSelectedUserSnapshotV2
+  | StoredSelectedUserSnapshotLegacy
 
 const isStoredSelectedUserSnapshot = (value: unknown): value is StoredSelectedUserSnapshot =>
   typeof value === 'object' &&
   value !== null &&
-  'userId' in value &&
-  typeof (value as { userId: unknown }).userId === 'string'
+  ((
+    'userId' in value &&
+    typeof (value as { userId: unknown }).userId === 'string' &&
+    (value as { userId: string }).userId.trim().length > 0
+  ) ||
+    ('id' in value && typeof (value as { id: unknown }).id === 'string' && (value as { id: string }).id.trim().length > 0))
 
 export const saveSelectedUserForShop = (shopId: string, user: ShopUser) => {
   const storage = getSessionStorage()
