@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import http from '@/lib/api/http'
 import { API_BASE } from '@/lib/api/config'
 import { useShop } from '@/state/ShopContext'
@@ -29,17 +29,33 @@ const ShopUserApiSchema = z
 
 const DEFAULT_ERROR_MESSAGE = "Impossible de charger les utilisateurs."
 
+type RedirectState = {
+  redirectTo?: string
+} | null
+
 export default function SelectUserPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { shop, isLoaded } = useShop()
   const [users, setUsers] = useState<ShopUser[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
 
+  const redirectState = location.state as RedirectState
+  const redirectTo = useMemo(() => {
+    const target = redirectState?.redirectTo
+    if (typeof target !== 'string') {
+      return null
+    }
+    const normalized = target.trim()
+    return normalized.length > 0 ? normalized : null
+  }, [redirectState])
+
   useEffect(() => {
     if (!isLoaded) return
     if (!shop) {
-      navigate('/select-shop', { replace: true })
+      const options = redirectTo ? { replace: true, state: { redirectTo } } : { replace: true }
+      navigate('/select-shop', options)
       return
     }
 
@@ -61,7 +77,7 @@ export default function SelectUserPage() {
       .finally(() => setLoading(false))
 
     return () => abort.abort()
-  }, [shop, isLoaded, navigate])
+  }, [shop, isLoaded, navigate, redirectTo])
 
   const onPick = (u: ShopUser) => {
     if (!shop) return
@@ -80,7 +96,7 @@ export default function SelectUserPage() {
     }
 
     saveSelectedUserForShop(shop.id, snapshot)
-    navigate('/', { replace: true })
+    navigate(redirectTo ?? '/', { replace: true })
   }
 
   if (!isLoaded) return null
@@ -93,9 +109,7 @@ export default function SelectUserPage() {
     <Page className="px-4 py-6 sm:px-6">
       <main className="flex flex-1 flex-col justify-center gap-8">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
-            Choisir l’utilisateur
-          </h1>
+          <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Merci de vous identifier</h1>
         </div>
 
         {loading && <LoadingIndicator label="Chargement des utilisateurs…" />}
@@ -107,7 +121,11 @@ export default function SelectUserPage() {
           >
             <p className="font-semibold">{err || DEFAULT_ERROR_MESSAGE}</p>
             <p className="mt-1">Vérifiez votre connexion puis réessayez.</p>
-            <Button className="mt-4" variant="secondary" onClick={() => navigate('/select-shop')}>
+            <Button
+              className="mt-4"
+              variant="secondary"
+              onClick={() => navigate('/select-shop', redirectTo ? { state: { redirectTo } } : undefined)}
+            >
               Changer de boutique
             </Button>
           </div>
@@ -139,7 +157,10 @@ export default function SelectUserPage() {
             )}
 
             <div>
-              <Button variant="secondary" onClick={() => navigate('/select-shop')}>
+              <Button
+                variant="secondary"
+                onClick={() => navigate('/select-shop', redirectTo ? { state: { redirectTo } } : undefined)}
+              >
                 Changer de boutique
               </Button>
             </div>
