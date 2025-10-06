@@ -485,9 +485,12 @@ ORDER BY p.""Ean"";";
                     statusCode: StatusCodes.Status400BadRequest);
             }
 
-            if (countType.HasValue && countType.Value < 1)
+            if (countType.HasValue && countType.Value is not (1 or 2))
             {
-                return Results.BadRequest(new { message = "Le paramètre countType doit être supérieur ou égal à 1." });
+                return Results.BadRequest(new
+                {
+                    message = "Le paramètre countType doit être 1 (premier passage) ou 2 (second passage)."
+                });
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
