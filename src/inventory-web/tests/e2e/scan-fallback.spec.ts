@@ -141,11 +141,14 @@ test.describe('Scanner fallback', () => {
 
     await page.goto('/inventory/location')
 
-    await expect(page).toHaveURL(/\/select-shop/, { timeout: 5000 })
+    await expect(page).toHaveURL(/\/select-user/, { timeout: 5000 })
 
-    const userRadio = page.getByRole('radio', { name: mockUsers[0].displayName })
-    await expect(userRadio).toBeVisible({ timeout: 5000 })
-    await userRadio.click()
+    const identifyHeading = page.getByRole('heading', { name: 'Merci de vous identifier' })
+    await expect(identifyHeading).toBeVisible({ timeout: 5000 })
+
+    const userButton = page.getByRole('button', { name: mockUsers[0].displayName })
+    await expect(userButton).toBeVisible({ timeout: 5000 })
+    await userButton.click()
 
     await expect(page).toHaveURL(/\/inventory\/location/, { timeout: 5000 })
     await expect(page.getByTestId('page-location')).toBeVisible({ timeout: 5000 })
