@@ -4,7 +4,7 @@ import { Stepper } from '../../components/Stepper'
 import { Page } from '../../components/Page'
 import { useInventory } from '../../contexts/InventoryContext'
 
-const STEPS = ['Zone', 'Type de comptage', 'Scan']
+const STEPS = ['Zone', 'Comptage', 'Scan']
 
 const stepIndexByPath: Record<string, number> = {
   '/inventory/location': 0,
