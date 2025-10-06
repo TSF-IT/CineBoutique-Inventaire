@@ -834,7 +834,7 @@ describe("Workflow d'inventaire", () => {
 
     fireEvent.click(incrementButton)
 
-    await waitFor(() => expect(within(secondRow).getByText('2')).toBeInTheDocument())
+    await waitFor(() => expect(within(secondRow).getByDisplayValue('2')).toBeInTheDocument())
     await waitFor(() => expect(readRenderedEans()).toEqual(['001', '0000']))
 
     const updatedRows = within(activeSessionPage).getAllByTestId('scanned-item')
@@ -843,8 +843,41 @@ describe("Workflow d'inventaire", () => {
 
     fireEvent.click(decrementButton)
 
-    await waitFor(() => expect(within(updatedSecondRow).getByText('1')).toBeInTheDocument())
+    await waitFor(() => expect(within(updatedSecondRow).getByDisplayValue('1')).toBeInTheDocument())
     await waitFor(() => expect(readRenderedEans()).toEqual(['001', '0000']))
+  })
+
+  it('permet de saisir directement une quantité élevée', async () => {
+    renderInventoryRoutes('/inventory/session', {
+      initialize: (inventory) => {
+        inventory.setSelectedUser(shopUsers[0])
+        inventory.setCountType(CountType.Count1)
+        inventory.setLocation({ ...reserveLocation })
+        inventory.clearSession()
+        inventory.addOrIncrementItem({ ean: '1234567890123', name: 'Popcorn caramel' })
+      },
+    })
+
+    const sessionPages = await screen.findAllByTestId('page-session')
+    const activeSessionPage = sessionPages[sessionPages.length - 1]
+
+    const itemRow = within(activeSessionPage).getByTestId('scanned-item')
+    const quantityInput = within(itemRow).getByLabelText('Quantité pour Popcorn caramel') as HTMLInputElement
+
+    fireEvent.change(quantityInput, { target: { value: '2000' } })
+    fireEvent.blur(quantityInput)
+
+    await waitFor(() => expect(within(itemRow).getByDisplayValue('2000')).toBeInTheDocument())
+
+    fireEvent.change(quantityInput, { target: { value: '' } })
+    fireEvent.blur(quantityInput)
+
+    await waitFor(() => expect(within(itemRow).getByDisplayValue('2000')).toBeInTheDocument())
+
+    fireEvent.change(quantityInput, { target: { value: '0' } })
+    fireEvent.blur(quantityInput)
+
+    await waitFor(() => expect(within(activeSessionPage).queryByTestId('scanned-item')).not.toBeInTheDocument())
   })
 
   it('envoie le comptage finalisé lorsque le bouton est actionné', async () => {
