@@ -114,14 +114,14 @@ export default function SelectUserPage() {
         )}
 
         {shouldShowList && (
-          <div className="space-y-6">
+          <div className="space-y-4">
             <ul className="grid gap-3 sm:grid-cols-2">
               {users.map((u) => (
                 <li key={u.id}>
                   <button
                     type="button"
                     onClick={() => onPick(u)}
-                    className="w-full rounded-2xl border border-slate-300 bg-white px-5 py-4 text-left text-base text-slate-900 shadow-sm transition hover:border-brand-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                    className="block w-full rounded-2xl border border-slate-300 bg-white px-5 py-4 text-left text-base text-slate-900 shadow-sm transition hover:border-brand-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
                   >
                     <span className="block text-lg font-medium">{u.displayName}</span>
                     {u.email ? (
