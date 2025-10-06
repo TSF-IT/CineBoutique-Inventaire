@@ -8,6 +8,7 @@ import { z } from 'zod'
 import { Page } from '@/app/components/Page'
 import { LoadingIndicator } from '@/app/components/LoadingIndicator'
 import { Button } from '@/app/components/ui/Button'
+import { useInventory } from '@/app/contexts/InventoryContext'
 
 type ShopUser = {
   id: string
@@ -40,6 +41,7 @@ export default function SelectUserPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const { shop, isLoaded } = useShop()
+  const { setSelectedUser } = useInventory()
   const [users, setUsers] = useState<ShopUser[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
@@ -88,16 +90,17 @@ export default function SelectUserPage() {
     // Infère le type du second paramètre exigé par saveSelectedUserForShop
     type Snapshot = Parameters<typeof saveSelectedUserForShop>[1]
 
+    const loginCandidate = u.email && u.email.trim().length > 0 ? u.email.trim() : u.displayName
     const snapshot: Snapshot = {
       id: u.id,
       displayName: u.displayName,
       shopId: shop.id,
-      // on propose un login simple: email si dispo sinon le displayName
-      login: u.email && u.email.trim().length > 0 ? u.email : u.displayName,
+      login: loginCandidate,
       isAdmin: false,
       disabled: false,
     }
 
+    setSelectedUser(snapshot)
     saveSelectedUserForShop(shop.id, snapshot)
     navigate(redirectTo ?? '/', { replace: true })
   }
