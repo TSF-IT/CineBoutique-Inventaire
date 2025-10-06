@@ -11,7 +11,7 @@ public sealed class RestartRunRequestValidator : AbstractValidator<RestartRunReq
             .NotEmpty();
 
         RuleFor(request => request.CountType)
-            .Must(countType => countType is 1 or 2 or 3)
-            .WithMessage("countType doit valoir 1, 2 ou 3.");
+            .GreaterThanOrEqualTo((short)1)
+            .WithMessage("countType doit être supérieur ou égal à 1.");
     }
 }

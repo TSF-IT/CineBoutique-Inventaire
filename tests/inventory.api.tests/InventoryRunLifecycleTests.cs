@@ -162,7 +162,7 @@ public sealed class InventoryRunLifecycleTests : IAsyncLifetime
         await ResetDatabaseAsync();
         var (locationId, shopId) = await SeedLocationAsync("S1", "Zone S1");
 
-        var request = new StartRunRequest(shopId, Guid.Empty, 5);
+        var request = new StartRunRequest(shopId, Guid.Empty, 0);
 
         var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/start", request);
 
