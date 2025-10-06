@@ -213,30 +213,32 @@ interface RenderInventoryOptions {
   initialize?: (inventory: ReturnType<typeof useInventory>) => void
 }
 
+const applyDefaultInitialization = (inventory: ReturnType<typeof useInventory>) => {
+  const defaultUser = shopUsers[0]
+  if (defaultUser) {
+    inventory.setSelectedUser(defaultUser)
+  }
+}
+
 const renderInventoryRoutes = (initialEntry: string, options?: RenderInventoryOptions) => {
-  const initialize = options?.initialize ?? ((inventory: ReturnType<typeof useInventory>) => {
-    const defaultUser = shopUsers[0]
-    if (defaultUser) {
-      inventory.setSelectedUser(defaultUser)
-    }
-  })
+  const customInitialize = options?.initialize
 
   const Bootstrapper = ({ children }: { children: ReactNode }) => {
     const inventory = useInventory()
     const initializedRef = useRef(false)
-    const [ready, setReady] = useState(!initialize)
-    const initializeRef = useRef(initialize)
+    const [ready, setReady] = useState(false)
+    const initializeRef = useRef(customInitialize)
 
     useLayoutEffect(() => {
-      initializeRef.current = initialize
-    })
+      initializeRef.current = customInitialize
+    }, [customInitialize])
 
     useLayoutEffect(() => {
-      const initializer = initializeRef.current
-
-      if (initializedRef.current || !initializer) {
+      if (initializedRef.current) {
         return
       }
+
+      const initializer = initializeRef.current ?? applyDefaultInitialization
       initializer(inventory)
       initializedRef.current = true
       setReady(true)
@@ -265,7 +267,7 @@ const renderInventoryRoutes = (initialEntry: string, options?: RenderInventoryOp
 
   return render(
     <AppProviders>
-      {initialize ? <Bootstrapper>{routerTree}</Bootstrapper> : routerTree}
+      <Bootstrapper>{routerTree}</Bootstrapper>
     </AppProviders>,
   )
 }

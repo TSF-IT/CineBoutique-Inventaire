@@ -18,9 +18,20 @@ function pickUserName(user: SelectedUser): string | null {
 
 function pickUserId(user: SelectedUser): string | null {
   if (!user) return null
-  const rec = user as unknown as Record<string, unknown>
-  const v = rec['userId']
-  return typeof v === 'string' && v.length > 0 ? v : null
+
+  if ('userId' in user && typeof user.userId === 'string') {
+    const candidate = user.userId.trim()
+    if (candidate.length > 0) {
+      return candidate
+    }
+  }
+
+  if ('id' in user && typeof user.id === 'string') {
+    const candidate = user.id.trim()
+    return candidate.length > 0 ? candidate : null
+  }
+
+  return null
 }
 
 export function useSelectedShop() {
