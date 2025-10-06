@@ -12,7 +12,7 @@ import http, { HttpError } from '@/lib/api/http'
 import { API_BASE } from '@/lib/api/config'
 import { z } from 'zod'
 
-/* --------------------------------- helpers HTTP --------------------------------- */
+/* ------------------------------ HTTP helpers ------------------------------ */
 
 const isHttpError = (value: unknown): value is HttpError =>
   typeof value === 'object' &&
@@ -66,7 +66,7 @@ const getHttpErrorMessage = (error: HttpError): string | null => {
   return tryExtractMessage(error.body)
 }
 
-/* --------------------------------- helpers data --------------------------------- */
+/* ------------------------------- Data helpers ------------------------------ */
 
 const UUID_RE =
   /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/
@@ -77,7 +77,7 @@ const toUuidOrNull = (v: unknown): string | null =>
 const toDateOrNull = (v: unknown): Date | null =>
   typeof v === 'string' && v.length > 0 ? new Date(v) : null
 
-/* ----------------------------- inventaires: résumé ------------------------------ */
+/* --------------------------- Inventory summary ---------------------------- */
 
 export const fetchInventorySummary = async (): Promise<InventorySummary> => {
   const data = (await http(`${API_BASE}/inventories/summary`)) as Partial<InventorySummary> | null | undefined
@@ -125,8 +125,8 @@ export const fetchInventorySummary = async (): Promise<InventorySummary> => {
   }
 }
 
-/* ----------------------------- /api/locations -> home --------------------------- */
-/* Schéma brut tolérant pour l’API (on normalise avant le schéma front) */
+/* --------------------------- /api/locations schema ------------------------ */
+/* Un SEUL schéma, réutilisé partout. On conserve countType/status. */
 
 const LocationApiItemSchema = z
   .object({
@@ -139,17 +139,23 @@ const LocationApiItemSchema = z
     activeStartedAtUtc: z.string().nullable().optional(),
     countStatuses: z
       .array(
-        z.object({
-          runId: z.string().uuid().nullable().optional(),
-          ownerUserId: z.string().nullable().optional(), // tolérant, on normalise ensuite
-          startedAtUtc: z.string().nullable().optional(),
-          completedAtUtc: z.string().nullable().optional(),
-        }),
+        z
+          .object({
+            runId: z.string().uuid().nullable().optional(),
+            ownerUserId: z.string().nullable().optional(),
+            startedAtUtc: z.string().nullable().optional(),
+            completedAtUtc: z.string().nullable().optional(),
+            countType: z.number().int().nullable().optional(),
+            status: z.enum(['not_started', 'in_progress', 'completed']).optional(),
+          })
+          .passthrough(),
       )
       .optional()
       .default([]),
   })
   .passthrough()
+
+/* ------------------- Home: summaries (shape front propre) ----------------- */
 
 export const fetchLocationSummaries = async (
   shopId: string,
@@ -169,6 +175,7 @@ export const fetchLocationSummaries = async (
     activeRunId: it.activeRunId ?? null,
     activeCountType: it.activeCountType ?? null,
     activeStartedAtUtc: toDateOrNull(it.activeStartedAtUtc),
+    // ici on expose uniquement ce que le schéma front attend
     countStatuses: (it.countStatuses ?? []).map((s) => ({
       runId: s.runId ?? null,
       ownerUserId: toUuidOrNull(s.ownerUserId),
@@ -180,7 +187,7 @@ export const fetchLocationSummaries = async (
   return LocationSummaryListSchema.parse(adapted)
 }
 
-/* ----------------------------- conflits & détails runs -------------------------- */
+/* -------------------------- Conflits & détails run ------------------------ */
 
 export const getConflictZonesSummary = async (): Promise<ConflictZoneSummary[]> => {
   const summary = await fetchInventorySummary()
@@ -223,41 +230,21 @@ export const getCompletedRunDetail = async (runId: string): Promise<CompletedRun
   }
 }
 
-/* ----------------------------- /api/locations -> select ------------------------- */
-/* Parse brut → normalise → validation stricte par LocationsSchema */
-
-const LocationsApiItemSchema = z
-  .object({
-    id: z.string().uuid(),
-    label: z.string(),
-    countStatuses: z
-      .array(
-        z.object({
-          runId: z.string().uuid().nullable().optional(),
-          ownerUserId: z.string().nullable().optional(),
-          startedAtUtc: z.string().nullable().optional(),
-          completedAtUtc: z.string().nullable().optional(),
-        }),
-      )
-      .optional()
-      .default([]),
-  })
-  .passthrough()
+/* ------------------------- /api/locations: select list -------------------- */
+/* Parse brut -> normalise UUID -> validation stricte LocationsSchema */
 
 export const fetchLocations = async (shopId: string): Promise<Location[]> => {
-  if (!shopId) {
-    throw new Error('Aucune boutique sélectionnée.')
-  }
+  if (!shopId) throw new Error('Aucune boutique sélectionnée.')
 
   const url = `${API_BASE}/locations?shopId=${encodeURIComponent(shopId)}`
   const response = await http(url)
 
-  const arr = z.array(LocationsApiItemSchema).parse(response)
+  const arr = z.array(LocationApiItemSchema).parse(response)
 
   const sanitized = arr.map((loc) => ({
     ...loc,
     countStatuses: loc.countStatuses.map((s) => ({
-      ...s,
+      ...s, // on préserve countType/status/runId/started/completed
       ownerUserId: toUuidOrNull(s.ownerUserId),
     })),
   }))
@@ -265,11 +252,10 @@ export const fetchLocations = async (shopId: string): Promise<Location[]> => {
   return LocationsSchema.parse(sanitized)
 }
 
-/* -------------------------------- produits par EAN ------------------------------ */
+/* ----------------------------- Produits par EAN --------------------------- */
 
 export const fetchProductByEan = async (ean: string): Promise<Product> => {
   const trimmed = (ean ?? '').trim()
-  // filtre EAN poubelle pour éviter les 404 spam
   if (trimmed.length < 8 || !/^\d+$/.test(trimmed)) {
     throw new Error('EAN invalide (trop court ou non numérique)')
   }
@@ -277,7 +263,7 @@ export const fetchProductByEan = async (ean: string): Promise<Product> => {
   return data as Product
 }
 
-/* ----------------------------- runs: start/complete/etc ------------------------- */
+/* --------------------------- Runs start/complete -------------------------- */
 
 export interface CompleteInventoryRunItem {
   ean: string
