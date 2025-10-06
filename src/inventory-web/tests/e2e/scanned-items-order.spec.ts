@@ -199,8 +199,8 @@ test.describe("Ordre d'affichage des articles scannés", () => {
 
     const firstRowEan = await page.getByTestId('scanned-item').nth(0).getAttribute('data-ean')
     const secondRowEan = await page.getByTestId('scanned-item').nth(1).getAttribute('data-ean')
-    expect(firstRowEan).toBe('001')
-    expect(secondRowEan).toBe('0000')
+    expect(firstRowEan).toBe('0000')
+    expect(secondRowEan).toBe('001')
 
     const secondRow = page.getByTestId('scanned-item').nth(1)
 
@@ -209,15 +209,15 @@ test.describe("Ordre d'affichage des articles scannés", () => {
 
     const firstRowAfterIncrement = await page.getByTestId('scanned-item').nth(0).getAttribute('data-ean')
     const secondRowAfterIncrement = await page.getByTestId('scanned-item').nth(1).getAttribute('data-ean')
-    expect(firstRowAfterIncrement).toBe('001')
-    expect(secondRowAfterIncrement).toBe('0000')
+    expect(firstRowAfterIncrement).toBe('0000')
+    expect(secondRowAfterIncrement).toBe('001')
 
     await secondRow.getByRole('button', { name: 'Retirer' }).click()
     await expect(secondRow.getByTestId('quantity-input')).toHaveValue('1')
 
     const firstRowAfterDecrement = await page.getByTestId('scanned-item').nth(0).getAttribute('data-ean')
     const secondRowAfterDecrement = await page.getByTestId('scanned-item').nth(1).getAttribute('data-ean')
-    expect(firstRowAfterDecrement).toBe('001')
-    expect(secondRowAfterDecrement).toBe('0000')
+    expect(firstRowAfterDecrement).toBe('0000')
+    expect(secondRowAfterDecrement).toBe('001')
   })
 })

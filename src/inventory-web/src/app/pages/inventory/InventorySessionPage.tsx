@@ -889,7 +889,11 @@ export const InventorySessionPage = () => {
             Ajouter manuellement
           </Button>
         </div>
-        {status && <p className="text-sm text-brand-600 dark:text-brand-200">{status}</p>}
+        {status && (
+          <p className="text-sm text-brand-600 dark:text-brand-200" data-testid="status-message">
+            {status}
+          </p>
+        )}
         {errorMessage && <p className="text-sm text-red-600 dark:text-red-300">{errorMessage}</p>}
         {import.meta.env.DEV && recentScans.length > 0 && (
           <div className="rounded-2xl border border-slate-300 bg-slate-100 p-3 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300">
