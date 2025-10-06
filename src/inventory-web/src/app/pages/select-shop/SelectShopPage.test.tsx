@@ -8,8 +8,26 @@ import { ThemeProvider } from '@/theme/ThemeProvider'
 
 const fetchShopsMock = vi.hoisted(() => vi.fn<(signal?: AbortSignal) => Promise<Shop[]>>())
 const fetchShopUsersMock = vi.hoisted(() => vi.fn<(shopId: string) => Promise<ShopUser[]>>())
+
+type UseShopValue = {
+  shop: Shop | null
+  setShop: (shop: Shop | null) => void
+  isLoaded: boolean
+}
+
+const createUseShopValue = (overrides: Partial<UseShopValue> = {}): UseShopValue => ({
+  shop: null,
+  setShop: (_shop: Shop | null) => undefined,
+  isLoaded: true,
+  ...overrides,
+})
+
 const useShopMock = vi.hoisted(() =>
-  vi.fn(() => ({ shop: null, setShop: () => undefined, isLoaded: true })),
+  vi.fn(() => ({
+    shop: null,
+    setShop: (_shop: Shop | null) => undefined,
+    isLoaded: true,
+  } as UseShopValue)),
 )
 const useInventoryMock = vi.hoisted(() =>
   vi.fn(() => ({
@@ -95,7 +113,13 @@ describe('SelectShopPage (integration)', () => {
     navigateMock.mockReset()
 
     fetchShopUsersMock.mockImplementation(async () => [defaultUser])
-    useShopMock.mockReturnValue({ shop: null, setShop: setShopFn, isLoaded: true })
+    useShopMock.mockReturnValue(
+      createUseShopValue({
+        shop: null,
+        setShop: setShopFn as unknown as UseShopValue['setShop'],
+        isLoaded: true,
+      }),
+    )
     useInventoryMock.mockReturnValue({
       selectedUser: null,
       setSelectedUser: setSelectedUserFn,
@@ -145,7 +169,13 @@ describe('SelectShopPage (integration)', () => {
   it('affiche un bouton continuer pour la boutique déjà mémorisée', async () => {
     fetchShopsMock.mockResolvedValueOnce([shopA, shopB])
     loadSelectedUserMock.mockReturnValue({ userId: defaultUser.id })
-    useShopMock.mockReturnValue({ shop: shopA, setShop: setShopFn, isLoaded: true })
+    useShopMock.mockReturnValue(
+      createUseShopValue({
+        shop: shopA,
+        setShop: setShopFn as unknown as UseShopValue['setShop'],
+        isLoaded: true,
+      }),
+    )
     fetchShopUsersMock.mockImplementationOnce(async () => [{ ...defaultUser, shopId: shopA.id }])
 
     renderPage()

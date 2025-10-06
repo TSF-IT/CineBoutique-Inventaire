@@ -34,15 +34,21 @@ const GUID_REGEX = /^[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}$/i
 const isValidGuid = (value: string) => GUID_REGEX.test(value)
 
 const extractStoredUserId = (stored: ReturnType<typeof loadSelectedUserForShop>): string | null => {
-  if (!stored || typeof stored !== 'object') {
+  if (!stored) {
     return null
   }
 
-  const candidate =
-    (typeof (stored as { userId?: unknown }).userId === 'string' ? (stored as { userId: string }).userId : null) ??
-    (typeof (stored as { id?: unknown }).id === 'string' ? (stored as { id: string }).id : null)
+  if ('userId' in stored && typeof stored.userId === 'string') {
+    const candidate = stored.userId.trim()
+    return candidate.length > 0 ? candidate : null
+  }
 
-  return candidate && candidate.trim().length > 0 ? candidate : null
+  if ('id' in stored) {
+    const candidate = typeof stored.id === 'string' ? stored.id.trim() : ''
+    return candidate.length > 0 ? candidate : null
+  }
+
+  return null
 }
 
 type LoadingState = 'idle' | 'loading' | 'error'
