@@ -98,17 +98,13 @@ describe('SelectShopPage', () => {
       </ThemeProvider>,
     )
 
-  it('navigue vers la page d’identification après sélection d’une boutique', async () => {
+  it('navigue vers la page d’identification dès la sélection d’une boutique', async () => {
     fetchShopsMock.mockResolvedValueOnce([shopA, shopB])
 
     renderPage({ pathname: '/select-shop', state: { redirectTo: '/inventory' } })
 
     const shopRadio = await screen.findByRole('radio', { name: /Boutique 2/i })
     fireEvent.click(shopRadio)
-
-    const continueButton = await screen.findByRole('button', { name: /Continuer/i })
-    expect(continueButton).toBeEnabled()
-    fireEvent.click(continueButton)
 
     await waitFor(() => expect(setShopFn).toHaveBeenCalledWith(shopB))
     await waitFor(() => expect(resetInventoryFn).toHaveBeenCalledTimes(1))
@@ -130,8 +126,8 @@ describe('SelectShopPage', () => {
 
     renderPage()
 
-    const continueButton = await screen.findByRole('button', { name: /Continuer/i })
-    fireEvent.click(continueButton)
+    const cardButton = await screen.findByRole('radio', { name: /Boutique 1/i })
+    fireEvent.click(cardButton)
 
     await waitFor(() => expect(setShopFn).toHaveBeenCalledWith(shopA))
     expect(resetInventoryFn).not.toHaveBeenCalled()
@@ -151,9 +147,9 @@ describe('SelectShopPage', () => {
     const errorMessage = await screen.findByText(/Identifiant de boutique invalide/i)
     expect(errorMessage).toBeInTheDocument()
 
-    const continueButton = await screen.findByRole('button', { name: /Continuer/i })
-    expect(continueButton).toBeDisabled()
     expect(setShopFn).not.toHaveBeenCalled()
+    expect(resetInventoryFn).not.toHaveBeenCalled()
+    expect(clearSelectedUserMock).not.toHaveBeenCalled()
     expect(navigateMock).not.toHaveBeenCalled()
   })
 
