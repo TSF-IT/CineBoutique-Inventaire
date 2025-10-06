@@ -262,8 +262,8 @@ test.describe('Scanner avec BarcodeDetector', () => {
     await expect(enableCameraButton).toBeVisible({ timeout: 5000 })
     await enableCameraButton.click()
 
-    await expect(page.getByText('Produit simulé ajouté')).toBeVisible({ timeout: 5000 })
-    await expect(page.getByText(`EAN ${simulatedEan}`)).toBeVisible({ timeout: 5000 })
+    await expect(page.getByTestId('status-message')).toHaveText('Produit simulé ajouté', { timeout: 5000 })
+    await expect(page.getByText(`EAN ${simulatedEan}`, { exact: true })).toBeVisible({ timeout: 5000 })
     await expect(page.getByRole('listitem').filter({ hasText: simulatedEan })).toBeVisible({ timeout: 5000 })
   })
 })
