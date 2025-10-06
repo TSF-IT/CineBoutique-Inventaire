@@ -256,8 +256,8 @@ export const fetchLocations = async (shopId: string): Promise<Location[]> => {
 
 export const fetchProductByEan = async (ean: string): Promise<Product> => {
   const trimmed = (ean ?? '').trim()
-  if (trimmed.length < 8 || !/^\d+$/.test(trimmed)) {
-    throw new Error('EAN invalide (trop court ou non numérique)')
+  if (trimmed.length === 0 || !/^\d+$/.test(trimmed)) {
+    throw new Error("EAN invalide (valeur vide ou non numérique)")
   }
   const data = await http(`${API_BASE}/products/${encodeURIComponent(trimmed)}`)
   return data as Product
