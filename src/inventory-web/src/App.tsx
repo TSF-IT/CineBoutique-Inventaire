@@ -13,7 +13,8 @@ import { ScanSimulationPage } from './app/pages/debug/ScanSimulationPage'
 import { LoadingIndicator } from './app/components/LoadingIndicator'
 import { SelectShopPage } from './app/pages/select-shop/SelectShopPage'
 import { useShop } from '@/state/ShopContext'
-import { RequireShop } from '@/router/RequireShop'
+import { RequireShop } from '@/app/router/RequireShop'
+import { RequireUser } from '@/app/router/RequireUser'
 
 const BypassSelect = () => {
   const { shop, isLoaded } = useShop()
@@ -46,13 +47,17 @@ export const AppRoutes = () => {
       <Route element={<RequireShop />}>
         <Route path="/inventory/start" element={<Navigate to="/select-user" replace />} />
         <Route path="/select-user" element={<InventoryUserStep />} />
-        <Route path="/" element={<HomePage />} />
-        <Route path="/inventory" element={<InventoryLayout />}>
-          <Route index element={<Navigate to="count-type" replace />} />
-          <Route path="location" element={<InventoryLocationStep />} />
-          <Route path="count-type" element={<InventoryCountTypeStep />} />
-          <Route path="session" element={<InventorySessionPage />} />
+        {/* Tout ce qui nécessite un user va ici */}
+        <Route element={<RequireUser />}>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/inventory" element={<InventoryLayout />}>
+            <Route index element={<Navigate to="count-type" replace />} />
+            <Route path="location" element={<InventoryLocationStep />} />
+            <Route path="count-type" element={<InventoryCountTypeStep />} />
+            <Route path="session" element={<InventorySessionPage />} />
+          </Route>
         </Route>
+      {/* Admin: à toi de voir si ça doit aussi exiger un user */}
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<AdminLocationsPage />} />
         </Route>
