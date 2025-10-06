@@ -120,7 +120,6 @@ export const InventorySessionPage = () => {
     clearSession,
     logs,
     logEvent,
-    clearLogs,
   } = useInventory()
   const { shop } = useShop()
   const [useCamera, setUseCamera] = useState(false)
@@ -183,10 +182,6 @@ export const InventorySessionPage = () => {
     dialog.removeAttribute('open')
   }, [])
 
-  const handleClearLogs = useCallback(() => {
-    clearLogs()
-  }, [clearLogs])
-
   const formatLogTimestamp = useCallback((value: string) => {
     const date = new Date(value)
     if (Number.isNaN(date.getTime())) {
@@ -199,6 +194,7 @@ export const InventorySessionPage = () => {
   }, [])
 
   const selectedUserDisplayName = selectedUser?.displayName ?? null
+  const countTypeLabel = typeof countType === 'number' ? `Comptage n°${countType}` : 'Comptage n°–'
   const ownerUserId = selectedUser?.id?.trim() ?? ''
   const existingRunId = typeof sessionId === 'string' ? sessionId.trim() : ''
   const locationId = location?.id?.trim() ?? ''
@@ -850,11 +846,10 @@ export const InventorySessionPage = () => {
           <div className="flex flex-col gap-2">
             <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Session de comptage</h2>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              {location?.label} • {countType} comptage{countType && countType > 1 ? 's' : ''} •
+              {location?.label} • {countTypeLabel} •
               {' '}
               {selectedUserDisplayName ?? '–'}
             </p>
-            {sessionId && <p className="text-xs text-slate-500 dark:text-slate-400">Session existante #{sessionId}</p>}
           </div>
           <Button
             type="button"
@@ -951,12 +946,7 @@ export const InventorySessionPage = () => {
             </ul>
           )}
         </div>
-        <div className="mt-6 flex items-center justify-between gap-3">
-          <p className="text-xs text-slate-500 dark:text-slate-400">Le journal est réinitialisé quand le comptage est terminé.</p>
-          <Button type="button" variant="secondary" onClick={handleClearLogs} disabled={logs.length === 0}>
-            Effacer le journal
-          </Button>
-        </div>
+        <p className="mt-6 text-xs text-slate-500 dark:text-slate-400">Le journal est réinitialisé quand le comptage est terminé.</p>
       </dialog>
 
       <Card className="space-y-4">
