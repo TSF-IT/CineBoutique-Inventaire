@@ -60,52 +60,26 @@ export const SelectShopPage = () => {
   }, [redirectState])
 
   useEffect(() => {
-    let isMounted = true
-    const controller = new AbortController()
+  const ac = new AbortController()
+  setStatus('loading')
+  setErrorMessage(null)
 
-    setStatus('loading')
-    setErrorMessage(null)
+  fetchShops(ac.signal)
+    .then((list) => {
+      setShops(list)
+      setStatus('idle')
+    })
+    .catch((e: any) => {
+      const msg = String(e?.message || '')
+      if (e?.name === 'AbortError' || msg === 'ABORTED' || msg.toLowerCase().includes('aborted')) {
+        return
+      }
+      setErrorMessage(msg || 'Erreur de chargement')
+      setStatus('error')
+    })
 
-    fetchShops(controller.signal)
-      .then((data) => {
-        if (!isMounted) {
-          return
-        }
-        setShops(data)
-        const savedShop = loadShop()
-        if (savedShop && !data.some((item) => item.id === savedShop.id)) {
-          clearShop()
-        }
-        setStatus('idle')
-      })
-      .catch((error) => {
-        if (!isMounted) {
-          return
-        }
-        if (error instanceof DOMException && error.name === 'AbortError') {
-          return
-        }
-        if (import.meta.env.DEV) {
-          console.warn('[select-shop] échec du chargement des boutiques', error)
-        }
-        setShops([])
-        setStatus('error')
-        if (error instanceof TypeError) {
-          setErrorMessage(
-            'Connexion impossible. Vérifie ta connexion réseau puis réessaie. Vérifie également que l’API est lancée et que le proxy Vite pointe la bonne origine via DEV_BACKEND_ORIGIN.',
-          )
-          return
-        }
-        setErrorMessage(
-          'Impossible de charger la liste des boutiques. Vérifie que l’API est lancée et que le proxy Vite pointe la bonne origine via DEV_BACKEND_ORIGIN.',
-        )
-      })
-
-    return () => {
-      isMounted = false
-      controller.abort()
-    }
-  }, [retryCount])
+  return () => ac.abort('route-change')
+}, [])
 
   useEffect(() => {
     setSelectedShopId((current) => {

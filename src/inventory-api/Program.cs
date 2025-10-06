@@ -31,6 +31,8 @@ using Dapper;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using FluentMigrator.Runner;
+using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -66,6 +68,19 @@ else
     builder.Logging.ClearProviders();
     builder.Logging.AddConsole();
 }
+
+var cs = builder.Configuration.GetConnectionString("InventoryDb");
+
+// Runner FluentMigrator pour Postgres
+builder.Services
+    .AddFluentMigratorCore()
+    .ConfigureRunner(rb => rb
+        .AddPostgres()
+        .WithGlobalConnectionString(cs)
+        .ScanIn(typeof(CineBoutique.Inventory.Infrastructure.Migrations.Migration_202404010002_SeedLocations).Assembly)
+        .For.Migrations()
+    )
+    .AddLogging(lb => lb.AddFluentMigratorConsole());
 
 builder.Services.Configure<AppSettingsOptions>(builder.Configuration.GetSection("AppSettings"));
 
@@ -203,6 +218,44 @@ builder.Logging.AddSimpleConsole(options =>
 builder.Logging.SetMinimumLevel(LogLevel.Information);
 
 var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+    try
+    {
+        runner.MigrateUp();
+        app.Logger.LogInformation("Database migrations applied.");
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to apply migrations");
+        throw; // en DEV tu peux décider de ne pas throw si tu veux juste voir l’API démarrer
+    }
+}
+
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var seeder = scope.ServiceProvider.GetRequiredService<CineBoutique.Inventory.Infrastructure.Seeding.InventoryDataSeeder>();
+
+    const int max = 10;
+    for (var i = 1; i <= max; i++)
+    {
+        try
+        {
+            await seeder.SeedAsync();
+            app.Logger.LogInformation("Database seeded.");
+            break;
+        }
+        catch (Npgsql.NpgsqlException ex) when (i < max)
+        {
+            app.Logger.LogWarning(ex, "DB not ready yet (attempt {Attempt}/{Max}), retrying in 1s…", i, max);
+            await Task.Delay(1000);
+        }
+    }
+}
+
 var env = app.Environment;
 
 app.Logger.LogInformation("[API] Using ownerUserId for runs; legacy operatorName disabled for write.");
