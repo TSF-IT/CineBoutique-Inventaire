@@ -1,36 +1,39 @@
-import { defineConfig } from 'vite'
+import { defineConfig, configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
-import { configDefaults } from 'vitest/config'
+import { fileURLToPath, URL } from 'node:url'
+
 const DEV_BACKEND_ORIGIN = process.env.DEV_BACKEND_ORIGIN?.trim() || 'http://localhost:8080'
+
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
     proxy: {
-      '/api': {
-        target: DEV_BACKEND_ORIGIN,
-        changeOrigin: true,
-        // on conserve /api -> /api (pas de rewrite)
-        // rewrite: (path) => path, // inutile ici, juste pour clarifier
-      },
+      '/api': { target: DEV_BACKEND_ORIGIN, changeOrigin: true },
     },
   },
   resolve: {
     alias: {
-      '@': '/src',
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
-  // durcit le build pour éviter l’explosion mémoire en CI/Docker
   build: {
-    sourcemap: false, // désactivé en prod
-    reportCompressedSize: false, // évite le calcul gzip (gourmand)
-    chunkSizeWarningLimit: 1500, // évite les warnings inutiles
-    // si tu utilises des images énormes, on pourra ajouter rollupOptions plus tard
+    sourcemap: false,
+    reportCompressedSize: false,
+    chunkSizeWarningLimit: 1500,
   },
   test: {
     environment: 'jsdom',
-    setupFiles: './setupTests.ts',
+    setupFiles: ['./setupTests.ts'],
     exclude: [...configDefaults.exclude, 'tests/e2e/**'],
-    threads: false,
+
+    // Vitest v2 : configure le pool et limite à un seul worker
+    pool: 'threads',
+    poolOptions: {
+      threads: {
+        minThreads: 1,
+        maxThreads: 1,
+      },
+    },
   },
 })

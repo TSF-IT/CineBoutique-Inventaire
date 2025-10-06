@@ -12,6 +12,8 @@ import http, { HttpError } from '@/lib/api/http'
 import { API_BASE } from '@/lib/api/config'
 import { z } from 'zod'
 
+/* --------------------------------- helpers HTTP --------------------------------- */
+
 const isHttpError = (value: unknown): value is HttpError =>
   typeof value === 'object' &&
   value !== null &&
@@ -64,6 +66,19 @@ const getHttpErrorMessage = (error: HttpError): string | null => {
   return tryExtractMessage(error.body)
 }
 
+/* --------------------------------- helpers data --------------------------------- */
+
+const UUID_RE =
+  /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/
+
+const toUuidOrNull = (v: unknown): string | null =>
+  typeof v === 'string' && UUID_RE.test(v) ? v : null
+
+const toDateOrNull = (v: unknown): Date | null =>
+  typeof v === 'string' && v.length > 0 ? new Date(v) : null
+
+/* ----------------------------- inventaires: résumé ------------------------------ */
+
 export const fetchInventorySummary = async (): Promise<InventorySummary> => {
   const data = (await http(`${API_BASE}/inventories/summary`)) as Partial<InventorySummary> | null | undefined
 
@@ -110,83 +125,62 @@ export const fetchInventorySummary = async (): Promise<InventorySummary> => {
   }
 }
 
-/**
- * Schéma de la réponse backend /api/locations
- * (id/label + métadonnées)
- */
-const LocationApiItemSchema = z.object({
-  id: z.string().uuid(),
-  label: z.string(),
-  isBusy: z.boolean().optional().default(false),
-  busyBy: z.string().nullable().optional(),
-  activeRunId: z.string().uuid().nullable().optional(),
-  activeCountType: z.number().int().nullable().optional(),
-  activeStartedAtUtc: z.string().nullable().optional(), // ISO string côté API
-  countStatuses: z
-    .array(
-      z.object({
-        countType: z.number().int(),
-        status: z.string(),
-        runId: z.string().uuid().nullable().optional(),
-        ownerDisplayName: z.string().nullable().optional(),
-        ownerUserId: z.string().nullable().optional(),
-        startedAtUtc: z.string().nullable().optional(),
-        completedAtUtc: z.string().nullable().optional(),
-      }),
-    )
-    .optional()
-    .default([]),
-})
+/* ----------------------------- /api/locations -> home --------------------------- */
+/* Schéma brut tolérant pour l’API (on normalise avant le schéma front) */
 
-type LocationApiItem = z.infer<typeof LocationApiItemSchema>
-
-// helper, mets-le au-dessus de fetchLocationSummaries
-const toDateOrNull = (v: unknown): Date | null =>
-  typeof v === 'string' && v.length > 0 ? new Date(v) : null
-
-const UUID_RE =
-  /^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$/;
-
-const toUuidOrNull = (v: unknown): string | null =>
-  typeof v === 'string' && UUID_RE.test(v) ? v : null;
+const LocationApiItemSchema = z
+  .object({
+    id: z.string().uuid(),
+    label: z.string(),
+    isBusy: z.boolean().optional().default(false),
+    busyBy: z.string().nullable().optional(),
+    activeRunId: z.string().uuid().nullable().optional(),
+    activeCountType: z.number().int().nullable().optional(),
+    activeStartedAtUtc: z.string().nullable().optional(),
+    countStatuses: z
+      .array(
+        z.object({
+          runId: z.string().uuid().nullable().optional(),
+          ownerUserId: z.string().nullable().optional(), // tolérant, on normalise ensuite
+          startedAtUtc: z.string().nullable().optional(),
+          completedAtUtc: z.string().nullable().optional(),
+        }),
+      )
+      .optional()
+      .default([]),
+  })
+  .passthrough()
 
 export const fetchLocationSummaries = async (
   shopId: string,
   signal?: AbortSignal,
 ): Promise<LocationSummaryList> => {
-  if (!shopId) {
-    throw new Error('Aucune boutique sélectionnée.')
-  }
+  if (!shopId) throw new Error('Aucune boutique sélectionnée.')
 
   const searchParams = new URLSearchParams({ shopId })
   const raw = await http(`${API_BASE}/locations?${searchParams.toString()}`, { signal })
 
-  // 1) Parse strict de la réponse API (id/label/etc.)
-  const apiItems: LocationApiItem[] = z.array(LocationApiItemSchema).parse(raw)
+  const apiItems = z.array(LocationApiItemSchema).parse(raw)
 
-  // 2) Mapping vers le modèle front attendu
-  //    - activeStartedAtUtc: Date|null
-  //    - countStatuses: uniquement { runId, startedAtUtc: Date|null, completedAtUtc: Date|null }
   const adapted = apiItems.map((it) => ({
-  locationId: it.id,
-  locationName: it.label,
-  busyBy: it.busyBy ?? null,
-  activeRunId: it.activeRunId ?? null,
-  activeCountType: it.activeCountType ?? null,
-  activeStartedAtUtc: toDateOrNull(it.activeStartedAtUtc),
-  countStatuses: (it.countStatuses ?? []).map((s) => ({
-    // si ton LocationSummaryListSchema attend ces trois là + ownerUserId, on les fournit
-    runId: s.runId ?? null,
-    ownerUserId: toUuidOrNull(s.ownerUserId),
-    startedAtUtc: toDateOrNull(s.startedAtUtc),
-    completedAtUtc: toDateOrNull(s.completedAtUtc),
-  })),
+    locationId: it.id,
+    locationName: it.label,
+    busyBy: it.busyBy ?? null,
+    activeRunId: it.activeRunId ?? null,
+    activeCountType: it.activeCountType ?? null,
+    activeStartedAtUtc: toDateOrNull(it.activeStartedAtUtc),
+    countStatuses: (it.countStatuses ?? []).map((s) => ({
+      runId: s.runId ?? null,
+      ownerUserId: toUuidOrNull(s.ownerUserId),
+      startedAtUtc: toDateOrNull(s.startedAtUtc),
+      completedAtUtc: toDateOrNull(s.completedAtUtc),
+    })),
   }))
 
-  // 3) Validation finale et typage via Zod
   return LocationSummaryListSchema.parse(adapted)
 }
 
+/* ----------------------------- conflits & détails runs -------------------------- */
 
 export const getConflictZonesSummary = async (): Promise<ConflictZoneSummary[]> => {
   const summary = await fetchInventorySummary()
@@ -229,6 +223,27 @@ export const getCompletedRunDetail = async (runId: string): Promise<CompletedRun
   }
 }
 
+/* ----------------------------- /api/locations -> select ------------------------- */
+/* Parse brut → normalise → validation stricte par LocationsSchema */
+
+const LocationsApiItemSchema = z
+  .object({
+    id: z.string().uuid(),
+    label: z.string(),
+    countStatuses: z
+      .array(
+        z.object({
+          runId: z.string().uuid().nullable().optional(),
+          ownerUserId: z.string().nullable().optional(),
+          startedAtUtc: z.string().nullable().optional(),
+          completedAtUtc: z.string().nullable().optional(),
+        }),
+      )
+      .optional()
+      .default([]),
+  })
+  .passthrough()
+
 export const fetchLocations = async (shopId: string): Promise<Location[]> => {
   if (!shopId) {
     throw new Error('Aucune boutique sélectionnée.')
@@ -237,33 +252,32 @@ export const fetchLocations = async (shopId: string): Promise<Location[]> => {
   const url = `${API_BASE}/locations?shopId=${encodeURIComponent(shopId)}`
   const response = await http(url)
 
-  const sanitized =
-    Array.isArray(response)
-      ? response.map((loc: any) => ({
-          ...loc,
-          countStatuses: Array.isArray(loc?.countStatuses)
-            ? loc.countStatuses.map((s: any) => ({
-                ...s,
-                ownerUserId: toUuidOrNull(s?.ownerUserId),
-              }))
-            : [],
-        }))
-      : []
+  const arr = z.array(LocationsApiItemSchema).parse(response)
+
+  const sanitized = arr.map((loc) => ({
+    ...loc,
+    countStatuses: loc.countStatuses.map((s) => ({
+      ...s,
+      ownerUserId: toUuidOrNull(s.ownerUserId),
+    })),
+  }))
 
   return LocationsSchema.parse(sanitized)
 }
 
+/* -------------------------------- produits par EAN ------------------------------ */
+
 export const fetchProductByEan = async (ean: string): Promise<Product> => {
   const trimmed = (ean ?? '').trim()
-  // ignore EAN trop court ou non numérique
+  // filtre EAN poubelle pour éviter les 404 spam
   if (trimmed.length < 8 || !/^\d+$/.test(trimmed)) {
-    // tu peux retourner un faux Product ou lever une petite erreur contrôlée
     throw new Error('EAN invalide (trop court ou non numérique)')
   }
-
   const data = await http(`${API_BASE}/products/${encodeURIComponent(trimmed)}`)
   return data as Product
 }
+
+/* ----------------------------- runs: start/complete/etc ------------------------- */
 
 export interface CompleteInventoryRunItem {
   ean: string

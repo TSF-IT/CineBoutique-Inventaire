@@ -2,15 +2,20 @@
   "compilerOptions": {
     "target": "ES2020",
     "module": "ESNext",
-    "jsx": "react-jsx",
     "moduleResolution": "Bundler",
     "strict": true,
+
     "baseUrl": "./src",
     "paths": {
       "@/*": ["*"]
     },
-    "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom/vitest"],
-    "noEmit": true
+
+    "jsx": "react-jsx",
+    "types": ["vite/client", "react", "react-dom", "vitest/globals", "@testing-library/jest-dom"],
+
+    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true,
+    "isolatedModules": true
   },
-  "include": ["src", "setupTests.ts"]
+  "include": ["./src"]
 }
