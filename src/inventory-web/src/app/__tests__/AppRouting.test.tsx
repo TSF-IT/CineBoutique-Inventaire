@@ -38,6 +38,10 @@ vi.mock('@/app/pages/select-shop/SelectShopPage', () => ({
   SelectShopPage: () => <div data-testid="select-shop-page">Sélection boutique</div>,
 }))
 
+vi.mock('@/app/pages/SelectUserPage', () => ({
+  default: () => <div data-testid="select-user-page">Sélection utilisateur</div>,
+}))
+
 vi.mock('@/app/pages/inventory/InventoryLayout', () => ({
   InventoryLayout: () => <div data-testid="inventory-layout" />, 
 }))
@@ -141,7 +145,7 @@ describe('AppRoutes', () => {
     ).toBeInTheDocument()
   })
 
-  it('affiche la sélection de boutique quand aucun utilisateur n’est mémorisé', async () => {
+  it('redirige vers l’identification quand aucun utilisateur n’est mémorisé', async () => {
     const shop: Shop = { id: 'shop-2', name: 'Boutique 2' }
     useShopMock.mockReturnValue(
       createUseShopValue({
@@ -157,7 +161,6 @@ describe('AppRoutes', () => {
       </MemoryRouter>,
     )
 
-    const pages = await screen.findAllByTestId('select-shop-page')
-    expect(pages.length).toBeGreaterThan(0)
+    expect(await screen.findByTestId('select-user-page')).toBeInTheDocument()
   })
 })
