@@ -400,12 +400,14 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
 
-        const string unresolvedSql = """SELECT COUNT(*)
-FROM "Conflict" c
-JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
-JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
-WHERE c."ResolvedAtUtc" IS NULL
-  AND cr."LocationId" = @LocationId;""";
+        const string unresolvedSql = """
+            SELECT COUNT(*)
+            FROM "Conflict" c
+            JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
+            JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
+            WHERE c."ResolvedAtUtc" IS NULL
+              AND cr."LocationId" = @LocationId;
+            """;
 
         var unresolvedAfterThird = await connection.ExecuteScalarAsync<int>(
             unresolvedSql,
@@ -463,12 +465,14 @@ WHERE c."ResolvedAtUtc" IS NULL
         await using var connection = connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection);
 
-        const string unresolvedSql = """SELECT COUNT(*)
-FROM "Conflict" c
-JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
-JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
-WHERE c."ResolvedAtUtc" IS NULL
-  AND cr."LocationId" = @LocationId;""";
+        const string unresolvedSql = """
+            SELECT COUNT(*)
+            FROM "Conflict" c
+            JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
+            JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
+            WHERE c."ResolvedAtUtc" IS NULL
+              AND cr."LocationId" = @LocationId;
+            """;
 
         var unresolvedAfterThird = await connection.ExecuteScalarAsync<int>(
             unresolvedSql,
