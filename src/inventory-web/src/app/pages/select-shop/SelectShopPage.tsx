@@ -165,60 +165,73 @@ export const SelectShopPage = () => {
     selectRef.current?.focus()
   }, [isRedirecting, selectedShopId, shops, status])
 
-  const activeShop = useMemo(
-    () => shops.find((item) => item.id === selectedShopId) ?? null,
-    [selectedShopId, shops],
-  )
-
   const handleRetry = useCallback(() => {
     setRetryCount((count) => count + 1)
     setSelectionError(null)
   }, [])
 
+  const continueWithShop = useCallback(
+    (shopToActivate: Shop | null) => {
+      if (isRedirecting) {
+        return
+      }
 
-  const handleShopSelection = useCallback((id: string) => {
-    setSelectedShopId(id)
-  }, [])
+      if (!shopToActivate) {
+        setSelectionError('Sélectionne une boutique pour continuer.')
+        selectRef.current?.focus()
+        return
+      }
 
-  const handleSelectChange = useCallback((event: ChangeEvent<HTMLSelectElement>) => {
-    const id = event.target.value
-    setSelectedShopId(id)
-  }, [])
+      if (!isValidGuid(shopToActivate.id)) {
+        setSelectionError(INVALID_GUID_ERROR_MESSAGE)
+        selectRef.current?.focus()
+        return
+      }
 
-  const handleContinue = useCallback(() => {
-    if (isRedirecting) {
-      return
-    }
+      if (!shop || shop.id !== shopToActivate.id) {
+        reset()
+        clearSelectedUserForShop(shopToActivate.id)
+      }
 
-    if (!activeShop) {
-      setSelectionError('Sélectionne une boutique pour continuer.')
-      selectRef.current?.focus()
-      return
-    }
+      setSelectionError(null)
+      setIsRedirecting(true)
+      setShop(shopToActivate)
 
-    if (!isValidGuid(activeShop.id)) {
-      setSelectionError(INVALID_GUID_ERROR_MESSAGE)
-      return
-    }
+      const navigationOptions = redirectTo ? { state: { redirectTo } } : undefined
+      navigate('/select-user', navigationOptions)
+    },
+    [isRedirecting, navigate, redirectTo, reset, shop, setShop],
+  )
 
-    if (!shop || shop.id !== activeShop.id) {
-      reset()
-      clearSelectedUserForShop(activeShop.id)
-    }
+  const handleShopSelection = useCallback(
+    (id: string) => {
+      setSelectedShopId(id)
+      const shopToActivate = shops.find((item) => item.id === id) ?? null
+      continueWithShop(shopToActivate)
+    },
+    [continueWithShop, shops],
+  )
 
-    setSelectionError(null)
-    setIsRedirecting(true)
-    setShop(activeShop)
+  const handleSelectChange = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      const id = event.target.value
+      setSelectedShopId(id)
 
-    const navigationOptions = redirectTo ? { state: { redirectTo } } : undefined
-    navigate('/select-user', navigationOptions)
-  }, [activeShop, isRedirecting, navigate, redirectTo, reset, shop, setShop])
+      if (!id) {
+        setSelectionError(null)
+        return
+      }
+
+      const shopToActivate = shops.find((item) => item.id === id) ?? null
+      continueWithShop(shopToActivate)
+    },
+    [continueWithShop, shops],
+  )
 
   const useCardLayout = !isRedirecting && status === 'idle' && shops.length > 0 && shops.length <= 5
   const isLoadingShops = status === 'loading'
   const shouldShowShopError = status === 'error' && !isRedirecting
   const shouldShowShopForm = status === 'idle' && !isRedirecting
-  const canContinue = Boolean(activeShop && isValidGuid(activeShop.id))
 
   return (
     <Page className="px-4 py-6 sm:px-6">
@@ -288,7 +301,7 @@ export const SelectShopPage = () => {
                           >
                             <span className="block text-lg font-medium">{item.name}</span>
                             <span className="mt-1 block text-sm text-slate-600 dark:text-slate-300">
-                              Appuie pour choisir cette boutique.
+                              Appuie pour choisir cette boutique et continuer.
                             </span>
                           </button>
                         )
@@ -345,16 +358,6 @@ export const SelectShopPage = () => {
               </div>
             </form>
 
-            <div className="flex justify-end">
-              <Button
-                type="button"
-                className="px-6 py-3"
-                onClick={handleContinue}
-                disabled={!canContinue || isRedirecting}
-              >
-                Continuer
-              </Button>
-            </div>
           </>
         )}
       </main>
