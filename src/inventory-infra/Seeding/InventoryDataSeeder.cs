@@ -94,7 +94,7 @@ WHERE ""ShopId"" = @ShopId
         try
         {
             var insertedShopCount = await EnsureShopsAsync(connection, transaction, cancellationToken)
-                .ConfigureAwait(false);
+    .ConfigureAwait(false);
 
             var shopIds = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
 
