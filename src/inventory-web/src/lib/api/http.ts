@@ -20,6 +20,17 @@ function buildHttpError(message: string, res: Response, body?: string, extra?: R
   return err
 }
 
+// ajout en haut si tu veux un type dédié (optionnel)
+export class AbortedRequestError extends Error {
+  status = 499 as number; // code "client closed request" officieux
+  url: string;
+  constructor(url: string) {
+    super('ABORTED');
+    this.name = 'AbortedRequestError';
+    this.url = url;
+  }
+}
+
 export type HttpRequestInit<TBody = unknown> = Omit<RequestInit, 'body'> & {
   body?: RequestInit['body'] | TBody
 }
@@ -97,8 +108,18 @@ export default async function http<TBody = unknown>(
     body = JSON.stringify(rawBody)
   }
 
-  const res = await fetch(finalUrl, { ...init, headers, body })
-
+  let res: Response;
+  try {
+    res = await fetch(finalUrl, { ...init, headers, body });
+  } catch (e: any) {
+    const msg = String(e?.message || '').toLowerCase();
+    // Ne hurle pas pour un abort normal (cleanup d’effet, navigation, etc.)
+    if (e?.name === 'AbortError' || msg.includes('aborted')) {
+      throw new AbortedRequestError(finalUrl);
+    }
+    throw e;
+  }
+  
   const contentType = res.headers.get('Content-Type') ?? ''
   const isJson = contentType.includes('application/json')
   const text = await res.text()
