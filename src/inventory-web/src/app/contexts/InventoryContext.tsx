@@ -159,10 +159,13 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
         quantity,
         lastScanAt: timestamp,
       }
-      const remaining = prev.items.filter((_, itemIndex) => itemIndex !== index)
+
+      const nextItems = prev.items.slice()
+      nextItems[index] = updated
+
       return {
         ...prev,
-        items: [updated, ...remaining],
+        items: nextItems,
         logs: prependLogEntry(prev.logs, {
           type: 'item-quantity-updated',
           message: `Quantité mise à jour pour ${updated.product.name} (EAN ${updated.product.ean}) → ${quantity}`,
