@@ -405,11 +405,8 @@ export const HomePage = () => {
               Aucun comptage en cours pour cette boutique.
             </p>
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
-              Démarrez un nouveau comptage pour suivre la progression des zones en temps réel.
+              Utilisez le bouton « Débuter un comptage » pour lancer une nouvelle session et suivre les zones en temps réel.
             </p>
-            <Button className="mt-4" onClick={handleStartInventory}>
-              Débuter un inventaire
-            </Button>
           </div>
         )}
       </Card>
@@ -420,7 +417,7 @@ export const HomePage = () => {
           className="py-5 text-lg"
           onClick={handleStartInventory}
         >
-          Débuter un inventaire
+          Débuter un comptage
         </Button>
         <Link className="text-center text-sm text-slate-600 underline dark:text-slate-400" to="/admin">
           Espace administrateur

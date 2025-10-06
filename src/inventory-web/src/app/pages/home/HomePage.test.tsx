@@ -286,8 +286,7 @@ describe('HomePage', () => {
       </ThemeProvider>,
     )
 
-    const buttons = await screen.findAllByRole('button', { name: /Débuter un inventaire/i })
-    expect(buttons.length).toBeGreaterThan(0)
+    const buttons = await screen.findAllByRole('button', { name: /Débuter un comptage/i })
     fireEvent.click(buttons[0])
 
     expect(navigateMock).toHaveBeenCalledWith('/inventory/location')
