@@ -202,7 +202,7 @@ test.describe("Ordre d'affichage des articles scannés", () => {
     const secondRow = page.getByTestId('scanned-item').nth(1)
 
     await secondRow.getByRole('button', { name: 'Ajouter' }).click()
-    await expect(secondRow.getByDisplayValue('2')).toBeVisible({ timeout: 5000 })
+    await expect(secondRow.getByTestId('quantity-input')).toHaveValue('2')
 
     const firstRowAfterIncrement = await page.getByTestId('scanned-item').nth(0).getAttribute('data-ean')
     const secondRowAfterIncrement = await page.getByTestId('scanned-item').nth(1).getAttribute('data-ean')
@@ -210,7 +210,7 @@ test.describe("Ordre d'affichage des articles scannés", () => {
     expect(secondRowAfterIncrement).toBe('0000')
 
     await secondRow.getByRole('button', { name: 'Retirer' }).click()
-    await expect(secondRow.getByDisplayValue('1')).toBeVisible({ timeout: 5000 })
+    await expect(secondRow.getByTestId('quantity-input')).toHaveValue('1')
 
     const firstRowAfterDecrement = await page.getByTestId('scanned-item').nth(0).getAttribute('data-ean')
     const secondRowAfterDecrement = await page.getByTestId('scanned-item').nth(1).getAttribute('data-ean')

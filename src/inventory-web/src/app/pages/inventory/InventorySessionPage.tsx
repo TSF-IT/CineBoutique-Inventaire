@@ -857,6 +857,7 @@ export const InventorySessionPage = () => {
                   inputMode="numeric"
                   pattern="[0-9]*"
                   maxLength={4}
+                  data-testid="quantity-input"
                   aria-label={`Quantité pour ${item.product.name}`}
                   value={quantityDrafts[item.product.ean] ?? String(item.quantity)}
                   onChange={(event) => handleQuantityInputChange(item.product.ean, event)}
