@@ -165,9 +165,9 @@ test.describe("Ordre d'affichage des articles scannés", () => {
     const identifyHeading = page.getByRole('heading', { name: 'Merci de vous identifier' })
     await expect(identifyHeading).toBeVisible({ timeout: 5000 })
 
-    const userRadio = page.getByRole('radio', { name: mockUsers[0].displayName })
-    await expect(userRadio).toBeVisible({ timeout: 5000 })
-    await userRadio.click()
+    const userButton = page.getByRole('button', { name: mockUsers[0].displayName })
+    await expect(userButton).toBeVisible({ timeout: 5000 })
+    await userButton.click()
 
     await expect(page).toHaveURL(/\/inventory\/location/, { timeout: 5000 })
     const zoneCard = page.getByTestId(`zone-card-${mockLocations[0].id}`)
