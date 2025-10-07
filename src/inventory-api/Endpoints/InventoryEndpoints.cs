@@ -369,32 +369,34 @@ ORDER BY COALESCE(p.""Ean"", p.""Sku""), p.""Name"";";
                 return Results.NotFound();
             }
 
-            const string runsSql = @"WITH active_runs AS (
-  SELECT DISTINCT cr.""Id"" AS ""RunId", cr.""CompletedAtUtc""
-  FROM ""Conflict"" c
-  JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
-  JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
-  WHERE c.""ResolvedAtUtc"" IS NULL
-    AND cr.""LocationId"" = @LocationId
+            const string runsSql = """
+WITH active_runs AS (
+  SELECT DISTINCT cr."Id" AS "RunId", cr."CompletedAtUtc"
+  FROM "Conflict" c
+  JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
+  JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
+  WHERE c."ResolvedAtUtc" IS NULL
+    AND cr."LocationId" = @LocationId
 ),
 seed_bounds AS (
-  SELECT MIN(ar.""CompletedAtUtc"") AS ""MinCompletedAtUtc""
+  SELECT MIN(ar."CompletedAtUtc") AS "MinCompletedAtUtc"
   FROM active_runs ar
 ),
 conflict_runs AS (
-  SELECT cr.""Id"" AS ""RunId", cr.""CountType", cr.""CompletedAtUtc""
-  FROM ""CountingRun"" cr
+  SELECT cr."Id" AS "RunId", cr."CountType", cr."CompletedAtUtc"
+  FROM "CountingRun" cr
   CROSS JOIN seed_bounds sb
-  WHERE cr.""LocationId"" = @LocationId
-    AND cr.""CompletedAtUtc"" IS NOT NULL
-    AND (sb.""MinCompletedAtUtc"" IS NULL OR cr.""CompletedAtUtc"" >= sb.""MinCompletedAtUtc"")
+  WHERE cr."LocationId" = @LocationId
+    AND cr."CompletedAtUtc" IS NOT NULL
+    AND (sb."MinCompletedAtUtc" IS NULL OR cr."CompletedAtUtc" >= sb."MinCompletedAtUtc")
 )
-SELECT cr.""RunId", cr.""CountType", cr.""CompletedAtUtc",
-       COALESCE(su.""DisplayName"", cr2.""OperatorDisplayName"") AS ""OwnerDisplayName""
+SELECT cr."RunId", cr."CountType", cr."CompletedAtUtc",
+       COALESCE(su."DisplayName", cr2."OperatorDisplayName") AS "OwnerDisplayName"
 FROM conflict_runs cr
-JOIN ""CountingRun"" cr2 ON cr2.""Id"" = cr.""RunId"
-LEFT JOIN ""ShopUser"" su ON su.""Id"" = cr2.""OwnerUserId""
-ORDER BY cr.""CompletedAtUtc"" ASC, cr.""CountType"" ASC;";
+JOIN "CountingRun" cr2 ON cr2."Id" = cr."RunId"
+LEFT JOIN "ShopUser" su ON su."Id" = cr2."OwnerUserId"
+ORDER BY cr."CompletedAtUtc" ASC, cr."CountType" ASC;
+""";
 
             var runRows = (await connection.QueryAsync<ConflictRunHeaderRow>(
                     new CommandDefinition(runsSql, new { LocationId = locationId }, cancellationToken: cancellationToken))
@@ -415,51 +417,53 @@ ORDER BY cr.""CompletedAtUtc"" ASC, cr.""CountType"" ASC;";
                 return Results.Ok(emptyPayload);
             }
 
-            const string detailSql = @"WITH active_runs AS (
-    SELECT DISTINCT cr.""Id"" AS ""RunId", cr.""CompletedAtUtc""
-    FROM ""Conflict"" c
-    JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
-    JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
-    WHERE c.""ResolvedAtUtc"" IS NULL
-      AND cr.""LocationId"" = @LocationId
+            const string detailSql = """
+WITH active_runs AS (
+    SELECT DISTINCT cr."Id" AS "RunId", cr."CompletedAtUtc"
+    FROM "Conflict" c
+    JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
+    JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
+    WHERE c."ResolvedAtUtc" IS NULL
+      AND cr."LocationId" = @LocationId
 ),
 seed_bounds AS (
-    SELECT MIN(ar.""CompletedAtUtc"") AS ""MinCompletedAtUtc""
+    SELECT MIN(ar."CompletedAtUtc") AS "MinCompletedAtUtc"
     FROM active_runs ar
 ),
 conflict_runs AS (
-    SELECT cr.""Id"" AS ""RunId", cr.""CountType", cr.""CompletedAtUtc""
-    FROM ""CountingRun"" cr
+    SELECT cr."Id" AS "RunId", cr."CountType", cr."CompletedAtUtc"
+    FROM "CountingRun" cr
     CROSS JOIN seed_bounds sb
-    WHERE cr.""LocationId"" = @LocationId
-      AND cr.""CompletedAtUtc"" IS NOT NULL
-      AND (sb.""MinCompletedAtUtc"" IS NULL OR cr.""CompletedAtUtc"" >= sb.""MinCompletedAtUtc"")
+    WHERE cr."LocationId" = @LocationId
+      AND cr."CompletedAtUtc" IS NOT NULL
+      AND (sb."MinCompletedAtUtc" IS NULL OR cr."CompletedAtUtc" >= sb."MinCompletedAtUtc")
 ),
 conflict_products AS (
-    SELECT DISTINCT cl.""ProductId"" AS ""ProductId""
-    FROM ""Conflict"" c
-    JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
-    JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
-    WHERE c.""ResolvedAtUtc"" IS NULL
-      AND cr.""LocationId"" = @LocationId
+    SELECT DISTINCT cl."ProductId" AS "ProductId"
+    FROM "Conflict" c
+    JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
+    JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
+    WHERE c."ResolvedAtUtc" IS NULL
+      AND cr."LocationId" = @LocationId
 ),
 product_runs AS (
     SELECT
-        cp.""ProductId"",
-        cr.""RunId""
+        cp."ProductId",
+        cr."RunId"
     FROM conflict_products cp
     CROSS JOIN conflict_runs cr
 )
 SELECT
-    pr.""ProductId"" AS ""ProductId"",
-    p.""Ean""        AS ""Ean"",
-    pr.""RunId""     AS ""RunId"",
-    COALESCE(SUM(cl.""Quantity""), 0)::int AS ""Quantity""
+    pr."ProductId" AS "ProductId",
+    p."Ean"        AS "Ean",
+    pr."RunId"     AS "RunId",
+    COALESCE(SUM(cl."Quantity"), 0)::int AS "Quantity"
 FROM product_runs pr
-JOIN ""Product"" p ON p.""Id"" = pr.""ProductId""
-LEFT JOIN ""CountLine"" cl ON cl.""ProductId"" = pr.""ProductId"" AND cl.""CountingRunId"" = pr.""RunId""
-GROUP BY pr.""ProductId"", p.""Ean"", pr.""RunId""
-ORDER BY p.""Ean"", pr.""RunId"";";
+JOIN "Product" p ON p."Id" = pr."ProductId"
+LEFT JOIN "CountLine" cl ON cl."ProductId" = pr."ProductId" AND cl."CountingRunId" = pr."RunId"
+GROUP BY pr."ProductId", p."Ean", pr."RunId"
+ORDER BY p."Ean", pr."RunId";
+""";
 
             var quantityRows = (await connection.QueryAsync<ConflictRunQuantityRow>(
                     new CommandDefinition(detailSql, new { LocationId = locationId }, cancellationToken: cancellationToken))
