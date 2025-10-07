@@ -11,5 +11,7 @@ public sealed class ConflictZoneDetailDto
 
     public string LocationLabel { get; set; } = string.Empty;
 
+    public IReadOnlyList<ConflictRunHeaderDto> Runs { get; set; } = Array.Empty<ConflictRunHeaderDto>();
+
     public IReadOnlyList<ConflictZoneItemDto> Items { get; set; } = Array.Empty<ConflictZoneItemDto>();
 }
