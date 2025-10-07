@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { MemoryRouter } from 'react-router-dom'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import type { ReactNode } from 'react'
+import { useEffect } from 'react'
 import { HomePage } from './HomePage'
 import { ShopProvider } from '@/state/ShopContext'
 import type { ConflictZoneDetail, InventorySummary, Location } from '../../types/inventory'
@@ -12,6 +14,8 @@ import {
   getConflictZoneDetail,
 } from '../../api/inventoryApi'
 import { ThemeProvider } from '../../../theme/ThemeProvider'
+import { InventoryProvider, useInventory } from '../../contexts/InventoryContext'
+import type { ShopUser } from '@/types/user'
 
 const navigateMock = vi.fn()
 const testShop = { id: 'shop-1', name: 'Boutique de test' }
@@ -43,6 +47,42 @@ const {
   getConflictZoneDetail,
 })
 
+const defaultUser: ShopUser = {
+  id: 'user-alice',
+  shopId: testShop.id,
+  login: 'alice',
+  displayName: 'Alice',
+  isAdmin: false,
+  disabled: false,
+}
+
+const InventoryUserInitializer = ({ user }: { user: ShopUser | null }) => {
+  const { setSelectedUser } = useInventory()
+  useEffect(() => {
+    if (user) {
+      setSelectedUser(user)
+    }
+  }, [setSelectedUser, user])
+  return null
+}
+
+const withProviders = (ui: ReactNode, user: ShopUser | null = defaultUser) => (
+  <ThemeProvider>
+    <ShopProvider>
+      <InventoryProvider>
+        <InventoryUserInitializer user={user} />
+        <MemoryRouter>{ui}</MemoryRouter>
+      </InventoryProvider>
+    </ShopProvider>
+  </ThemeProvider>
+)
+
+const renderHomePage = (options?: { user?: ShopUser | null }) => {
+  const providedUser = options && 'user' in options ? options.user : undefined
+  const resolvedUser = providedUser === undefined ? defaultUser : providedUser
+  return render(withProviders(<HomePage />, resolvedUser))
+}
+
 describe('HomePage', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -60,15 +100,7 @@ describe('HomePage', () => {
 
   it('redirige vers la sélection de boutique si aucune boutique n’est mémorisée', async () => {
     localStorage.removeItem('cb.shop')
-    render(
-      <ThemeProvider>
-        <ShopProvider>
-          <MemoryRouter>
-            <HomePage />
-          </MemoryRouter>
-        </ShopProvider>
-      </ThemeProvider>,
-    )
+    renderHomePage({ user: null })
 
     await waitFor(() => {
       expect(navigateMock).toHaveBeenCalledWith('/select-shop', { replace: true })
@@ -113,15 +145,7 @@ describe('HomePage', () => {
     mockedFetchLocations.mockResolvedValue(locations)
     mockedGetDetail.mockResolvedValue(detail)
 
-    render(
-      <ThemeProvider>
-        <ShopProvider>
-          <MemoryRouter>
-            <HomePage />
-          </MemoryRouter>
-        </ShopProvider>
-      </ThemeProvider>,
-    )
+    renderHomePage()
 
     await waitFor(() => {
       expect(mockedFetchSummary).toHaveBeenCalled()
@@ -184,15 +208,7 @@ describe('HomePage', () => {
     mockedFetchSummary.mockResolvedValue(summary)
     mockedFetchLocations.mockResolvedValue(locations)
 
-    render(
-      <ThemeProvider>
-        <ShopProvider>
-          <MemoryRouter>
-            <HomePage />
-          </MemoryRouter>
-        </ShopProvider>
-      </ThemeProvider>,
-    )
+    renderHomePage()
 
     await waitFor(() => {
       const buttons = screen.getAllByRole('button', { name: /Comptages en cours/i })
@@ -261,8 +277,167 @@ describe('HomePage', () => {
     await waitFor(() => {
       expect(mockedFetchSummary).toHaveBeenCalledTimes(1)
       expect(mockedFetchLocations).toHaveBeenCalledTimes(1)
+  })
+
+  it("permet de reprendre un comptage appartenant à l'utilisateur courant", async () => {
+    const startedAt = new Date('2024-01-01T10:00:00Z')
+    const summary: InventorySummary = {
+      activeSessions: 1,
+      openRuns: 1,
+      completedRuns: 0,
+      conflicts: 0,
+      lastActivityUtc: startedAt.toISOString(),
+      openRunDetails: [
+        {
+          runId: 'run-1',
+          locationId: 'loc-1',
+          locationCode: 'B1',
+          locationLabel: 'Zone B1',
+          countType: 1,
+          ownerDisplayName: 'Alice',
+          ownerUserId: defaultUser.id,
+          startedAtUtc: startedAt.toISOString(),
+        },
+      ],
+      completedRunDetails: [],
+      conflictZones: [],
+    }
+
+    const locations: Location[] = [
+      {
+        id: 'loc-1',
+        code: 'B1',
+        label: 'Zone B1',
+        isBusy: true,
+        busyBy: 'Alice',
+        activeRunId: 'run-1',
+        activeCountType: 1,
+        activeStartedAtUtc: startedAt,
+        countStatuses: [
+          {
+            countType: 1,
+            status: 'in_progress',
+            runId: 'run-1',
+            ownerDisplayName: 'Alice',
+            ownerUserId: defaultUser.id,
+            startedAtUtc: startedAt,
+            completedAtUtc: null,
+          },
+        ],
+      },
+    ]
+
+    mockedFetchSummary.mockResolvedValue(summary)
+    mockedFetchLocations.mockResolvedValue(locations)
+    mockedFetchLocationSummaries.mockResolvedValue([])
+
+    renderHomePage()
+
+    await waitFor(() => expect(mockedFetchSummary).toHaveBeenCalled())
+
+    expect(await screen.findByText(/Vous avez un comptage en cours/i)).toBeInTheDocument()
+
+    const openRunsCards = screen.getAllByRole('button', { name: /Comptages en cours/i })
+    const openRunsCard = openRunsCards.find((button) => !button.hasAttribute('disabled')) ?? openRunsCards[0]
+    fireEvent.click(openRunsCard)
+
+    const resumeButton = await screen.findByRole('button', { name: /Reprendre/i })
+    fireEvent.click(resumeButton)
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith('/inventory/session')
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /Comptages en cours/i })).not.toBeInTheDocument()
     })
   })
+
+  it('permet de lancer un nouveau comptage depuis un conflit', async () => {
+    const summary: InventorySummary = {
+      activeSessions: 0,
+      openRuns: 0,
+      completedRuns: 0,
+      conflicts: 1,
+      lastActivityUtc: null,
+      openRunDetails: [],
+      completedRunDetails: [],
+      conflictZones: [
+        {
+          locationId: 'loc-1',
+          locationCode: 'B1',
+          locationLabel: 'Zone B1',
+          conflictLines: 2,
+        },
+      ],
+    }
+
+    const locations: Location[] = [
+      {
+        id: 'loc-1',
+        code: 'B1',
+        label: 'Zone B1',
+        isBusy: false,
+        busyBy: null,
+        activeRunId: null,
+        activeCountType: null,
+        activeStartedAtUtc: null,
+        countStatuses: [
+          {
+            countType: 1,
+            status: 'completed',
+            runId: 'run-1',
+            ownerDisplayName: 'Alice',
+            ownerUserId: defaultUser.id,
+            startedAtUtc: new Date('2024-01-01T08:00:00Z'),
+            completedAtUtc: new Date('2024-01-01T08:30:00Z'),
+          },
+          {
+            countType: 2,
+            status: 'completed',
+            runId: 'run-2',
+            ownerDisplayName: 'Bob',
+            ownerUserId: 'user-bob',
+            startedAtUtc: new Date('2024-01-01T09:00:00Z'),
+            completedAtUtc: new Date('2024-01-01T09:30:00Z'),
+          },
+        ],
+      },
+    ]
+
+    const detail: ConflictZoneDetail = {
+      locationId: 'loc-1',
+      locationCode: 'B1',
+      locationLabel: 'Zone B1',
+      runs: [
+        { runId: 'run-1', countType: 1, completedAtUtc: '2024-01-01T08:30:00Z', ownerDisplayName: 'Alice' },
+        { runId: 'run-2', countType: 2, completedAtUtc: '2024-01-01T09:30:00Z', ownerDisplayName: 'Bob' },
+      ],
+      items: [],
+    }
+
+    mockedFetchSummary.mockResolvedValue(summary)
+    mockedFetchLocations.mockResolvedValue(locations)
+    mockedFetchLocationSummaries.mockResolvedValue([])
+    mockedGetDetail.mockResolvedValue(detail)
+
+    renderHomePage()
+
+    const conflictButton = await screen.findByRole('button', { name: /B1 · Zone B1/i })
+    fireEvent.click(conflictButton)
+
+    const launchButton = await screen.findByRole('button', { name: /Lancer le 3.? comptage/i })
+    fireEvent.click(launchButton)
+
+    await waitFor(() => {
+      expect(navigateMock).toHaveBeenCalledWith('/inventory/session')
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: /Zone B1/i })).not.toBeInTheDocument()
+    })
+  })
+})
 
   it("redirige vers l'assistant d'inventaire au clic sur le CTA principal", async () => {
     const summary: InventorySummary = {

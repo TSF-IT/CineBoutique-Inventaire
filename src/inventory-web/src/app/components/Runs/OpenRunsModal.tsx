@@ -1,11 +1,13 @@
 import type { MouseEvent } from 'react'
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { OpenRunSummary } from '../../types/inventory'
 
 interface OpenRunsModalProps {
   open: boolean
   openRuns: OpenRunSummary[]
   onClose: () => void
+  ownedRunIds?: string[]
+  onResumeRun?: (run: OpenRunSummary) => void
 }
 
 const focusableSelectors = [
@@ -49,8 +51,9 @@ const formatOwnerName = (name: string | null | undefined) => {
   return trimmed && trimmed.length > 0 ? trimmed : '—'
 }
 
-export const OpenRunsModal = ({ open, openRuns, onClose }: OpenRunsModalProps) => {
+export const OpenRunsModal = ({ open, openRuns, onClose, ownedRunIds, onResumeRun }: OpenRunsModalProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const ownedRunsSet = useMemo(() => new Set(ownedRunIds ?? []), [ownedRunIds])
 
   useEffect(() => {
     if (!open) {
@@ -180,12 +183,26 @@ export const OpenRunsModal = ({ open, openRuns, onClose }: OpenRunsModalProps) =
               <ul className="divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white/80 dark:divide-slate-800 dark:border-slate-700 dark:bg-slate-900/40">
                 {openRuns.map((run) => (
                   <li key={run.runId} className="px-4 py-3">
-                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                      {run.locationCode} · {run.locationLabel}
-                    </p>
-                    <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                      {describeCountType(run.countType)} • Opérateur : {formatOwnerName(run.ownerDisplayName)} • Démarré le {formatDateTime(run.startedAtUtc)}
-                    </p>
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                          {run.locationCode} · {run.locationLabel}
+                        </p>
+                        <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                          {describeCountType(run.countType)} • Opérateur : {formatOwnerName(run.ownerDisplayName)} • Démarré le {formatDateTime(run.startedAtUtc)}
+                        </p>
+                      </div>
+                      {ownedRunsSet.has(run.runId) && typeof onResumeRun === 'function' && (
+                        <button
+                          type="button"
+                          onClick={() => onResumeRun(run)}
+                          className="inline-flex shrink-0 items-center gap-2 rounded-full border border-brand-300 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-brand-700 transition hover:bg-brand-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:border-brand-400/60 dark:text-brand-100 dark:hover:bg-brand-500/20"
+                        >
+                          <span aria-hidden="true">⏯</span>
+                          <span>Reprendre</span>
+                        </button>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>
