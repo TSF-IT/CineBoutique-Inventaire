@@ -16,18 +16,22 @@ export const PageShell = ({
   mainClassName,
   style,
   ...rest
-}: PageShellProps) => (
-  <div
-    className={clsx('page-shell safe-pads', nav && 'page-shell--with-nav', className)}
-    style={style}
-    {...rest}
-  >
-    <header className="page-shell__header">{header}</header>
-    <main className={clsx('layout-main container', mainClassName)}>{children}</main>
-    {nav ? (
-      <nav className="mobile-bottom-bar" aria-label="Actions principales">
-        {nav}
-      </nav>
-    ) : null}
-  </div>
-)
+}: PageShellProps) => {
+  return (
+    <div
+      className={clsx('page-shell safe-pads', nav && 'page-shell--with-nav', className)}
+      style={style}
+      {...rest}
+    >
+      <main className={clsx('layout-main container', mainClassName)}>
+        {header ?? null}
+        {children}
+      </main>
+      {nav ? (
+        <nav className="mobile-bottom-bar" aria-label="Actions principales">
+          {nav}
+        </nav>
+      ) : null}
+    </div>
+  )
+}

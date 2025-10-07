@@ -7,7 +7,7 @@ export const AdminLayout = () => {
   const shopDisplayName = shop?.name?.trim()
 
   return (
-    <Page className="gap-6">
+    <Page className="gap-6" showHomeLink>
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-sm uppercase tracking-[0.3em] text-brand-500 dark:text-brand-200">

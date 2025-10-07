@@ -1,7 +1,7 @@
 // Modifications : forcer l'inclusion de runId=null lors de la complétion sans run existant.
 import type { KeyboardEvent, ChangeEvent, FocusEvent, PointerEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useOutletContext } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import { BarcodeFormat, DecodeHintType } from '@zxing/library'
 import {
@@ -17,13 +17,11 @@ import { Input } from '../../components/ui/Input'
 import { Card } from '../../components/Card'
 import { EmptyState } from '../../components/EmptyState'
 import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
-import { MobileActionBar } from '../../components/MobileActionBar'
 import { useInventory } from '../../contexts/InventoryContext'
 import type { HttpError } from '@/lib/api/http'
 import type { ConflictZoneSummary, Product } from '../../types/inventory'
 import { CountType } from '../../types/inventory'
 import { useShop } from '@/state/ShopContext'
-import type { InventoryLayoutOutletContext } from './InventoryLayout'
 
 const DEV_API_UNREACHABLE_HINT =
   "Impossible de joindre l’API : vérifie que le backend tourne (curl http://localhost:8080/healthz) ou que le proxy Vite est actif."
@@ -132,8 +130,6 @@ export const InventorySessionPage = () => {
     logEvent,
   } = useInventory()
   const { shop } = useShop()
-  const outletContext = useOutletContext<InventoryLayoutOutletContext | null | undefined>()
-  const setMobileNav = outletContext?.setMobileNav
   const [useCamera, setUseCamera] = useState(false)
   const [status, setStatusState] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -147,12 +143,41 @@ export const InventorySessionPage = () => {
   const completionConfirmButtonRef = useRef<HTMLButtonElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const logsDialogRef = useRef<HTMLDialogElement | null>(null)
+  const skipManualLookupRef = useRef(false)
   const [recentScans, setRecentScans] = useState<string[]>([])
   const manualLookupIdRef = useRef(0)
   const lastSearchedInputRef = useRef<string | null>(null)
   const previousItemCountRef = useRef(items.length)
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
+
+  const scrollScanInputIntoView = useCallback(() => {
+    const input = inputRef.current
+    if (!input) {
+      return
+    }
+
+    const hasDom = typeof window !== 'undefined' && typeof document !== 'undefined'
+
+    if (!hasDom) {
+      input.focus()
+      input.select()
+      return
+    }
+
+    const rect = input.getBoundingClientRect()
+    const viewportHeight = window.innerHeight || document.documentElement?.clientHeight || 0
+    const isFullyVisible = rect.top >= 0 && rect.bottom <= viewportHeight
+
+    if (!isFullyVisible) {
+      input.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+
+    requestAnimationFrame(() => {
+      input.focus({ preventScroll: true })
+      input.select()
+    })
+  }, [])
 
   const updateStatus = useCallback(
     (message: string | null) => {
@@ -454,6 +479,11 @@ export const InventorySessionPage = () => {
       return
     }
 
+    if (skipManualLookupRef.current) {
+      skipManualLookupRef.current = false
+      return
+    }
+
     if (lastSearchedInputRef.current === trimmedScanValue) {
       return
     }
@@ -566,6 +596,24 @@ export const InventorySessionPage = () => {
       }
     },
     [handleDetected, updateStatus],
+  )
+
+  const handleCameraDetected = useCallback(
+    async (rawValue: string) => {
+      const sanitized = sanitizeEan(rawValue.trim())
+      if (!sanitized) {
+        return
+      }
+
+      skipManualLookupRef.current = true
+      setScanValue((previous) => (previous === sanitized ? previous : sanitized))
+      setManualEan('')
+      setErrorMessage(null)
+      scrollScanInputIntoView()
+
+      await handleDetected(sanitized)
+    },
+    [handleDetected, scrollScanInputIntoView],
   )
 
   const handleInputKeyDown = useCallback(
@@ -793,43 +841,6 @@ export const InventorySessionPage = () => {
     completionConfirmationDialogRef.current?.close()
     void handleCompleteRun()
   }, [handleCompleteRun])
-
-  const mobileActions = useMemo(
-    () => (
-      <MobileActionBar
-        scan={{
-          label: useCamera ? 'Caméra activée' : 'Scanner',
-          onClick: toggleCamera,
-        }}
-        restart={{
-          onClick: handleRestartSession,
-          disabled: completionLoading,
-        }}
-        complete={{
-          onClick: handleOpenCompletionConfirmation,
-          disabled: !canCompleteRun,
-          busy: completionLoading,
-          label: completionLoading ? 'Enregistrement…' : 'Terminer',
-        }}
-      />
-    ),
-    [
-      canCompleteRun,
-      completionLoading,
-      handleOpenCompletionConfirmation,
-      handleRestartSession,
-      toggleCamera,
-      useCamera,
-    ],
-  )
-
-  useEffect(() => {
-    if (!setMobileNav) {
-      return undefined
-    }
-    setMobileNav(mobileActions)
-    return () => setMobileNav(null)
-  }, [mobileActions, setMobileNav])
 
   useEffect(() => {
     const previousCount = previousItemCountRef.current
@@ -1268,7 +1279,7 @@ export const InventorySessionPage = () => {
         </Button>
         <BarcodeScanner
           active={useCamera}
-          onDetected={handleDetected}
+          onDetected={handleCameraDetected}
           onError={(message) => {
             updateStatus(null)
             setErrorMessage(message)
