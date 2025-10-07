@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import http from '@/lib/api/http'
 import { API_BASE } from '@/lib/api/config'
@@ -53,6 +53,10 @@ export default function SelectUserPage() {
     const normalized = target.trim()
     return normalized.length > 0 ? normalized : null
   }, [redirectState])
+
+  const goToShopSelection = useCallback(() => {
+    navigate('/select-shop', redirectTo ? { state: { redirectTo } } : undefined)
+  }, [navigate, redirectTo])
 
   // Empêche de traiter la réponse d’un fetch annulé/obsolète (StrictMode double-run)
   const requestIdRef = useRef(0)
@@ -161,7 +165,18 @@ export default function SelectUserPage() {
   const hasUsers = users.length > 0
 
   return (
-    <Page className="px-4 py-6 sm:px-6" showHomeLink>
+    <Page
+      className="px-4 py-6 sm:px-6"
+      headerAction={
+        <button
+          type="button"
+          onClick={goToShopSelection}
+          className="inline-flex items-center gap-2 rounded-2xl border border-transparent bg-white px-3 py-2 text-sm font-semibold text-brand-600 shadow-sm transition hover:bg-brand-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:bg-slate-900/60 dark:text-brand-200 dark:hover:bg-slate-800"
+        >
+          Changer de boutique
+        </button>
+      }
+    >
       <main className="flex flex-1 flex-col justify-center gap-8">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
@@ -181,9 +196,7 @@ export default function SelectUserPage() {
             <Button
               className="mt-4"
               variant="secondary"
-              onClick={() =>
-                navigate('/select-shop', redirectTo ? { state: { redirectTo } } : undefined)
-              }
+              onClick={goToShopSelection}
             >
               Changer de boutique
             </Button>
@@ -220,9 +233,7 @@ export default function SelectUserPage() {
             <div>
               <Button
                 variant="secondary"
-                onClick={() =>
-                  navigate('/select-shop', redirectTo ? { state: { redirectTo } } : undefined)
-                }
+                onClick={goToShopSelection}
               >
                 Changer de boutique
               </Button>
