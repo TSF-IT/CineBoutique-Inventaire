@@ -1044,14 +1044,14 @@ export const InventorySessionPage = () => {
             <span className="text-sm text-slate-600 dark:text-slate-400">{items.length} références</span>
           </div>
           {conflictZoneSummary && (
-            <div className="flex flex-col items-start gap-2 sm:items-end">
+            <div className="flex flex-wrap items-center gap-3 sm:justify-end">
               <span className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-500/50 dark:bg-rose-500/10 dark:text-rose-200">
                 <span aria-hidden>⚠️</span>
                 Zone en conflit
               </span>
               <Button
                 variant="ghost"
-                className="inline-flex items-center gap-2 self-start rounded-2xl border border-rose-200/80 bg-white/70 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/20"
+                className="inline-flex items-center gap-2 rounded-2xl border border-rose-200/80 bg-white/70 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/20"
                 onClick={() => setConflictModalOpen(true)}
                 data-testid="btn-view-conflicts"
               >
