@@ -369,87 +369,138 @@ ORDER BY COALESCE(p.""Ean"", p.""Sku""), p.""Name"";";
                 return Results.NotFound();
             }
 
-            const string lastRunsSql = @"SELECT DISTINCT ON (cr.""CountType"")
-    cr.""CountType"" AS ""CountType"",
-    cr.""Id""        AS ""RunId""
-FROM ""CountingRun"" cr
-WHERE cr.""LocationId"" = @LocationId
+            const string runsSql = @"SELECT DISTINCT
+    cr.""Id""           AS ""RunId"",
+    cr.""CountType""    AS ""CountType"",
+    cr.""CompletedAtUtc"" AS ""CompletedAtUtc"",
+    COALESCE(su.""DisplayName"", cr.""OperatorDisplayName"") AS ""OwnerDisplayName""
+FROM ""Conflict"" c
+JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
+JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
+LEFT JOIN ""ShopUser"" su ON su.""Id"" = cr.""OwnerUserId""
+WHERE c.""ResolvedAtUtc"" IS NULL
+  AND cr.""LocationId"" = @LocationId
   AND cr.""CompletedAtUtc"" IS NOT NULL
-  AND cr.""CountType"" IN (1, 2)
-ORDER BY cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
+ORDER BY cr.""CompletedAtUtc"" ASC, cr.""CountType"" ASC;";
 
-            var runLookup = (await connection.QueryAsync<LastRunLookupRow>(
-                    new CommandDefinition(lastRunsSql, new { LocationId = locationId }, cancellationToken: cancellationToken))
+            var runRows = (await connection.QueryAsync<ConflictRunHeaderRow>(
+                    new CommandDefinition(runsSql, new { LocationId = locationId }, cancellationToken: cancellationToken))
                 .ConfigureAwait(false)).ToList();
 
-            var run1Id = runLookup.FirstOrDefault(row => row.CountType == 1)?.RunId;
-            var run2Id = runLookup.FirstOrDefault(row => row.CountType == 2)?.RunId;
-
-            if (run1Id is null || run2Id is null)
+            if (runRows.Count == 0)
             {
-                logger.LogDebug(
-                    "ConflictsZoneDetail location={LocationId} missing runs count1={HasRun1} count2={HasRun2}",
-                    locationId,
-                    run1Id is not null,
-                    run2Id is not null);
-
                 var emptyPayload = new ConflictZoneDetailDto
                 {
                     LocationId = location.Id,
                     LocationCode = location.Code,
                     LocationLabel = location.Label,
+                    Runs = Array.Empty<ConflictRunHeaderDto>(),
                     Items = Array.Empty<ConflictZoneItemDto>()
                 };
 
+                logger.LogDebug("ConflictsZoneDetail location={LocationId} has no active conflicts", locationId);
                 return Results.Ok(emptyPayload);
             }
 
-            const string detailSql = @"WITH conflict_products AS (
-    SELECT DISTINCT cl.""ProductId""
+            const string detailSql = @"WITH conflict_runs AS (
+    SELECT DISTINCT cr.""Id"" AS ""RunId""
     FROM ""Conflict"" c
     JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
     JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
     WHERE c.""ResolvedAtUtc"" IS NULL
       AND cr.""LocationId"" = @LocationId
+),
+conflict_products AS (
+    SELECT DISTINCT cl.""ProductId"" AS ""ProductId""
+    FROM ""Conflict"" c
+    JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
+    JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
+    WHERE c.""ResolvedAtUtc"" IS NULL
+      AND cr.""LocationId"" = @LocationId
+),
+product_runs AS (
+    SELECT
+        cp.""ProductId"",
+        cr.""RunId""
+    FROM conflict_products cp
+    CROSS JOIN conflict_runs cr
 )
 SELECT
-    p.""Id""  AS ""ProductId"",
-    p.""Ean"" AS ""Ean"",
-    COALESCE(SUM(CASE WHEN cl.""CountingRunId"" = @Run1 THEN cl.""Quantity"" END), 0)::int AS ""QtyC1"",
-    COALESCE(SUM(CASE WHEN cl.""CountingRunId"" = @Run2 THEN cl.""Quantity"" END), 0)::int AS ""QtyC2""
-FROM conflict_products cp
-JOIN ""Product"" p ON p.""Id"" = cp.""ProductId""
-LEFT JOIN ""CountLine"" cl ON cl.""ProductId"" = cp.""ProductId""
-    AND cl.""CountingRunId"" IN (@Run1, @Run2)
-GROUP BY p.""Id"", p.""Ean""
-HAVING COALESCE(SUM(CASE WHEN cl.""CountingRunId"" = @Run1 THEN cl.""Quantity"" END), 0)
-    <> COALESCE(SUM(CASE WHEN cl.""CountingRunId"" = @Run2 THEN cl.""Quantity"" END), 0)
-ORDER BY p.""Ean"";";
+    pr.""ProductId"" AS ""ProductId"",
+    p.""Ean""        AS ""Ean"",
+    pr.""RunId""     AS ""RunId"",
+    COALESCE(SUM(cl.""Quantity""), 0)::int AS ""Quantity""
+FROM product_runs pr
+JOIN ""Product"" p ON p.""Id"" = pr.""ProductId""
+LEFT JOIN ""CountLine"" cl ON cl.""ProductId"" = pr.""ProductId"" AND cl.""CountingRunId"" = pr.""RunId""
+GROUP BY pr.""ProductId"", p.""Ean"", pr.""RunId""
+ORDER BY p.""Ean"", pr.""RunId"";";
 
-            var items = (await connection.QueryAsync<ConflictZoneItemRow>(
-                    new CommandDefinition(
-                        detailSql,
-                        new { LocationId = locationId, Run1 = run1Id, Run2 = run2Id },
-                        cancellationToken: cancellationToken))
+            var quantityRows = (await connection.QueryAsync<ConflictRunQuantityRow>(
+                    new CommandDefinition(detailSql, new { LocationId = locationId }, cancellationToken: cancellationToken))
                 .ConfigureAwait(false)).ToList();
+
+            var runs = runRows
+                .Select(row => new ConflictRunHeaderDto
+                {
+                    RunId = row.RunId,
+                    CountType = row.CountType,
+                    CompletedAtUtc = DateTime.SpecifyKind(row.CompletedAtUtc, DateTimeKind.Utc),
+                    OwnerDisplayName = row.OwnerDisplayName
+                })
+                .ToList();
+
+            var quantityLookup = quantityRows
+                .GroupBy(row => row.ProductId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.ToDictionary(r => r.RunId, r => r.Quantity),
+                    EqualityComparer<Guid>.Default);
+
+            var items = quantityLookup
+                .Select(pair =>
+                {
+                    var productId = pair.Key;
+                    var runQuantities = pair.Value;
+                    var sampleRow = quantityRows.First(row => row.ProductId == productId);
+                    var counts = runs
+                        .Select(run => new ConflictRunQtyDto
+                        {
+                            RunId = run.RunId,
+                            CountType = run.CountType,
+                            Quantity = runQuantities.TryGetValue(run.RunId, out var quantity) ? quantity : 0
+                        })
+                        .ToList();
+
+                    var qtyC1 = counts.FirstOrDefault(count => count.CountType == 1)?.Quantity ?? 0;
+                    var qtyC2 = counts.FirstOrDefault(count => count.CountType == 2)?.Quantity ?? 0;
+
+                    return new ConflictZoneItemDto
+                    {
+                        ProductId = productId,
+                        Ean = sampleRow.Ean ?? string.Empty,
+                        QtyC1 = qtyC1,
+                        QtyC2 = qtyC2,
+                        AllCounts = counts
+                    };
+                })
+                .OrderBy(item => item.Ean, StringComparer.Ordinal)
+                .ToList();
 
             var payload = new ConflictZoneDetailDto
             {
                 LocationId = location.Id,
                 LocationCode = location.Code,
                 LocationLabel = location.Label,
+                Runs = runs,
                 Items = items
-                    .Select(row => new ConflictZoneItemDto
-                    {
-                        ProductId = row.ProductId,
-                        Ean = row.Ean,
-                        QtyC1 = row.QtyC1,
-                        QtyC2 = row.QtyC2
-                    })
-                    .ToList()
             };
 
-            logger.LogDebug("ConflictsZoneDetail location={LocationId} items={ItemCount}", locationId, payload.Items.Count);
+            logger.LogDebug(
+                "ConflictsZoneDetail location={LocationId} runs={RunCount} items={ItemCount}",
+                locationId,
+                payload.Runs.Count,
+                payload.Items.Count);
 
             return Results.Ok(payload);
         })
@@ -460,7 +511,7 @@ ORDER BY p.""Ean"";";
         .WithOpenApi(op =>
         {
             op.Summary = "Récupère le détail des divergences pour une zone.";
-            op.Description = "Liste les références en conflit entre les deux derniers passages de comptage.";
+            op.Description = "Comparatif de tous les comptages en conflit pour la zone.";
             return op;
         });
     }
