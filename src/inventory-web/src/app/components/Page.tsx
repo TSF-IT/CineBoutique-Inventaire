@@ -30,7 +30,7 @@ export const Page = ({
     header={
       <div
         className={clsx(
-          'page-header flex items-center',
+          'page-header flex w-full items-center',
           showHomeLink || headerAction ? 'justify-between gap-3' : 'justify-end',
         )}
       >

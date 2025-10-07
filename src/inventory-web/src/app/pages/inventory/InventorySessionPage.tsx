@@ -19,6 +19,7 @@ import { EmptyState } from '../../components/EmptyState'
 import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
 import { MobileActionBar } from '../../components/MobileActionBar'
 import { useInventory } from '../../contexts/InventoryContext'
+import { useScanFeedback } from '../../hooks/useScanFeedback'
 import type { HttpError } from '@/lib/api/http'
 import type { ConflictZoneSummary, Product } from '../../types/inventory'
 import { CountType } from '../../types/inventory'
@@ -132,6 +133,7 @@ export const InventorySessionPage = () => {
     logEvent,
   } = useInventory()
   const { shop } = useShop()
+  const { playSuccess, playError } = useScanFeedback()
   const outletContext = useOutletContext<InventoryLayoutOutletContext | null | undefined>()
   const setMobileNav = outletContext?.setMobileNav
   const [useCamera, setUseCamera] = useState(false)
@@ -376,6 +378,7 @@ export const InventorySessionPage = () => {
         )
         setManualEan('')
         setInputLookupStatus('idle')
+        playError()
         return
       }
 
@@ -397,6 +400,7 @@ export const InventorySessionPage = () => {
         if (added) {
           updateStatus(`${product.name} ajouté`)
         }
+        playSuccess()
         return
       }
 
@@ -404,6 +408,7 @@ export const InventorySessionPage = () => {
         updateStatus(null)
         setManualEan(value)
         setInputLookupStatus('not-found')
+        playError()
         return
       }
 
@@ -416,8 +421,9 @@ export const InventorySessionPage = () => {
         ),
       )
       setInputLookupStatus('error')
+      playError()
     },
-    [addProductToSession, searchProductByEan, updateStatus],
+    [addProductToSession, playError, playSuccess, searchProductByEan, updateStatus],
   )
 
   const trimmedScanValue = sanitizeEan(scanValue.trim())
