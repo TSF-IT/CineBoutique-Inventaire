@@ -25,15 +25,18 @@
 }
 
 .page-shell__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-2);
-  padding: var(--spacing-3);
+  padding: var(--spacing-3) 0;
   border-radius: var(--radius);
   box-shadow: var(--shadow-1);
   background: rgba(248, 250, 252, 0.92);
   backdrop-filter: blur(14px);
+}
+
+.page-shell__header-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-2);
 }
 
 :root.dark .page-shell__header {

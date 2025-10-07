@@ -31,7 +31,7 @@ describe('AdminLayout', () => {
       </ThemeProvider>
     )
 
-    const homeLink = screen.getByRole('link', { name: /retour à l'accueil/i })
+    const homeLink = screen.getByTestId('btn-go-home')
     expect(homeLink).toBeInTheDocument()
     expect(homeLink).toHaveAttribute('href', '/')
   })
