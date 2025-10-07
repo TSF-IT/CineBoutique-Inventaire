@@ -57,15 +57,6 @@ describe('SelectShopPage (routing)', () => {
     useInventoryMock.mockReturnValue({ reset: resetInventoryFn })
   })
 
-  const renderPage = (entry: string | { pathname: string; state?: unknown } = '/select-shop') =>
-    render(
-      <ThemeProvider>
-        <MemoryRouter initialEntries={[entry]}>
-          <SelectShopPage />
-        </MemoryRouter>
-      </ThemeProvider>,
-    )
-
   it('redirige vers la page de sélection utilisateur après avoir choisi une boutique', async () => {
     const locations: Location[] = []
     const LocationObserver = () => {

@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
-import { useEffect, useLayoutEffect } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { InventoryProvider, useInventory } from '../../../contexts/InventoryContext'
@@ -96,13 +96,15 @@ const renderScanCameraPage = (options?: {
   countType?: CountType
   onItemsChange?: (items: InventoryItem[]) => void
 }) => {
-  const observer = options?.onItemsChange ?? (() => {})
-
+  const onItemsChange = options?.onItemsChange
   const ItemsObserver = () => {
     const { items } = useInventory()
+    const handlerRef = useRef(onItemsChange)
+    handlerRef.current = onItemsChange
+
     useEffect(() => {
-      observer(items)
-    }, [items, observer])
+      handlerRef.current?.(items)
+    }, [items])
     return null
   }
 
