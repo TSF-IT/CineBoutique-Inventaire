@@ -215,7 +215,7 @@ export const InventorySessionPage = () => {
   const locationId = location?.id?.trim() ?? ''
   const shopId = shop?.id?.trim() ?? ''
   const conflictZoneSummary = useMemo<ConflictZoneSummary | null>(() => {
-    if (countType !== CountType.Count3 || !location) {
+    if (typeof countType !== 'number' || countType < CountType.Count3 || !location) {
       return null
     }
 
@@ -228,7 +228,7 @@ export const InventorySessionPage = () => {
   }, [countType, location])
 
   useEffect(() => {
-    if (countType !== CountType.Count3 || !location) {
+    if (typeof countType !== 'number' || countType < CountType.Count3 || !location) {
       setConflictModalOpen(false)
     }
   }, [countType, location])
@@ -245,8 +245,7 @@ export const InventorySessionPage = () => {
 
   const displayedItems = items
 
-  const isValidCountType =
-    countType === CountType.Count1 || countType === CountType.Count2 || countType === CountType.Count3
+  const isValidCountType = typeof countType === 'number' && countType >= 1
 
   const ensureScanPrerequisites = useCallback(() => {
     if (!shopId) {
@@ -318,7 +317,7 @@ export const InventorySessionPage = () => {
     const response = await startInventoryRun(locationId, {
       shopId,
       ownerUserId,
-      countType: countType as 1 | 2 | 3,
+      countType: countType as number,
     })
 
     const sanitizedRunId = typeof response.runId === 'string' ? response.runId.trim() : ''
@@ -681,7 +680,7 @@ export const InventorySessionPage = () => {
       const payload: CompleteInventoryRunPayload = {
         runId: existingRunId || null,
         ownerUserId,
-        countType: countType as 1 | 2 | 3,
+        countType: countType as number,
         items: payloadItems,
       }
 

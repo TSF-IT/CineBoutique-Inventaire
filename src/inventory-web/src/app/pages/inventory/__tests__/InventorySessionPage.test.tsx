@@ -15,7 +15,7 @@ const { shopMock } = vi.hoisted(() => ({
   shopMock: { id: 'shop-test', name: 'Boutique test' } as Shop,
 }))
 
-const inventoryControls: { setCountType?: (type: CountType | null) => void } = {}
+const inventoryControls: { setCountType?: (type: number | null) => void } = {}
 
 vi.mock('../../../api/inventoryApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../api/inventoryApi')>()

@@ -98,7 +98,7 @@ export interface ConflictZoneDetail {
   items: ConflictZoneItem[]
 }
 
-const CountTypeSchema = z.number().int().min(1).max(3)
+const CountTypeSchema = z.number().int().min(1)
 
 const zDateOrNull = z
   .preprocess((value) => {
@@ -194,7 +194,7 @@ export interface InventoryCountSubmissionItem {
 
 export interface CompleteInventoryRunPayload {
   runId?: string | null
-  countType: CountType
+  countType: number
   ownerUserId: string
   items: InventoryCountSubmissionItem[]
 }
@@ -203,7 +203,7 @@ export interface CompleteInventoryRunResult {
   runId: string
   inventorySessionId: string
   locationId: string
-  countType: CountType
+  countType: number
   completedAtUtc: string
   itemsCount: number
   totalQuantity: number
