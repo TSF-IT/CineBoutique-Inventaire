@@ -234,7 +234,7 @@ export const SelectShopPage = () => {
   const shouldShowShopForm = status === 'idle' && !isRedirecting
 
   return (
-    <Page className="px-4 py-6 sm:px-6" showHomeLink>
+    <Page className="px-4 py-6 sm:px-6">
       <main className="flex flex-1 flex-col gap-8">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Choisir une boutique</h1>
