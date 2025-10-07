@@ -128,19 +128,25 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
         isManual: Boolean(options?.isManual),
         addedAt: Date.now(),
       }
+
+      const shouldLogAddition = !options?.isManual
+      const nextLogs = shouldLogAddition
+        ? prependLogEntry(prev.logs, {
+            type: 'item-added',
+            message: `${product.name} ajouté à la session (EAN ${product.ean})`,
+            context: {
+              ean: product.ean,
+              productName: product.name,
+              quantity: nextItem.quantity,
+              isManual: nextItem.isManual,
+            },
+          })
+        : prev.logs
+
       return {
         ...prev,
         items: [nextItem, ...prev.items],
-        logs: prependLogEntry(prev.logs, {
-          type: 'item-added',
-          message: `${product.name} ${options?.isManual ? 'ajouté manuellement' : 'ajouté à la session'} (EAN ${product.ean})`,
-          context: {
-            ean: product.ean,
-            productName: product.name,
-            quantity: nextItem.quantity,
-            isManual: nextItem.isManual,
-          },
-        }),
+        logs: nextLogs,
       }
     })
   }, [])

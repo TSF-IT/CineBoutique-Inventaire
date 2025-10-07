@@ -157,6 +157,8 @@ public sealed class ConflictZoneDetailEndpointTests : IAsyncLifetime
 
         await connection.ExecuteAsync(insertConflict, new { Id = Guid.NewGuid(), CountLineId = run2Line1, CreatedAt = completedAtRun2 });
         await connection.ExecuteAsync(insertConflict, new { Id = Guid.NewGuid(), CountLineId = run2Line2, CreatedAt = completedAtRun2 });
+        await connection.ExecuteAsync(insertConflict, new { Id = Guid.NewGuid(), CountLineId = run1Line1, CreatedAt = completedAtRun1 });
+        await connection.ExecuteAsync(insertConflict, new { Id = Guid.NewGuid(), CountLineId = run1Line2, CreatedAt = completedAtRun1 });
 
         var response = await _client.GetAsync($"/api/conflicts/{locationId}");
         response.EnsureSuccessStatusCode();
@@ -170,14 +172,16 @@ public sealed class ConflictZoneDetailEndpointTests : IAsyncLifetime
 
         var firstItem = Assert.Single(payload.Items, item => item.ProductId == product1Id);
         Assert.Equal("111", firstItem.Ean);
-        Assert.Equal(5, firstItem.QtyC1);
-        Assert.Equal(8, firstItem.QtyC2);
-        Assert.Equal(-3, firstItem.Delta);
+        Assert.Equal(2, firstItem.Quantities.Count);
+        Assert.Contains(firstItem.Quantities, run => run.CountType == 1 && run.Quantity == 5);
+        Assert.Contains(firstItem.Quantities, run => run.CountType == 2 && run.Quantity == 8);
+        Assert.Equal(3, firstItem.Delta);
 
         var secondItem = Assert.Single(payload.Items, item => item.ProductId == product2Id);
         Assert.Equal("222", secondItem.Ean);
-        Assert.Equal(3, secondItem.QtyC1);
-        Assert.Equal(1, secondItem.QtyC2);
+        Assert.Equal(2, secondItem.Quantities.Count);
+        Assert.Contains(secondItem.Quantities, run => run.CountType == 1 && run.Quantity == 3);
+        Assert.Contains(secondItem.Quantities, run => run.CountType == 2 && run.Quantity == 1);
         Assert.Equal(2, secondItem.Delta);
     }
 

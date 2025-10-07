@@ -281,18 +281,19 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
                 "JOIN \"CountingRun\" cr ON cr.\"Id\" = cl.\"CountingRunId\";"))
             .ToList();
 
-        Assert.Single(conflicts);
-        var conflict = conflicts[0];
-        Assert.Equal(locationId, conflict.LocationId);
-        Assert.True(conflict.CountType is 1 or 2, "Le conflit doit provenir d'un des deux premiers comptages.");
+        Assert.Equal(2, conflicts.Count);
+        Assert.All(conflicts, entry => Assert.Equal(locationId, entry.LocationId));
+        Assert.Contains(conflicts, entry => entry.CountType == 1);
+        Assert.Contains(conflicts, entry => entry.CountType == 2);
 
         var summaryResponse = await _client.GetAsync($"/api/inventories/summary?shopId={shopId:D}");
         summaryResponse.EnsureSuccessStatusCode();
         var summary = await summaryResponse.Content.ReadFromJsonAsync<InventorySummaryDto>();
         Assert.NotNull(summary);
-        Assert.Equal(1, summary!.Conflicts);
+        Assert.Equal(2, summary!.Conflicts);
         Assert.Single(summary.ConflictZones);
         Assert.Equal(locationId, summary.ConflictZones[0].LocationId);
+        Assert.Equal(2, summary.ConflictZones[0].ConflictingRuns);
     }
 
     [Fact]
@@ -478,13 +479,13 @@ public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
             unresolvedSql,
             new { LocationId = locationId });
 
-        Assert.Equal(1, unresolvedAfterThird);
+        Assert.Equal(3, unresolvedAfterThird);
 
         var summaryAfterThird = await _client.GetAsync($"/api/inventories/summary?shopId={shopId:D}");
         summaryAfterThird.EnsureSuccessStatusCode();
         var thirdSummary = await summaryAfterThird.Content.ReadFromJsonAsync<InventorySummaryDto>();
         Assert.NotNull(thirdSummary);
-        Assert.Equal(1, thirdSummary!.Conflicts);
+        Assert.Equal(3, thirdSummary!.Conflicts);
 
         var fourthPayload = new CompleteRunRequest(
             null,

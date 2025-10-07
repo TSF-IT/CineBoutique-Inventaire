@@ -179,7 +179,7 @@ export const ConflictZoneModal = ({ open, zone, onClose }: ConflictZoneModalProp
               {headerTitle}
             </h2>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              Comparatif des quantités Comptage 1 et Comptage 2.
+              Comparatif des quantités par comptage.
             </p>
           </div>
           <button
@@ -215,18 +215,18 @@ export const ConflictZoneModal = ({ open, zone, onClose }: ConflictZoneModalProp
                   className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
                 >
                   <p className="text-sm font-semibold text-slate-900 dark:text-white">EAN {item.ean}</p>
-                  <dl className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                    <div>
-                      <dt className="text-xs uppercase text-slate-500 dark:text-slate-400">Comptage 1</dt>
-                      <dd className="mt-1 font-semibold text-slate-900 dark:text-white">{item.qtyC1}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-xs uppercase text-slate-500 dark:text-slate-400">Comptage 2</dt>
-                      <dd className="mt-1 font-semibold text-slate-900 dark:text-white">{item.qtyC2}</dd>
-                    </div>
-                    <div className="col-span-2 sm:col-span-1">
-                      <dt className="text-xs uppercase text-slate-500 dark:text-slate-400">Écart</dt>
-                      <dd
+                  <div className="mt-3 flex flex-wrap gap-3 text-sm">
+                    {item.runs.map((run) => (
+                      <div key={run.runId} className="min-w-[120px]">
+                        <p className="text-xs uppercase text-slate-500 dark:text-slate-400">
+                          Comptage {run.countType}
+                        </p>
+                        <p className="mt-1 font-semibold text-slate-900 dark:text-white">{run.quantity}</p>
+                      </div>
+                    ))}
+                    <div className="min-w-[120px]">
+                      <p className="text-xs uppercase text-slate-500 dark:text-slate-400">Écart</p>
+                      <p
                         className={`mt-1 font-semibold ${
                           item.delta === 0
                             ? 'text-slate-600 dark:text-slate-300'
@@ -236,9 +236,9 @@ export const ConflictZoneModal = ({ open, zone, onClose }: ConflictZoneModalProp
                         }`}
                       >
                         {item.delta > 0 ? `+${item.delta}` : item.delta}
-                      </dd>
+                      </p>
                     </div>
-                  </dl>
+                  </div>
                 </div>
               ))}
             </div>

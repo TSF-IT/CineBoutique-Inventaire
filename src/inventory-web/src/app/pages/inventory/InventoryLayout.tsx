@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Stepper } from '../../components/Stepper'
 import { Page } from '../../components/Page'
+import { Button } from '../../components/ui/Button'
 import { useInventory } from '../../contexts/InventoryContext'
 
 const STEPS = ['Zone', 'Comptage', 'Scan']
@@ -86,6 +87,14 @@ export const InventoryLayout = () => {
             <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Assistant d&apos;inventaire</h1>
           </div>
           <div className="flex flex-col items-end gap-3 sm:flex-row sm:items-center">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => navigate('/')}
+              className="self-stretch text-sm sm:self-auto"
+            >
+              ← Retour à l&apos;accueil
+            </Button>
             <div className="hidden text-right text-xs text-slate-500 dark:text-slate-400 sm:block">
               <p>Utilisateur : {selectedUser?.displayName ?? '–'}</p>
               <p>Zone : {selectedLocation?.label ?? '–'}</p>

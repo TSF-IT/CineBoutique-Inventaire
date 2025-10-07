@@ -151,12 +151,12 @@ export const InventorySessionPage = () => {
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
 
   const updateStatus = useCallback(
-    (message: string | null) => {
+    (message: string | null, options?: { skipLog?: boolean }) => {
       setStatusState(message)
       if (message) {
         const normalized = message.trim().toLowerCase()
         const isLookupMessage = normalized.startsWith('recherche du code')
-        if (!isLookupMessage) {
+        if (!isLookupMessage && !options?.skipLog) {
           logEvent({
             type: 'status',
             message,
@@ -222,6 +222,7 @@ export const InventorySessionPage = () => {
       locationCode: location.code,
       locationLabel: location.label,
       conflictLines: 0,
+      conflictingRuns: 0,
     }
   }, [countType, location])
 
@@ -620,7 +621,7 @@ export const InventorySessionPage = () => {
       return
     }
 
-    updateStatus(`${product.name} ajouté manuellement`)
+    updateStatus(`${product.name} ajouté manuellement`, { skipLog: true })
     setManualEan('')
     setScanValue('')
     setInputLookupStatus('idle')
@@ -1053,7 +1054,7 @@ export const InventorySessionPage = () => {
                 onClick={() => setConflictModalOpen(true)}
                 data-testid="btn-view-conflicts"
               >
-                Voir les écarts C1/C2
+                Voir les écarts de comptage
               </Button>
             </div>
           )}

@@ -11,4 +11,6 @@ public sealed class ConflictZoneSummaryDto
     public string LocationLabel { get; set; } = string.Empty;
 
     public int ConflictLines { get; set; }
+
+    public int ConflictingRuns { get; set; }
 }

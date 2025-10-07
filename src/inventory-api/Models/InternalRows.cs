@@ -105,24 +105,21 @@ internal sealed class ConflictZoneSummaryRow
     public string LocationLabel { get; set; } = string.Empty;
 
     public int ConflictLines { get; set; }
+
+    public int ConflictingRuns { get; set; }
 }
 
-internal sealed class ConflictZoneItemRow
+internal sealed class ConflictQuantityRow
 {
     public Guid ProductId { get; set; }
 
-    public string Ean { get; set; } = string.Empty;
-
-    public int QtyC1 { get; set; }
-
-    public int QtyC2 { get; set; }
-}
-
-internal sealed class LastRunLookupRow
-{
-    public short CountType { get; set; }
+    public string? Ean { get; set; }
 
     public Guid RunId { get; set; }
+
+    public short CountType { get; set; }
+
+    public int Quantity { get; set; }
 }
 
 internal sealed class LocationMetadataRow

@@ -66,14 +66,20 @@ export interface ConflictZoneSummary {
   locationCode: string
   locationLabel: string
   conflictLines: number
+  conflictingRuns: number
 }
 
 export interface ConflictZoneItem {
   ean: string
   productId: string
-  qtyC1: number
-  qtyC2: number
+  runs: ConflictRunQuantity[]
   delta: number
+}
+
+export interface ConflictRunQuantity {
+  runId: string
+  countType: CountType
+  quantity: number
 }
 
 export interface ConflictZoneDetail {

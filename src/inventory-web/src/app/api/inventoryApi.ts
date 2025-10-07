@@ -111,7 +111,17 @@ export const fetchInventorySummary = async (): Promise<InventorySummary> => {
   const completedRunDetails = (Array.isArray(data?.completedRunDetails) ? data.completedRunDetails : []).map(
     sanitizeCompletedRun,
   )
-  const conflictZones = Array.isArray(data?.conflictZones) ? data!.conflictZones : []
+  const conflictZones = (Array.isArray(data?.conflictZones) ? data.conflictZones : []).map((zone) => ({
+    locationId: typeof zone?.locationId === 'string' ? zone.locationId : '',
+    locationCode: typeof zone?.locationCode === 'string' ? zone.locationCode : '',
+    locationLabel: typeof zone?.locationLabel === 'string' ? zone.locationLabel : '',
+    conflictLines: Number.isFinite(zone?.conflictLines)
+      ? Number(zone.conflictLines)
+      : Number(zone?.conflictLines ?? 0),
+    conflictingRuns: Number.isFinite(zone?.conflictingRuns)
+      ? Number(zone.conflictingRuns)
+      : Number(zone?.conflictingRuns ?? 0),
+  }))
 
   return {
     activeSessions: data?.activeSessions ?? 0,
@@ -199,8 +209,51 @@ export const getConflictZoneDetail = async (
   locationId: string,
   signal?: AbortSignal,
 ): Promise<ConflictZoneDetail> => {
-  const data = await http(`${API_BASE}/conflicts/${encodeURIComponent(locationId)}`, { signal })
-  return data as ConflictZoneDetail
+  const raw = (await http(`${API_BASE}/conflicts/${encodeURIComponent(locationId)}`, { signal })) as
+    | Partial<ConflictZoneDetail>
+    | null
+    | undefined
+
+  const items = Array.isArray(raw?.items) ? raw.items : []
+
+  const normalizedItems = items.map((item) => {
+    const runs = Array.isArray((item as { quantities?: unknown })?.quantities)
+      ? ((item as { quantities: unknown[] }).quantities as unknown[])
+          .map((entry) => {
+            const record = entry as { runId?: unknown; countType?: unknown; quantity?: unknown }
+            const runId = typeof record.runId === 'string' ? record.runId : ''
+            const countType = (record.countType as CountType) ?? CountType.Count1
+            const quantity = Number.isFinite(record.quantity)
+              ? Number(record.quantity)
+              : Number(record.quantity ?? 0)
+            return { runId, countType, quantity }
+          })
+          .filter((run) => run.runId.length > 0)
+      : []
+
+    const delta = Number.isFinite((item as { delta?: unknown })?.delta)
+      ? Number((item as { delta?: number }).delta)
+      : runs.length > 0
+        ? runs.reduce((max, run) => Math.max(max, run.quantity), runs[0].quantity) -
+          runs.reduce((min, run) => Math.min(min, run.quantity), runs[0].quantity)
+        : 0
+
+    return {
+      productId: typeof (item as { productId?: unknown }).productId === 'string'
+        ? (item as { productId: string }).productId
+        : '',
+      ean: typeof (item as { ean?: unknown }).ean === 'string' ? (item as { ean: string }).ean : '',
+      runs,
+      delta,
+    }
+  })
+
+  return {
+    locationId: typeof raw?.locationId === 'string' ? raw.locationId : locationId,
+    locationCode: typeof raw?.locationCode === 'string' ? raw.locationCode : '',
+    locationLabel: typeof raw?.locationLabel === 'string' ? raw.locationLabel : '',
+    items: normalizedItems,
+  }
 }
 
 export const getCompletedRunDetail = async (runId: string): Promise<CompletedRunDetail> => {

@@ -214,10 +214,11 @@ LIMIT 50;";
                     .QueryAsync<ConflictZoneSummaryRow>(
                         new CommandDefinition(
                             @"SELECT
-    cr.""LocationId"" AS ""LocationId"",
-    l.""Code""        AS ""LocationCode"",
-    l.""Label""       AS ""LocationLabel"",
-    COUNT(*)::int      AS ""ConflictLines""
+    cr.""LocationId""             AS ""LocationId"",
+    l.""Code""                    AS ""LocationCode"",
+    l.""Label""                   AS ""LocationLabel"",
+    COUNT(*)::int                  AS ""ConflictLines"",
+    COUNT(DISTINCT cl.""CountingRunId"")::int AS ""ConflictingRuns""
 FROM ""Conflict"" c
 JOIN ""CountLine""  cl ON cl.""Id"" = c.""CountLineId""
 JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
@@ -236,11 +237,12 @@ ORDER BY l.""Code"";",
                     LocationId = row.LocationId,
                     LocationCode = row.LocationCode,
                     LocationLabel = row.LocationLabel,
-                    ConflictLines = row.ConflictLines
+                    ConflictLines = row.ConflictLines,
+                    ConflictingRuns = row.ConflictingRuns
                 })
                 .ToList();
 
-            summary.Conflicts = summary.ConflictZones.Count;
+            summary.Conflicts = summary.ConflictZones.Sum(zone => zone.ConflictingRuns);
 
             logger.LogDebug("ConflictsSummary shop={ShopId} zones={Count}", parsedShopId, summary.Conflicts);
 
@@ -369,30 +371,27 @@ ORDER BY COALESCE(p.""Ean"", p.""Sku""), p.""Name"";";
                 return Results.NotFound();
             }
 
-            const string lastRunsSql = @"SELECT DISTINCT ON (cr.""CountType"")
-    cr.""CountType"" AS ""CountType"",
-    cr.""Id""        AS ""RunId""
-FROM ""CountingRun"" cr
-WHERE cr.""LocationId"" = @LocationId
-  AND cr.""CompletedAtUtc"" IS NOT NULL
-  AND cr.""CountType"" IN (1, 2)
-ORDER BY cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
+            const string detailSql = @"SELECT
+    p.""Id""            AS ""ProductId"",
+    p.""Ean""           AS ""Ean"",
+    cl.""CountingRunId"" AS ""RunId"",
+    cr.""CountType""     AS ""CountType"",
+    COALESCE(SUM(cl.""Quantity""), 0)::int AS ""Quantity""
+FROM ""Conflict"" c
+JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
+JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
+JOIN ""Product"" p ON p.""Id"" = cl.""ProductId""
+WHERE c.""ResolvedAtUtc"" IS NULL
+  AND cr.""LocationId"" = @LocationId
+GROUP BY p.""Id"", p.""Ean"", cl.""CountingRunId"", cr.""CountType""
+ORDER BY p.""Ean"", cr.""CountType"", cl.""CountingRunId"";";
 
-            var runLookup = (await connection.QueryAsync<LastRunLookupRow>(
-                    new CommandDefinition(lastRunsSql, new { LocationId = locationId }, cancellationToken: cancellationToken))
+            var detailRows = (await connection.QueryAsync<ConflictQuantityRow>(
+                    new CommandDefinition(detailSql, new { LocationId = locationId }, cancellationToken: cancellationToken))
                 .ConfigureAwait(false)).ToList();
 
-            var run1Id = runLookup.FirstOrDefault(row => row.CountType == 1)?.RunId;
-            var run2Id = runLookup.FirstOrDefault(row => row.CountType == 2)?.RunId;
-
-            if (run1Id is null || run2Id is null)
+            if (detailRows.Count == 0)
             {
-                logger.LogDebug(
-                    "ConflictsZoneDetail location={LocationId} missing runs count1={HasRun1} count2={HasRun2}",
-                    locationId,
-                    run1Id is not null,
-                    run2Id is not null);
-
                 var emptyPayload = new ConflictZoneDetailDto
                 {
                     LocationId = location.Id,
@@ -401,52 +400,48 @@ ORDER BY cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                     Items = Array.Empty<ConflictZoneItemDto>()
                 };
 
+                logger.LogDebug(
+                    "ConflictsZoneDetail location={LocationId} no open conflicts",
+                    locationId);
+
                 return Results.Ok(emptyPayload);
             }
 
-            const string detailSql = @"WITH conflict_products AS (
-    SELECT DISTINCT cl.""ProductId""
-    FROM ""Conflict"" c
-    JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
-    JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
-    WHERE c.""ResolvedAtUtc"" IS NULL
-      AND cr.""LocationId"" = @LocationId
-)
-SELECT
-    p.""Id""  AS ""ProductId"",
-    p.""Ean"" AS ""Ean"",
-    COALESCE(SUM(CASE WHEN cl.""CountingRunId"" = @Run1 THEN cl.""Quantity"" END), 0)::int AS ""QtyC1"",
-    COALESCE(SUM(CASE WHEN cl.""CountingRunId"" = @Run2 THEN cl.""Quantity"" END), 0)::int AS ""QtyC2""
-FROM conflict_products cp
-JOIN ""Product"" p ON p.""Id"" = cp.""ProductId""
-LEFT JOIN ""CountLine"" cl ON cl.""ProductId"" = cp.""ProductId""
-    AND cl.""CountingRunId"" IN (@Run1, @Run2)
-GROUP BY p.""Id"", p.""Ean""
-HAVING COALESCE(SUM(CASE WHEN cl.""CountingRunId"" = @Run1 THEN cl.""Quantity"" END), 0)
-    <> COALESCE(SUM(CASE WHEN cl.""CountingRunId"" = @Run2 THEN cl.""Quantity"" END), 0)
-ORDER BY p.""Ean"";";
+            var groupedItems = detailRows
+                .GroupBy(row => new { row.ProductId, row.Ean })
+                .Select(group =>
+                {
+                    var runs = group
+                        .OrderBy(row => row.CountType)
+                        .ThenBy(row => row.RunId)
+                        .Select(row => new ConflictRunQuantityDto
+                        {
+                            RunId = row.RunId,
+                            CountType = row.CountType,
+                            Quantity = row.Quantity
+                        })
+                        .ToList();
 
-            var items = (await connection.QueryAsync<ConflictZoneItemRow>(
-                    new CommandDefinition(
-                        detailSql,
-                        new { LocationId = locationId, Run1 = run1Id, Run2 = run2Id },
-                        cancellationToken: cancellationToken))
-                .ConfigureAwait(false)).ToList();
+                    var delta = runs.Count == 0
+                        ? 0
+                        : runs.Max(r => r.Quantity) - runs.Min(r => r.Quantity);
+
+                    return new ConflictZoneItemDto
+                    {
+                        ProductId = group.Key.ProductId,
+                        Ean = group.Key.Ean ?? string.Empty,
+                        Quantities = runs,
+                        Delta = delta
+                    };
+                })
+                .ToList();
 
             var payload = new ConflictZoneDetailDto
             {
                 LocationId = location.Id,
                 LocationCode = location.Code,
                 LocationLabel = location.Label,
-                Items = items
-                    .Select(row => new ConflictZoneItemDto
-                    {
-                        ProductId = row.ProductId,
-                        Ean = row.Ean,
-                        QtyC1 = row.QtyC1,
-                        QtyC2 = row.QtyC2
-                    })
-                    .ToList()
+                Items = groupedItems
             };
 
             logger.LogDebug("ConflictsZoneDetail location={LocationId} items={ItemCount}", locationId, payload.Items.Count);
@@ -2032,6 +2027,7 @@ ORDER BY cl.""CountingRunId"", p.""Id"", cl.""CountedAtUtc"" DESC, cl.""Id"" DES
             .ToArray();
 
         var conflictInserts = new List<object>();
+        var insertedLineIds = new HashSet<Guid>();
 
         foreach (var key in allKeys)
         {
@@ -2043,21 +2039,31 @@ ORDER BY cl.""CountingRunId"", p.""Id"", cl.""CountedAtUtc"" DESC, cl.""Id"" DES
                 continue;
             }
 
-            var lineId = ResolveCountLineId(lineIdLookup, currentRunId, counterpartRunId.Value, key);
-
-            if (lineId is null)
+            var currentLineId = TryGetLineId(lineIdLookup, currentRunId, key);
+            if (currentLineId.HasValue && insertedLineIds.Add(currentLineId.Value))
             {
-                continue;
+                conflictInserts.Add(new
+                {
+                    Id = Guid.NewGuid(),
+                    CountLineId = currentLineId.Value,
+                    Status = "open",
+                    Notes = (string?)null,
+                    CreatedAtUtc = now
+                });
             }
 
-            conflictInserts.Add(new
+            var counterpartLineId = TryGetLineId(lineIdLookup, counterpartRunId.Value, key);
+            if (counterpartLineId.HasValue && insertedLineIds.Add(counterpartLineId.Value))
             {
-                Id = Guid.NewGuid(),
-                CountLineId = lineId.Value,
-                Status = "open",
-                Notes = (string?)null,
-                CreatedAtUtc = now
-            });
+                conflictInserts.Add(new
+                {
+                    Id = Guid.NewGuid(),
+                    CountLineId = counterpartLineId.Value,
+                    Status = "open",
+                    Notes = (string?)null,
+                    CreatedAtUtc = now
+                });
+            }
         }
 
         if (conflictInserts.Count == 0)
@@ -2132,6 +2138,101 @@ GROUP BY cl.""CountingRunId"", p.""Id"", p.""Ean"";";
 
         if (!hasMatch)
         {
+            const string lineLookupSql = @"SELECT DISTINCT ON (cl.""CountingRunId"", p.""Id"")
+    cl.""CountingRunId"",
+    cl.""Id"" AS ""CountLineId"",
+    p.""Id"" AS ""ProductId"",
+    p.""Ean""
+FROM ""CountLine"" cl
+JOIN ""Product"" p ON p.""Id"" = cl.""ProductId""
+WHERE cl.""CountingRunId"" = ANY(@RunIds::uuid[])
+ORDER BY cl.""CountingRunId"", p.""Id"", cl.""CountedAtUtc"" DESC, cl.""Id"" DESC;";
+
+            var lineReferences = await connection
+                .QueryAsync<CountLineReference>(
+                    new CommandDefinition(
+                        lineLookupSql,
+                        new { RunIds = completedRunIds },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            var lineIdLookup = lineReferences
+                .GroupBy(reference => reference.CountingRunId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.ToDictionary(
+                        reference => BuildProductKey(reference.ProductId, reference.Ean),
+                        reference => reference.CountLineId,
+                        StringComparer.Ordinal),
+                    EqualityComparer<Guid>.Default);
+
+            const string deleteCurrentConflictsSql = @"DELETE FROM ""Conflict""
+USING ""CountLine"" cl
+WHERE ""Conflict"".""CountLineId"" = cl.""Id""
+  AND cl.""CountingRunId"" = @RunId
+  AND ""Conflict"".""ResolvedAtUtc"" IS NULL;";
+
+            await connection.ExecuteAsync(
+                    new CommandDefinition(
+                        deleteCurrentConflictsSql,
+                        new { RunId = currentRunId },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (!lineIdLookup.TryGetValue(currentRunId, out var currentLines))
+            {
+                return;
+            }
+
+            var conflictInserts = new List<object>();
+            var insertedLineIds = new HashSet<Guid>();
+            var now = DateTimeOffset.UtcNow;
+
+            foreach (var (key, lineId) in currentLines)
+            {
+                var currentQty = currentQuantities.TryGetValue(key, out var value) ? value : 0m;
+                var mismatch = previousRunIds.Any(previousRunId =>
+                {
+                    var otherQuantities = quantitiesByRun.GetValueOrDefault(previousRunId, new Dictionary<string, decimal>(StringComparer.Ordinal));
+                    var otherQty = otherQuantities.TryGetValue(key, out var otherValue) ? otherValue : 0m;
+                    return otherQty != currentQty;
+                });
+
+                if (!mismatch)
+                {
+                    continue;
+                }
+
+                if (insertedLineIds.Add(lineId))
+                {
+                    conflictInserts.Add(new
+                    {
+                        Id = Guid.NewGuid(),
+                        CountLineId = lineId,
+                        Status = "open",
+                        Notes = (string?)null,
+                        CreatedAtUtc = now
+                    });
+                }
+            }
+
+            if (conflictInserts.Count == 0)
+            {
+                return;
+            }
+
+            const string insertConflictSql =
+                "INSERT INTO \"Conflict\" (\"Id\", \"CountLineId\", \"Status\", \"Notes\", \"CreatedAtUtc\") VALUES (@Id, @CountLineId, @Status, @Notes, @CreatedAtUtc);";
+
+            foreach (var payload in conflictInserts)
+            {
+                await connection.ExecuteAsync(
+                        new CommandDefinition(insertConflictSql, payload, transaction, cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+            }
+
             return;
         }
 
@@ -2184,18 +2285,15 @@ WHERE ""Conflict"".""CountLineId"" = cl.""Id""
         return true;
     }
 
-    private static Guid? ResolveCountLineId<TInner>(
-        IDictionary<Guid, TInner> lookup,
-        Guid currentRunId,
-        Guid counterpartRunId,
+    private static Guid? TryGetLineId(
+        IDictionary<Guid, IDictionary<string, Guid>> lookup,
+        Guid runId,
         string key)
-    where TInner : IDictionary<string, Guid>
     {
-        if (lookup.TryGetValue(currentRunId, out var currentLines) && currentLines.TryGetValue(key, out var currentLineId))
-            return currentLineId;
-
-        if (lookup.TryGetValue(counterpartRunId, out var counterpartLines) && counterpartLines.TryGetValue(key, out var counterpartLineId))
-            return counterpartLineId;
+        if (lookup.TryGetValue(runId, out var lines) && lines.TryGetValue(key, out var lineId))
+        {
+            return lineId;
+        }
 
         return null;
     }

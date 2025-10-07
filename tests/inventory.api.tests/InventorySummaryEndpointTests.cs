@@ -286,6 +286,7 @@ public class InventorySummaryEndpointTests : IAsyncLifetime
         Assert.Equal("Z2", conflictZone.LocationCode);
         Assert.Equal("Zone 2", conflictZone.LocationLabel);
         Assert.Equal(2, conflictZone.ConflictLines);
+        Assert.Equal(1, conflictZone.ConflictingRuns);
         Assert.Empty(payload.OpenRunDetails);
         Assert.Equal(payload.OpenRuns, payload.OpenRunDetails.Count);
         Assert.Equal(payload.CompletedRuns, payload.CompletedRunDetails.Count);

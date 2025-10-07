@@ -329,7 +329,9 @@ export const HomePage = () => {
                     : 'text-lg text-emerald-800 dark:text-emerald-100'
                 )}
               >
-                {hasConflicts ? conflictCount : 'Aucun conflit'}
+                {hasConflicts
+                  ? `${conflictCount} comptage${conflictCount > 1 ? 's' : ''}`
+                  : 'Aucun conflit'}
               </p>
               {canOpenConflicts && (
                 <p className="mt-1 text-xs text-rose-700/80 dark:text-rose-200/70">
@@ -350,7 +352,7 @@ export const HomePage = () => {
                             {zone.locationCode} · {zone.locationLabel}
                           </span>
                           <span className="text-xs font-semibold uppercase tracking-wide text-rose-700 dark:text-rose-200">
-                            {zone.conflictLines} réf.
+                            {zone.conflictingRuns} comptage{zone.conflictingRuns > 1 ? 's' : ''} • {zone.conflictLines} réf.
                           </span>
                         </button>
                       </li>

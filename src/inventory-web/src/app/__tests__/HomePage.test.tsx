@@ -13,7 +13,7 @@ const fetchInventorySummaryMock = vi.hoisted(() =>
       activeSessions: 3,
       openRuns: 1,
       completedRuns: 0,
-      conflicts: 2,
+      conflicts: 3,
       lastActivityUtc: '2025-01-01T12:00:00Z',
       openRunDetails: [
         {
@@ -34,12 +34,14 @@ const fetchInventorySummaryMock = vi.hoisted(() =>
           locationCode: 'Z1',
           locationLabel: 'Zone 1',
           conflictLines: 2,
+          conflictingRuns: 2,
         },
         {
           locationId: 'loc-2',
           locationCode: 'Z2',
           locationLabel: 'Zone 2',
           conflictLines: 1,
+          conflictingRuns: 1,
         },
       ],
     })),
@@ -180,7 +182,9 @@ describe('HomePage', () => {
       const conflictsCard = screen.getByText('Conflits').closest('div')
       expect(conflictsCard).not.toBeNull()
       if (conflictsCard) {
-        expect(within(conflictsCard).getByText('2')).toBeInTheDocument()
+        expect(
+          within(conflictsCard).getByText(/3 comptage[s]?/i),
+        ).toBeInTheDocument()
         expect(within(conflictsCard).getByText(/Touchez une zone pour voir le détail/i)).toBeInTheDocument()
       }
 

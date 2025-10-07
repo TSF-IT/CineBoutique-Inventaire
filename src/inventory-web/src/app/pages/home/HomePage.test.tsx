@@ -3,6 +3,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { HomePage } from './HomePage'
 import { ShopProvider } from '@/state/ShopContext'
+import { CountType } from '../../types/inventory'
 import type { ConflictZoneDetail, InventorySummary, Location } from '../../types/inventory'
 import type { HttpError } from '@/lib/api/http'
 import {
@@ -93,6 +94,7 @@ describe('HomePage', () => {
           locationCode: 'B1',
           locationLabel: 'Zone B1',
           conflictLines: 2,
+          conflictingRuns: 1,
         },
       ],
     }
@@ -103,8 +105,24 @@ describe('HomePage', () => {
       locationCode: 'B1',
       locationLabel: 'Zone B1',
       items: [
-        { productId: 'p1', ean: '111', qtyC1: 5, qtyC2: 8, delta: -3 },
-        { productId: 'p2', ean: '222', qtyC1: 3, qtyC2: 1, delta: 2 },
+        {
+          productId: 'p1',
+          ean: '111',
+          runs: [
+            { runId: 'run-1', countType: CountType.Count1, quantity: 5 },
+            { runId: 'run-2', countType: CountType.Count2, quantity: 8 },
+          ],
+          delta: 3,
+        },
+        {
+          productId: 'p2',
+          ean: '222',
+          runs: [
+            { runId: 'run-1', countType: CountType.Count1, quantity: 3 },
+            { runId: 'run-2', countType: CountType.Count2, quantity: 1 },
+          ],
+          delta: 2,
+        },
       ],
     }
 
@@ -128,7 +146,8 @@ describe('HomePage', () => {
     })
 
     expect(await screen.findByText('Conflits')).toBeInTheDocument()
-    expect(screen.getByText('1')).toBeInTheDocument()
+    const conflictIndicators = screen.getAllByText(/1 comptage/i)
+    expect(conflictIndicators.length).toBeGreaterThan(0)
     const zoneButton = await screen.findByRole('button', { name: /B1 · Zone B1/i })
     fireEvent.click(zoneButton)
 

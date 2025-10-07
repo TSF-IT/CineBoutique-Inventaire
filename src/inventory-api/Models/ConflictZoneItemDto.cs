@@ -1,16 +1,15 @@
 using System;
+using System.Collections.Generic;
 
 namespace CineBoutique.Inventory.Api.Models;
 
 public sealed class ConflictZoneItemDto
 {
-    public string Ean { get; set; } = string.Empty;
-
     public Guid ProductId { get; set; }
 
-    public int QtyC1 { get; set; }
+    public string Ean { get; set; } = string.Empty;
 
-    public int QtyC2 { get; set; }
+    public IReadOnlyList<ConflictRunQuantityDto> Quantities { get; set; } = Array.Empty<ConflictRunQuantityDto>();
 
-    public int Delta => QtyC1 - QtyC2;
+    public int Delta { get; set; }
 }

@@ -445,6 +445,7 @@ describe("Workflow d'inventaire", () => {
           locationCode: completedZone.code,
           locationLabel: completedZone.label,
           conflictLines: 1,
+          conflictingRuns: 1,
         },
       ],
     })
@@ -497,7 +498,7 @@ describe("Workflow d'inventaire", () => {
       activeSessions: 0,
       openRuns: 0,
       completedRuns: 0,
-      conflicts: 1,
+      conflicts: 2,
       lastActivityUtc: null,
       openRunDetails: [],
       completedRunDetails: [],
@@ -507,6 +508,7 @@ describe("Workflow d'inventaire", () => {
           locationCode: conflictZone.code,
           locationLabel: conflictZone.label,
           conflictLines: 3,
+          conflictingRuns: 2,
         },
       ],
     })
