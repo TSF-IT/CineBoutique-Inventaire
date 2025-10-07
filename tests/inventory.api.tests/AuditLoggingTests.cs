@@ -152,7 +152,7 @@ public sealed class AuditLoggingTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task CreateProduct_Success_WritesAuditLog()
+    public async Task CreateProduct_Success_DoesNotWriteAuditLog()
     {
         await ResetDatabaseAsync();
 
@@ -172,10 +172,7 @@ public sealed class AuditLoggingTests : IAsyncLifetime
         Assert.Equal("9876543210987", created!.Ean);
 
         var auditLogs = await GetAuditLogsAsync();
-        var entry = Assert.Single(auditLogs);
-        Assert.Equal("products.create.success", entry.Category);
-        Assert.Contains("SKU-NEW", entry.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("Nouveau produit", entry.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(auditLogs);
     }
 
     [Theory]
