@@ -147,12 +147,41 @@ export const InventorySessionPage = () => {
   const completionConfirmButtonRef = useRef<HTMLButtonElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const logsDialogRef = useRef<HTMLDialogElement | null>(null)
+  const skipManualLookupRef = useRef(false)
   const [recentScans, setRecentScans] = useState<string[]>([])
   const manualLookupIdRef = useRef(0)
   const lastSearchedInputRef = useRef<string | null>(null)
   const previousItemCountRef = useRef(items.length)
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
+
+  const scrollScanInputIntoView = useCallback(() => {
+    const input = inputRef.current
+    if (!input) {
+      return
+    }
+
+    const hasDom = typeof window !== 'undefined' && typeof document !== 'undefined'
+
+    if (!hasDom) {
+      input.focus()
+      input.select()
+      return
+    }
+
+    const rect = input.getBoundingClientRect()
+    const viewportHeight = window.innerHeight || document.documentElement?.clientHeight || 0
+    const isFullyVisible = rect.top >= 0 && rect.bottom <= viewportHeight
+
+    if (!isFullyVisible) {
+      input.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+
+    requestAnimationFrame(() => {
+      input.focus({ preventScroll: true })
+      input.select()
+    })
+  }, [])
 
   const updateStatus = useCallback(
     (message: string | null) => {
@@ -454,6 +483,11 @@ export const InventorySessionPage = () => {
       return
     }
 
+    if (skipManualLookupRef.current) {
+      skipManualLookupRef.current = false
+      return
+    }
+
     if (lastSearchedInputRef.current === trimmedScanValue) {
       return
     }
@@ -566,6 +600,24 @@ export const InventorySessionPage = () => {
       }
     },
     [handleDetected, updateStatus],
+  )
+
+  const handleCameraDetected = useCallback(
+    async (rawValue: string) => {
+      const sanitized = sanitizeEan(rawValue.trim())
+      if (!sanitized) {
+        return
+      }
+
+      skipManualLookupRef.current = true
+      setScanValue((previous) => (previous === sanitized ? previous : sanitized))
+      setManualEan('')
+      setErrorMessage(null)
+      scrollScanInputIntoView()
+
+      await handleDetected(sanitized)
+    },
+    [handleDetected, scrollScanInputIntoView],
   )
 
   const handleInputKeyDown = useCallback(
@@ -1268,7 +1320,7 @@ export const InventorySessionPage = () => {
         </Button>
         <BarcodeScanner
           active={useCamera}
-          onDetected={handleDetected}
+          onDetected={handleCameraDetected}
           onError={(message) => {
             updateStatus(null)
             setErrorMessage(message)
