@@ -61,7 +61,11 @@ describe('ConflictZoneModal', () => {
     expect(screen.getByText('Comptage 2')).toBeInTheDocument()
     expect(screen.getByText('Comptage 3')).toBeInTheDocument()
 
-    const card = screen.getByText(/EAN 111/).closest('div')
+    const cardHeading = await screen.findByText((content, element) => {
+      if (!element) return false
+      return element.classList.contains('conflict-card__ean') && content.includes('111')
+    })
+    const card = cardHeading.closest('article.conflict-card') as HTMLElement | null
     expect(card).not.toBeNull()
     if (card) {
       const scoped = within(card)
@@ -94,7 +98,11 @@ describe('ConflictZoneModal', () => {
 
     expect(screen.getByText('Comptage 1')).toBeInTheDocument()
     expect(screen.getByText('Comptage 2')).toBeInTheDocument()
-    const card = screen.getByText(/EAN 222/).closest('div')
+    const cardHeading = await screen.findByText((content, element) => {
+      if (!element) return false
+      return element.classList.contains('conflict-card__ean') && content.includes('222')
+    })
+    const card = cardHeading.closest('article.conflict-card') as HTMLElement | null
     expect(card).not.toBeNull()
     if (card) {
       const scoped = within(card)
