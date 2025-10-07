@@ -10,7 +10,12 @@ import { InventoryLocationStep } from '../pages/inventory/InventoryLocationStep'
 import { InventorySessionPage } from '../pages/inventory/InventorySessionPage'
 import { useInventory } from '../contexts/InventoryContext'
 import { CountType } from '../types/inventory'
-import type { InventorySummary, Location, CompleteInventoryRunPayload } from '../types/inventory'
+import type {
+  ConflictZoneDetail,
+  InventorySummary,
+  Location,
+  CompleteInventoryRunPayload,
+} from '../types/inventory'
 import type { StartInventoryRunPayload, StartInventoryRunResponse } from '../api/inventoryApi'
 import type { HttpError } from '../../lib/api/http'
 import type { ShopUser } from '@/types/user'
@@ -24,6 +29,7 @@ const {
   startInventoryRunMock,
   releaseInventoryRunMock,
   fetchShopUsersMock,
+  getConflictZoneDetailMock,
   shopUsers,
   reserveLocation,
 } = vi.hoisted(() => {
@@ -185,6 +191,15 @@ const {
       expect(shopId).toBeTruthy()
       return shopUsers
     }),
+    getConflictZoneDetailMock: vi
+      .fn<(locationId: string, signal?: AbortSignal) => Promise<ConflictZoneDetail>>()
+      .mockResolvedValue({
+        locationId: reserveLocation.id,
+        locationCode: reserveLocation.code,
+        locationLabel: reserveLocation.label,
+        runs: [],
+        items: [],
+      }),
     shopUsers,
     reserveLocation,
   }
@@ -202,6 +217,7 @@ vi.mock('../api/inventoryApi', async (importOriginal) => {
     completeInventoryRun: completeInventoryRunMock,
     startInventoryRun: startInventoryRunMock,
     releaseInventoryRun: releaseInventoryRunMock,
+    getConflictZoneDetail: getConflictZoneDetailMock,
   }
 })
 
@@ -332,6 +348,14 @@ describe("Workflow d'inventaire", () => {
       completedRunDetails: [],
       conflictZones: [],
     }))
+    getConflictZoneDetailMock.mockReset()
+    getConflictZoneDetailMock.mockResolvedValue({
+      locationId: reserveLocation.id,
+      locationCode: reserveLocation.code,
+      locationLabel: reserveLocation.label,
+      runs: [],
+      items: [],
+    })
     completeInventoryRunMock.mockReset()
     completeInventoryRunMock.mockImplementation(async () => ({
       runId: 'run-1',
@@ -523,6 +547,163 @@ describe("Workflow d'inventaire", () => {
     const sessionPages = await screen.findAllByTestId('page-session')
     const activeSession = sessionPages[sessionPages.length - 1]
     await waitFor(() => expect(within(activeSession).getByText(/Comptage n°3/i)).toBeInTheDocument())
+  })
+
+  it('propose un 4ᵉ comptage après un troisième comptage divergent et envoie countType 4', async () => {
+    const conflictZone: Location = {
+      id: 'zone-6',
+      code: 'ZC6',
+      label: 'Zone ZC6',
+      isBusy: false,
+      busyBy: null,
+      activeRunId: null,
+      activeCountType: null,
+      activeStartedAtUtc: null,
+      countStatuses: [
+        {
+          countType: CountType.Count1,
+          status: 'completed',
+          runId: 'run-c31',
+          ownerDisplayName: 'Alice',
+          ownerUserId: 'user-alice',
+          startedAtUtc: new Date(),
+          completedAtUtc: new Date(),
+        },
+        {
+          countType: CountType.Count2,
+          status: 'completed',
+          runId: 'run-c32',
+          ownerDisplayName: 'Bruno',
+          ownerUserId: 'user-bruno',
+          startedAtUtc: new Date(),
+          completedAtUtc: new Date(),
+        },
+        {
+          countType: CountType.Count3,
+          status: 'completed',
+          runId: 'run-c33',
+          ownerDisplayName: 'Chloé',
+          ownerUserId: 'user-chloe',
+          startedAtUtc: new Date(),
+          completedAtUtc: new Date(),
+        },
+      ],
+    }
+
+    fetchLocationsMock.mockResolvedValueOnce([
+      { ...reserveLocation },
+      conflictZone,
+    ])
+
+    fetchInventorySummaryMock.mockResolvedValueOnce({
+      activeSessions: 0,
+      openRuns: 0,
+      completedRuns: 0,
+      conflicts: 1,
+      lastActivityUtc: null,
+      openRunDetails: [],
+      completedRunDetails: [],
+      conflictZones: [
+        {
+          locationId: conflictZone.id,
+          locationCode: conflictZone.code,
+          locationLabel: conflictZone.label,
+          conflictLines: 5,
+        },
+      ],
+    })
+
+    getConflictZoneDetailMock.mockResolvedValueOnce({
+      locationId: conflictZone.id,
+      locationCode: conflictZone.code,
+      locationLabel: conflictZone.label,
+      runs: [
+        {
+          runId: 'run-c31',
+          countType: 1,
+          completedAtUtc: '2024-01-01T10:00:00Z',
+          ownerDisplayName: 'Alice',
+        },
+        {
+          runId: 'run-c32',
+          countType: 2,
+          completedAtUtc: '2024-01-01T11:00:00Z',
+          ownerDisplayName: 'Bruno',
+        },
+        {
+          runId: 'run-c33',
+          countType: 3,
+          completedAtUtc: '2024-01-01T12:00:00Z',
+          ownerDisplayName: 'Chloé',
+        },
+      ],
+      items: [
+        {
+          productId: 'prod-111',
+          ean: '1111111111111',
+          qtyC1: 10,
+          qtyC2: 12,
+          delta: -3,
+          allCounts: [
+            { runId: 'run-c31', countType: 1, quantity: 10 },
+            { runId: 'run-c32', countType: 2, quantity: 12 },
+            { runId: 'run-c33', countType: 3, quantity: 9 },
+          ],
+        },
+      ],
+    })
+
+    renderInventoryRoutes('/inventory/location')
+
+    const conflictCard = await screen.findByTestId(`zone-card-${conflictZone.id}`)
+    const actionButton = within(conflictCard).getByTestId('btn-select-zone')
+    await waitFor(() => expect(actionButton).toHaveTextContent('Lancer le 4ᵉ comptage'))
+
+    fireEvent.click(actionButton)
+
+    const sessionPages = await screen.findAllByTestId('page-session')
+    const activeSession = sessionPages[sessionPages.length - 1]
+    await waitFor(() => expect(within(activeSession).getByText(/Comptage n°4/i)).toBeInTheDocument())
+
+    const conflictButton = await within(activeSession).findByTestId('btn-view-conflicts')
+    fireEvent.click(conflictButton)
+
+    await waitFor(() => expect(getConflictZoneDetailMock).toHaveBeenCalled())
+
+    const modal = await screen.findByRole('dialog', {
+      name: `${conflictZone.code} · ${conflictZone.label}`,
+    })
+
+    const modalScope = within(modal)
+    expect(modalScope.getByText('Comptage 1')).toBeInTheDocument()
+    expect(modalScope.getByText('Comptage 2')).toBeInTheDocument()
+    expect(modalScope.getByText('Comptage 3')).toBeInTheDocument()
+
+    fireEvent.click(modalScope.getByLabelText('Fermer'))
+
+    const input = within(activeSession).getByLabelText('Scanner (douchette ou saisie)')
+    fireEvent.change(input, { target: { value: '12345678' } })
+
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('12345678'))
+    await within(activeSession).findByText('Popcorn caramel')
+    await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
+    const [startLocationId, startPayload] = startInventoryRunMock.mock.calls.at(-1)!
+    expect(startLocationId).toBe(conflictZone.id)
+    expect(startPayload.countType).toBe(4)
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    try {
+      const finishButton = await within(activeSession).findByTestId('btn-complete-run')
+      fireEvent.click(finishButton)
+
+      await waitFor(() => expect(completeInventoryRunMock).toHaveBeenCalledTimes(1))
+    } finally {
+      confirmSpy.mockRestore()
+    }
+
+    const [completeLocationId, completePayload] = completeInventoryRunMock.mock.calls.at(-1)!
+    expect(completeLocationId).toBe(conflictZone.id)
+    expect(completePayload.countType).toBe(4)
   })
 
   it('autorise la reprise de son propre comptage', async () => {
