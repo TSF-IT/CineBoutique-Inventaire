@@ -5,12 +5,12 @@
   --spacing-4: 1.5rem;
   --radius: 0.75rem;
   --shadow-1: 0 12px 32px rgba(15, 23, 42, 0.12);
-  --font-xs: clamp(0.75rem, 0.7rem + 0.4vw, 0.85rem);
-  --font-sm: clamp(0.875rem, 0.82rem + 0.4vw, 0.95rem);
-  --font-md: clamp(1rem, 0.94rem + 0.5vw, 1.125rem);
-  --font-lg: clamp(1.125rem, 1.02rem + 0.6vw, 1.35rem);
-  --font-xl: clamp(1.5rem, 1.32rem + 0.8vw, 1.9rem);
-  --font-base: 16px;
+  --font-xs: clamp(0.75rem, 0.72rem + 0.2vw, 0.85rem);
+  --font-sm: clamp(0.875rem, 0.84rem + 0.2vw, 0.95rem);
+  --font-md: clamp(1rem, 0.94rem + 0.3vw, 1.125rem);
+  --font-base: 14px;
+  --font-lg: 16px;
+  --font-xl: 20px;
   --tap-min: 44px;
   --container-max: 1200px;
 }
@@ -20,26 +20,40 @@ html {
 }
 
 .safe-pads {
-  padding-top: calc(var(--spacing-3) + env(safe-area-inset-top));
-  padding-right: calc(var(--spacing-3) + env(safe-area-inset-right));
-  padding-bottom: calc(var(--spacing-3) + env(safe-area-inset-bottom));
-  padding-left: calc(var(--spacing-3) + env(safe-area-inset-left));
+  padding: var(--spacing-3);
 }
 
-@media (max-width: 600px) {
-  :root {
-    --font-base: 14px;
+@media (max-width: 768px) {
+  .safe-pads {
+    padding-left: max(env(safe-area-inset-left), var(--spacing-3));
+    padding-right: max(env(safe-area-inset-right), var(--spacing-3));
+    padding-top: max(env(safe-area-inset-top), var(--spacing-3));
+    padding-bottom: max(env(safe-area-inset-bottom), var(--spacing-3));
   }
 }
 
-@media (min-width: 601px) and (max-width: 1100px) {
+@media (min-width: 1024px) {
   :root {
     --font-base: 15px;
+    --font-lg: 18px;
+    --font-xl: 22px;
   }
 }
 
-@media (min-width: 1101px) {
+@media (min-width: 1600px) {
   :root {
     --font-base: 16px;
+    --font-lg: 19px;
+    --font-xl: 24px;
   }
+}
+
+h1 {
+  font-size: clamp(24px, 2.5vw, 40px);
+  line-height: 1.2;
+}
+
+h2 {
+  font-size: clamp(18px, 1.5vw, 28px);
+  line-height: 1.3;
 }
