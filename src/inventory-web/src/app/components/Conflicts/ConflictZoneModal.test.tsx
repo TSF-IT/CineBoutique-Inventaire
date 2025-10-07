@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConflictZoneModal } from './ConflictZoneModal'
 import type { ConflictZoneSummary } from '../../types/inventory'
@@ -108,5 +108,27 @@ describe('ConflictZoneModal', () => {
       const scoped = within(card)
       expect(scoped.queryByText('Comptage 3')).not.toBeInTheDocument()
     }
+  })
+
+  it('propose de lancer un nouveau comptage lorsque le callback est fourni', async () => {
+    getConflictZoneDetailMock.mockResolvedValue({
+      locationId: baseZone.locationId,
+      locationCode: baseZone.locationCode,
+      locationLabel: baseZone.locationLabel,
+      runs: [
+        { runId: 'run-1', countType: 1, completedAtUtc: '2024-01-01T08:30:00Z', ownerDisplayName: 'Alice' },
+        { runId: 'run-2', countType: 2, completedAtUtc: '2024-01-01T09:30:00Z', ownerDisplayName: 'Bob' },
+      ],
+      items: [],
+    })
+
+    const onStart = vi.fn()
+
+    render(<ConflictZoneModal open zone={baseZone} onClose={() => {}} onStartExtraCount={onStart} />)
+
+    const launchButton = await screen.findByRole('button', { name: /Lancer le 3.? comptage/i })
+    fireEvent.click(launchButton)
+
+    expect(onStart).toHaveBeenCalledWith(baseZone, 3)
   })
 })
