@@ -244,10 +244,7 @@ const renderInventoryRoutes = (initialEntry: string, options?: RenderInventoryOp
     const initializedRef = useRef(false)
     const [ready, setReady] = useState(false)
     const initializeRef = useRef(customInitialize)
-
-    useLayoutEffect(() => {
-      initializeRef.current = customInitialize
-    }, [customInitialize])
+    initializeRef.current = customInitialize
 
     useLayoutEffect(() => {
       if (initializedRef.current) {
