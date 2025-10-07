@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { useEffect, useLayoutEffect } from 'react'
 import { MemoryRouter } from 'react-router-dom'
@@ -9,8 +10,14 @@ import { CountType } from '../../../types/inventory'
 import type { Location } from '../../../types/inventory'
 import type { ShopUser } from '@/types/user'
 import type { Shop } from '@/types/shop'
+import type { HttpError } from '@/lib/api/http'
 
 const getConflictZoneDetailMock = vi.hoisted(() => vi.fn())
+const fetchProductByEanMock = vi.hoisted(() => vi.fn())
+const scannerCallbacks = vi.hoisted(() => ({
+  onDetected: undefined as undefined | ((value: string) => Promise<void> | void),
+}))
+
 const { shopMock } = vi.hoisted(() => ({
   shopMock: { id: 'shop-test', name: 'Boutique test' } as Shop,
 }))
@@ -22,8 +29,26 @@ vi.mock('../../../api/inventoryApi', async (importOriginal) => {
   return {
     ...actual,
     getConflictZoneDetail: getConflictZoneDetailMock,
+    fetchProductByEan: fetchProductByEanMock,
   }
 })
+
+vi.mock('../../../components/BarcodeScanner', () => ({
+  BarcodeScanner: ({ onDetected }: { onDetected: (value: string) => Promise<void> | void }) => {
+    scannerCallbacks.onDetected = onDetected
+    return (
+      <button
+        type="button"
+        data-testid="mock-barcode-scanner"
+        onClick={() => {
+          void onDetected('0123456789012')
+        }}
+      >
+        Simuler un scan
+      </button>
+    )
+  },
+}))
 
 vi.mock('@/state/ShopContext', () => ({
   useShop: () => ({ shop: shopMock, setShop: vi.fn(), isLoaded: true }),
@@ -150,5 +175,74 @@ describe('InventorySessionPage - conflits', () => {
         name: `${baseLocation.code} · ${baseLocation.label}`,
       }),
     ).toBeInTheDocument()
+  })
+})
+
+describe('InventorySessionPage - caméra', () => {
+  beforeEach(() => {
+    fetchProductByEanMock.mockReset()
+    fetchProductByEanMock.mockRejectedValue({
+      name: 'HttpError',
+      message: 'Not found',
+      status: 404,
+      url: '/api/products/ean',
+    } as HttpError)
+    scannerCallbacks.onDetected = undefined
+  })
+
+  it('copie le code détecté dans le champ de scan et scroll vers celui-ci si nécessaire', async () => {
+    const user = userEvent.setup()
+    renderSessionPage(CountType.Count1)
+
+    const [toggleCameraButton] = await screen.findAllByRole('button', { name: /activer la caméra/i })
+    await user.click(toggleCameraButton)
+
+    const [scanInput] = await screen.findAllByLabelText('Scanner (douchette ou saisie)')
+    const scanInputWithOptionalScroll = scanInput as HTMLElement & {
+      scrollIntoView?: (options?: ScrollIntoViewOptions | boolean) => void
+    }
+    const originalScrollIntoView = scanInputWithOptionalScroll.scrollIntoView
+    const scrollIntoViewMock = vi.fn()
+    Object.defineProperty(scanInputWithOptionalScroll, 'scrollIntoView', {
+      value: scrollIntoViewMock,
+      configurable: true,
+    })
+
+    const getBoundingClientRectSpy = vi
+      .spyOn(scanInput, 'getBoundingClientRect')
+      .mockReturnValue({
+        top: 1200,
+        bottom: 1300,
+        left: 0,
+        right: 0,
+        width: 0,
+        height: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect)
+
+    await act(async () => {
+      const handler = scannerCallbacks.onDetected
+      if (handler) {
+        await handler('  9876543210987  ')
+      }
+    })
+
+    await waitFor(() => expect(scanInput).toHaveValue('9876543210987'))
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
+    await waitFor(() => expect(fetchProductByEanMock).toHaveBeenCalledTimes(1))
+
+    getBoundingClientRectSpy.mockRestore()
+    // Nettoyage de la surcharge scrollIntoView pour les autres tests
+    if (originalScrollIntoView) {
+      Object.defineProperty(scanInputWithOptionalScroll, 'scrollIntoView', {
+        value: originalScrollIntoView,
+        configurable: true,
+        writable: true,
+      })
+    } else {
+      Reflect.deleteProperty(scanInputWithOptionalScroll, 'scrollIntoView')
+    }
   })
 })
