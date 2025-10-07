@@ -98,6 +98,16 @@ describe('SelectShopPage', () => {
       </ThemeProvider>,
     )
 
+  it("n'affiche pas de raccourci vers la page d’accueil", async () => {
+    fetchShopsMock.mockResolvedValueOnce([])
+
+    renderPage()
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('btn-go-home')).not.toBeInTheDocument()
+    })
+  })
+
   it('navigue vers la page d’identification dès la sélection d’une boutique', async () => {
     fetchShopsMock.mockResolvedValueOnce([shopA, shopB])
 
