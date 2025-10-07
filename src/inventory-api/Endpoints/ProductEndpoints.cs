@@ -119,13 +119,6 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     },
                     cancellationToken: cancellationToken)).ConfigureAwait(false);
 
-            var userName = EndpointUtilities.GetAuthenticatedUserName(httpContext);
-            var actor = EndpointUtilities.FormatActorLabel(httpContext);
-            var timestamp = EndpointUtilities.FormatTimestamp(now);
-            var eanLabel = string.IsNullOrWhiteSpace(createdProduct.Ean) ? "non renseigné" : createdProduct.Ean;
-            var creationMessage = $"{actor} a créé le produit \"{createdProduct.Name}\" (SKU {createdProduct.Sku}, EAN {eanLabel}) le {timestamp} UTC.";
-            await auditLogger.LogAsync(creationMessage, userName, "products.create.success", cancellationToken).ConfigureAwait(false);
-
             var location = $"/api/products/{Uri.EscapeDataString(createdProduct.Sku)}";
             return Results.Created(location, createdProduct);
         })

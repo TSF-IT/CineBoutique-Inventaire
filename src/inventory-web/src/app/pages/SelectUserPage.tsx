@@ -161,7 +161,7 @@ export default function SelectUserPage() {
   const hasUsers = users.length > 0
 
   return (
-    <Page className="px-4 py-6 sm:px-6">
+    <Page className="px-4 py-6 sm:px-6" showHomeLink>
       <main className="flex flex-1 flex-col justify-center gap-8">
         <div>
           <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
