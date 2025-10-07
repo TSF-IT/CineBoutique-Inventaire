@@ -67,6 +67,7 @@ export const ScanCameraPage = () => {
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
   const dragStateRef = useRef<{ startY: number; pointerId: number } | null>(null)
   const manualInputActiveRef = useRef(false)
+  const focusedRowKeyRef = useRef<string | null>(null)
   const scrollToEndRef = useRef(false)
   const listContainerRef = useRef<HTMLDivElement | null>(null)
   const fallbackReaderRef = useRef<BrowserMultiFormatReader | null>(null)
@@ -285,20 +286,32 @@ export const ScanCameraPage = () => {
     [removeItem, setQuantity],
   )
 
-  const registerRowRef = useCallback((ean: string) => {
+  const registerRowRef = useCallback((key: string) => {
     return (instance: ScannedRowHandle | null) => {
+      if (!key) {
+        return
+      }
       if (!instance) {
-        rowRefs.current.delete(ean)
+        rowRefs.current.delete(key)
       } else {
-        rowRefs.current.set(ean, instance)
+        rowRefs.current.set(key, instance)
       }
     }
   }, [])
 
-  const handleQuantityFocusChange = useCallback((focused: boolean) => {
+  const handleQuantityFocusChange = useCallback((focused: boolean, rowKey: string) => {
     manualInputActiveRef.current = focused
     if (focused) {
+      focusedRowKeyRef.current = rowKey
       setSheetState('full')
+      requestAnimationFrame(() => {
+        const handle = rowRefs.current.get(rowKey)
+        handle?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      })
+      return
+    }
+    if (focusedRowKeyRef.current === rowKey) {
+      focusedRowKeyRef.current = null
     }
   }, [])
 
@@ -428,12 +441,16 @@ export const ScanCameraPage = () => {
       <div
         className={clsx(
           'absolute inset-x-0 bottom-0 z-30 flex flex-col rounded-t-3xl bg-white text-slate-900 shadow-2xl transition-[height]',
+          'relative overflow-hidden',
           'dark:bg-slate-900 dark:text-white',
         )}
         style={{ height: sheetHeight }}
         data-state={sheetState}
         data-testid="scan-sheet"
       >
+        {sheetState === 'closed' && (
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-10 rounded-t-3xl bg-gradient-to-b from-slate-200/80 via-white/70 to-transparent dark:from-slate-800/80 dark:via-slate-900/70" />
+        )}
         <div
           className="flex flex-col px-4 pt-3"
           onPointerDown={handleDragStart}
@@ -460,32 +477,34 @@ export const ScanCameraPage = () => {
             ref={listContainerRef}
             className={clsx(
               'h-full space-y-2 overflow-y-auto px-4 pb-6',
-              sheetState === 'closed' && 'pointer-events-auto',
+              sheetState === 'closed' ? 'pointer-events-auto' : null,
             )}
           >
             {displayedItems.length === 0 ? (
               <p className="text-sm text-slate-500">Scannez un article pour débuter.</p>
             ) : (
-              <ul className="flex flex-col gap-2">
+              <ul className={clsx('flex flex-col', sheetState === 'closed' ? 'gap-1.5' : 'gap-2')}>
                 {displayedItems.map((item) => {
                   const hasConflict = Boolean(item.hasConflict)
+                  const rowKey = item.product.ean ?? item.id
                   return (
-                  <ScannedRow
-                    key={item.id}
-                    ref={registerRowRef(item.product.ean)}
-                    id={item.id}
-                    ean={item.product.ean}
-                    label={item.product.name}
-                    sku={item.product.sku}
-                    qty={item.quantity}
-                    highlight={highlightEan === item.product.ean}
-                    hasConflict={hasConflict}
-                    onInc={() => handleInc(item.product.ean, item.quantity)}
-                    onDec={() => handleDec(item.product.ean, item.quantity)}
-                    onSetQty={(next) => handleSetQuantity(item.product.ean, next)}
-                    onOpenConflict={() => setConflictModalOpen(true)}
-                    onQuantityFocusChange={handleQuantityFocusChange}
-                  />
+                    <ScannedRow
+                      key={item.id}
+                      ref={registerRowRef(rowKey)}
+                      id={item.id}
+                      ean={item.product.ean}
+                      label={item.product.name}
+                      sku={item.product.sku}
+                      qty={item.quantity}
+                      highlight={highlightEan === item.product.ean}
+                      hasConflict={hasConflict}
+                      density={sheetState === 'closed' ? 'dense' : 'regular'}
+                      onInc={() => handleInc(item.product.ean, item.quantity)}
+                      onDec={() => handleDec(item.product.ean, item.quantity)}
+                      onSetQty={(next) => handleSetQuantity(item.product.ean, next)}
+                      onOpenConflict={() => setConflictModalOpen(true)}
+                      onQuantityFocusChange={handleQuantityFocusChange}
+                    />
                   )
                 })}
               </ul>
