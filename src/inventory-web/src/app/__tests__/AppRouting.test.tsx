@@ -13,7 +13,7 @@ type UseShopValue = {
 
 const createUseShopValue = (overrides: Partial<UseShopValue> = {}): UseShopValue => ({
   shop: null,
-  setShop: (_shop: Shop | null) => undefined,
+  setShop: () => undefined,
   isLoaded: true,
   ...overrides,
 })
@@ -21,7 +21,7 @@ const createUseShopValue = (overrides: Partial<UseShopValue> = {}): UseShopValue
 const useShopMock = vi.hoisted(() =>
   vi.fn(() => ({
     shop: null,
-    setShop: (_shop: Shop | null) => undefined,
+    setShop: () => undefined,
     isLoaded: true,
   } as UseShopValue)),
 )

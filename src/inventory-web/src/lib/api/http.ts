@@ -111,13 +111,17 @@ export default async function http<TBody = unknown>(
   let res: Response;
   try {
     res = await fetch(finalUrl, { ...init, headers, body });
-  } catch (e: any) {
-    const msg = String(e?.message || '').toLowerCase();
+  } catch (rawError: unknown) {
+    const error = rawError as { message?: unknown; name?: unknown }
+    const message = typeof error.message === 'string' ? error.message : ''
+    const normalizedMessage = message.toLowerCase()
+
     // Ne hurle pas pour un abort normal (cleanup d’effet, navigation, etc.)
-    if (e?.name === 'AbortError' || msg.includes('aborted')) {
-      throw new AbortedRequestError(finalUrl);
+    if (error?.name === 'AbortError' || normalizedMessage.includes('aborted')) {
+      throw new AbortedRequestError(finalUrl)
     }
-    throw e;
+
+    throw rawError
   }
   
   const contentType = res.headers.get('Content-Type') ?? ''

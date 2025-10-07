@@ -638,41 +638,6 @@ export const InventorySessionPage = () => {
     updateStatus,
   ])
 
-  const handleRestartSession = useCallback(() => {
-    const shouldReset =
-      items.length === 0 ||
-      window.confirm('Relancer un comptage ? Les articles non enregistrés seront perdus.')
-
-    if (!shouldReset) {
-      return
-    }
-
-    completionConfirmationDialogRef.current?.close()
-    logsDialogRef.current?.close()
-    clearSession()
-    setSessionId(null)
-    setManualEan('')
-    setScanValue('')
-    setInputLookupStatus('idle')
-    setQuantityDrafts({})
-    setRecentScans([])
-    setStatusState(null)
-    setErrorMessage(null)
-    updateStatus('Session réinitialisée.')
-  }, [
-    clearSession,
-    items.length,
-    setInputLookupStatus,
-    setManualEan,
-    setQuantityDrafts,
-    setRecentScans,
-    setScanValue,
-    setSessionId,
-    setStatusState,
-    setErrorMessage,
-    updateStatus,
-  ])
-
   const handleOpenCompletionConfirmation = useCallback(() => {
     const dialog = completionConfirmationDialogRef.current
     if (dialog && typeof dialog.showModal === 'function') {
@@ -745,8 +710,9 @@ export const InventorySessionPage = () => {
       if (!(ean in prev)) {
         return prev
       }
-      const { [ean]: _discarded, ...rest } = prev
-      return rest
+      const next = { ...prev }
+      delete next[ean]
+      return next
     })
   }, [])
 
