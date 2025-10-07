@@ -2132,6 +2132,7 @@ ORDER BY cl.""CountingRunId"", p.""Id"", cl.""CountedAtUtc"" DESC, cl.""Id"" DES
         IDbTransaction transaction,
         Guid locationId,
         Guid currentRunId,
+        DateTimeOffset now,
         CancellationToken cancellationToken)
     {
         const string completedRunsSql = @"SELECT ""Id"" FROM ""CountingRun"" WHERE ""LocationId"" = @LocationId AND ""CompletedAtUtc"" IS NOT NULL";
@@ -2181,17 +2182,77 @@ GROUP BY cl.""CountingRunId"", p.""Id"", p.""Ean"";";
             return HaveIdenticalQuantities(currentQuantities, otherQuantities);
         });
 
-        if (!hasMatch)
-        {
-            return;
-        }
-
         const string resolveConflictsSql = @"DELETE FROM ""Conflict""
 USING ""CountLine"" cl
 JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
 WHERE ""Conflict"".""CountLineId"" = cl.""Id""
   AND cr.""LocationId"" = @LocationId
   AND ""Conflict"".""ResolvedAtUtc"" IS NULL;";
+
+        if (hasMatch)
+        {
+            await connection.ExecuteAsync(
+                    new CommandDefinition(
+                        resolveConflictsSql,
+                        new { LocationId = locationId },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+            return;
+        }
+
+        var productMetadata = new Dictionary<string, (Guid ProductId, string? Ean)>(StringComparer.Ordinal);
+
+        foreach (var row in aggregatedRows)
+        {
+            var key = BuildProductKey(row.ProductId, row.Ean);
+            if (!productMetadata.ContainsKey(key))
+            {
+                productMetadata[key] = (row.ProductId, row.Ean);
+            }
+        }
+
+        var conflictingKeys = productMetadata
+            .Where(pair =>
+            {
+                decimal? reference = null;
+
+                foreach (var runId in completedRunIds)
+                {
+                    var quantities = quantitiesByRun.GetValueOrDefault(
+                        runId,
+                        new Dictionary<string, decimal>(StringComparer.Ordinal));
+
+                    var value = quantities.TryGetValue(pair.Key, out var quantity) ? quantity : 0m;
+
+                    if (reference is null)
+                    {
+                        reference = value;
+                        continue;
+                    }
+
+                    if (value != reference.Value)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            })
+            .Select(pair => pair.Key)
+            .ToArray();
+
+        if (conflictingKeys.Length == 0)
+        {
+            await connection.ExecuteAsync(
+                    new CommandDefinition(
+                        resolveConflictsSql,
+                        new { LocationId = locationId },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+            return;
+        }
 
         await connection.ExecuteAsync(
                 new CommandDefinition(
@@ -2200,6 +2261,72 @@ WHERE ""Conflict"".""CountLineId"" = cl.""Id""
                     transaction,
                     cancellationToken: cancellationToken))
             .ConfigureAwait(false);
+
+        const string lineLookupSql = @"SELECT DISTINCT ON (cl.""CountingRunId"", p.""Id"")
+    cl.""CountingRunId"",
+    cl.""Id"" AS ""CountLineId"",
+    p.""Id"" AS ""ProductId"",
+    p.""Ean""
+FROM ""CountLine"" cl
+JOIN ""Product"" p ON p.""Id"" = cl.""ProductId""
+WHERE cl.""CountingRunId"" = ANY(@RunIds::uuid[])
+ORDER BY cl.""CountingRunId"", p.""Id"", cl.""CountedAtUtc"" DESC, cl.""Id"" DESC;";
+
+        var lineReferences = await connection
+            .QueryAsync<CountLineReference>(
+                new CommandDefinition(
+                    lineLookupSql,
+                    new { RunIds = completedRunIds },
+                    transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        var lineIdLookup = lineReferences
+            .GroupBy(reference => reference.CountingRunId)
+            .ToDictionary(
+                group => group.Key,
+                group => group.ToDictionary(
+                    reference => BuildProductKey(reference.ProductId, reference.Ean),
+                    reference => reference.CountLineId,
+                    StringComparer.Ordinal),
+                EqualityComparer<Guid>.Default);
+
+        var conflictInserts = new List<object>();
+
+        foreach (var key in conflictingKeys)
+        {
+            foreach (var runId in completedRunIds)
+            {
+                if (!lineIdLookup.TryGetValue(runId, out var lines) || !lines.TryGetValue(key, out var lineId))
+                {
+                    continue;
+                }
+
+                conflictInserts.Add(new
+                {
+                    Id = Guid.NewGuid(),
+                    CountLineId = lineId,
+                    Status = "open",
+                    Notes = (string?)null,
+                    CreatedAtUtc = now
+                });
+            }
+        }
+
+        if (conflictInserts.Count == 0)
+        {
+            return;
+        }
+
+        const string insertConflictSql =
+            "INSERT INTO \"Conflict\" (\"Id\", \"CountLineId\", \"Status\", \"Notes\", \"CreatedAtUtc\") VALUES (@Id, @CountLineId, @Status, @Notes, @CreatedAtUtc);";
+
+        foreach (var payload in conflictInserts)
+        {
+            await connection.ExecuteAsync(
+                    new CommandDefinition(insertConflictSql, payload, transaction, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+        }
     }
 
     private static Dictionary<Guid, Dictionary<string, decimal>> BuildQuantityLookup(IEnumerable<AggregatedCountRow> aggregatedRows)
@@ -2344,7 +2471,7 @@ WHERE ""Conflict"".""CountLineId"" = cl.""Id""
             return;
         }
 
-        await ManageAdditionalConflictsAsync(connection, transaction, locationId, currentRunId, cancellationToken)
+        await ManageAdditionalConflictsAsync(connection, transaction, locationId, currentRunId, now, cancellationToken)
             .ConfigureAwait(false);
     }
 
