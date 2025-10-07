@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom'
+import { Link, Outlet } from 'react-router-dom'
 import { Page } from '../../components/Page'
 import { useShop } from '@/state/ShopContext'
 
@@ -18,6 +18,12 @@ export const AdminLayout = () => {
             Paramétrez les zones d&apos;inventaire et les comptes utilisateurs depuis un même espace.
           </p>
         </div>
+        <Link
+          to="/"
+          className="inline-flex items-center justify-center gap-2 self-start rounded-2xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors duration-150 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 dark:border-slate-700 dark:text-white dark:hover:bg-slate-800"
+        >
+          Retour à l&apos;accueil
+        </Link>
       </header>
       <Outlet />
     </Page>
