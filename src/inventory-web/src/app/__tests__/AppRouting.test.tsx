@@ -6,7 +6,7 @@ import type { Shop } from '@/types/shop'
 import type { ShopUser } from '@/types/user'
 import type { Location } from '@/app/types/inventory'
 import { CountType } from '@/app/types/inventory'
-import type { useInventory as UseInventoryHook } from '@/app/contexts/InventoryContext'
+import type { InventoryContextValue } from '@/app/contexts/InventoryContext'
 import { SELECTED_USER_STORAGE_PREFIX } from '@/lib/selectedUserStorage'
 
 type UseShopValue = {
@@ -30,7 +30,7 @@ const useShopMock = vi.hoisted(() =>
   } as UseShopValue)),
 )
 
-type UseInventoryValue = ReturnType<UseInventoryHook>
+type UseInventoryValue = InventoryContextValue
 
 const defaultInventoryUser: ShopUser = {
   id: 'user-default',
