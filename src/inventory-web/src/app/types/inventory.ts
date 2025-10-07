@@ -68,18 +68,33 @@ export interface ConflictZoneSummary {
   conflictLines: number
 }
 
+export interface ConflictRunQty {
+  runId: string
+  countType: number
+  quantity: number
+}
+
+export interface ConflictRunHeader {
+  runId: string
+  countType: number
+  completedAtUtc: string
+  ownerDisplayName: string | null
+}
+
 export interface ConflictZoneItem {
   ean: string
   productId: string
   qtyC1: number
   qtyC2: number
   delta: number
+  allCounts?: ConflictRunQty[]
 }
 
 export interface ConflictZoneDetail {
   locationId: string
   locationCode: string
   locationLabel: string
+  runs?: ConflictRunHeader[]
   items: ConflictZoneItem[]
 }
 

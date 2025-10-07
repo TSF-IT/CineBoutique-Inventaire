@@ -107,22 +107,33 @@ internal sealed class ConflictZoneSummaryRow
     public int ConflictLines { get; set; }
 }
 
-internal sealed class ConflictZoneItemRow
-{
-    public Guid ProductId { get; set; }
-
-    public string Ean { get; set; } = string.Empty;
-
-    public int QtyC1 { get; set; }
-
-    public int QtyC2 { get; set; }
-}
-
 internal sealed class LastRunLookupRow
 {
     public short CountType { get; set; }
 
     public Guid RunId { get; set; }
+}
+
+internal sealed class ConflictRunHeaderRow
+{
+    public Guid RunId { get; set; }
+
+    public short CountType { get; set; }
+
+    public DateTime CompletedAtUtc { get; set; }
+
+    public string? OwnerDisplayName { get; set; }
+}
+
+internal sealed class ConflictRunQuantityRow
+{
+    public Guid ProductId { get; set; }
+
+    public string Ean { get; set; } = string.Empty;
+
+    public Guid RunId { get; set; }
+
+    public int Quantity { get; set; }
 }
 
 internal sealed class LocationMetadataRow
