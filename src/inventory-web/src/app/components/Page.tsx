@@ -28,12 +28,7 @@ export const Page = ({
     )}
     nav={mobileNav}
     header={
-      <div
-        className={clsx(
-          'page-header flex items-center',
-          showHomeLink || headerAction ? 'justify-between gap-3' : 'justify-end',
-        )}
-      >
+      <div className="page-header flex w-full items-center gap-3">
         {(showHomeLink || headerAction) && (
           <div className="flex items-center gap-3">
             {showHomeLink && (
@@ -50,7 +45,9 @@ export const Page = ({
             {headerAction}
           </div>
         )}
-        <ThemeToggle />
+        <div className="ml-auto">
+          <ThemeToggle />
+        </div>
       </div>
     }
   >
