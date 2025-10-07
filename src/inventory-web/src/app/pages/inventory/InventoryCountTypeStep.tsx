@@ -254,31 +254,6 @@ export const InventoryCountTypeStep = () => {
               : 'Sélectionnez la zone à inventorier pour continuer.'}
           </p>
         </div>
-        {location && (
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-900/40">
-            <div className="flex flex-col gap-1">
-              <span className="text-xs font-semibold uppercase tracking-wide text-brand-500">
-                Zone {location.code}
-              </span>
-              {shouldDisplayLabel && (
-                <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{location.label}</span>
-              )}
-            </div>
-            <div className="mt-2 flex flex-col gap-1">
-              {countStatuses
-                .filter((status) => status.status !== 'not_started')
-                .map((status) => (
-                <span
-                  key={`${location.id}-${status.countType}`}
-                  className={`flex items-center gap-2 ${statusTextClass(status)}`}
-                >
-                  <span aria-hidden>{statusIcon(status)}</span>
-                  <span>{describeCountStatus(status, selectedUserId, selectedUserDisplayName)}</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {DISPLAYED_COUNT_TYPES.map((option) => {
             const status = countStatuses.find((item) => item.countType === option)
