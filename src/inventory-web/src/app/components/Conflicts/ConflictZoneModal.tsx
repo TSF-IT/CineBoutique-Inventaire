@@ -218,9 +218,9 @@ export const ConflictZoneModal = ({ open, zone, onClose }: ConflictZoneModalProp
     return `${zone.locationCode} · ${zone.locationLabel}`
   }, [zone])
 
-  const modalClassName = clsx('conflict-modal', isCompact ? 'modal-full' : 'modal-window')
+  const modalClassName = clsx('modal', 'conflict-modal', isCompact ? 'modal-full' : 'modal-window')
   const shouldStackRuns = isCompact || (orientation === 'portrait' && runs.length > 3)
-  const runsContainerClass = clsx('conflict-runs', shouldStackRuns && 'conflict-runs--stacked')
+  const runsContainerClass = clsx('conflict-runs', 'conflict-table', shouldStackRuns && 'conflict-runs--stacked')
 
   const renderRunSections = (item: ConflictZoneItem) => {
     if (hasDynamicColumns) {
