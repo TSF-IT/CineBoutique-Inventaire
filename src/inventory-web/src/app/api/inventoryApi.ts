@@ -275,14 +275,14 @@ export interface CompleteInventoryRunItem {
 export interface CompleteInventoryRunPayload {
   runId?: string | null
   ownerUserId: string
-  countType: 1 | 2 | 3
+  countType: number
   items: CompleteInventoryRunItem[]
 }
 
 export interface StartInventoryRunPayload {
   shopId: string
   ownerUserId: string
-  countType: 1 | 2 | 3
+  countType: number
 }
 
 export interface StartInventoryRunResponse {
