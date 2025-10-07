@@ -369,18 +369,40 @@ ORDER BY COALESCE(p.""Ean"", p.""Sku""), p.""Name"";";
                 return Results.NotFound();
             }
 
-            const string runsSql = @"SELECT DISTINCT
+            const string runsSql = @"WITH active_runs AS (
+    SELECT DISTINCT cr.""Id"" AS ""RunId""
+    FROM ""Conflict"" c
+    JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
+    JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
+    WHERE c.""ResolvedAtUtc"" IS NULL
+      AND cr.""LocationId"" = @LocationId
+),
+active_sessions AS (
+    SELECT DISTINCT cr.""InventorySessionId"" AS ""InventorySessionId""
+    FROM ""Conflict"" c
+    JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
+    JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
+    WHERE c.""ResolvedAtUtc"" IS NULL
+      AND cr.""LocationId"" = @LocationId
+      AND cr.""InventorySessionId"" IS NOT NULL
+)
+SELECT DISTINCT
     cr.""Id""           AS ""RunId"",
     cr.""CountType""    AS ""CountType"",
     cr.""CompletedAtUtc"" AS ""CompletedAtUtc"",
     COALESCE(su.""DisplayName"", cr.""OperatorDisplayName"") AS ""OwnerDisplayName""
-FROM ""Conflict"" c
-JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
-JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
+FROM ""CountingRun"" cr
 LEFT JOIN ""ShopUser"" su ON su.""Id"" = cr.""OwnerUserId""
-WHERE c.""ResolvedAtUtc"" IS NULL
-  AND cr.""LocationId"" = @LocationId
+WHERE cr.""LocationId"" = @LocationId
   AND cr.""CompletedAtUtc"" IS NOT NULL
+  AND (
+        EXISTS (SELECT 1 FROM active_runs ar WHERE ar.""RunId"" = cr.""Id"")
+        OR EXISTS (
+            SELECT 1
+            FROM active_sessions s
+            WHERE s.""InventorySessionId"" = cr.""InventorySessionId""
+        )
+    )
 ORDER BY cr.""CompletedAtUtc"" ASC, cr.""CountType"" ASC;";
 
             var runRows = (await connection.QueryAsync<ConflictRunHeaderRow>(
@@ -402,13 +424,36 @@ ORDER BY cr.""CompletedAtUtc"" ASC, cr.""CountType"" ASC;";
                 return Results.Ok(emptyPayload);
             }
 
-            const string detailSql = @"WITH conflict_runs AS (
+            const string detailSql = @"WITH active_runs AS (
     SELECT DISTINCT cr.""Id"" AS ""RunId""
     FROM ""Conflict"" c
     JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
     JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
     WHERE c.""ResolvedAtUtc"" IS NULL
       AND cr.""LocationId"" = @LocationId
+),
+active_sessions AS (
+    SELECT DISTINCT cr.""InventorySessionId"" AS ""InventorySessionId""
+    FROM ""Conflict"" c
+    JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
+    JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
+    WHERE c.""ResolvedAtUtc"" IS NULL
+      AND cr.""LocationId"" = @LocationId
+      AND cr.""InventorySessionId"" IS NOT NULL
+),
+conflict_runs AS (
+    SELECT DISTINCT cr.""Id"" AS ""RunId""
+    FROM ""CountingRun"" cr
+    WHERE cr.""LocationId"" = @LocationId
+      AND cr.""CompletedAtUtc"" IS NOT NULL
+      AND (
+            EXISTS (SELECT 1 FROM active_runs ar WHERE ar.""RunId"" = cr.""Id"")
+            OR EXISTS (
+                SELECT 1
+                FROM active_sessions s
+                WHERE s.""InventorySessionId"" = cr.""InventorySessionId""
+            )
+        )
 ),
 conflict_products AS (
     SELECT DISTINCT cl.""ProductId"" AS ""ProductId""
@@ -2132,6 +2177,7 @@ ORDER BY cl.""CountingRunId"", p.""Id"", cl.""CountedAtUtc"" DESC, cl.""Id"" DES
         IDbTransaction transaction,
         Guid locationId,
         Guid currentRunId,
+        DateTimeOffset now,
         CancellationToken cancellationToken)
     {
         const string completedRunsSql = @"SELECT ""Id"" FROM ""CountingRun"" WHERE ""LocationId"" = @LocationId AND ""CompletedAtUtc"" IS NOT NULL";
@@ -2181,17 +2227,17 @@ GROUP BY cl.""CountingRunId"", p.""Id"", p.""Ean"";";
             return HaveIdenticalQuantities(currentQuantities, otherQuantities);
         });
 
-        if (!hasMatch)
-        {
-            return;
-        }
-
         const string resolveConflictsSql = @"DELETE FROM ""Conflict""
 USING ""CountLine"" cl
 JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
 WHERE ""Conflict"".""CountLineId"" = cl.""Id""
   AND cr.""LocationId"" = @LocationId
   AND ""Conflict"".""ResolvedAtUtc"" IS NULL;";
+
+        if (!hasMatch)
+        {
+            return;
+        }
 
         await connection.ExecuteAsync(
                 new CommandDefinition(
@@ -2344,7 +2390,7 @@ WHERE ""Conflict"".""CountLineId"" = cl.""Id""
             return;
         }
 
-        await ManageAdditionalConflictsAsync(connection, transaction, locationId, currentRunId, cancellationToken)
+        await ManageAdditionalConflictsAsync(connection, transaction, locationId, currentRunId, now, cancellationToken)
             .ConfigureAwait(false);
     }
 
