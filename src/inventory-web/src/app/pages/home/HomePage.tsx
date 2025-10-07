@@ -13,11 +13,12 @@ import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
 import { CompletedRunsModal } from '../../components/Runs/CompletedRunsModal'
 import { OpenRunsModal } from '../../components/Runs/OpenRunsModal'
 import { useAsync } from '../../hooks/useAsync'
-import type { ConflictZoneSummary, InventorySummary, Location } from '../../types/inventory'
+import type { ConflictZoneSummary, InventorySummary, Location, OpenRunSummary } from '../../types/inventory'
 import type { LocationSummary } from '@/types/summary'
 import type { HttpError } from '@/lib/api/http'
 import { useShop } from '@/state/ShopContext'
 import { BackToShopSelectionLink } from '@/app/components/BackToShopSelectionLink'
+import { useInventory } from '../../contexts/InventoryContext'
 
 const isHttpError = (value: unknown): value is HttpError =>
   typeof value === 'object' &&
@@ -60,9 +61,107 @@ const describeError = (error: unknown): { title: string; details?: string } | nu
   return { title: 'Erreur', details: 'Une erreur inattendue est survenue.' }
 }
 
+const normalize = (value: string | null | undefined) => value?.trim().toLowerCase() ?? ''
+
+const toDateOrNull = (value: string | null | undefined): Date | null => {
+  if (!value) {
+    return null
+  }
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+const findLocationCandidate = (
+  locations: Location[],
+  identifiers: { locationId?: string | null; locationCode?: string | null },
+): Location | null => {
+  const idKey = normalize(identifiers.locationId)
+  const codeKey = normalize(identifiers.locationCode)
+  if (!Array.isArray(locations) || locations.length === 0) {
+    return null
+  }
+  if (idKey) {
+    const byId = locations.find((item) => normalize(item.id) === idKey)
+    if (byId) {
+      return byId
+    }
+  }
+  if (codeKey) {
+    const byCode = locations.find((item) => normalize(item.code) === codeKey)
+    if (byCode) {
+      return byCode
+    }
+  }
+  return null
+}
+
+const createFallbackLocationFromRun = (run: OpenRunSummary): Location => {
+  const startedAt = toDateOrNull(run.startedAtUtc)
+  return {
+    id: run.locationId,
+    code: run.locationCode,
+    label: run.locationLabel,
+    isBusy: true,
+    busyBy: run.ownerDisplayName ?? null,
+    activeRunId: run.runId,
+    activeCountType: run.countType,
+    activeStartedAtUtc: startedAt,
+    countStatuses: [
+      {
+        countType: run.countType,
+        status: 'in_progress',
+        runId: run.runId,
+        ownerDisplayName: run.ownerDisplayName ?? null,
+        ownerUserId: run.ownerUserId ?? null,
+        startedAtUtc: startedAt,
+        completedAtUtc: null,
+      },
+    ],
+  }
+}
+
+const createFallbackLocationFromZone = (zone: ConflictZoneSummary): Location => ({
+  id: zone.locationId,
+  code: zone.locationCode,
+  label: zone.locationLabel,
+  isBusy: false,
+  busyBy: null,
+  activeRunId: null,
+  activeCountType: null,
+  activeStartedAtUtc: null,
+  countStatuses: [],
+})
+
+const isRunOwnedByUser = (
+  run: OpenRunSummary,
+  selectedUserId: string | null,
+  selectedUserDisplayName: string | null,
+) => {
+  const ownerUserId = run.ownerUserId?.trim() ?? null
+  const ownerDisplayName = run.ownerDisplayName?.trim() ?? null
+  if (ownerUserId && selectedUserId) {
+    return ownerUserId === selectedUserId
+  }
+  if (!ownerUserId && ownerDisplayName && selectedUserDisplayName) {
+    return ownerDisplayName === selectedUserDisplayName
+  }
+  if (!ownerUserId && !ownerDisplayName) {
+    return Boolean(selectedUserId || selectedUserDisplayName)
+  }
+  return false
+}
+
 export const HomePage = () => {
   const navigate = useNavigate()
   const { shop, setShop, isLoaded } = useShop()
+  const {
+    selectedUser,
+    sessionId,
+    setLocation,
+    setCountType,
+    setSessionId,
+    clearSession,
+  } = useInventory()
   const [openRunsModalOpen, setOpenRunsModalOpen] = useState(false)
   const [completedRunsModalOpen, setCompletedRunsModalOpen] = useState(false)
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
@@ -230,6 +329,24 @@ export const HomePage = () => {
   const canOpenCompletedRunsModal = completedRunDetails.length > 0
   const canOpenConflicts = hasConflicts && conflictZones.length > 0
   const hasLocationSummaries = locationSummaries.length > 0
+  const selectedUserId = selectedUser?.id?.trim() ?? null
+  const selectedUserDisplayName = selectedUser?.displayName?.trim() ?? null
+  const ownedRunIds = useMemo(() => {
+    if (!selectedUserId && !selectedUserDisplayName) {
+      return [] as string[]
+    }
+    return openRunDetails
+      .filter((run) => isRunOwnedByUser(run, selectedUserId, selectedUserDisplayName))
+      .map((run) => run.runId)
+  }, [openRunDetails, selectedUserDisplayName, selectedUserId])
+  const hasOwnedOpenRuns = ownedRunIds.length > 0
+  const ownedRunsLabel = useMemo(() => {
+    if (!hasOwnedOpenRuns) {
+      return null
+    }
+    const count = ownedRunIds.length
+    return count <= 1 ? 'Vous avez un comptage en cours' : `Vous avez ${count} comptages en cours`
+  }, [hasOwnedOpenRuns, ownedRunIds.length])
 
   const handleOpenRunsClick = useCallback(() => {
     if (canOpenOpenRunsModal) {
@@ -252,6 +369,77 @@ export const HomePage = () => {
     setConflictModalOpen(false)
     setSelectedZone(null)
   }, [])
+
+  const handleResumeRun = useCallback(
+    (run: OpenRunSummary) => {
+      if (!isLoaded) {
+        return
+      }
+
+      if (!selectedUser) {
+        navigate('/select-shop', { replace: true })
+        return
+      }
+
+      const existingSessionId = sessionId?.trim() ?? null
+      if (!existingSessionId || existingSessionId !== run.runId) {
+        clearSession()
+      }
+
+      const candidate = findLocationCandidate(locations, {
+        locationId: run.locationId,
+        locationCode: run.locationCode,
+      })
+      const resolvedLocation = candidate ?? createFallbackLocationFromRun(run)
+      setLocation(resolvedLocation)
+      setCountType(run.countType)
+      setSessionId(run.runId)
+      setOpenRunsModalOpen(false)
+      navigate('/inventory/session')
+    },
+    [
+      clearSession,
+      isLoaded,
+      locations,
+      navigate,
+      selectedUser,
+      sessionId,
+      setCountType,
+      setLocation,
+      setSessionId,
+    ],
+  )
+
+  const handleStartConflictCount = useCallback(
+    (zone: ConflictZoneSummary, nextCountType: number) => {
+      if (!selectedUser) {
+        navigate('/select-shop', { replace: true })
+        return
+      }
+
+      clearSession()
+      const candidate = findLocationCandidate(locations, {
+        locationId: zone.locationId,
+        locationCode: zone.locationCode,
+      })
+      const resolvedLocation = candidate ?? createFallbackLocationFromZone(zone)
+      setLocation(resolvedLocation)
+      setCountType(nextCountType)
+      setSessionId(null)
+      setConflictModalOpen(false)
+      setSelectedZone(null)
+      navigate('/inventory/session')
+    },
+    [
+      clearSession,
+      locations,
+      navigate,
+      selectedUser,
+      setCountType,
+      setLocation,
+      setSessionId,
+    ],
+  )
 
   const shopDisplayName = shop?.name?.trim()
 
@@ -298,6 +486,12 @@ export const HomePage = () => {
               >
                 {hasOpenRuns ? openRunsCount : 'Aucun comptage en cours'}
               </p>
+              {hasOwnedOpenRuns && ownedRunsLabel && (
+                <p className="mt-2 inline-flex items-center gap-2 text-xs font-semibold text-brand-700/90 dark:text-brand-100">
+                  <span aria-hidden="true">👤</span>
+                  <span>{ownedRunsLabel}</span>
+                </p>
+              )}
               {canOpenOpenRunsModal && (
                 <p className="mt-1 text-xs text-brand-700/80 dark:text-brand-200/80">Touchez pour voir le détail</p>
               )}
@@ -422,7 +616,13 @@ export const HomePage = () => {
         </Link>
       </div>
 
-      <OpenRunsModal open={openRunsModalOpen} openRuns={openRunDetails} onClose={() => setOpenRunsModalOpen(false)} />
+      <OpenRunsModal
+        open={openRunsModalOpen}
+        openRuns={openRunDetails}
+        onClose={() => setOpenRunsModalOpen(false)}
+        ownedRunIds={ownedRunIds}
+        onResumeRun={hasOwnedOpenRuns ? handleResumeRun : undefined}
+      />
 
       <CompletedRunsModal
         open={completedRunsModalOpen}
@@ -430,7 +630,12 @@ export const HomePage = () => {
         onClose={() => setCompletedRunsModalOpen(false)}
       />
 
-      <ConflictZoneModal open={conflictModalOpen} zone={selectedZone} onClose={handleConflictModalClose} />
+      <ConflictZoneModal
+        open={conflictModalOpen}
+        zone={selectedZone}
+        onClose={handleConflictModalClose}
+        onStartExtraCount={selectedZone ? handleStartConflictCount : undefined}
+      />
     </Page>
   )
 }
