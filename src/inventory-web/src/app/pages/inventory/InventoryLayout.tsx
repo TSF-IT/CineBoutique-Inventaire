@@ -11,6 +11,7 @@ const stepIndexByPath: Record<string, number> = {
   '/inventory/location': 0,
   '/inventory/count-type': 1,
   '/inventory/session': 2,
+  '/inventory/scan-camera': 2,
 }
 
 export const InventoryLayout = () => {
@@ -43,7 +44,7 @@ export const InventoryLayout = () => {
       return
     }
 
-    if (path === '/inventory/session') {
+    if (path === '/inventory/session' || path === '/inventory/scan-camera') {
       if (!selectedUser) {
         navigate('/select-shop', { replace: true })
         return
