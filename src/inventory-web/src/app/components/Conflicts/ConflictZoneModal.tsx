@@ -11,6 +11,7 @@ interface ConflictZoneModalProps {
   open: boolean
   zone: ConflictZoneSummary | null
   onClose: () => void
+  onStartExtraCount?: (zone: ConflictZoneSummary, nextCountType: number) => void
 }
 
 interface DetailState {
@@ -28,7 +29,14 @@ const focusableSelectors = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(', ')
 
-export const ConflictZoneModal = ({ open, zone, onClose }: ConflictZoneModalProps) => {
+const formatOrdinalFr = (value: number) => {
+  if (value <= 0 || Number.isNaN(value)) {
+    return `${value}`
+  }
+  return value === 1 ? '1er' : `${value}ᵉ`
+}
+
+export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: ConflictZoneModalProps) => {
   const [state, setState] = useState<DetailState>({ status: 'idle', detail: null, error: null })
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [isCompact, setIsCompact] = useState(() => {
@@ -181,6 +189,17 @@ export const ConflictZoneModal = ({ open, zone, onClose }: ConflictZoneModalProp
   const hasItems = items.length > 0
   const hasDynamicColumns =
     runs.length > 0 && items.some((item) => Array.isArray(item.allCounts) && item.allCounts.length > 0)
+  const nextCountType = useMemo(() => {
+    if (!detail) {
+      return null
+    }
+    const maxCount = (detail.runs ?? []).reduce((acc, run) => {
+      const numeric = Number(run.countType) || 0
+      return numeric > acc ? numeric : acc
+    }, 0)
+    const computed = maxCount > 0 ? maxCount + 1 : 3
+    return computed < 3 ? 3 : computed
+  }, [detail])
 
   const formatOwnerName = (value: string | null | undefined) => {
     const trimmed = typeof value === 'string' ? value.trim() : ''
@@ -335,9 +354,27 @@ export const ConflictZoneModal = ({ open, zone, onClose }: ConflictZoneModalProp
           )}
         </div>
         <footer className="modal-footer">
-          <Button type="button" variant="secondary" fullWidth={isCompact} onClick={onClose}>
-            Fermer
-          </Button>
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+            {onStartExtraCount && zone && status === 'loaded' && nextCountType && (
+              <Button
+                type="button"
+                onClick={() => onStartExtraCount(zone, nextCountType)}
+                fullWidth={isCompact}
+                className="sm:order-2"
+              >
+                Lancer le {formatOrdinalFr(nextCountType)} comptage
+              </Button>
+            )}
+            <Button
+              type="button"
+              variant="secondary"
+              fullWidth={isCompact}
+              onClick={onClose}
+              className="sm:order-1"
+            >
+              Fermer
+            </Button>
+          </div>
         </footer>
       </div>
     </div>
