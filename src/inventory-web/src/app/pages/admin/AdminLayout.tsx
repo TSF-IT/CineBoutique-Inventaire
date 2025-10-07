@@ -8,11 +8,11 @@ export const AdminLayout = () => (
         <p className="text-sm uppercase tracking-[0.3em] text-brand-500 dark:text-brand-200">CinéBoutique</p>
         <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Administration</h1>
         <p className="text-sm text-slate-600 dark:text-slate-400">
-          Gérer librement les zones d&apos;inventaire et leurs libellés.
+          Paramétrez les zones d&apos;inventaire et les comptes utilisateurs depuis un même espace.
         </p>
       </div>
       <p className="text-xs text-slate-500 dark:text-slate-400 sm:text-right">
-        Accès ouvert pour l&apos;édition des zones.
+        Interface pensée pour mobile, iPad et grand écran.
       </p>
     </header>
     <Outlet />
