@@ -370,39 +370,30 @@ ORDER BY COALESCE(p.""Ean"", p.""Sku""), p.""Name"";";
             }
 
             const string runsSql = @"WITH active_runs AS (
-    SELECT DISTINCT cr.""Id"" AS ""RunId""
-    FROM ""Conflict"" c
-    JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
-    JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
-    WHERE c.""ResolvedAtUtc"" IS NULL
-      AND cr.""LocationId"" = @LocationId
+  SELECT DISTINCT cr.""Id"" AS ""RunId", cr.""CompletedAtUtc""
+  FROM ""Conflict"" c
+  JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
+  JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
+  WHERE c.""ResolvedAtUtc"" IS NULL
+    AND cr.""LocationId"" = @LocationId
 ),
-active_sessions AS (
-    SELECT DISTINCT cr.""InventorySessionId"" AS ""InventorySessionId""
-    FROM ""Conflict"" c
-    JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
-    JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
-    WHERE c.""ResolvedAtUtc"" IS NULL
-      AND cr.""LocationId"" = @LocationId
-      AND cr.""InventorySessionId"" IS NOT NULL
+seed_bounds AS (
+  SELECT MIN(ar.""CompletedAtUtc"") AS ""MinCompletedAtUtc""
+  FROM active_runs ar
+),
+conflict_runs AS (
+  SELECT cr.""Id"" AS ""RunId", cr.""CountType", cr.""CompletedAtUtc""
+  FROM ""CountingRun"" cr
+  CROSS JOIN seed_bounds sb
+  WHERE cr.""LocationId"" = @LocationId
+    AND cr.""CompletedAtUtc"" IS NOT NULL
+    AND (sb.""MinCompletedAtUtc"" IS NULL OR cr.""CompletedAtUtc"" >= sb.""MinCompletedAtUtc"")
 )
-SELECT DISTINCT
-    cr.""Id""           AS ""RunId"",
-    cr.""CountType""    AS ""CountType"",
-    cr.""CompletedAtUtc"" AS ""CompletedAtUtc"",
-    COALESCE(su.""DisplayName"", cr.""OperatorDisplayName"") AS ""OwnerDisplayName""
-FROM ""CountingRun"" cr
-LEFT JOIN ""ShopUser"" su ON su.""Id"" = cr.""OwnerUserId""
-WHERE cr.""LocationId"" = @LocationId
-  AND cr.""CompletedAtUtc"" IS NOT NULL
-  AND (
-        EXISTS (SELECT 1 FROM active_runs ar WHERE ar.""RunId"" = cr.""Id"")
-        OR EXISTS (
-            SELECT 1
-            FROM active_sessions s
-            WHERE s.""InventorySessionId"" = cr.""InventorySessionId""
-        )
-    )
+SELECT cr.""RunId", cr.""CountType", cr.""CompletedAtUtc",
+       COALESCE(su.""DisplayName"", cr2.""OperatorDisplayName"") AS ""OwnerDisplayName""
+FROM conflict_runs cr
+JOIN ""CountingRun"" cr2 ON cr2.""Id"" = cr.""RunId"
+LEFT JOIN ""ShopUser"" su ON su.""Id"" = cr2.""OwnerUserId""
 ORDER BY cr.""CompletedAtUtc"" ASC, cr.""CountType"" ASC;";
 
             var runRows = (await connection.QueryAsync<ConflictRunHeaderRow>(
@@ -425,35 +416,24 @@ ORDER BY cr.""CompletedAtUtc"" ASC, cr.""CountType"" ASC;";
             }
 
             const string detailSql = @"WITH active_runs AS (
-    SELECT DISTINCT cr.""Id"" AS ""RunId""
+    SELECT DISTINCT cr.""Id"" AS ""RunId", cr.""CompletedAtUtc""
     FROM ""Conflict"" c
     JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
     JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
     WHERE c.""ResolvedAtUtc"" IS NULL
       AND cr.""LocationId"" = @LocationId
 ),
-active_sessions AS (
-    SELECT DISTINCT cr.""InventorySessionId"" AS ""InventorySessionId""
-    FROM ""Conflict"" c
-    JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
-    JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
-    WHERE c.""ResolvedAtUtc"" IS NULL
-      AND cr.""LocationId"" = @LocationId
-      AND cr.""InventorySessionId"" IS NOT NULL
+seed_bounds AS (
+    SELECT MIN(ar.""CompletedAtUtc"") AS ""MinCompletedAtUtc""
+    FROM active_runs ar
 ),
 conflict_runs AS (
-    SELECT DISTINCT cr.""Id"" AS ""RunId""
+    SELECT cr.""Id"" AS ""RunId", cr.""CountType", cr.""CompletedAtUtc""
     FROM ""CountingRun"" cr
+    CROSS JOIN seed_bounds sb
     WHERE cr.""LocationId"" = @LocationId
       AND cr.""CompletedAtUtc"" IS NOT NULL
-      AND (
-            EXISTS (SELECT 1 FROM active_runs ar WHERE ar.""RunId"" = cr.""Id"")
-            OR EXISTS (
-                SELECT 1
-                FROM active_sessions s
-                WHERE s.""InventorySessionId"" = cr.""InventorySessionId""
-            )
-        )
+      AND (sb.""MinCompletedAtUtc"" IS NULL OR cr.""CompletedAtUtc"" >= sb.""MinCompletedAtUtc"")
 ),
 conflict_products AS (
     SELECT DISTINCT cl.""ProductId"" AS ""ProductId""
