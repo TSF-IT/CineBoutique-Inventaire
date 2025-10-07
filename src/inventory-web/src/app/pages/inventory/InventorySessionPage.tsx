@@ -1,7 +1,7 @@
 // Modifications : forcer l'inclusion de runId=null lors de la complétion sans run existant.
 import type { KeyboardEvent, ChangeEvent, FocusEvent, PointerEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useOutletContext } from 'react-router-dom'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import { BarcodeFormat, DecodeHintType } from '@zxing/library'
 import {
@@ -17,11 +17,13 @@ import { Input } from '../../components/ui/Input'
 import { Card } from '../../components/Card'
 import { EmptyState } from '../../components/EmptyState'
 import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
+import { MobileActionBar } from '../../components/MobileActionBar'
 import { useInventory } from '../../contexts/InventoryContext'
 import type { HttpError } from '@/lib/api/http'
 import type { ConflictZoneSummary, Product } from '../../types/inventory'
 import { CountType } from '../../types/inventory'
 import { useShop } from '@/state/ShopContext'
+import type { InventoryLayoutOutletContext } from './InventoryLayout'
 
 const DEV_API_UNREACHABLE_HINT =
   "Impossible de joindre l’API : vérifie que le backend tourne (curl http://localhost:8080/healthz) ou que le proxy Vite est actif."
@@ -130,6 +132,8 @@ export const InventorySessionPage = () => {
     logEvent,
   } = useInventory()
   const { shop } = useShop()
+  const outletContext = useOutletContext<InventoryLayoutOutletContext | null | undefined>()
+  const setMobileNav = outletContext?.setMobileNav
   const [useCamera, setUseCamera] = useState(false)
   const [status, setStatusState] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -723,6 +727,47 @@ export const InventorySessionPage = () => {
     updateStatus,
   ])
 
+  const handleRestartSession = useCallback(() => {
+    const shouldReset =
+      items.length === 0 ||
+      window.confirm('Relancer un comptage ? Les articles non enregistrés seront perdus.')
+
+    if (!shouldReset) {
+      return
+    }
+
+    completionConfirmationDialogRef.current?.close()
+    logsDialogRef.current?.close()
+    clearSession()
+    setSessionId(null)
+    setManualEan('')
+    setScanValue('')
+    setInputLookupStatus('idle')
+    setQuantityDrafts({})
+    setRecentScans([])
+    setStatusState(null)
+    setErrorMessage(null)
+    setUseCamera(false)
+    updateStatus('Session réinitialisée.')
+  }, [
+    clearSession,
+    items.length,
+    setInputLookupStatus,
+    setManualEan,
+    setQuantityDrafts,
+    setRecentScans,
+    setScanValue,
+    setSessionId,
+    setStatusState,
+    setErrorMessage,
+    setUseCamera,
+    updateStatus,
+  ])
+
+  const toggleCamera = useCallback(() => {
+    setUseCamera((prev) => !prev)
+  }, [setUseCamera])
+
   const handleOpenCompletionConfirmation = useCallback(() => {
     const dialog = completionConfirmationDialogRef.current
     if (dialog && typeof dialog.showModal === 'function') {
@@ -748,6 +793,43 @@ export const InventorySessionPage = () => {
     completionConfirmationDialogRef.current?.close()
     void handleCompleteRun()
   }, [handleCompleteRun])
+
+  const mobileActions = useMemo(
+    () => (
+      <MobileActionBar
+        scan={{
+          label: useCamera ? 'Caméra activée' : 'Scanner',
+          onClick: toggleCamera,
+        }}
+        restart={{
+          onClick: handleRestartSession,
+          disabled: completionLoading,
+        }}
+        complete={{
+          onClick: handleOpenCompletionConfirmation,
+          disabled: !canCompleteRun,
+          busy: completionLoading,
+          label: completionLoading ? 'Enregistrement…' : 'Terminer',
+        }}
+      />
+    ),
+    [
+      canCompleteRun,
+      completionLoading,
+      handleOpenCompletionConfirmation,
+      handleRestartSession,
+      toggleCamera,
+      useCamera,
+    ],
+  )
+
+  useEffect(() => {
+    if (!setMobileNav) {
+      return undefined
+    }
+    setMobileNav(mobileActions)
+    return () => setMobileNav(null)
+  }, [mobileActions, setMobileNav])
 
   useEffect(() => {
     const previousCount = previousItemCountRef.current

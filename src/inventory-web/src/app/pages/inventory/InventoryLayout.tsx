@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Stepper } from '../../components/Stepper'
 import { Page } from '../../components/Page'
@@ -13,6 +13,10 @@ const stepIndexByPath: Record<string, number> = {
   '/inventory/session': 2,
 }
 
+export type InventoryLayoutOutletContext = {
+  setMobileNav: (nav: ReactNode | null) => void
+}
+
 export const InventoryLayout = () => {
   const location = useLocation()
   const navigate = useNavigate()
@@ -21,6 +25,14 @@ export const InventoryLayout = () => {
   const stepperContainerRef = useRef<HTMLDivElement | null>(null)
   const { shop } = useShop()
   const shopDisplayName = shop?.name?.trim()
+  const [mobileNav, setMobileNav] = useState<ReactNode | null>(null)
+  const handleSetMobileNav = useCallback((nav: ReactNode | null) => {
+    setMobileNav(nav)
+  }, [])
+  const outletContext = useMemo<InventoryLayoutOutletContext>(
+    () => ({ setMobileNav: handleSetMobileNav }),
+    [handleSetMobileNav],
+  )
 
   useEffect(() => {
     const path = location.pathname
@@ -61,6 +73,10 @@ export const InventoryLayout = () => {
   }, [countType, location.pathname, locationId, navigate, selectedUser])
 
   useEffect(() => {
+    setMobileNav(null)
+  }, [location.pathname])
+
+  useEffect(() => {
     const container = stepperContainerRef.current
     if (!container) {
       return
@@ -81,7 +97,7 @@ export const InventoryLayout = () => {
   const activeIndex = stepIndexByPath[location.pathname] ?? 0
 
   return (
-    <Page className="gap-8" showHomeLink>
+    <Page className="gap-8" showHomeLink mobileNav={mobileNav ?? undefined}>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -103,7 +119,7 @@ export const InventoryLayout = () => {
         </div>
       </div>
       <div className="flex-1">
-        <Outlet />
+        <Outlet context={outletContext} />
       </div>
     </Page>
   )
