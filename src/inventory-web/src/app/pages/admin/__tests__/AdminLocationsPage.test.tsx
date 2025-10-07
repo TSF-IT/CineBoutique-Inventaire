@@ -54,19 +54,9 @@ const renderAdminPage = async () => {
   )
 
   await waitFor(() => {
-    expect(mockedFetchLocations).toHaveBeenCalled()
+    expect(mockedFetchLocations).toHaveBeenCalledWith(testShop.id)
+    expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id)
   })
-
-  expect(mockedFetchLocations.mock.calls[0]?.[0]).toBe(testShop.id)
-
-}
-
-const openUsersTab = async (user: ReturnType<typeof userEvent.setup>) => {
-  const tablists = await screen.findAllByRole('tablist', { name: /choix de la section d'administration/i })
-  const tablist = tablists[tablists.length - 1]
-  const tabs = within(tablist).getAllByRole('tab')
-  const target = tabs.find((tab) => tab.textContent?.includes('Utilisateurs')) ?? tabs[tabs.length - 1]
-  await user.click(target as HTMLButtonElement)
 }
 
 describe('AdminLocationsPage', () => {
@@ -108,6 +98,7 @@ describe('AdminLocationsPage', () => {
 
     await renderAdminPage()
 
+    const initialUserFetchCalls = mockedFetchShopUsers.mock.calls.length
     const user = userEvent.setup()
     const codeInput = (await screen.findAllByLabelText('Code'))[0]
     const labelInput = (await screen.findAllByLabelText('Libellé'))[0]
@@ -128,7 +119,7 @@ describe('AdminLocationsPage', () => {
     expect(mockedCreateLocation).toHaveBeenCalledWith({ code: 'B02', label: 'Comptoir' })
     expect(await screen.findByText('Zone créée avec succès.')).toBeInTheDocument()
     expect(screen.getByText('Comptoir')).toBeInTheDocument()
-    expect(mockedFetchShopUsers).not.toHaveBeenCalled()
+    expect(mockedFetchShopUsers.mock.calls.length).toBe(initialUserFetchCalls)
   })
 
   it('met à jour le code et le libellé d’une zone existante', async () => {
@@ -142,6 +133,7 @@ describe('AdminLocationsPage', () => {
 
     await renderAdminPage()
 
+    const initialUserFetchCalls = mockedFetchShopUsers.mock.calls.length
     const user = userEvent.setup()
     const editButtons = await screen.findAllByRole('button', { name: 'Modifier' })
     await user.click(editButtons[0])
@@ -167,20 +159,21 @@ describe('AdminLocationsPage', () => {
     expect(await screen.findByText('Zone mise à jour.')).toBeInTheDocument()
     expect(screen.getByText('Accueil')).toBeInTheDocument()
     expect(screen.getByText('C01')).toBeInTheDocument()
-    expect(mockedFetchShopUsers).not.toHaveBeenCalled()
+    expect(mockedFetchShopUsers.mock.calls.length).toBe(initialUserFetchCalls)
   })
 
-  it("charge les utilisateurs lors de l'ouverture de l'onglet dédié", async () => {
+  it('charge les utilisateurs dès l’ouverture de la page', async () => {
     await renderAdminPage()
 
-    expect(mockedFetchShopUsers).not.toHaveBeenCalled()
+    expect(mockedFetchShopUsers).toHaveBeenCalledTimes(1)
+    expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id)
+  })
 
-    const user = userEvent.setup()
-    await openUsersTab(user)
+  it('affiche simultanément les sections zones et utilisateurs', async () => {
+    await renderAdminPage()
 
-    await waitFor(() => {
-      expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id)
-    })
+    expect(screen.getAllByRole('heading', { name: 'Zones' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('heading', { name: 'Utilisateurs' }).length).toBeGreaterThan(0)
   })
 
   it('crée un nouvel utilisateur', async () => {
@@ -198,7 +191,6 @@ describe('AdminLocationsPage', () => {
     await renderAdminPage()
 
     const user = userEvent.setup()
-    await openUsersTab(user)
 
     await waitFor(() => {
       expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id)
@@ -251,7 +243,6 @@ describe('AdminLocationsPage', () => {
     await renderAdminPage()
 
     const user = userEvent.setup()
-    await openUsersTab(user)
 
     await waitFor(() => {
       expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id)
@@ -323,7 +314,6 @@ describe('AdminLocationsPage', () => {
     await renderAdminPage()
 
     const user = userEvent.setup()
-    await openUsersTab(user)
 
     await waitFor(() => {
       expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id)

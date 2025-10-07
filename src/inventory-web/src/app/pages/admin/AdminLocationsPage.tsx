@@ -20,20 +20,10 @@ import type { ShopUser } from '@/types/user'
 import { useShop } from '@/state/ShopContext'
 
 type FeedbackState = { type: 'success' | 'error'; message: string } | null
-type AdminSection = 'locations' | 'users'
 
-const ADMIN_SECTIONS: { id: AdminSection; label: string; description: string }[] = [
-  {
-    id: 'locations',
-    label: 'Zones',
-    description: 'Ajustez les codes visibles sur les étiquettes et leurs libellés associés.',
-  },
-  {
-    id: 'users',
-    label: 'Utilisateurs',
-    description: 'Créez, mettez à jour ou désactivez les comptes des personnes autorisées à inventorier.',
-  },
-]
+const LOCATION_SECTION_DESCRIPTION = 'Ajustez les codes visibles sur les étiquettes et leurs libellés associés.'
+const USER_SECTION_DESCRIPTION =
+  'Créez, mettez à jour ou désactivez les comptes des personnes autorisées à inventorier.'
 
 const formatBusyStatus = (location: Location) => {
   if (!location.isBusy) {
@@ -41,50 +31,6 @@ const formatBusyStatus = (location: Location) => {
   }
   return location.busyBy ? `Occupée par ${location.busyBy}` : 'Occupée'
 }
-
-type SectionSwitcherProps = {
-  activeSection: AdminSection
-  onChange: (section: AdminSection) => void
-}
-
-const SectionSwitcher = ({ activeSection, onChange }: SectionSwitcherProps) => (
-  <Card className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-    <div>
-      <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Paramétrage rapide</h2>
-      <p className="text-sm text-slate-600 dark:text-slate-400">
-        Choisissez la rubrique à modifier. Les actions sont pensées pour un usage tactile ou souris.
-      </p>
-    </div>
-    <div className="flex justify-start sm:justify-end">
-      <div
-        role="tablist"
-        aria-label="Choix de la section d'administration"
-        className="inline-grid w-full min-w-[200px] grid-cols-2 gap-1 rounded-full bg-slate-100 p-1 text-sm font-semibold text-slate-600 shadow-inner dark:bg-slate-800 dark:text-slate-300 sm:w-auto"
-      >
-        {ADMIN_SECTIONS.map(({ id, label }) => {
-          const isActive = id === activeSection
-          return (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={isActive}
-              className={clsx(
-                'rounded-full px-4 py-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400',
-                isActive
-                  ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
-                  : 'hover:text-slate-900 dark:hover:text-white',
-              )}
-              onClick={() => onChange(id)}
-            >
-              {label}
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  </Card>
-)
 
 type LocationListItemProps = {
   location: Location
@@ -367,9 +313,10 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
 
 type LocationsPanelProps = {
   description: string
+  className?: string
 }
 
-const LocationsPanel = ({ description }: LocationsPanelProps) => {
+const LocationsPanel = ({ description, className }: LocationsPanelProps) => {
   const { shop } = useShop()
 
   const loadLocations = useCallback(() => {
@@ -438,7 +385,7 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
   }
 
   return (
-    <Card className="flex flex-col gap-4">
+    <Card className={clsx('flex flex-col gap-4', className)}>
       <div className="flex flex-col gap-1">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -508,10 +455,10 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
 
 type UsersPanelProps = {
   description: string
-  isActive: boolean
+  className?: string
 }
 
-const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
+const UsersPanel = ({ description, className }: UsersPanelProps) => {
   const { shop } = useShop()
 
   const loadUsers = useCallback(() => {
@@ -523,10 +470,8 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
 
   const { data, loading, error, execute, setData } = useAsync(loadUsers, [loadUsers], {
     initialValue: [],
-    immediate: false,
+    immediate: Boolean(shop?.id),
   })
-
-  const [hasRequested, setHasRequested] = useState(false)
   const [newUserLogin, setNewUserLogin] = useState('')
   const [newUserDisplayName, setNewUserDisplayName] = useState('')
   const [newUserIsAdmin, setNewUserIsAdmin] = useState(false)
@@ -534,23 +479,8 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
   const [userFeedback, setUserFeedback] = useState<FeedbackState>(null)
 
   useEffect(() => {
-    setHasRequested(false)
     setData([])
   }, [setData, shop?.id])
-
-  useEffect(() => {
-    if (!isActive) {
-      return
-    }
-    if (!shop?.id) {
-      return
-    }
-    if (hasRequested) {
-      return
-    }
-    setHasRequested(true)
-    void execute().catch(() => undefined)
-  }, [execute, hasRequested, isActive, shop?.id])
 
   const sortedUsers = useMemo(() => {
     const list = data ?? []
@@ -637,12 +567,11 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
       return
     }
     setUserFeedback(null)
-    setHasRequested(true)
     void execute().catch(() => undefined)
   }
 
   return (
-    <Card className="flex flex-col gap-4">
+    <Card className={clsx('flex flex-col gap-4', className)}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Utilisateurs</h2>
@@ -706,10 +635,10 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
         </p>
       )}
       {loading && <LoadingIndicator label="Chargement des utilisateurs" />}
-      {Boolean(error) && hasRequested && (
+      {Boolean(error) && (
         <EmptyState title="Erreur" description="Les utilisateurs n'ont pas pu être chargés." />
       )}
-      {!loading && !error && hasRequested && (
+      {!loading && !error && (
         <div className="cards">
           {sortedUsers.length === 0 ? (
             <EmptyState title="Aucun utilisateur" description="Ajoutez un premier compte pour démarrer." />
@@ -725,17 +654,12 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
 }
 
 export const AdminLocationsPage = () => {
-  const [activeSection, setActiveSection] = useState<AdminSection>('locations')
-  const activeDefinition = ADMIN_SECTIONS.find((section) => section.id === activeSection) ?? ADMIN_SECTIONS[0]
-
   return (
     <div className="flex flex-col gap-6">
-      <SectionSwitcher activeSection={activeSection} onChange={setActiveSection} />
-      {activeSection === 'locations' ? (
-        <LocationsPanel description={activeDefinition.description} />
-      ) : (
-        <UsersPanel description={activeDefinition.description} isActive={activeSection === 'users'} />
-      )}
+      <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
+        <LocationsPanel description={LOCATION_SECTION_DESCRIPTION} className="h-full" />
+        <UsersPanel description={USER_SECTION_DESCRIPTION} className="h-full" />
+      </div>
     </div>
   )
 }
