@@ -145,7 +145,40 @@ export const ConflictZoneModal = ({ open, zone, onClose }: ConflictZoneModalProp
   )
 
   const { status, detail, error } = state
-  const hasItems = detail?.items && detail.items.length > 0
+  const items = detail?.items ?? []
+  const runs = detail?.runs ?? []
+  const hasItems = items.length > 0
+  const hasDynamicColumns =
+    runs.length > 0 && items.some((item) => Array.isArray(item.allCounts) && item.allCounts.length > 0)
+
+  const formatOwnerName = (value: string | null | undefined) => {
+    const trimmed = typeof value === 'string' ? value.trim() : ''
+    return trimmed.length > 0 ? trimmed : '—'
+  }
+
+  const formatDateTime = (value: string | null | undefined) => {
+    if (!value) {
+      return '—'
+    }
+
+    const parsed = new Date(value)
+    if (Number.isNaN(parsed.getTime())) {
+      return '—'
+    }
+
+    return new Intl.DateTimeFormat('fr-FR', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    }).format(parsed)
+  }
+
+  const getDeltaClassName = (delta: number) => {
+    if (delta === 0) {
+      return 'text-slate-600 dark:text-slate-300'
+    }
+
+    return delta > 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'
+  }
 
   const headerTitle = useMemo(() => {
     if (!zone) {
@@ -179,7 +212,7 @@ export const ConflictZoneModal = ({ open, zone, onClose }: ConflictZoneModalProp
               {headerTitle}
             </h2>
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              Comparatif des quantités Comptage 1 et Comptage 2.
+              Comparatif des quantités par comptage.
             </p>
           </div>
           <button
@@ -207,9 +240,54 @@ export const ConflictZoneModal = ({ open, zone, onClose }: ConflictZoneModalProp
               )}
             </div>
           )}
-          {status === 'loaded' && detail && hasItems && (
+          {status === 'loaded' && detail && hasItems && hasDynamicColumns && (
             <div className="flex flex-col gap-4">
-              {detail.items.map((item) => (
+              {items.map((item) => {
+                const countsByRun = new Map<string, number>()
+                for (const count of item.allCounts ?? []) {
+                  countsByRun.set(count.runId, count.quantity)
+                }
+
+                return (
+                  <div
+                    key={item.productId}
+                    className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
+                  >
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">EAN {item.ean}</p>
+                    <div className="mt-3 overflow-x-auto">
+                      <dl
+                        className="grid gap-3 text-sm"
+                        style={{ gridTemplateColumns: `repeat(${runs.length + 1}, minmax(0, 160px))` }}
+                      >
+                        {runs.map((run) => {
+                          const quantity = countsByRun.get(run.runId) ?? 0
+                          return (
+                            <div key={run.runId} className="min-w-[140px]">
+                              <dt className="text-xs uppercase text-slate-500 dark:text-slate-400">Comptage {run.countType}</dt>
+                              <dd className="mt-1 font-semibold text-slate-900 dark:text-white">{quantity}</dd>
+                              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                {formatOwnerName(run.ownerDisplayName)}
+                              </p>
+                              <p className="text-xs text-slate-500 dark:text-slate-500">{formatDateTime(run.completedAtUtc)}</p>
+                            </div>
+                          )
+                        })}
+                        <div className="min-w-[140px]">
+                          <dt className="text-xs uppercase text-slate-500 dark:text-slate-400">Écart</dt>
+                          <dd className={`mt-1 font-semibold ${getDeltaClassName(item.delta)}`}>
+                            {item.delta > 0 ? `+${item.delta}` : item.delta}
+                          </dd>
+                        </div>
+                      </dl>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          {status === 'loaded' && detail && hasItems && !hasDynamicColumns && (
+            <div className="flex flex-col gap-4">
+              {items.map((item) => (
                 <div
                   key={item.productId}
                   className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800"
@@ -226,15 +304,7 @@ export const ConflictZoneModal = ({ open, zone, onClose }: ConflictZoneModalProp
                     </div>
                     <div className="col-span-2 sm:col-span-1">
                       <dt className="text-xs uppercase text-slate-500 dark:text-slate-400">Écart</dt>
-                      <dd
-                        className={`mt-1 font-semibold ${
-                          item.delta === 0
-                            ? 'text-slate-600 dark:text-slate-300'
-                            : item.delta > 0
-                              ? 'text-emerald-600 dark:text-emerald-300'
-                              : 'text-rose-600 dark:text-rose-300'
-                        }`}
-                      >
+                      <dd className={`mt-1 font-semibold ${getDeltaClassName(item.delta)}`}>
                         {item.delta > 0 ? `+${item.delta}` : item.delta}
                       </dd>
                     </div>
@@ -245,7 +315,7 @@ export const ConflictZoneModal = ({ open, zone, onClose }: ConflictZoneModalProp
           )}
           {status === 'loaded' && detail && !hasItems && (
             <p className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700 dark:border-emerald-500/50 dark:bg-emerald-500/10 dark:text-emerald-200">
-              Aucun écart détecté entre les deux derniers comptages pour cette zone.
+              Aucun écart détecté entre les comptages pour cette zone.
             </p>
           )}
         </div>
