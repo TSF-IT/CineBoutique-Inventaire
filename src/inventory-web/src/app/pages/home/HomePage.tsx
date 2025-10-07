@@ -296,7 +296,7 @@ export const HomePage = () => {
   const displaySummary: InventorySummary | null = summaryData ?? null
   const openRunsCount = displaySummary?.openRuns ?? 0
   const conflictCount = displaySummary?.conflicts ?? 0
-  const openRunDetails = displaySummary?.openRunDetails ?? []
+  const openRunDetails = useMemo(() => displaySummary?.openRunDetails ?? [], [displaySummary])
   const completedRunDetails = displaySummary?.completedRunDetails ?? []
   const conflictZones = useMemo(() => displaySummary?.conflictZones ?? [], [displaySummary])
   const locations = useMemo(() => locationsData ?? [], [locationsData])
