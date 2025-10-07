@@ -17,6 +17,7 @@ import type { ConflictZoneSummary, InventorySummary, Location } from '../../type
 import type { LocationSummary } from '@/types/summary'
 import type { HttpError } from '@/lib/api/http'
 import { useShop } from '@/state/ShopContext'
+import { BackToShopSelectionLink } from '@/app/components/BackToShopSelectionLink'
 
 const isHttpError = (value: unknown): value is HttpError =>
   typeof value === 'object' &&
@@ -182,8 +183,7 @@ export const HomePage = () => {
 
   const handleChangeShop = useCallback(() => {
     setShop(null)
-    navigate('/select-shop')
-  }, [navigate, setShop])
+  }, [setShop])
 
   const handleStartInventory = useCallback(() => {
     navigate('/inventory/location')
@@ -266,9 +266,7 @@ export const HomePage = () => {
             assurez un suivi fiable de vos zones.
           </p>
         </div>
-        <Button variant="secondary" onClick={handleChangeShop} className="self-start">
-          Changer de boutique
-        </Button>
+        <BackToShopSelectionLink onClick={handleChangeShop} className="self-start" />
       </header>
 
       <Card className="flex flex-col gap-4">
