@@ -3,6 +3,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Stepper } from '../../components/Stepper'
 import { Page } from '../../components/Page'
 import { useInventory } from '../../contexts/InventoryContext'
+import { useShop } from '@/state/ShopContext'
 
 const STEPS = ['Zone', 'Comptage', 'Scan']
 
@@ -18,6 +19,8 @@ export const InventoryLayout = () => {
   const { selectedUser, countType, location: selectedLocation } = useInventory()
   const locationId = selectedLocation?.id?.trim() ?? ''
   const stepperContainerRef = useRef<HTMLDivElement | null>(null)
+  const { shop } = useShop()
+  const shopDisplayName = shop?.name?.trim()
 
   useEffect(() => {
     const path = location.pathname
@@ -82,7 +85,9 @@ export const InventoryLayout = () => {
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-sm uppercase tracking-[0.25em] text-brand-500 dark:text-brand-200">CinéBoutique</p>
+            <p className="text-sm uppercase tracking-[0.25em] text-brand-500 dark:text-brand-200">
+              {shopDisplayName ?? 'CinéBoutique'}
+            </p>
             <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Assistant d&apos;inventaire</h1>
           </div>
           <div className="flex flex-col items-end gap-3 sm:flex-row sm:items-center">
