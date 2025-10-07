@@ -1,5 +1,5 @@
 import type { Location } from '../types/inventory'
-import type { ShopUser } from '../types/user'
+import type { ShopUser } from '@/types/user'
 import http from '@/lib/api/http'
 import { API_BASE } from '@/lib/api/config'
 

@@ -16,7 +16,7 @@ import { EmptyState } from '../../components/EmptyState'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { useAsync } from '../../hooks/useAsync'
 import type { Location } from '../../types/inventory'
-import type { ShopUser } from '../../types/user'
+import type { ShopUser } from '@/types/user'
 import { useShop } from '@/state/ShopContext'
 
 type FeedbackState = { type: 'success' | 'error'; message: string } | null

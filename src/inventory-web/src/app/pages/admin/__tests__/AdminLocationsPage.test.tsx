@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { ThemeProvider } from '../../../../theme/ThemeProvider'
 import { AdminLocationsPage } from '../AdminLocationsPage'
 import type { Location } from '../../../types/inventory'
-import type { ShopUser } from '../../../types/user'
+import type { ShopUser } from '@/types/user'
 import { fetchLocations } from '../../../api/inventoryApi'
 import {
   createLocation,
