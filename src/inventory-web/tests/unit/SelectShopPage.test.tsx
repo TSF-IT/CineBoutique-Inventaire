@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { MemoryRouter } from 'react-router-dom'
 
 import { SelectShopPage } from '../../src/app/pages/select-shop/SelectShopPage'
 import { ThemeProvider } from '../../src/theme/ThemeProvider'
@@ -64,7 +65,9 @@ describe('SelectShopPage', () => {
     const user = userEvent.setup()
     render(
       <ThemeProvider>
-        <SelectShopPage />
+        <MemoryRouter initialEntries={[{ pathname: '/select-shop' }]}>
+          <SelectShopPage />
+        </MemoryRouter>
       </ThemeProvider>,
     )
 
@@ -91,7 +94,9 @@ describe('SelectShopPage', () => {
     const user = userEvent.setup()
     render(
       <ThemeProvider>
-        <SelectShopPage />
+        <MemoryRouter initialEntries={[{ pathname: '/select-shop' }]}>
+          <SelectShopPage />
+        </MemoryRouter>
       </ThemeProvider>,
     )
 
