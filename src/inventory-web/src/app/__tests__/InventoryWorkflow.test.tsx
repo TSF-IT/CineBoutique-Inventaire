@@ -10,7 +10,12 @@ import { InventoryLocationStep } from '../pages/inventory/InventoryLocationStep'
 import { InventorySessionPage } from '../pages/inventory/InventorySessionPage'
 import { useInventory } from '../contexts/InventoryContext'
 import { CountType } from '../types/inventory'
-import type { InventorySummary, Location, CompleteInventoryRunPayload } from '../types/inventory'
+import type {
+  ConflictZoneDetail,
+  InventorySummary,
+  Location,
+  CompleteInventoryRunPayload,
+} from '../types/inventory'
 import type { StartInventoryRunPayload, StartInventoryRunResponse } from '../api/inventoryApi'
 import type { HttpError } from '../../lib/api/http'
 import type { ShopUser } from '@/types/user'
@@ -186,13 +191,15 @@ const {
       expect(shopId).toBeTruthy()
       return shopUsers
     }),
-    getConflictZoneDetailMock: vi.fn(async () => ({
-      locationId: reserveLocation.id,
-      locationCode: reserveLocation.code,
-      locationLabel: reserveLocation.label,
-      runs: [],
-      items: [],
-    })),
+    getConflictZoneDetailMock: vi
+      .fn<(locationId: string, signal?: AbortSignal) => Promise<ConflictZoneDetail>>()
+      .mockResolvedValue({
+        locationId: reserveLocation.id,
+        locationCode: reserveLocation.code,
+        locationLabel: reserveLocation.label,
+        runs: [],
+        items: [],
+      }),
     shopUsers,
     reserveLocation,
   }
