@@ -438,7 +438,7 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
               ) : runDetail ? (
                 runDetail.items.length > 0 ? (
                   <div className="overflow-hidden rounded-2xl border border-emerald-200 bg-white/80 shadow-sm dark:border-emerald-800/60 dark:bg-emerald-900/20">
-                    <table className="min-w-full divide-y divide-emerald-100 dark:divide-emerald-800/40">
+                    <table className="table min-w-full divide-y divide-emerald-100 dark:divide-emerald-800/40">
                       <thead className="bg-emerald-50/80 text-left text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-200">
                         <tr>
                           <th scope="col" className="px-4 py-3">EAN</th>
@@ -450,11 +450,18 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
                         {runDetail.items.map((item) => (
                           <tr key={item.productId}>
                             <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">
-                              {item.ean ?? '—'}
+                              <span className="table-label">EAN</span>
+                              <span className="table-value font-mono text-sm text-slate-700 dark:text-slate-200">
+                                {item.ean ?? '—'}
+                              </span>
                             </td>
-                            <td className="px-4 py-3 text-sm text-slate-800 dark:text-slate-100">{item.name}</td>
-                            <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-semibold text-emerald-700 dark:text-emerald-200">
-                              {formatQuantity(item.quantity)}
+                            <td className="px-4 py-3 text-sm text-slate-800 dark:text-slate-100">
+                              <span className="table-label">Libellé</span>
+                              <span className="table-value text-slate-900 dark:text-slate-100">{item.name}</span>
+                            </td>
+                            <td className="whitespace-nowrap px-4 py-3 text-left text-sm font-semibold text-emerald-700 dark:text-emerald-200 sm:text-right">
+                              <span className="table-label text-slate-500 dark:text-slate-300">Quantité</span>
+                              <span className="table-value sm:text-right">{formatQuantity(item.quantity)}</span>
                             </td>
                           </tr>
                         ))}
