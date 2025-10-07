@@ -254,7 +254,7 @@ export const InventoryCountTypeStep = () => {
               : 'Sélectionnez la zone à inventorier pour continuer.'}
           </p>
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="cards">
           {DISPLAYED_COUNT_TYPES.map((option) => {
             const status = countStatuses.find((item) => item.countType === option)
             const isSelected = countType === option

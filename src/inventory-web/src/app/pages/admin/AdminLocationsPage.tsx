@@ -492,7 +492,7 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
       {loading && <LoadingIndicator label="Chargement des zones" />}
       {Boolean(error) && <EmptyState title="Erreur" description="Les zones n'ont pas pu être chargées." />}
       {!loading && !error && (
-        <div className="grid grid-cols-1 gap-3">
+        <div className="cards">
           {sortedLocations.length === 0 ? (
             <EmptyState title="Aucune zone" description="Ajoutez votre première zone pour démarrer." />
           ) : (
@@ -710,7 +710,7 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
         <EmptyState title="Erreur" description="Les utilisateurs n'ont pas pu être chargés." />
       )}
       {!loading && !error && hasRequested && (
-        <div className="grid grid-cols-1 gap-3">
+        <div className="cards">
           {sortedUsers.length === 0 ? (
             <EmptyState title="Aucun utilisateur" description="Ajoutez un premier compte pour démarrer." />
           ) : (

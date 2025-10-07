@@ -275,7 +275,7 @@ export const HomePage = () => {
           <ErrorPanel title={errorDetails.title} details={errorDetails.details} actionLabel="Réessayer" onAction={handleRetry} />
         )}
         {!combinedLoading && !errorDetails && displaySummary && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="cards">
             <button
               type="button"
               onClick={handleOpenRunsClick}
