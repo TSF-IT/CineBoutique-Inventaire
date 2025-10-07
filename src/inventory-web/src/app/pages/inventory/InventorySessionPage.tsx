@@ -1,7 +1,7 @@
 // Modifications : forcer l'inclusion de runId=null lors de la complétion sans run existant.
 import type { KeyboardEvent, ChangeEvent, FocusEvent, PointerEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useOutletContext } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { BrowserMultiFormatReader } from '@zxing/browser'
 import { BarcodeFormat, DecodeHintType } from '@zxing/library'
 import {
@@ -22,7 +22,6 @@ import type { HttpError } from '@/lib/api/http'
 import type { ConflictZoneSummary, Product } from '../../types/inventory'
 import { CountType } from '../../types/inventory'
 import { useShop } from '@/state/ShopContext'
-import type { InventoryLayoutOutletContext } from './InventoryLayout'
 
 const DEV_API_UNREACHABLE_HINT =
   "Impossible de joindre l’API : vérifie que le backend tourne (curl http://localhost:8080/healthz) ou que le proxy Vite est actif."
@@ -131,8 +130,6 @@ export const InventorySessionPage = () => {
     logEvent,
   } = useInventory()
   const { shop } = useShop()
-  const outletContext = useOutletContext<InventoryLayoutOutletContext | null | undefined>()
-  const setMobileNav = outletContext?.setMobileNav
   const [useCamera, setUseCamera] = useState(false)
   const [status, setStatusState] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -844,13 +841,6 @@ export const InventorySessionPage = () => {
     completionConfirmationDialogRef.current?.close()
     void handleCompleteRun()
   }, [handleCompleteRun])
-
-  useEffect(() => {
-    if (!setMobileNav) {
-      return
-    }
-    setMobileNav(null)
-  }, [setMobileNav])
 
   useEffect(() => {
     const previousCount = previousItemCountRef.current
