@@ -369,18 +369,40 @@ ORDER BY COALESCE(p.""Ean"", p.""Sku""), p.""Name"";";
                 return Results.NotFound();
             }
 
-            const string runsSql = @"SELECT DISTINCT
+            const string runsSql = @"WITH active_runs AS (
+    SELECT DISTINCT cr.""Id"" AS ""RunId""
+    FROM ""Conflict"" c
+    JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
+    JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
+    WHERE c.""ResolvedAtUtc"" IS NULL
+      AND cr.""LocationId"" = @LocationId
+),
+active_sessions AS (
+    SELECT DISTINCT cr.""InventorySessionId"" AS ""InventorySessionId""
+    FROM ""Conflict"" c
+    JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
+    JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
+    WHERE c.""ResolvedAtUtc"" IS NULL
+      AND cr.""LocationId"" = @LocationId
+      AND cr.""InventorySessionId"" IS NOT NULL
+)
+SELECT DISTINCT
     cr.""Id""           AS ""RunId"",
     cr.""CountType""    AS ""CountType"",
     cr.""CompletedAtUtc"" AS ""CompletedAtUtc"",
     COALESCE(su.""DisplayName"", cr.""OperatorDisplayName"") AS ""OwnerDisplayName""
-FROM ""Conflict"" c
-JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
-JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
+FROM ""CountingRun"" cr
 LEFT JOIN ""ShopUser"" su ON su.""Id"" = cr.""OwnerUserId""
-WHERE c.""ResolvedAtUtc"" IS NULL
-  AND cr.""LocationId"" = @LocationId
+WHERE cr.""LocationId"" = @LocationId
   AND cr.""CompletedAtUtc"" IS NOT NULL
+  AND (
+        EXISTS (SELECT 1 FROM active_runs ar WHERE ar.""RunId"" = cr.""Id"")
+        OR EXISTS (
+            SELECT 1
+            FROM active_sessions s
+            WHERE s.""InventorySessionId"" = cr.""InventorySessionId""
+        )
+    )
 ORDER BY cr.""CompletedAtUtc"" ASC, cr.""CountType"" ASC;";
 
             var runRows = (await connection.QueryAsync<ConflictRunHeaderRow>(
@@ -402,13 +424,36 @@ ORDER BY cr.""CompletedAtUtc"" ASC, cr.""CountType"" ASC;";
                 return Results.Ok(emptyPayload);
             }
 
-            const string detailSql = @"WITH conflict_runs AS (
+            const string detailSql = @"WITH active_runs AS (
     SELECT DISTINCT cr.""Id"" AS ""RunId""
     FROM ""Conflict"" c
     JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
     JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
     WHERE c.""ResolvedAtUtc"" IS NULL
       AND cr.""LocationId"" = @LocationId
+),
+active_sessions AS (
+    SELECT DISTINCT cr.""InventorySessionId"" AS ""InventorySessionId""
+    FROM ""Conflict"" c
+    JOIN ""CountLine"" cl ON cl.""Id"" = c.""CountLineId""
+    JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
+    WHERE c.""ResolvedAtUtc"" IS NULL
+      AND cr.""LocationId"" = @LocationId
+      AND cr.""InventorySessionId"" IS NOT NULL
+),
+conflict_runs AS (
+    SELECT DISTINCT cr.""Id"" AS ""RunId""
+    FROM ""CountingRun"" cr
+    WHERE cr.""LocationId"" = @LocationId
+      AND cr.""CompletedAtUtc"" IS NOT NULL
+      AND (
+            EXISTS (SELECT 1 FROM active_runs ar WHERE ar.""RunId"" = cr.""Id"")
+            OR EXISTS (
+                SELECT 1
+                FROM active_sessions s
+                WHERE s.""InventorySessionId"" = cr.""InventorySessionId""
+            )
+        )
 ),
 conflict_products AS (
     SELECT DISTINCT cl.""ProductId"" AS ""ProductId""
@@ -2189,68 +2234,8 @@ WHERE ""Conflict"".""CountLineId"" = cl.""Id""
   AND cr.""LocationId"" = @LocationId
   AND ""Conflict"".""ResolvedAtUtc"" IS NULL;";
 
-        if (hasMatch)
+        if (!hasMatch)
         {
-            await connection.ExecuteAsync(
-                    new CommandDefinition(
-                        resolveConflictsSql,
-                        new { LocationId = locationId },
-                        transaction,
-                        cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
-            return;
-        }
-
-        var productMetadata = new Dictionary<string, (Guid ProductId, string? Ean)>(StringComparer.Ordinal);
-
-        foreach (var row in aggregatedRows)
-        {
-            var key = BuildProductKey(row.ProductId, row.Ean);
-            if (!productMetadata.ContainsKey(key))
-            {
-                productMetadata[key] = (row.ProductId, row.Ean);
-            }
-        }
-
-        var conflictingKeys = productMetadata
-            .Where(pair =>
-            {
-                decimal? reference = null;
-
-                foreach (var runId in completedRunIds)
-                {
-                    var quantities = quantitiesByRun.GetValueOrDefault(
-                        runId,
-                        new Dictionary<string, decimal>(StringComparer.Ordinal));
-
-                    var value = quantities.TryGetValue(pair.Key, out var quantity) ? quantity : 0m;
-
-                    if (reference is null)
-                    {
-                        reference = value;
-                        continue;
-                    }
-
-                    if (value != reference.Value)
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
-            })
-            .Select(pair => pair.Key)
-            .ToArray();
-
-        if (conflictingKeys.Length == 0)
-        {
-            await connection.ExecuteAsync(
-                    new CommandDefinition(
-                        resolveConflictsSql,
-                        new { LocationId = locationId },
-                        transaction,
-                        cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
             return;
         }
 
@@ -2261,72 +2246,6 @@ WHERE ""Conflict"".""CountLineId"" = cl.""Id""
                     transaction,
                     cancellationToken: cancellationToken))
             .ConfigureAwait(false);
-
-        const string lineLookupSql = @"SELECT DISTINCT ON (cl.""CountingRunId"", p.""Id"")
-    cl.""CountingRunId"",
-    cl.""Id"" AS ""CountLineId"",
-    p.""Id"" AS ""ProductId"",
-    p.""Ean""
-FROM ""CountLine"" cl
-JOIN ""Product"" p ON p.""Id"" = cl.""ProductId""
-WHERE cl.""CountingRunId"" = ANY(@RunIds::uuid[])
-ORDER BY cl.""CountingRunId"", p.""Id"", cl.""CountedAtUtc"" DESC, cl.""Id"" DESC;";
-
-        var lineReferences = await connection
-            .QueryAsync<CountLineReference>(
-                new CommandDefinition(
-                    lineLookupSql,
-                    new { RunIds = completedRunIds },
-                    transaction,
-                    cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
-
-        var lineIdLookup = lineReferences
-            .GroupBy(reference => reference.CountingRunId)
-            .ToDictionary(
-                group => group.Key,
-                group => group.ToDictionary(
-                    reference => BuildProductKey(reference.ProductId, reference.Ean),
-                    reference => reference.CountLineId,
-                    StringComparer.Ordinal),
-                EqualityComparer<Guid>.Default);
-
-        var conflictInserts = new List<object>();
-
-        foreach (var key in conflictingKeys)
-        {
-            foreach (var runId in completedRunIds)
-            {
-                if (!lineIdLookup.TryGetValue(runId, out var lines) || !lines.TryGetValue(key, out var lineId))
-                {
-                    continue;
-                }
-
-                conflictInserts.Add(new
-                {
-                    Id = Guid.NewGuid(),
-                    CountLineId = lineId,
-                    Status = "open",
-                    Notes = (string?)null,
-                    CreatedAtUtc = now
-                });
-            }
-        }
-
-        if (conflictInserts.Count == 0)
-        {
-            return;
-        }
-
-        const string insertConflictSql =
-            "INSERT INTO \"Conflict\" (\"Id\", \"CountLineId\", \"Status\", \"Notes\", \"CreatedAtUtc\") VALUES (@Id, @CountLineId, @Status, @Notes, @CreatedAtUtc);";
-
-        foreach (var payload in conflictInserts)
-        {
-            await connection.ExecuteAsync(
-                    new CommandDefinition(insertConflictSql, payload, transaction, cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
-        }
     }
 
     private static Dictionary<Guid, Dictionary<string, decimal>> BuildQuantityLookup(IEnumerable<AggregatedCountRow> aggregatedRows)
