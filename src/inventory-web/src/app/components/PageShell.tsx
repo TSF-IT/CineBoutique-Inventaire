@@ -18,14 +18,8 @@ export const PageShell = ({
   ...rest
 }: PageShellProps) => (
   <div
-    className={clsx('page-shell safe-pads', className)}
-    style={{
-      minHeight: '100dvh',
-      display: 'grid',
-      gridTemplateRows: nav ? 'auto 1fr auto' : 'auto 1fr',
-      gap: 'var(--spacing-3)',
-      ...(style ?? {}),
-    }}
+    className={clsx('page-shell safe-pads', nav && 'page-shell--with-nav', className)}
+    style={style}
     {...rest}
   >
     <header className="page-shell__header">{header}</header>
