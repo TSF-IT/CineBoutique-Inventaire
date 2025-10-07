@@ -16,6 +16,7 @@ import SelectUserPage from './app/pages/SelectUserPage'
 import { useShop } from '@/state/ShopContext'
 import RequireShop from '@/app/router/RequireShop'
 import RequireUser from '@/app/router/RequireUser'
+import RequireInventorySession from '@/app/router/RequireInventorySession'
 import { loadSelectedUserForShop } from '@/lib/selectedUserStorage'
 
 const BypassSelect = () => {
@@ -79,8 +80,10 @@ export const AppRoutes = () => {
             <Route index element={<Navigate to="count-type" replace />} />
             <Route path="location" element={<InventoryLocationStep />} />
             <Route path="count-type" element={<InventoryCountTypeStep />} />
-            <Route path="session" element={<InventorySessionPage />} />
-            <Route path="scan-camera" element={<ScanCameraPage />} />
+            <Route element={<RequireInventorySession />}>
+              <Route path="session" element={<InventorySessionPage />} />
+              <Route path="scan-camera" element={<ScanCameraPage />} />
+            </Route>
           </Route>
         </Route>
       {/* Admin: à toi de voir si ça doit aussi exiger un user */}
