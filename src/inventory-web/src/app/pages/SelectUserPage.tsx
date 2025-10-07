@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import http from '@/lib/api/http'
 import { API_BASE } from '@/lib/api/config'
@@ -7,9 +7,9 @@ import { saveSelectedUserForShop } from '@/lib/selectedUserStorage'
 import { z } from 'zod'
 import { Page } from '@/app/components/Page'
 import { LoadingIndicator } from '@/app/components/LoadingIndicator'
-import { Button } from '@/app/components/ui/Button'
 import { useInventory } from '@/app/contexts/InventoryContext'
 import { clearShop } from '@/lib/shopStorage'
+import { BackToShopSelectionLink } from '@/app/components/BackToShopSelectionLink'
 
 type ShopUser = {
   id: string
@@ -53,10 +53,6 @@ export default function SelectUserPage() {
     const normalized = target.trim()
     return normalized.length > 0 ? normalized : null
   }, [redirectState])
-
-  const goToShopSelection = useCallback(() => {
-    navigate('/select-shop', redirectTo ? { state: { redirectTo } } : undefined)
-  }, [navigate, redirectTo])
 
   // Empêche de traiter la réponse d’un fetch annulé/obsolète (StrictMode double-run)
   const requestIdRef = useRef(0)
@@ -163,18 +159,15 @@ export default function SelectUserPage() {
 
   const shouldShowList = !loading && !err
   const hasUsers = users.length > 0
+  const shopSelectionState = redirectTo ? { redirectTo } : undefined
 
   return (
     <Page
       className="px-4 py-6 sm:px-6"
       headerAction={
-        <button
-          type="button"
-          onClick={goToShopSelection}
-          className="inline-flex items-center gap-2 rounded-2xl border border-transparent bg-white px-3 py-2 text-sm font-semibold text-brand-600 shadow-sm transition hover:bg-brand-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:bg-slate-900/60 dark:text-brand-200 dark:hover:bg-slate-800"
-        >
-          Changer de boutique
-        </button>
+        <BackToShopSelectionLink
+          state={shopSelectionState}
+        />
       }
     >
       <main className="flex flex-1 flex-col justify-center gap-8">
@@ -193,13 +186,6 @@ export default function SelectUserPage() {
           >
             <p className="font-semibold">{err || DEFAULT_ERROR_MESSAGE}</p>
             <p className="mt-1">Vérifiez votre connexion puis réessayez.</p>
-            <Button
-              className="mt-4"
-              variant="secondary"
-              onClick={goToShopSelection}
-            >
-              Changer de boutique
-            </Button>
           </div>
         )}
 
@@ -229,15 +215,6 @@ export default function SelectUserPage() {
                 Aucun utilisateur n’est disponible pour cette boutique.
               </p>
             )}
-
-            <div>
-              <Button
-                variant="secondary"
-                onClick={goToShopSelection}
-              >
-                Changer de boutique
-              </Button>
-            </div>
           </div>
         )}
       </main>
