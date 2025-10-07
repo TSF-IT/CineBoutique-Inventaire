@@ -234,7 +234,20 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
       logEvent,
       clearLogs,
     }),
-    [state],
+    [
+      state,
+      addOrIncrementItem,
+      clearLogs,
+      clearSession,
+      logEvent,
+      removeItem,
+      reset,
+      setCountType,
+      setLocation,
+      setQuantity,
+      setSelectedUser,
+      setSessionId,
+    ],
   )
 
   return <InventoryContext.Provider value={value}>{children}</InventoryContext.Provider>

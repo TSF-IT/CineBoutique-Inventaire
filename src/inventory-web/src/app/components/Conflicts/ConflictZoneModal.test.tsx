@@ -57,8 +57,8 @@ describe('ConflictZoneModal', () => {
 
     await waitFor(() => expect(getConflictZoneDetailMock).toHaveBeenCalled())
 
-    expect(screen.getByText('Comptage 1')).toBeInTheDocument()
-    expect(screen.getByText('Comptage 2')).toBeInTheDocument()
+    expect(await screen.findByText('Comptage 1')).toBeInTheDocument()
+    expect(await screen.findByText('Comptage 2')).toBeInTheDocument()
     expect(screen.getByText('Comptage 3')).toBeInTheDocument()
 
     const cardHeading = await screen.findByText((content, element) => {
@@ -96,8 +96,8 @@ describe('ConflictZoneModal', () => {
 
     await waitFor(() => expect(getConflictZoneDetailMock).toHaveBeenCalled())
 
-    expect(screen.getByText('Comptage 1')).toBeInTheDocument()
-    expect(screen.getByText('Comptage 2')).toBeInTheDocument()
+    expect(await screen.findByText('Comptage 1')).toBeInTheDocument()
+    expect(await screen.findByText('Comptage 2')).toBeInTheDocument()
     const cardHeading = await screen.findByText((content, element) => {
       if (!element) return false
       return element.classList.contains('conflict-card__ean') && content.includes('222')

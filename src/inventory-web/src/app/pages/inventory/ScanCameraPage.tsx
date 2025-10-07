@@ -8,6 +8,8 @@ import {
 } from 'react'
 import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
+import { BrowserMultiFormatReader } from '@zxing/browser'
+import { BarcodeFormat, DecodeHintType, NotFoundException } from '@zxing/library'
 import { BarcodeScanner } from '../../components/BarcodeScanner'
 import { useInventory } from '../../contexts/InventoryContext'
 import { useShop } from '@/state/ShopContext'
@@ -67,6 +69,7 @@ export const ScanCameraPage = () => {
   const manualInputActiveRef = useRef(false)
   const scrollToEndRef = useRef(false)
   const listContainerRef = useRef<HTMLDivElement | null>(null)
+  const fallbackReaderRef = useRef<BrowserMultiFormatReader | null>(null)
   const rowRefs = useRef<Map<string, ScannedRowHandle>>(new Map())
   const highlightTimeoutRef = useRef<number | null>(null)
   const pendingFocusEanRef = useRef<string | null>(null)
@@ -299,6 +302,57 @@ export const ScanCameraPage = () => {
     }
   }, [])
 
+  const getFallbackReader = useCallback(() => {
+    if (!fallbackReaderRef.current) {
+      const hints = new Map<DecodeHintType, unknown>()
+      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+        BarcodeFormat.EAN_13,
+        BarcodeFormat.EAN_8,
+        BarcodeFormat.CODE_128,
+        BarcodeFormat.CODE_39,
+        BarcodeFormat.ITF,
+        BarcodeFormat.QR_CODE,
+      ])
+      hints.set(DecodeHintType.TRY_HARDER, true)
+      fallbackReaderRef.current = new BrowserMultiFormatReader(hints)
+    }
+    return fallbackReaderRef.current
+  }, [])
+
+  const handleImageImport = useCallback(
+    async (file: File) => {
+      const reader = getFallbackReader()
+      if (!reader) {
+        return
+      }
+
+      setErrorMessage(null)
+      setStatusMessage('Analyse de la photo…')
+
+      const objectUrl = URL.createObjectURL(file)
+      try {
+        const result = await reader.decodeFromImageUrl(objectUrl)
+        const text = result?.getText?.()
+        if (text) {
+          await handleDetected(text)
+          return
+        }
+        setStatusMessage(null)
+        setErrorMessage('Aucun code-barres détecté sur cette image.')
+      } catch (error) {
+        setStatusMessage(null)
+        if (error instanceof NotFoundException) {
+          setErrorMessage('Aucun code-barres détecté sur cette image.')
+        } else {
+          setErrorMessage('Impossible de lire le code-barres sur cette image.')
+        }
+      } finally {
+        URL.revokeObjectURL(objectUrl)
+      }
+    },
+    [getFallbackReader, handleDetected],
+  )
+
   const handleDragStart = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
       dragStateRef.current = { startY: event.clientY, pointerId: event.pointerId }
@@ -336,7 +390,13 @@ export const ScanCameraPage = () => {
   return (
     <div className="relative flex h-full flex-col bg-black text-white" data-testid="scan-camera-page">
       <div className="relative flex-1 overflow-hidden">
-        <BarcodeScanner active onDetected={handleDetected} enableTorchToggle presentation="immersive" />
+        <BarcodeScanner
+          active
+          onDetected={handleDetected}
+          onPickImage={handleImageImport}
+          enableTorchToggle
+          presentation="immersive"
+        />
         {statusMessage && (
           <div className="absolute inset-x-0 top-0 z-10 flex justify-center p-3">
             <span className="rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-emerald-200 backdrop-blur">

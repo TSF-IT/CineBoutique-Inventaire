@@ -1,58 +1,29 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { useEffect, useLayoutEffect } from 'react'
 import { MemoryRouter } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import * as ReactRouterDom from 'react-router-dom'
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { InventoryProvider, useInventory } from '../../../contexts/InventoryContext'
 import { InventorySessionPage } from '../InventorySessionPage'
 import { CountType } from '../../../types/inventory'
 import type { Location } from '../../../types/inventory'
 import type { ShopUser } from '@/types/user'
 import type { Shop } from '@/types/shop'
-import type { HttpError } from '@/lib/api/http'
+import { ShopProvider, useShop } from '@/state/ShopContext'
+import * as inventoryApi from '../../../api/inventoryApi'
 
-const getConflictZoneDetailMock = vi.hoisted(() => vi.fn())
-const fetchProductByEanMock = vi.hoisted(() => vi.fn())
-const scannerCallbacks = vi.hoisted(() => ({
-  onDetected: undefined as undefined | ((value: string) => Promise<void> | void),
-}))
-
-const { shopMock } = vi.hoisted(() => ({
-  shopMock: { id: 'shop-test', name: 'Boutique test' } as Shop,
-}))
+const getConflictZoneDetailMock = vi.spyOn(inventoryApi, 'getConflictZoneDetail')
+const fetchProductByEanMock = vi.spyOn(inventoryApi, 'fetchProductByEan')
+const shopMock: Shop = { id: 'shop-test', name: 'Boutique test' }
 
 const inventoryControls: { setCountType?: (type: number | null) => void } = {}
 
-vi.mock('../../../api/inventoryApi', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../../api/inventoryApi')>()
-  return {
-    ...actual,
-    getConflictZoneDetail: getConflictZoneDetailMock,
-    fetchProductByEan: fetchProductByEanMock,
-  }
+afterAll(() => {
+  getConflictZoneDetailMock.mockRestore()
+  fetchProductByEanMock.mockRestore()
 })
-
-vi.mock('../../../components/BarcodeScanner', () => ({
-  BarcodeScanner: ({ onDetected }: { onDetected: (value: string) => Promise<void> | void }) => {
-    scannerCallbacks.onDetected = onDetected
-    return (
-      <button
-        type="button"
-        data-testid="mock-barcode-scanner"
-        onClick={() => {
-          void onDetected('0123456789012')
-        }}
-      >
-        Simuler un scan
-      </button>
-    )
-  },
-}))
-
-vi.mock('@/state/ShopContext', () => ({
-  useShop: () => ({ shop: shopMock, setShop: vi.fn(), isLoaded: true }),
-}))
 
 const owner: ShopUser = {
   id: 'user-test',
@@ -134,20 +105,41 @@ const InventoryStateInitializer = ({
   return <>{children}</>
 }
 
+const ShopInitializer = ({ shop }: { shop: Shop }) => {
+  const { setShop } = useShop()
+
+  useEffect(() => {
+    setShop(shop)
+  }, [setShop, shop])
+
+  return null
+}
+
+const LocationObserver = () => {
+  const location = ReactRouterDom.useLocation()
+  return <span data-testid="current-path">{location.pathname}</span>
+}
+
 const renderSessionPage = (countType: CountType) => {
+  localStorage.setItem('cb.shop', JSON.stringify(shopMock))
   return render(
-    <MemoryRouter initialEntries={[{ pathname: '/inventory/session' }]}> 
-      <InventoryProvider>
-        <InventoryStateInitializer location={baseLocation} countType={countType}>
-          <InventorySessionPage />
-        </InventoryStateInitializer>
-      </InventoryProvider>
+    <MemoryRouter initialEntries={[{ pathname: '/inventory/session' }]}>
+      <ShopProvider>
+        <ShopInitializer shop={shopMock} />
+        <InventoryProvider>
+          <InventoryStateInitializer location={baseLocation} countType={countType}>
+            <InventorySessionPage />
+          </InventoryStateInitializer>
+        </InventoryProvider>
+      </ShopProvider>
+      <LocationObserver />
     </MemoryRouter>,
   )
 }
 
 describe('InventorySessionPage - conflits', () => {
   beforeEach(() => {
+    fetchProductByEanMock.mockReset()
     getConflictZoneDetailMock.mockReset()
     getConflictZoneDetailMock.mockResolvedValue({
       locationId: baseLocation.id,
@@ -178,71 +170,17 @@ describe('InventorySessionPage - conflits', () => {
   })
 })
 
-describe('InventorySessionPage - caméra', () => {
-  beforeEach(() => {
-    fetchProductByEanMock.mockReset()
-    fetchProductByEanMock.mockRejectedValue({
-      name: 'HttpError',
-      message: 'Not found',
-      status: 404,
-      url: '/api/products/ean',
-    } as HttpError)
-    scannerCallbacks.onDetected = undefined
-  })
-
-  it('copie le code détecté dans le champ de scan et scroll vers celui-ci si nécessaire', async () => {
+describe('InventorySessionPage - navigation', () => {
+  it('redirige vers la page de scan caméra', async () => {
     const user = userEvent.setup()
     renderSessionPage(CountType.Count1)
 
-    const [toggleCameraButton] = await screen.findAllByRole('button', { name: /activer la caméra/i })
-    await user.click(toggleCameraButton)
+    const [button] = await screen.findAllByRole('button', { name: /scan caméra/i })
+    await user.click(button)
 
-    const [scanInput] = await screen.findAllByLabelText('Scanner (douchette ou saisie)')
-    const scanInputWithOptionalScroll = scanInput as HTMLElement & {
-      scrollIntoView?: (options?: ScrollIntoViewOptions | boolean) => void
-    }
-    const originalScrollIntoView = scanInputWithOptionalScroll.scrollIntoView
-    const scrollIntoViewMock = vi.fn()
-    Object.defineProperty(scanInputWithOptionalScroll, 'scrollIntoView', {
-      value: scrollIntoViewMock,
-      configurable: true,
+    await waitFor(() => {
+      const paths = screen.getAllByTestId('current-path').map((element) => element.textContent)
+      expect(paths).toContain('/inventory/scan-camera')
     })
-
-    const getBoundingClientRectSpy = vi
-      .spyOn(scanInput, 'getBoundingClientRect')
-      .mockReturnValue({
-        top: 1200,
-        bottom: 1300,
-        left: 0,
-        right: 0,
-        width: 0,
-        height: 0,
-        x: 0,
-        y: 0,
-        toJSON: () => ({}),
-      } as DOMRect)
-
-    await act(async () => {
-      const handler = scannerCallbacks.onDetected
-      if (handler) {
-        await handler('  9876543210987  ')
-      }
-    })
-
-    await waitFor(() => expect(scanInput).toHaveValue('9876543210987'))
-    expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' })
-    await waitFor(() => expect(fetchProductByEanMock).toHaveBeenCalledTimes(1))
-
-    getBoundingClientRectSpy.mockRestore()
-    // Nettoyage de la surcharge scrollIntoView pour les autres tests
-    if (originalScrollIntoView) {
-      Object.defineProperty(scanInputWithOptionalScroll, 'scrollIntoView', {
-        value: originalScrollIntoView,
-        configurable: true,
-        writable: true,
-      })
-    } else {
-      Reflect.deleteProperty(scanInputWithOptionalScroll, 'scrollIntoView')
-    }
   })
 })
