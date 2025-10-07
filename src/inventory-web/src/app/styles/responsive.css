@@ -29,6 +29,10 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-2);
+  width: 100%;
+  max-width: var(--container-max, 1200px);
+  margin-left: auto;
+  margin-right: auto;
   padding: var(--spacing-3);
   border-radius: var(--radius);
   box-shadow: var(--shadow-1);
