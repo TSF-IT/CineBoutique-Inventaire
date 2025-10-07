@@ -1,24 +1,17 @@
 import type { ReactNode } from 'react'
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
-import type {
-  CountType,
-  InventoryItem,
-  InventoryLogEntry,
-  InventoryLogEventType,
-  Location,
-  Product,
-} from '../types/inventory'
+import type { InventoryItem, InventoryLogEntry, InventoryLogEventType, Location, Product } from '../types/inventory'
 import type { ShopUser } from '@/types/user'
 
 interface InventoryContextValue {
   selectedUser: ShopUser | null
-  countType: CountType | null
+  countType: number | null
   location: Location | null
   sessionId: string | null
   items: InventoryItem[]
   logs: InventoryLogEntry[]
   setSelectedUser: (user: ShopUser) => void
-  setCountType: (type: CountType | null) => void
+  setCountType: (type: number | null) => void
   setLocation: (location: Location) => void
   setSessionId: (sessionId: string | null) => void
   addOrIncrementItem: (product: Product, options?: { isManual?: boolean }) => void
@@ -32,7 +25,7 @@ interface InventoryContextValue {
 
 interface InventoryState {
   selectedUser: ShopUser | null
-  countType: CountType | null
+  countType: number | null
   location: Location | null
   sessionId: string | null
   items: InventoryItem[]
@@ -80,7 +73,7 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
     setState(() => ({ ...INITIAL_STATE, selectedUser: user }))
   }, [])
 
-  const setCountType = useCallback((type: CountType | null) => {
+  const setCountType = useCallback((type: number | null) => {
     setState((prev) => ({ ...prev, countType: type }))
   }, [])
 
