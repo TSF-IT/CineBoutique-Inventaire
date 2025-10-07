@@ -16,28 +16,12 @@
   width: 100%;
   display: grid;
   gap: var(--spacing-3);
-  grid-template-rows: auto 1fr;
+  grid-template-rows: 1fr;
   min-height: auto;
 }
 
 .page-shell--with-nav {
-  grid-template-rows: auto 1fr auto;
-}
-
-.page-shell__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-2);
-  padding: var(--spacing-3);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow-1);
-  background: rgba(248, 250, 252, 0.92);
-  backdrop-filter: blur(14px);
-}
-
-:root.dark .page-shell__header {
-  background: rgba(15, 23, 42, 0.88);
+  grid-template-rows: 1fr auto;
 }
 
 .layout-main {
