@@ -11,9 +11,6 @@ export const AdminLayout = () => (
           Paramétrez les zones d&apos;inventaire et les comptes utilisateurs depuis un même espace.
         </p>
       </div>
-      <p className="text-xs text-slate-500 dark:text-slate-400 sm:text-right">
-        Interface pensée pour mobile, iPad et grand écran.
-      </p>
     </header>
     <Outlet />
   </Page>
