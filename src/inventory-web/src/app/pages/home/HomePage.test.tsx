@@ -264,19 +264,12 @@ describe('HomePage', () => {
     mockedFetchSummary.mockResolvedValue(summary)
     mockedFetchLocations.mockResolvedValue([])
 
-    render(
-      <ThemeProvider>
-        <ShopProvider>
-          <MemoryRouter>
-            <HomePage />
-          </MemoryRouter>
-        </ShopProvider>
-      </ThemeProvider>,
-    )
+    renderHomePage()
 
     await waitFor(() => {
       expect(mockedFetchSummary).toHaveBeenCalledTimes(1)
       expect(mockedFetchLocations).toHaveBeenCalledTimes(1)
+    })
   })
 
   it("permet de reprendre un comptage appartenant à l'utilisateur courant", async () => {
@@ -335,7 +328,8 @@ describe('HomePage', () => {
 
     await waitFor(() => expect(mockedFetchSummary).toHaveBeenCalled())
 
-    expect(await screen.findByText(/Vous avez un comptage en cours/i)).toBeInTheDocument()
+    const ongoingMessages = await screen.findAllByText(/Vous avez un comptage en cours/i)
+    expect(ongoingMessages.length).toBeGreaterThan(0)
 
     const openRunsCards = screen.getAllByRole('button', { name: /Comptages en cours/i })
     const openRunsCard = openRunsCards.find((button) => !button.hasAttribute('disabled')) ?? openRunsCards[0]
@@ -437,7 +431,6 @@ describe('HomePage', () => {
       expect(screen.queryByRole('dialog', { name: /Zone B1/i })).not.toBeInTheDocument()
     })
   })
-})
 
   it("redirige vers l'assistant d'inventaire au clic sur le CTA principal", async () => {
     const summary: InventorySummary = {
@@ -456,15 +449,7 @@ describe('HomePage', () => {
     mockedFetchSummary.mockResolvedValue(summary)
     mockedFetchLocations.mockResolvedValue(locations)
 
-    render(
-      <ThemeProvider>
-        <ShopProvider>
-          <MemoryRouter>
-            <HomePage />
-          </MemoryRouter>
-        </ShopProvider>
-      </ThemeProvider>,
-    )
+    renderHomePage()
 
     const buttons = await screen.findAllByRole('button', { name: /Débuter un comptage/i })
     fireEvent.click(buttons[0])
@@ -485,15 +470,7 @@ describe('HomePage', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     try {
-      render(
-        <ThemeProvider>
-          <ShopProvider>
-            <MemoryRouter>
-              <HomePage />
-            </MemoryRouter>
-          </ShopProvider>
-        </ThemeProvider>,
-      )
+      renderHomePage()
 
       await waitFor(() => expect(mockedFetchSummary).toHaveBeenCalled())
 

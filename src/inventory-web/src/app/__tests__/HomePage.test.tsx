@@ -2,11 +2,15 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ReactNode } from 'react'
+import { useEffect } from 'react'
 import { ThemeProvider } from '../../theme/ThemeProvider'
 import { HomePage } from '../pages/home/HomePage'
 import { ShopProvider } from '@/state/ShopContext'
 import type { InventorySummary, Location } from '../types/inventory'
 import type { LocationSummary } from '@/types/summary'
+import { InventoryProvider, useInventory } from '../contexts/InventoryContext'
+import type { ShopUser } from '@/types/user'
 
 const fetchInventorySummaryMock = vi.hoisted(() =>
   vi.fn(async (): Promise<InventorySummary> => ({
@@ -141,6 +145,36 @@ const fetchLocationSummariesMock = vi.hoisted(() =>
   }),
 )
 
+const defaultUser: ShopUser = {
+  id: 'user-paris',
+  shopId: 'shop-123',
+  login: 'paris.user',
+  displayName: 'Utilisateur Paris',
+  isAdmin: false,
+  disabled: false,
+}
+
+const InventoryUserInitializer = ({ user }: { user: ShopUser }) => {
+  const { setSelectedUser } = useInventory()
+
+  useEffect(() => {
+    setSelectedUser(user)
+  }, [setSelectedUser, user])
+
+  return null
+}
+
+const withProviders = (ui: ReactNode) => (
+  <ThemeProvider>
+    <ShopProvider>
+      <InventoryProvider>
+        <InventoryUserInitializer user={defaultUser} />
+        <MemoryRouter>{ui}</MemoryRouter>
+      </InventoryProvider>
+    </ShopProvider>
+  </ThemeProvider>
+)
+
 vi.mock('../api/inventoryApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/inventoryApi')>()
   return {
@@ -160,15 +194,7 @@ describe('HomePage', () => {
   })
 
   it("affiche les indicateurs et le bouton d'accès", async () => {
-    render(
-      <ThemeProvider>
-        <ShopProvider>
-          <MemoryRouter>
-            <HomePage />
-          </MemoryRouter>
-        </ShopProvider>
-      </ThemeProvider>,
-    )
+    render(withProviders(<HomePage />))
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /État de l/i })).toBeInTheDocument()
@@ -206,15 +232,7 @@ describe('HomePage', () => {
     fetchLocationsMock.mockResolvedValueOnce([])
     fetchLocationSummariesMock.mockResolvedValueOnce([])
 
-    render(
-      <ThemeProvider>
-        <ShopProvider>
-          <MemoryRouter>
-            <HomePage />
-          </MemoryRouter>
-        </ShopProvider>
-      </ThemeProvider>,
-    )
+    render(withProviders(<HomePage />))
 
     expect(await screen.findByText('Aucun comptage en cours')).toBeInTheDocument()
     expect(await screen.findByText('Aucun conflit')).toBeInTheDocument()

@@ -2,8 +2,6 @@
 import type { KeyboardEvent, ChangeEvent, FocusEvent, PointerEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BrowserMultiFormatReader } from '@zxing/browser'
-import { BarcodeFormat, DecodeHintType } from '@zxing/library'
 import {
   completeInventoryRun,
   fetchProductByEan,
@@ -11,7 +9,6 @@ import {
   startInventoryRun,
   type CompleteInventoryRunPayload,
 } from '../../api/inventoryApi'
-import { BarcodeScanner } from '../../components/BarcodeScanner'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { Card } from '../../components/Card'
@@ -64,25 +61,6 @@ const buildHttpMessage = (prefix: string, error: HttpError) => {
   return diagnostics.length > 0 ? `${prefix} | ${diagnostics.join(' | ')}` : prefix
 }
 
-const hasBarcodeDetector = (
-  candidate: Window & typeof globalThis,
-): candidate is Window & typeof globalThis & { BarcodeDetector: BarcodeDetectorConstructor } =>
-  'BarcodeDetector' in candidate && typeof candidate.BarcodeDetector === 'function'
-
-const ZXING_IMAGE_HINTS = (() => {
-  const hints = new Map()
-  hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-    BarcodeFormat.EAN_13,
-    BarcodeFormat.EAN_8,
-    BarcodeFormat.CODE_128,
-    BarcodeFormat.CODE_39,
-    BarcodeFormat.ITF,
-    BarcodeFormat.QR_CODE,
-  ])
-  hints.set(DecodeHintType.TRY_HARDER, true)
-  return hints
-})()
-
 const MIN_EAN_LENGTH = 8
 const MAX_EAN_LENGTH = 13
 
@@ -130,7 +108,6 @@ export const InventorySessionPage = () => {
     logEvent,
   } = useInventory()
   const { shop } = useShop()
-  const [useCamera, setUseCamera] = useState(false)
   const [status, setStatusState] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [scanValue, setScanValue] = useState('')
@@ -143,41 +120,12 @@ export const InventorySessionPage = () => {
   const completionConfirmButtonRef = useRef<HTMLButtonElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const logsDialogRef = useRef<HTMLDialogElement | null>(null)
-  const skipManualLookupRef = useRef(false)
   const [recentScans, setRecentScans] = useState<string[]>([])
   const manualLookupIdRef = useRef(0)
   const lastSearchedInputRef = useRef<string | null>(null)
   const previousItemCountRef = useRef(items.length)
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
-
-  const scrollScanInputIntoView = useCallback(() => {
-    const input = inputRef.current
-    if (!input) {
-      return
-    }
-
-    const hasDom = typeof window !== 'undefined' && typeof document !== 'undefined'
-
-    if (!hasDom) {
-      input.focus()
-      input.select()
-      return
-    }
-
-    const rect = input.getBoundingClientRect()
-    const viewportHeight = window.innerHeight || document.documentElement?.clientHeight || 0
-    const isFullyVisible = rect.top >= 0 && rect.bottom <= viewportHeight
-
-    if (!isFullyVisible) {
-      input.scrollIntoView({ behavior: 'smooth', block: 'center' })
-    }
-
-    requestAnimationFrame(() => {
-      input.focus({ preventScroll: true })
-      input.select()
-    })
-  }, [])
 
   const updateStatus = useCallback(
     (message: string | null) => {
@@ -479,11 +427,6 @@ export const InventorySessionPage = () => {
       return
     }
 
-    if (skipManualLookupRef.current) {
-      skipManualLookupRef.current = false
-      return
-    }
-
     if (lastSearchedInputRef.current === trimmedScanValue) {
       return
     }
@@ -535,86 +478,6 @@ export const InventorySessionPage = () => {
       window.clearTimeout(timeoutId)
     }
   }, [addProductToSession, scanInputError, searchProductByEan, trimmedScanValue, updateStatus])
-
-  const handleImagePicked = useCallback(
-    async (file: File) => {
-      updateStatus('Analyse de la photo en cours…')
-      setErrorMessage(null)
-
-      let decoded: string | null = null
-
-      try {
-        if (typeof window !== 'undefined' && hasBarcodeDetector(window)) {
-          try {
-            const detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'code_128', 'code_39'] })
-            if (typeof window.createImageBitmap === 'function') {
-              const bitmap = await window.createImageBitmap(file)
-              const results = await detector.detect(bitmap)
-              bitmap.close?.()
-              decoded = results.find((entry) => entry.rawValue)?.rawValue ?? null
-            }
-          } catch (error) {
-            if (import.meta.env.DEV) {
-              console.warn('[scanner] BarcodeDetector indisponible', error)
-            }
-          }
-        }
-
-        if (!decoded) {
-          const reader = new BrowserMultiFormatReader(ZXING_IMAGE_HINTS)
-          const objectUrl = URL.createObjectURL(file)
-          try {
-            const image = new Image()
-            image.src = objectUrl
-            await new Promise<void>((resolve, reject) => {
-              image.onload = () => resolve()
-              image.onerror = () => reject(new Error('Chargement de la photo impossible.'))
-            })
-            const result = await reader.decodeFromImageElement(image)
-            decoded = result.getText()
-          } catch (error) {
-            if (import.meta.env.DEV) {
-              console.warn('[scanner] Décodage ZXing impossible', error)
-            }
-          } finally {
-            URL.revokeObjectURL(objectUrl)
-          }
-        }
-
-        if (decoded) {
-          await handleDetected(decoded)
-        } else {
-          updateStatus(null)
-          setErrorMessage('Impossible de lire ce code-barres sur la photo. Essayez une prise plus nette ou mieux éclairée.')
-        }
-      } catch (error) {
-        updateStatus(null)
-        if (import.meta.env.DEV) {
-          console.error('[scanner] Analyse photo impossible', error)
-        }
-        setErrorMessage("Échec de l'analyse de la photo. Réessayez avec un autre cliché.")
-      }
-    },
-    [handleDetected, updateStatus],
-  )
-
-  const handleCameraDetected = useCallback(
-    async (rawValue: string) => {
-      const sanitized = sanitizeEan(rawValue.trim())
-      if (!sanitized) {
-        return
-      }
-
-      skipManualLookupRef.current = true
-      setScanValue((previous) => (previous === sanitized ? previous : sanitized))
-      setManualEan('')
-      setErrorMessage(null)
-      scrollScanInputIntoView()
-
-      await handleDetected(sanitized)
-    },
-    [handleDetected, scrollScanInputIntoView],
-  )
 
   const handleInputKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
@@ -795,7 +658,6 @@ export const InventorySessionPage = () => {
     setRecentScans([])
     setStatusState(null)
     setErrorMessage(null)
-    setUseCamera(false)
     updateStatus('Session réinitialisée.')
   }, [
     clearSession,
@@ -808,13 +670,8 @@ export const InventorySessionPage = () => {
     setSessionId,
     setStatusState,
     setErrorMessage,
-    setUseCamera,
     updateStatus,
   ])
-
-  const toggleCamera = useCallback(() => {
-    setUseCamera((prev) => !prev)
-  }, [setUseCamera])
 
   const handleOpenCompletionConfirmation = useCallback(() => {
     const dialog = completionConfirmationDialogRef.current
@@ -1135,22 +992,32 @@ export const InventorySessionPage = () => {
             <h3 className="text-xl font-semibold text-slate-900 dark:text-white">Articles scannés</h3>
             <span className="text-sm text-slate-600 dark:text-slate-400">{items.length} références</span>
           </div>
-          {conflictZoneSummary && (
-            <div className="flex flex-wrap items-center gap-3 sm:justify-end">
-              <span className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-500/50 dark:bg-rose-500/10 dark:text-rose-200">
-                <span aria-hidden>⚠️</span>
-                Zone en conflit
-              </span>
-              <Button
-                variant="ghost"
-                className="inline-flex items-center gap-2 rounded-2xl border border-rose-200/80 bg-white/70 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/20"
-                onClick={() => setConflictModalOpen(true)}
-                data-testid="btn-view-conflicts"
-              >
-                Voir les écarts C1/C2
-              </Button>
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => navigate('/inventory/scan-camera')}
+              data-testid="btn-scan-camera"
+            >
+              Scan caméra
+            </Button>
+            {conflictZoneSummary && (
+              <>
+                <span className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-500/50 dark:bg-rose-500/10 dark:text-rose-200">
+                  <span aria-hidden>⚠️</span>
+                  Zone en conflit
+                </span>
+                <Button
+                  variant="ghost"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-rose-200/80 bg-white/70 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/20"
+                  onClick={() => setConflictModalOpen(true)}
+                  data-testid="btn-view-conflicts"
+                >
+                  Voir les écarts C1/C2
+                </Button>
+              </>
+            )}
+          </div>
         </div>
         {displayedItems.length === 0 && (
           <EmptyState
@@ -1267,28 +1134,6 @@ export const InventorySessionPage = () => {
           </Button>
         </div>
       </dialog>
-      <Card className="space-y-4">
-        <div className="flex flex-col gap-2">
-          <h3 className="text-xl font-semibold text-slate-900 dark:text-white">Scanner avec le téléphone</h3>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            Utilisez l’appareil photo pour lire un code-barres lorsque la douchette n’est pas disponible.
-          </p>
-        </div>
-        <Button variant="secondary" onClick={() => setUseCamera((prev) => !prev)}>
-          {useCamera ? 'Désactiver la caméra' : 'Activer la caméra'}
-        </Button>
-        <BarcodeScanner
-          active={useCamera}
-          onDetected={handleCameraDetected}
-          onError={(message) => {
-            updateStatus(null)
-            setErrorMessage(message)
-          }}
-          onPickImage={(file) => void handleImagePicked(file)}
-          preferredFormats={['EAN_13', 'EAN_8', 'CODE_128', 'CODE_39', 'ITF', 'QR_CODE']}
-        />
-      </Card>
-
       <ConflictZoneModal
         open={Boolean(conflictZoneSummary) && conflictModalOpen}
         zone={conflictZoneSummary}
