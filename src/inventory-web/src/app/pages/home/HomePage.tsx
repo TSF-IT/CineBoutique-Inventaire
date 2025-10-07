@@ -259,12 +259,7 @@ export const HomePage = () => {
     <Page headerAction={<BackToShopSelectionLink onClick={handleChangeShop} className="sm:self-start" />}>
       <section className="flex flex-col gap-4">
         <p className="text-sm uppercase tracking-[0.3em] text-brand-600 dark:text-brand-200">
-          CinéBoutique
-          {shopDisplayName ? (
-            <span className="ml-2 inline-flex items-center rounded-full bg-brand-100 px-2 py-0.5 text-[0.65rem] font-semibold text-brand-700 normal-case dark:bg-brand-500/20 dark:text-brand-200">
-              {shopDisplayName}
-            </span>
-          ) : null}
+          {shopDisplayName ?? 'CinéBoutique'}
         </p>
         <h1 className="text-4xl font-black leading-tight text-slate-900 dark:text-white sm:text-5xl">Inventaire</h1>
         <p className="max-w-xl text-base text-slate-600 dark:text-slate-300">
