@@ -183,13 +183,13 @@ const LocationListItem = ({ location, onSave }: LocationListItemProps) => {
           </div>
         </form>
       ) : (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+          <div className="min-w-0 space-y-1">
             <p className="text-sm font-semibold uppercase tracking-widest text-brand-500">{location.code}</p>
-            <p className="text-lg font-semibold text-slate-900 dark:text-white">{location.label}</p>
-            {busyStatus && <p className="text-sm text-slate-600 dark:text-slate-400">{busyStatus}</p>}
+            <p className="text-lg font-semibold text-slate-900 dark:text-white break-words">{location.label}</p>
+            {busyStatus && <p className="text-sm text-slate-600 dark:text-slate-400 break-words">{busyStatus}</p>}
           </div>
-          <Button variant="secondary" onClick={() => setIsEditing(true)}>
+          <Button variant="secondary" onClick={() => setIsEditing(true)} className="sm:self-start">
             Modifier
           </Button>
         </div>
@@ -335,17 +335,17 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         </form>
       ) : (
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="space-y-1">
-            <p className="text-sm font-semibold uppercase tracking-widest text-brand-500">{user.login}</p>
-            <p className="text-lg font-semibold text-slate-900 dark:text-white">{user.displayName}</p>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+          <div className="min-w-0 space-y-1">
+            <p className="text-sm font-semibold uppercase tracking-widest text-brand-500 break-words">{user.login}</p>
+            <p className="text-lg font-semibold text-slate-900 dark:text-white break-words">{user.displayName}</p>
             <div className="flex flex-wrap gap-2">
               <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 {user.isAdmin ? 'Administrateur' : 'Standard'}
               </span>
             </div>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-none sm:items-center">
             <Button variant="secondary" onClick={() => setIsEditing(true)}>
               Modifier
             </Button>
