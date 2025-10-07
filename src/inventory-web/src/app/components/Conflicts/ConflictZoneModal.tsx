@@ -257,13 +257,6 @@ export const ConflictZoneModal = ({ open, zone, onClose }: ConflictZoneModalProp
           >
             Fermer
           </button>
-          <button
-            type="button"
-            disabled
-            className="rounded-full bg-slate-900 px-4 py-2 text-sm font-semibold text-white opacity-60 dark:bg-slate-100 dark:text-slate-900"
-          >
-            Marquer comme résolu (bientôt)
-          </button>
         </footer>
       </div>
     </div>
