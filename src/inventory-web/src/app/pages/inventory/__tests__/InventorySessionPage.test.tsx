@@ -198,8 +198,12 @@ describe('InventorySessionPage - caméra', () => {
     await user.click(toggleCameraButton)
 
     const [scanInput] = await screen.findAllByLabelText('Scanner (douchette ou saisie)')
+    const scanInputWithOptionalScroll = scanInput as HTMLElement & {
+      scrollIntoView?: (options?: ScrollIntoViewOptions | boolean) => void
+    }
+    const originalScrollIntoView = scanInputWithOptionalScroll.scrollIntoView
     const scrollIntoViewMock = vi.fn()
-    Object.defineProperty(scanInput, 'scrollIntoView', {
+    Object.defineProperty(scanInputWithOptionalScroll, 'scrollIntoView', {
       value: scrollIntoViewMock,
       configurable: true,
     })
@@ -231,6 +235,14 @@ describe('InventorySessionPage - caméra', () => {
 
     getBoundingClientRectSpy.mockRestore()
     // Nettoyage de la surcharge scrollIntoView pour les autres tests
-    delete (scanInput as HTMLElement).scrollIntoView
+    if (originalScrollIntoView) {
+      Object.defineProperty(scanInputWithOptionalScroll, 'scrollIntoView', {
+        value: originalScrollIntoView,
+        configurable: true,
+        writable: true,
+      })
+    } else {
+      Reflect.deleteProperty(scanInputWithOptionalScroll, 'scrollIntoView')
+    }
   })
 })
