@@ -17,7 +17,6 @@ import { Input } from '../../components/ui/Input'
 import { Card } from '../../components/Card'
 import { EmptyState } from '../../components/EmptyState'
 import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
-import { MobileActionBar } from '../../components/MobileActionBar'
 import { useInventory } from '../../contexts/InventoryContext'
 import { useScanFeedback } from '../../hooks/useScanFeedback'
 import type { HttpError } from '@/lib/api/http'
@@ -800,42 +799,17 @@ export const InventorySessionPage = () => {
     void handleCompleteRun()
   }, [handleCompleteRun])
 
-  const mobileActions = useMemo(
-    () => (
-      <MobileActionBar
-        scan={{
-          label: useCamera ? 'Caméra activée' : 'Scanner',
-          onClick: toggleCamera,
-        }}
-        restart={{
-          onClick: handleRestartSession,
-          disabled: completionLoading,
-        }}
-        complete={{
-          onClick: handleOpenCompletionConfirmation,
-          disabled: !canCompleteRun,
-          busy: completionLoading,
-          label: completionLoading ? 'Enregistrement…' : 'Terminer',
-        }}
-      />
-    ),
-    [
-      canCompleteRun,
-      completionLoading,
-      handleOpenCompletionConfirmation,
-      handleRestartSession,
-      toggleCamera,
-      useCamera,
-    ],
-  )
-
   useEffect(() => {
     if (!setMobileNav) {
       return undefined
     }
-    setMobileNav(mobileActions)
-    return () => setMobileNav(null)
-  }, [mobileActions, setMobileNav])
+
+    setMobileNav(null)
+
+    return () => {
+      setMobileNav(null)
+    }
+  }, [setMobileNav])
 
   useEffect(() => {
     const previousCount = previousItemCountRef.current
