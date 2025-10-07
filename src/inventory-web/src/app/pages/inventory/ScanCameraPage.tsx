@@ -443,8 +443,8 @@ export const ScanCameraPage = () => {
       {conflictZoneSummary && (
         <ConflictZoneModal
           open={conflictModalOpen}
-          onOpenChange={setConflictModalOpen}
           zone={conflictZoneSummary}
+          onClose={() => setConflictModalOpen(false)}
         />
       )}
     </div>
