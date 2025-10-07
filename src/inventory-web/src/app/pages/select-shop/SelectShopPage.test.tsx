@@ -98,14 +98,14 @@ describe('SelectShopPage', () => {
       </ThemeProvider>,
     )
 
-  it('affiche un raccourci vers la page d’accueil', async () => {
+  it("n'affiche pas de raccourci vers la page d’accueil", async () => {
     fetchShopsMock.mockResolvedValueOnce([])
 
     renderPage()
 
-    const homeLink = await screen.findByTestId('btn-go-home')
-    expect(homeLink).toBeInTheDocument()
-    expect(homeLink).toHaveAttribute('href', '/')
+    await waitFor(() => {
+      expect(screen.queryByTestId('btn-go-home')).not.toBeInTheDocument()
+    })
   })
 
   it('navigue vers la page d’identification dès la sélection d’une boutique', async () => {
