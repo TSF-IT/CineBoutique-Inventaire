@@ -62,6 +62,8 @@ const defaultLocation = {
   ],
 } as const
 
+const logEventMock = vi.fn()
+
 const defaultInventoryContext = {
   selectedUser: mockShopUser,
   countType: 1,
@@ -78,7 +80,7 @@ const defaultInventoryContext = {
   reset: vi.fn(),
   clearSession: vi.fn(),
   logs: [] as Array<unknown>,
-  logEvent: vi.fn(),
+  logEvent: logEventMock,
   clearLogs: vi.fn(),
 }
 
@@ -108,6 +110,7 @@ describe('InventorySessionPage - ajout manuel', () => {
   beforeEach(() => {
     fetchProductByEanMock.mockReset()
     addOrIncrementItemMock.mockReset()
+    logEventMock.mockReset()
     mockNavigate.mockReset()
     startInventoryRunMock.mockReset()
     startInventoryRunMock.mockResolvedValue({
@@ -155,6 +158,7 @@ describe('InventorySessionPage - ajout manuel', () => {
         { isManual: true },
       )
     })
+    expect(logEventMock).not.toHaveBeenCalled()
     expect((input as HTMLInputElement).value).toBe('')
   })
 

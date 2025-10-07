@@ -156,7 +156,9 @@ export const InventorySessionPage = () => {
       if (message) {
         const normalized = message.trim().toLowerCase()
         const isLookupMessage = normalized.startsWith('recherche du code')
-        if (!isLookupMessage) {
+        const containsProductAddition =
+          normalized.includes('ajouté') || normalized.includes('ajoutée')
+        if (!isLookupMessage && !containsProductAddition) {
           logEvent({
             type: 'status',
             message,
