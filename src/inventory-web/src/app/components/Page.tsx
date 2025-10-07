@@ -28,7 +28,7 @@ export const Page = ({
     )}
     nav={mobileNav}
     header={
-      <div className="page-header flex items-center gap-3">
+      <div className="page-header flex w-full items-center gap-3">
         {(showHomeLink || headerAction) && (
           <div className="flex items-center gap-3">
             {showHomeLink && (
