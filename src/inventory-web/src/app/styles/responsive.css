@@ -30,7 +30,7 @@
   justify-content: space-between;
   gap: var(--spacing-2);
   width: 100%;
-  max-width: var(--container-max, 1200px);
+  max-width: calc(var(--container-max, 1200px) + var(--spacing-3) * 2);
   margin-left: auto;
   margin-right: auto;
   padding: var(--spacing-3);
