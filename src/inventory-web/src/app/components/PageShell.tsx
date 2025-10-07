@@ -22,7 +22,9 @@ export const PageShell = ({
     style={style}
     {...rest}
   >
-    <header className="page-shell__header">{header}</header>
+    <header className="page-shell__header">
+      <div className="page-shell__header-inner container">{header}</div>
+    </header>
     <main className={clsx('layout-main container', mainClassName)}>{children}</main>
     {nav ? (
       <nav className="mobile-bottom-bar" aria-label="Actions principales">
