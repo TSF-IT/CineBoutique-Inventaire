@@ -390,13 +390,20 @@ export const InventoryLocationStep = () => {
               })()
               const isConflictZone = conflictStatus === 'conflict'
               const isZoneLocked = zoneCompleted && !isConflictZone
+              const userHasCompletedZone = getRelevantStatuses(zone).some(
+                (status) =>
+                  status.status === 'completed' &&
+                  resolveOwnerNameForMessage(status, selectedUserId, selectedUserDisplayName) === 'vous',
+              )
+              const isZoneRestrictedToCurrentUser =
+                userHasCompletedZone && !isZoneLocked && !isConflictZone
               const statusSummary =
                 visibleStatuses.length > 0
                   ? visibleStatuses.map((status) => describeCountStatus(status)).join(', ')
                   : zoneCompleted
                     ? 'Comptages terminés'
                     : 'Aucun comptage en cours'
-              const toneClass = isZoneLocked
+              const toneClass = isZoneLocked || isZoneRestrictedToCurrentUser
                 ? 'border-slate-200 bg-slate-50 text-slate-500 opacity-80 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400'
                 : isSelected
                   ? 'border-brand-400 bg-brand-500/10 text-brand-700 dark:bg-brand-500/20 dark:text-brand-100'
@@ -407,7 +414,14 @@ export const InventoryLocationStep = () => {
                 ? 'Lancer le 3ᵉ comptage'
                 : zoneCompleted
                   ? 'Zone terminée'
-                  : 'Choisir cette zone'
+                  : isZoneRestrictedToCurrentUser
+                    ? 'Zone indisponible'
+                    : 'Choisir cette zone'
+              const disabledReason = isZoneLocked
+                ? 'Les deux comptages sont terminés'
+                : isZoneRestrictedToCurrentUser
+                  ? 'Vous avez déjà compté cette zone.'
+                  : undefined
               return (
                 <div
                   key={zone.id}
@@ -451,13 +465,21 @@ export const InventoryLocationStep = () => {
                             targetCountType: isConflictZone ? CountType.Count3 : null,
                           })
                         }
-                        disabled={isZoneLocked}
-                        aria-disabled={isZoneLocked}
-                        title={isZoneLocked ? 'Les deux comptages sont terminés' : undefined}
+                        disabled={isZoneLocked || isZoneRestrictedToCurrentUser}
+                        aria-disabled={isZoneLocked || isZoneRestrictedToCurrentUser}
+                        title={disabledReason}
                         className="self-start"
                       >
                         {buttonLabel}
                       </Button>
+                      {isZoneRestrictedToCurrentUser && (
+                        <span
+                          className="text-sm font-medium text-slate-500 dark:text-slate-400"
+                          data-testid="zone-restricted-message"
+                        >
+                          Vous avez déjà compté cette zone.
+                        </span>
+                      )}
                       {zoneCompleted && (
                         <div className="flex justify-start sm:justify-end">
                           {conflictStatus === 'none' && (
