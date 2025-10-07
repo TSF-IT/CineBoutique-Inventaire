@@ -388,7 +388,8 @@ conflict_runs AS (
   CROSS JOIN seed_bounds sb
   WHERE cr."LocationId" = @LocationId
     AND cr."CompletedAtUtc" IS NOT NULL
-    AND (sb."MinCompletedAtUtc" IS NULL OR cr."CompletedAtUtc" >= sb."MinCompletedAtUtc")
+    AND sb."MinCompletedAtUtc" IS NOT NULL
+    AND cr."CompletedAtUtc" >= sb."MinCompletedAtUtc"
 )
 SELECT cr."RunId", cr."CountType", cr."CompletedAtUtc",
        COALESCE(su."DisplayName", cr2."OperatorDisplayName") AS "OwnerDisplayName"
@@ -436,7 +437,8 @@ conflict_runs AS (
     CROSS JOIN seed_bounds sb
     WHERE cr."LocationId" = @LocationId
       AND cr."CompletedAtUtc" IS NOT NULL
-      AND (sb."MinCompletedAtUtc" IS NULL OR cr."CompletedAtUtc" >= sb."MinCompletedAtUtc")
+      AND sb."MinCompletedAtUtc" IS NOT NULL
+      AND cr."CompletedAtUtc" >= sb."MinCompletedAtUtc"
 ),
 conflict_products AS (
     SELECT DISTINCT cl."ProductId" AS "ProductId"
