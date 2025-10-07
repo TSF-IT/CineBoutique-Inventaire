@@ -134,9 +134,13 @@ describe('HomePage', () => {
 
     const dialog = await screen.findByRole('dialog', { name: /B1 · Zone B1/i })
     expect(dialog).toBeInTheDocument()
-    expect(await screen.findByText(/EAN 111/i)).toBeInTheDocument()
-    expect(screen.getAllByText('Comptage 1').length).toBeGreaterThan(0)
-    expect(screen.getAllByText('Comptage 2').length).toBeGreaterThan(0)
+
+    const eanLine = await within(dialog).findByText((content, element) =>
+      element?.classList.contains('conflict-card__ean') && content.includes('111'),
+    )
+    expect(eanLine).toBeInTheDocument()
+    expect(within(dialog).getAllByText('Comptage 1').length).toBeGreaterThan(0)
+    expect(within(dialog).getAllByText('Comptage 2').length).toBeGreaterThan(0)
   })
 
   it('ouvre les modales des comptages en cours et terminés', async () => {

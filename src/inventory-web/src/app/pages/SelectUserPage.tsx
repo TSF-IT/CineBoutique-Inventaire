@@ -191,7 +191,7 @@ export default function SelectUserPage() {
 
         {shouldShowList && (
           <div className="space-y-4">
-            <ul className="grid gap-3 sm:grid-cols-2">
+            <ul className="cards">
               {users.map(u => (
                 <li key={u.id}>
                   <button
