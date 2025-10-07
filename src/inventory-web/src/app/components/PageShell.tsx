@@ -23,7 +23,11 @@ export const PageShell = ({
     {...rest}
   >
     <header className="page-shell__header">
-      <div className="page-shell__header-inner container">{header}</div>
+      <div className="container">
+        <div className="page-shell__header-surface">
+          <div className="page-shell__header-inner">{header}</div>
+        </div>
+      </div>
     </header>
     <main className={clsx('layout-main container', mainClassName)}>{children}</main>
     {nav ? (
