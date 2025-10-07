@@ -98,6 +98,16 @@ describe('SelectShopPage', () => {
       </ThemeProvider>,
     )
 
+  it('affiche un raccourci vers la page d’accueil', async () => {
+    fetchShopsMock.mockResolvedValueOnce([])
+
+    renderPage()
+
+    const homeLink = await screen.findByTestId('btn-go-home')
+    expect(homeLink).toBeInTheDocument()
+    expect(homeLink).toHaveAttribute('href', '/')
+  })
+
   it('navigue vers la page d’identification dès la sélection d’une boutique', async () => {
     fetchShopsMock.mockResolvedValueOnce([shopA, shopB])
 
