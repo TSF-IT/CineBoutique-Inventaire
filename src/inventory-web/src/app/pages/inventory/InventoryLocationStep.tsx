@@ -82,6 +82,17 @@ const resolveErrorPanel = (
 
 const DISPLAYED_COUNT_TYPES: CountType[] = [CountType.Count1, CountType.Count2]
 
+const getAllStatuses = (zone: Location) =>
+  Array.isArray(zone.countStatuses) ? zone.countStatuses : []
+
+const computeNextCountType = (zone: Location) => {
+  const done = getAllStatuses(zone).filter((status) => status.status === 'completed')
+  const maxCt = done.reduce((max, status) => Math.max(max, Number(status.countType) || 0), 0)
+  return Math.max(3, maxCt + 1)
+}
+
+const formatOrdinalFr = (n: number) => (n === 1 ? '1er' : `${n}ᵉ`)
+
 export const InventoryLocationStep = () => {
   const navigate = useNavigate()
   const { selectedUser, location, sessionId, setLocation, setSessionId, clearSession, setCountType } = useInventory()
@@ -262,10 +273,7 @@ export const InventoryLocationStep = () => {
   }
 
   const getRelevantStatuses = (zone: Location): LocationCountStatus[] => {
-    if (!Array.isArray(zone.countStatuses)) {
-      return []
-    }
-    return [...zone.countStatuses]
+    return [...getAllStatuses(zone)]
       .filter((status): status is LocationCountStatus =>
         DISPLAYED_COUNT_TYPES.includes(status.countType as CountType),
       )
@@ -315,28 +323,28 @@ export const InventoryLocationStep = () => {
     return '•'
   }
 
-  const handleLocationSelection = (zone: Location, options?: { targetCountType?: CountType | null }) => {
+  const handleLocationSelection = (zone: Location, options?: { targetCountType?: number | null }) => {
     const targetCountType = options?.targetCountType ?? null
-    const forceThirdCount = targetCountType === CountType.Count3
+    const forceSpecificCount = typeof targetCountType === 'number'
 
-    if (!forceThirdCount && isZoneCompleted(zone)) {
+    if (!forceSpecificCount && isZoneCompleted(zone)) {
       return
     }
 
     const statuses = getRelevantStatuses(zone)
     const activeStatus = statuses.find((status) => status.status === 'in_progress')
-    const nextSessionId = forceThirdCount ? null : activeStatus?.runId ?? zone.activeRunId ?? null
+    const nextSessionId = forceSpecificCount ? null : activeStatus?.runId ?? zone.activeRunId ?? null
     const isSameLocation = location?.id === zone.id
-    const isSameSession = !forceThirdCount && isSameLocation && sessionId === nextSessionId
+    const isSameSession = !forceSpecificCount && isSameLocation && sessionId === nextSessionId
 
-    if (!isSameSession || forceThirdCount) {
+    if (!isSameSession || forceSpecificCount) {
       clearSession()
     }
 
     setLocation(zone)
     setSessionId(nextSessionId ?? null)
     setCountType(targetCountType ?? null)
-    navigate(forceThirdCount ? '/inventory/session' : '/inventory/count-type')
+    navigate(forceSpecificCount ? '/inventory/session' : '/inventory/count-type')
   }
 
   const errorPanel = useMemo(() => resolveErrorPanel(error), [error])
@@ -410,8 +418,9 @@ export const InventoryLocationStep = () => {
                   : 'border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200'
               const displayName = getLocationDisplayName(zone.code, zone.label)
               const shouldDisplayLabel = !isLocationLabelRedundant(zone.code, zone.label)
+              const nextCount = isConflictZone ? computeNextCountType(zone) : null
               const buttonLabel = isConflictZone
-                ? 'Lancer le 3ᵉ comptage'
+                ? `Lancer le ${formatOrdinalFr(nextCount ?? 3)} comptage`
                 : zoneCompleted
                   ? 'Zone terminée'
                   : isZoneRestrictedToCurrentUser
@@ -462,7 +471,7 @@ export const InventoryLocationStep = () => {
                         }
                         onClick={() =>
                           handleLocationSelection(zone, {
-                            targetCountType: isConflictZone ? CountType.Count3 : null,
+                            targetCountType: isConflictZone ? nextCount : null,
                           })
                         }
                         disabled={isZoneLocked || isZoneRestrictedToCurrentUser}
