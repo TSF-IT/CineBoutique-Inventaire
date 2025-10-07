@@ -4,8 +4,16 @@ import userEvent from '@testing-library/user-event'
 import { ThemeProvider } from '../../../../theme/ThemeProvider'
 import { AdminLocationsPage } from '../AdminLocationsPage'
 import type { Location } from '../../../types/inventory'
+import type { ShopUser } from '../../../types/user'
 import { fetchLocations } from '../../../api/inventoryApi'
-import { createLocation, updateLocation } from '../../../api/adminApi'
+import {
+  createLocation,
+  updateLocation,
+  createShopUser,
+  updateShopUser,
+  disableShopUser,
+} from '../../../api/adminApi'
+import { fetchShopUsers } from '../../../api/shopUsers'
 import { ShopProvider } from '@/state/ShopContext'
 
 vi.mock('../../../api/inventoryApi', () => ({
@@ -15,13 +23,24 @@ vi.mock('../../../api/inventoryApi', () => ({
 vi.mock('../../../api/adminApi', () => ({
   createLocation: vi.fn(),
   updateLocation: vi.fn(),
+  createShopUser: vi.fn(),
+  updateShopUser: vi.fn(),
+  disableShopUser: vi.fn(),
+}))
+
+vi.mock('../../../api/shopUsers', () => ({
+  fetchShopUsers: vi.fn(),
 }))
 
 const { fetchLocations: mockedFetchLocations } = vi.mocked({ fetchLocations })
-const { createLocation: mockedCreateLocation, updateLocation: mockedUpdateLocation } = vi.mocked({
-  createLocation,
-  updateLocation,
-})
+const {
+  createLocation: mockedCreateLocation,
+  updateLocation: mockedUpdateLocation,
+  createShopUser: mockedCreateShopUser,
+  updateShopUser: mockedUpdateShopUser,
+  disableShopUser: mockedDisableShopUser,
+} = vi.mocked({ createLocation, updateLocation, createShopUser, updateShopUser, disableShopUser })
+const { fetchShopUsers: mockedFetchShopUsers } = vi.mocked({ fetchShopUsers })
 
 const testShop = { id: 'shop-123', name: 'Boutique test' } as const
 
@@ -40,6 +59,14 @@ const renderAdminPage = async () => {
 
   expect(mockedFetchLocations.mock.calls[0]?.[0]).toBe(testShop.id)
 
+}
+
+const openUsersTab = async (user: ReturnType<typeof userEvent.setup>) => {
+  const tablists = await screen.findAllByRole('tablist', { name: /choix de la section d'administration/i })
+  const tablist = tablists[tablists.length - 1]
+  const tabs = within(tablist).getAllByRole('tab')
+  const target = tabs.find((tab) => tab.textContent?.includes('Utilisateurs')) ?? tabs[tabs.length - 1]
+  await user.click(target as HTMLButtonElement)
 }
 
 describe('AdminLocationsPage', () => {
@@ -62,6 +89,11 @@ describe('AdminLocationsPage', () => {
     mockedFetchLocations.mockResolvedValue([baseLocation])
     mockedCreateLocation.mockReset()
     mockedUpdateLocation.mockReset()
+    mockedFetchShopUsers.mockReset()
+    mockedFetchShopUsers.mockResolvedValue([])
+    mockedCreateShopUser.mockReset()
+    mockedUpdateShopUser.mockReset()
+    mockedDisableShopUser.mockReset()
   })
 
   it('crée une nouvelle zone', async () => {
@@ -96,6 +128,7 @@ describe('AdminLocationsPage', () => {
     expect(mockedCreateLocation).toHaveBeenCalledWith({ code: 'B02', label: 'Comptoir' })
     expect(await screen.findByText('Zone créée avec succès.')).toBeInTheDocument()
     expect(screen.getByText('Comptoir')).toBeInTheDocument()
+    expect(mockedFetchShopUsers).not.toHaveBeenCalled()
   })
 
   it('met à jour le code et le libellé d’une zone existante', async () => {
@@ -134,5 +167,185 @@ describe('AdminLocationsPage', () => {
     expect(await screen.findByText('Zone mise à jour.')).toBeInTheDocument()
     expect(screen.getByText('Accueil')).toBeInTheDocument()
     expect(screen.getByText('C01')).toBeInTheDocument()
+    expect(mockedFetchShopUsers).not.toHaveBeenCalled()
+  })
+
+  it("charge les utilisateurs lors de l'ouverture de l'onglet dédié", async () => {
+    await renderAdminPage()
+
+    expect(mockedFetchShopUsers).not.toHaveBeenCalled()
+
+    const user = userEvent.setup()
+    await openUsersTab(user)
+
+    await waitFor(() => {
+      expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id)
+    })
+  })
+
+  it('crée un nouvel utilisateur', async () => {
+    const createdUser: ShopUser = {
+      id: 'user-2',
+      shopId: testShop.id,
+      login: 'camille',
+      displayName: 'Camille Dupont',
+      isAdmin: true,
+      disabled: false,
+    }
+
+    mockedCreateShopUser.mockResolvedValue(createdUser)
+
+    await renderAdminPage()
+
+    const user = userEvent.setup()
+    await openUsersTab(user)
+
+    await waitFor(() => {
+      expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id)
+    })
+
+    const createForm = (await screen.findAllByTestId('user-create-form'))[0] as HTMLElement
+    const loginInput = within(createForm).getByLabelText('Identifiant') as HTMLInputElement
+    const displayNameInput = within(createForm).getByLabelText('Nom affiché') as HTMLInputElement
+    const adminCheckbox = within(createForm).getAllByLabelText('Administrateur')[0]
+
+    await user.type(loginInput, 'camille')
+    await user.type(displayNameInput, 'Camille Dupont')
+    await user.click(adminCheckbox)
+
+    const addButton = within(createForm).getByRole('button', { name: 'Ajouter' })
+    await user.click(addButton)
+
+    expect(mockedCreateShopUser).toHaveBeenCalledWith(testShop.id, {
+      login: 'camille',
+      displayName: 'Camille Dupont',
+      isAdmin: true,
+    })
+
+    expect(await screen.findByText('Utilisateur créé avec succès.')).toBeInTheDocument()
+    const createdCards = await screen.findAllByTestId('user-card')
+    const createdCard = createdCards.find((card) => card.getAttribute('data-user-id') === createdUser.id)
+    expect(createdCard).toBeDefined()
+    if (!createdCard) {
+      throw new Error('Carte utilisateur créée introuvable')
+    }
+    expect(within(createdCard).getByText('Camille Dupont')).toBeInTheDocument()
+    expect(within(createdCard).getByText('camille')).toBeInTheDocument()
+    expect(within(createdCard).getByText('Administrateur')).toBeInTheDocument()
+  })
+
+  it('met à jour un utilisateur existant', async () => {
+    const existingUser: ShopUser = {
+      id: 'user-1',
+      shopId: testShop.id,
+      login: 'amelie',
+      displayName: 'Amélie Martin',
+      isAdmin: false,
+      disabled: false,
+    }
+    const updatedUser: ShopUser = { ...existingUser, displayName: 'Amélie Leroy', isAdmin: true }
+
+    mockedFetchShopUsers.mockResolvedValue([existingUser])
+    mockedUpdateShopUser.mockResolvedValue(updatedUser)
+
+    await renderAdminPage()
+
+    const user = userEvent.setup()
+    await openUsersTab(user)
+
+    await waitFor(() => {
+      expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id)
+    })
+
+    const userCards = await screen.findAllByTestId('user-card')
+    const targetCard = userCards.find((card) => card.getAttribute('data-user-id') === existingUser.id) as HTMLElement | undefined
+    expect(targetCard).toBeDefined()
+    if (!targetCard) {
+      throw new Error('Carte utilisateur à éditer introuvable')
+    }
+    const editButton = within(targetCard).getByRole('button', { name: 'Modifier' })
+    await user.click(editButton)
+
+    const editForm = targetCard.querySelector('form') as HTMLElement | null
+    expect(editForm).not.toBeNull()
+    if (!editForm) {
+      throw new Error('Formulaire de mise à jour utilisateur introuvable')
+    }
+    const loginInput = within(editForm).getByDisplayValue('amelie') as HTMLInputElement
+    const displayNameInput = within(editForm).getByDisplayValue('Amélie Martin') as HTMLInputElement
+    const adminCheckbox = within(editForm).getAllByLabelText('Administrateur')[0]
+
+    await user.clear(loginInput)
+    await user.type(loginInput, 'amelie')
+    await user.clear(displayNameInput)
+    await user.type(displayNameInput, 'Amélie Leroy')
+    if (!(adminCheckbox as HTMLInputElement).checked) {
+      await user.click(adminCheckbox)
+    }
+
+    const saveButton = screen.getByRole('button', { name: 'Enregistrer' })
+    await user.click(saveButton)
+
+    expect(mockedUpdateShopUser).toHaveBeenCalledWith(testShop.id, {
+      id: existingUser.id,
+      login: 'amelie',
+      displayName: 'Amélie Leroy',
+      isAdmin: true,
+    })
+
+    expect(await screen.findByText('Utilisateur mis à jour.')).toBeInTheDocument()
+    const updatedCard = await screen.findAllByTestId('user-card')
+    const refreshedCard = updatedCard.find((card) => card.getAttribute('data-user-id') === existingUser.id)
+    expect(refreshedCard).toBeDefined()
+    if (!refreshedCard) {
+      throw new Error('Carte utilisateur mise à jour introuvable')
+    }
+    expect(within(refreshedCard).getByText('Amélie Leroy')).toBeInTheDocument()
+    expect(within(refreshedCard).getByText('Administrateur')).toBeInTheDocument()
+  })
+
+  it('désactive un utilisateur', async () => {
+    const existingUser: ShopUser = {
+      id: 'user-3',
+      shopId: testShop.id,
+      login: 'bruno',
+      displayName: 'Bruno Caron',
+      isAdmin: false,
+      disabled: false,
+    }
+    const disabledUser: ShopUser = { ...existingUser, disabled: true }
+
+    mockedFetchShopUsers.mockResolvedValue([existingUser])
+    mockedDisableShopUser.mockResolvedValue(disabledUser)
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    await renderAdminPage()
+
+    const user = userEvent.setup()
+    await openUsersTab(user)
+
+    await waitFor(() => {
+      expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id)
+    })
+
+    const userCard = (await screen.findAllByTestId('user-card')).find(
+      (card) => card.getAttribute('data-user-id') === existingUser.id,
+    ) as HTMLElement | undefined
+    expect(userCard).toBeDefined()
+    if (!userCard) {
+      throw new Error('Carte utilisateur introuvable pour la désactivation')
+    }
+    const disableButton = within(userCard).getByRole('button', { name: 'Désactiver' })
+    await user.click(disableButton)
+
+    expect(confirmSpy).toHaveBeenCalled()
+    expect(mockedDisableShopUser).toHaveBeenCalledWith(testShop.id, existingUser.id)
+    expect(await screen.findByText('Utilisateur désactivé.')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText('Bruno Caron')).not.toBeInTheDocument()
+    })
+
+    confirmSpy.mockRestore()
   })
 })
