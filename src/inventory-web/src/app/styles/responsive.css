@@ -17,7 +17,8 @@
   display: grid;
   gap: var(--spacing-3);
   grid-template-rows: 1fr;
-  min-height: auto;
+  /* Firefox n'aime pas min-height:auto */
+  min-height: 0;
 }
 
 .page-shell--with-nav {
@@ -38,6 +39,7 @@
 
 .mobile-bottom-bar {
   display: none;
+  position: -webkit-sticky;
   position: sticky;
   bottom: 0;
   width: 100%;
@@ -46,6 +48,8 @@
   border-radius: var(--radius);
   background: rgba(248, 250, 252, 0.94);
   box-shadow: var(--shadow-1);
+  /* Safari veut son jouet à lui */
+  -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
 }
 
@@ -93,6 +97,8 @@
   padding: var(--spacing-3) var(--spacing-4);
   background: rgba(248, 250, 252, 0.9);
   border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+  /* Flou cross-browser */
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
 }
 
@@ -164,10 +170,14 @@
 .modal-body {
   padding: var(--spacing-4);
   overflow: auto;
-  -webkit-overflow-scrolling: touch;
-  min-height: 0;
-  display: grid;
-  gap: var(--spacing-3);
+  /* Cette propriété est iOS-only, on l'encapsule pour éviter l'avertissement */
+}
+
+/* Activer l'inertie iOS uniquement si supportée */
+@supports (-webkit-overflow-scrolling: touch) {
+  .modal-body {
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 .modal-loading {
@@ -205,6 +215,7 @@
   padding: var(--spacing-3) var(--spacing-4);
   background: rgba(248, 250, 252, 0.95);
   border-top: 1px solid rgba(148, 163, 184, 0.3);
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
 }
 
@@ -345,7 +356,8 @@
   border-radius: 0;
 }
 
-.modal-full .modal-header {
+.modal-full .modal-header {  
+  position: -webkit-sticky;
   position: sticky;
   top: 0;
   z-index: 2;
@@ -360,7 +372,8 @@
   padding-bottom: calc(var(--spacing-4) + env(safe-area-inset-bottom));
 }
 
-.modal-full .modal-footer {
+.modal-full .modal-footer {  
+  position: -webkit-sticky;
   position: sticky;
   bottom: 0;
   z-index: 2;
