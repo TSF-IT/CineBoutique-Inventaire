@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, beforeEach, afterEach, vi, expect } from 'vitest'
 import { PageShell } from '../components/PageShell'
@@ -89,8 +89,8 @@ describe('Responsive layout smoke tests', () => {
     setViewport(375, 667)
     renderTestPage()
 
-    const bottomBar = document.querySelector('.mobile-bottom-bar')
-    expect(bottomBar).not.toBeNull()
+    const navigation = screen.getByRole('navigation', { name: /Actions principales/i })
+    expect(navigation).toBeVisible()
   })
 
   it('renders conflict modal full screen with scrollable body on compact viewport', async () => {
@@ -133,13 +133,16 @@ describe('Responsive layout smoke tests', () => {
     await waitFor(() => expect(getConflictZoneDetail).toHaveBeenCalled())
     await screen.findByText(/Comptage 1/i)
 
-    const modal = screen.getByRole('dialog')
-    expect(modal.classList.contains('modal-full')).toBe(true)
+    const modal = screen.getByRole('dialog', {
+      name: `${zone.locationCode} · ${zone.locationLabel}`,
+    })
+    expect(modal).toHaveAttribute('aria-modal', 'true')
+    expect(document.body.style.overflow).toBe('hidden')
 
-    const body = modal.querySelector('.modal-body') as HTMLElement
-    expect(body).not.toBeNull()
-    expect(body.classList.contains('modal-body')).toBe(true)
-    expect(window.getComputedStyle(body).overflowY).not.toBe('visible')
+    const articles = within(modal).getAllByRole('article')
+    expect(articles).toHaveLength(detail.items.length)
+    const eanValues = within(articles[0]).getAllByText('1234567890123')
+    expect(eanValues[0]).toBeVisible()
   })
 
   it('transforms completed runs table into cards on narrow screens', async () => {
@@ -182,7 +185,7 @@ describe('Responsive layout smoke tests', () => {
     await screen.findByText('Produit test')
 
     const table = screen.getByRole('table')
-    expect(table.classList.contains('table')).toBe(true)
-    expect(table.querySelectorAll('.table-label').length).toBeGreaterThan(0)
+    const labels = within(table).getAllByText(/SKU|EAN|Libellé|Quantité/i)
+    expect(labels.length).toBeGreaterThanOrEqual(4)
   })
 })

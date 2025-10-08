@@ -1,5 +1,15 @@
 import '@testing-library/jest-dom/vitest'
-import { vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, vi } from 'vitest'
+import { cleanup } from '@testing-library/react'
+
+import { server } from './tests/msw/server'
+
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }))
+afterEach(() => {
+  server.resetHandlers()
+  cleanup()
+})
+afterAll(() => server.close())
 
 if (typeof window !== 'undefined') {
   window.confirm = vi.fn(() => true)
