@@ -31,6 +31,7 @@ public sealed class InventoryApiFactory : WebApplicationFactory<Program>
                 ["DISABLE_SERILOG"] = "true",
                 ["APPLY_MIGRATIONS"] = "false",
                 ["DISABLE_MIGRATIONS"] = "false",
+                ["RunMigrationsOnStart"] = "false",
                 ["AppSettings:SeedOnStartup"] = "false"
             };
 

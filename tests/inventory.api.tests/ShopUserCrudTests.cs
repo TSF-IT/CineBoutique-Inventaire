@@ -12,7 +12,7 @@ using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
 
-[Collection("InventoryApi")]
+[Collection("api-tests")]
 public sealed class ShopUserCrudTests : IntegrationTestBase
 {
     public ShopUserCrudTests(InventoryApiFixture fixture)
