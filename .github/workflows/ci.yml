@@ -70,6 +70,22 @@ jobs:
       DOTNET_CLI_TELEMETRY_OPTOUT: true
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       DOTNET_ROLL_FORWARD: Major
+      TEST_DB_CONNECTION: ""
+    # Option B (Postgres service) : décommenter pour utiliser un service partagé
+    # services:
+    #   postgres:
+    #     image: postgres:16-alpine
+    #     ports:
+    #       - 5432:5432
+    #     env:
+    #       POSTGRES_DB: inventory_tests
+    #       POSTGRES_USER: postgres
+    #       POSTGRES_PASSWORD: postgres
+    #     options: >-
+    #       --health-cmd="pg_isready -U postgres"
+    #       --health-interval=10s
+    #       --health-timeout=5s
+    #       --health-retries=5
     steps:
       - name: "Pre-clean: take ownership of workspace"
         run: |

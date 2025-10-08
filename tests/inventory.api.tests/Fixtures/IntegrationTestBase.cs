@@ -22,7 +22,7 @@ public abstract class IntegrationTestBase : IAsyncLifetime
             return;
         }
 
-        await Fixture.ResetDatabaseAsync().ConfigureAwait(true);
+        await Fixture.DbResetAsync().ConfigureAwait(true);
     }
 
     public Task DisposeAsync() => Task.CompletedTask;

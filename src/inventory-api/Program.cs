@@ -219,9 +219,10 @@ builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<ProcessorOpti
 // --- App ---
 var app = builder.Build();
 
-// Migrations au démarrage
-using (var scope = app.Services.CreateScope())
+// Migrations au démarrage (hors environnement de test)
+if (!app.Environment.IsEnvironment("Testing"))
 {
+    using var scope = app.Services.CreateScope();
     var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
     try
     {
@@ -315,35 +316,38 @@ var applyMigrations = app.Configuration.GetValue<bool>("APPLY_MIGRATIONS");
 var disableMigrations = app.Configuration.GetValue<bool>("DISABLE_MIGRATIONS");
 AppLog.MigrationsFlags(app.Logger, applyMigrations, disableMigrations);
 
-if (applyMigrations && !disableMigrations)
+if (!app.Environment.IsEnvironment("Testing"))
 {
-    const int maxAttempts = 10;
-    var attempt = 0;
-
-    while (true)
+    if (applyMigrations && !disableMigrations)
     {
-        try
-        {
-            attempt++;
-            using var scope = app.Services.CreateScope();
-            var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
-            runner.MigrateUp();
+        const int maxAttempts = 10;
+        var attempt = 0;
 
-            var connectionDetails = new NpgsqlConnectionStringBuilder(connectionString);
-            AppLog.DbHostDb(app.Logger, $"{connectionDetails.Host}/{connectionDetails.Database}");
-
-            break;
-        }
-        catch (Exception ex) when (attempt < maxAttempts && ex is NpgsqlException or TimeoutException or InvalidOperationException)
+        while (true)
         {
-            AppLog.MigrationRetry(app.Logger, attempt, maxAttempts, ex);
-            await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+            try
+            {
+                attempt++;
+                using var scope = app.Services.CreateScope();
+                var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+                runner.MigrateUp();
+
+                var connectionDetails = new NpgsqlConnectionStringBuilder(connectionString);
+                AppLog.DbHostDb(app.Logger, $"{connectionDetails.Host}/{connectionDetails.Database}");
+
+                break;
+            }
+            catch (Exception ex) when (attempt < maxAttempts && ex is NpgsqlException or TimeoutException or InvalidOperationException)
+            {
+                AppLog.MigrationRetry(app.Logger, attempt, maxAttempts, ex);
+                await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+            }
         }
     }
-}
-else if (applyMigrations)
-{
-    AppLog.MigrationsSkipped(app.Logger);
+    else if (applyMigrations)
+    {
+        AppLog.MigrationsSkipped(app.Logger);
+    }
 }
 
 var seedOnStartup = app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup");
