@@ -6,7 +6,7 @@ using Dapper;
 
 namespace CineBoutique.Inventory.Api.Tests.Infrastructure;
 
-internal sealed class InventoryTestDataBuilder
+public sealed class InventoryTestDataBuilder
 {
     private readonly IDbConnection _connection;
     private readonly CountingRunSchema _countingRunSchema;
