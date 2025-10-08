@@ -1,6 +1,6 @@
 # CinéBoutique – Inventaire (PWA)
 
-Application React 18 + Vite + TypeScript pour piloter les inventaires CinéBoutique. L'interface est pensée mobile-first (iPhone/iPad) tout en restant confortable sur desktop. Elle consomme l'API ASP.NET Core exposée sur `/api/*` et fonctionne en mode PWA (manifest + service worker via `vite-plugin-pwa`).
+Application React 18 + Vite + TypeScript pour piloter les inventaires CinéBoutique. L'interface est pensée mobile-first (iPhone/iPad) tout en restant confortable sur desktop. Elle consomme l'API ASP.NET Core exposée sur `/api/*` et fonctionne en mode PWA (`vite-plugin-pwa` + service worker Workbox + manifest).
 
 ## Démarrage
 
@@ -41,7 +41,9 @@ Par défaut l'API est attendue sur `http://localhost:8080`. En production conten
 - `npm run dev` : serveur de développement Vite avec HMR.
 - `npm run dev:scan-sim` : lance une page dédiée de simulation de scan caméra (flux vidéo généré) pour tester sans appareil.
 - `npm run build` : compilation TypeScript + build Vite (artifacts dans `dist/`).
+- `npm run pwa:build` : build Vite seul (utile pour Lighthouse ou vérification rapide du SW).
 - `npm run preview` : prévisualisation du build.
+- `npm run pwa:preview` : prévisualisation HTTPS (requis par iOS pour la caméra et l'installation PWA).
 - `npm run test` / `npm run test:watch` : suite de tests Vitest + Testing Library.
 - `npm run lint` : vérification ESLint.
 
@@ -53,7 +55,33 @@ Par défaut l'API est attendue sur `http://localhost:8080`. En production conten
 - `@zxing/browser` pour la lecture des codes-barres via caméra
 - `@zxing/library` pour la configuration fine des formats pris en charge
 - `react-swipeable` pour les interactions swipe en listes
-- PWA : `vite-plugin-pwa`, manifest, icônes servies via CDN (personnalisables), service worker auto-update
+- PWA : `vite-plugin-pwa`, manifest, service worker Workbox auto-update, offline shell
+
+## PWA & installation
+
+- Manifest généré via `vite-plugin-pwa` (fallback `public/manifest.webmanifest`).
+- Service worker Workbox (`autoUpdate`) : `/assets/*` en cache-first, images en stale-while-revalidate, API en `NetworkOnly`.
+- Offline : le shell React reste disponible hors ligne (données API non mises en cache → UI fallback).
+- SPA : `navigateFallback` force le retour sur `index.html` hors API.
+
+### iOS – Ajouter à l'écran d'accueil
+
+1. Servir l'app en HTTPS (voir ci-dessous).
+2. Ouvrir l'URL dans Safari, utiliser le bouton Partager → « Ajouter à l'écran d'accueil ».
+3. Lancer l'icône installée : mode `standalone`, status bar `black-translucent`, safe-areas gérées (`env(safe-area-inset-*)`).
+
+### HTTPS & caméra
+
+- **Production** : déployer derrière un certificat TLS approuvé (AC interne ou publique).
+- **Développement** : `npm run pwa:preview` (alias `vite preview --https`) ou proxy HTTPS local (Nginx) avec certificat installé
+  sur l'appareil.
+- Safari/Chrome mobile exigent `window.isSecureContext === true` pour la caméra (`getUserMedia`).
+
+### Ressources graphiques
+
+- Par contrainte dépôt, aucune image binaire n'est versionnée. Les icônes PWA sont encodées en Base64 directement dans `vite.config.ts`, `public/manifest.webmanifest` et `index.html`.
+- Pour personnaliser : générer vos PNG (ex: `pnpm dlx @vite-pwa/assets-generator`) puis mettre à jour les constantes `ICON_180_BASE64`, `ICON_192_BASE64`, `ICON_512_BASE64` ainsi que le `href` Base64 dans `index.html`.
+- Alternative : exposer des icônes via un CDN interne et mettre à jour les `src`/`href` pour pointer dessus.
 
 ## Fonctionnalités clés
 
@@ -63,6 +91,7 @@ Par défaut l'API est attendue sur `http://localhost:8080`. En production conten
 - **Gestion des sessions** : affichage des articles scannés, quantités modifiables, distinction des ajouts manuels.
 - **Espace administration** : accès libre pour éditer les zones avec interactions swipe.
 - **Panneaux coulissants** plutôt que modales intrusives pour les formulaires secondaires.
+- **Page debug scan** : `npm run dev:scan-sim` simule un flux vidéo EAN-13 pour tester sans appareil photo.
 
 ## Tests
 
@@ -82,16 +111,6 @@ npm run test
 
 Le dossier contient un `Dockerfile` multi-stage (build Node puis runtime Nginx) et un `nginx.conf` servant l'application en SPA avec proxy `/api` vers l'API ASP.NET Core.
 
-## Ressources graphiques
-
-Le dépôt ne contient aucune image (icône, logo, etc.) afin de rester 100 % texte. Pour personnaliser l'identité visuelle :
-
-1. Consultez `assets/README.md` pour comprendre comment intégrer des visuels locaux sans les versionner.
-2. Ajoutez vos fichiers dans `public/assets/` (ignoré par Git) ou servez-les depuis un CDN interne.
-3. Adaptez ensuite `vite.config.ts` pour pointer vers vos propres URLs.
-
-Par défaut, la PWA référence des icônes publiques Icons8 qui garantissent un fonctionnement immédiat sans ressources binaires dans le repository.
-- **Page debug scan** : commande `npm run dev:scan-sim` qui remplace `getUserMedia` par un flux vidéo simulé d’EAN-13 pour tester la détection sur desktop.
 
 ## Scanner & capture code-barres
 
