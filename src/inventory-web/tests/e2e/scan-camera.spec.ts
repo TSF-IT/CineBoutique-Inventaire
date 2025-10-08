@@ -351,7 +351,12 @@ test.describe('Mode scan caméra - bottom sheet', () => {
     await expect(sheet.locator('[data-testid="scanned-row"]')).toHaveCount(scannedProducts.length)
     await expect(sheet.getByText(scannedProducts[0].name, { exact: true })).toBeVisible({ timeout: 5000 })
 
-    const quantityInput = page.getByLabel(scannedProducts.at(-1)?.name ?? '')
+    const lastProductName = scannedProducts.at(-1)?.name ?? ''
+    expect(lastProductName).not.toEqual('')
+
+    const quantityInput = page.getByRole('textbox', {
+      name: `Quantité pour ${lastProductName}`,
+    })
     await quantityInput.scrollIntoViewIfNeeded()
     await quantityInput.click()
     await quantityInput.fill('5')
