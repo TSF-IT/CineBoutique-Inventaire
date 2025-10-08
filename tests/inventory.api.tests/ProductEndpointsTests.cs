@@ -12,10 +12,7 @@ namespace CineBoutique.Inventory.Api.Tests;
 [Collection("api-tests")]
 public sealed class ProductEndpointsTests : IntegrationTestBase
 {
-    public ProductEndpointsTests(InventoryApiFixture fixture)
-        : base(fixture)
-    {
-    }
+    public ProductEndpointsTests(InventoryApiFixture fx) { UseFixture(fx); }
 
     [SkippableFact]
     public async Task CreateAndLookupProductBySkuAndEan()

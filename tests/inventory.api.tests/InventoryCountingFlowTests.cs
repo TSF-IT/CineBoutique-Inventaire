@@ -14,10 +14,7 @@ namespace CineBoutique.Inventory.Api.Tests;
 [Collection("api-tests")]
 public sealed class InventoryCountingFlowTests : IntegrationTestBase
 {
-    public InventoryCountingFlowTests(InventoryApiFixture fixture)
-        : base(fixture)
-    {
-    }
+    public InventoryCountingFlowTests(InventoryApiFixture fx) { UseFixture(fx); }
 
     [SkippableFact]
     public async Task ConflictsAreDetectedThenResolvedWhenCountsMatch()
