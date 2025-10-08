@@ -2,62 +2,49 @@ using System;
 using System.Net.Http;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
-using Docker.DotNet;
+using FluentMigrator.Runner;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests.Fixtures;
 
 public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
 {
-    private PostgreSqlContainer _container = default!;
+    private PostgresContainerFixture? _postgres;
     private InventoryApiFactory _factory = default!;
     private NpgsqlDataSource _dataSource = default!;
 
     public TestDataSeeder Seeder { get; private set; } = default!;
-    public bool IsDockerAvailable { get; private set; } = true;
-    public string? SkipReason { get; private set; }
+    public bool IsDockerAvailable => GetOrCachePostgres().IsDatabaseAvailable;
+    public string? SkipReason => GetOrCachePostgres().SkipReason;
 
     public async Task InitializeAsync()
     {
-        if (ShouldSkipDockerTests())
+        var postgresFixture = GetOrCachePostgres();
+
+        if (!IsDockerAvailable)
         {
-            DisableDocker("Tests Docker explicitement désactivés via CI_SKIP_DOCKER_TESTS.");
             return;
         }
 
-        try
-        {
-            _container = new PostgreSqlBuilder()
-                .WithImage("postgres:16-alpine")
-                .WithDatabase("inventory_tests")
-                .WithUsername("postgres")
-                .WithPassword("postgres")
-                .WithCleanUp(true)
-                .Build();
+        var overrideConnectionString = Environment.GetEnvironmentVariable("TEST_DB_CONNECTION");
+        var connectionString = string.IsNullOrWhiteSpace(overrideConnectionString)
+            ? postgresFixture.ConnectionString
+            : overrideConnectionString;
 
-            await _container.StartAsync().ConfigureAwait(false);
-        }
-        catch (ArgumentException ex) when (string.Equals(ex.ParamName, "DockerEndpointAuthConfig", StringComparison.Ordinal))
+        if (string.IsNullOrWhiteSpace(connectionString))
         {
-            DisableDocker("Daemon Docker indisponible (DockerEndpointAuthConfig).");
-            return;
-        }
-        catch (DockerApiException ex)
-        {
-            DisableDocker($"Daemon Docker indisponible ({ex.GetType().Name}).");
-            return;
-        }
-        catch (InvalidOperationException ex) when (IsDockerConnectivityIssue(ex))
-        {
-            DisableDocker($"Daemon Docker indisponible ({ex.GetType().Name}).");
-            return;
+            throw new InvalidOperationException("La chaîne de connexion de test doit être définie.");
         }
 
-        var connectionString = _container.GetConnectionString();
+        Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Testing");
+
         _dataSource = NpgsqlDataSource.Create(connectionString);
         _factory = new InventoryApiFactory(connectionString);
+
+        await ApplyMigrationsAsync().ConfigureAwait(false);
+
         Seeder = new TestDataSeeder(_dataSource);
 
         using var client = _factory.CreateClient();
@@ -80,11 +67,6 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
         {
             await _dataSource.DisposeAsync().ConfigureAwait(false);
         }
-
-        if (_container is not null)
-        {
-            await _container.DisposeAsync().ConfigureAwait(false);
-        }
     }
 
     async ValueTask IAsyncDisposable.DisposeAsync()
@@ -105,66 +87,54 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
         return _factory.CreateClient();
     }
 
-    public async Task ResetDatabaseAsync()
+    public async Task DbResetAsync()
     {
-        const string truncateSql = @"DO $$
-DECLARE
-    stmt text;
-BEGIN
-    SELECT string_agg(format('TRUNCATE TABLE %I.%I RESTART IDENTITY CASCADE', schemaname, tablename), '; ')
-    INTO stmt
-    FROM pg_tables
-    WHERE schemaname = 'public'
-      AND tablename NOT IN ('VersionInfo');
-
-    IF stmt IS NOT NULL THEN
-        EXECUTE stmt;
-    END IF;
-END $$;";
-
         if (!IsDockerAvailable)
         {
             return;
         }
 
-        var connection = _dataSource.CreateConnection();
-        await connection.OpenAsync().ConfigureAwait(false);
+        var connection = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
         try
         {
-            using var command = new NpgsqlCommand(truncateSql, connection);
-            await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+            const string resetSql = "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;";
+            var command = new NpgsqlCommand(resetSql, connection);
+            try
+            {
+                await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                await command.DisposeAsync().ConfigureAwait(false);
+            }
         }
         finally
         {
             await connection.DisposeAsync().ConfigureAwait(false);
         }
+
+        await ApplyMigrationsAsync().ConfigureAwait(false);
     }
 
-    private static bool ShouldSkipDockerTests()
+    private async Task ApplyMigrationsAsync()
     {
-        var value = Environment.GetEnvironmentVariable("CI_SKIP_DOCKER_TESTS");
-        if (string.IsNullOrWhiteSpace(value))
+        using var scope = _factory.Services.CreateScope();
+        var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+        await Task.Run(() => runner.MigrateUp()).ConfigureAwait(false);
+    }
+
+    private PostgresContainerFixture GetOrCachePostgres()
+    {
+        if (_postgres is { } existing)
         {
-            return false;
+            return existing;
         }
 
-        return value.Equals("1", StringComparison.OrdinalIgnoreCase)
-            || value.Equals("true", StringComparison.OrdinalIgnoreCase)
-            || value.Equals("yes", StringComparison.OrdinalIgnoreCase)
-            || value.Equals("on", StringComparison.OrdinalIgnoreCase);
-    }
+        var fixture = PostgresContainerFixture.Instance
+            ?? throw new InvalidOperationException("PostgresContainerFixture n'est pas initialisée.");
 
-    private void DisableDocker(string reason)
-    {
-        IsDockerAvailable = false;
-        SkipReason = reason;
-    }
-
-    private static bool IsDockerConnectivityIssue(InvalidOperationException exception)
-    {
-        var message = exception.Message ?? string.Empty;
-        return message.Contains("Docker", StringComparison.OrdinalIgnoreCase)
-            || message.Contains("container", StringComparison.OrdinalIgnoreCase);
+        _postgres = fixture;
+        return fixture;
     }
 
     private static async Task WaitUntilReadyAsync(HttpClient client)
@@ -188,6 +158,8 @@ END $$;";
 }
 
 [CollectionDefinition("InventoryApi")]
-public sealed class InventoryApiFixtureCollectionDefinition : ICollectionFixture<InventoryApiFixture>
+public sealed class InventoryApiFixtureCollectionDefinition :
+    ICollectionFixture<PostgresContainerFixture>,
+    ICollectionFixture<InventoryApiFixture>
 {
 }
