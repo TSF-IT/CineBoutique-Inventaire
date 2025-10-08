@@ -214,8 +214,8 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
 
     private PostgresContainerFixture GetOrCachePostgres()
     {
-        if (_postgres is { } existing)
-            return existing;
+        if (_postgres != null)
+            return _postgres;
 
         var fixture = PostgresContainerFixture.Instance
             ?? throw new InvalidOperationException("PostgresContainerFixture n'est pas initialisée.");
