@@ -125,7 +125,6 @@ public sealed class InventoryCompletionEndpointTests : InventoryApiTestBase
         Assert.Equal(ean, item.Ean);
         Assert.Equal(3m, item.Quantity);
     }
-}
 
     [Fact]
     public async Task CompleteInventoryRun_CreatesConflicts_WhenCountsMismatch()
