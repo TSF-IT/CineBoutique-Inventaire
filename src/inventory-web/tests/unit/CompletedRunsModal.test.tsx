@@ -100,6 +100,9 @@ describe('CompletedRunsModal', () => {
   it('affiche le détail et permet l’export CSV', async () => {
     render(<CompletedRunsModal open completedRuns={[baseRun]} onClose={() => {}} />)
 
+    const exportAllButton = screen.getByRole('button', { name: /Exporter tous les comptages/i })
+    expect(exportAllButton).toBeEnabled()
+
     const openButton = screen.getByRole('button', { name: /B1/i })
     await user.click(openButton)
 
@@ -107,6 +110,7 @@ describe('CompletedRunsModal', () => {
 
     expect(await screen.findByText(/Détail du comptage/)).toBeInTheDocument()
     expect(screen.getByText(/Produit Test/)).toBeInTheDocument()
+    expect(screen.getByText(/SKU-1/)).toBeInTheDocument()
 
     const exportButton = screen.getByRole('button', { name: /Exporter en CSV/i })
     await user.click(exportButton)
@@ -134,5 +138,59 @@ describe('CompletedRunsModal', () => {
     await waitFor(() => expect(mockedGetCompletedRunDetail).toHaveBeenCalledTimes(2))
     const productLines = await screen.findAllByText(/Produit Test/)
     expect(productLines.length).toBeGreaterThan(0)
+  })
+
+  it('permet l’export global en CSV', async () => {
+    const runs = [
+      baseRun,
+      {
+        ...baseRun,
+        runId: 'run-2',
+        locationId: 'loc-2',
+        locationCode: 'C2',
+        locationLabel: 'Zone C2',
+        completedAtUtc: '2025-12-18T10:30:00Z',
+      },
+    ]
+
+    const detail1 = baseDetail
+    const detail2 = {
+      ...baseDetail,
+      runId: 'run-2',
+      locationId: 'loc-2',
+      locationCode: 'C2',
+      locationLabel: 'Zone C2',
+      items: [
+        {
+          productId: 'prod-2',
+          sku: 'SKU-2',
+          name: 'Produit 2',
+          ean: '456',
+          quantity: 5,
+        },
+      ],
+    }
+
+    mockedGetCompletedRunDetail.mockImplementation(async (runId: string) => {
+      if (runId === 'run-2') {
+        return detail2
+      }
+      return detail1
+    })
+
+    render(<CompletedRunsModal open completedRuns={runs} onClose={() => {}} />)
+
+    const exportAllButton = screen.getByRole('button', { name: /Exporter tous les comptages/i })
+    await user.click(exportAllButton)
+
+    await waitFor(() => {
+      expect(mockedGetCompletedRunDetail).toHaveBeenCalledWith('run-2')
+      expect(mockedGetCompletedRunDetail).toHaveBeenCalledWith('run-1')
+      expect(mockedGetCompletedRunDetail).toHaveBeenCalledTimes(2)
+    })
+
+    expect(createObjectUrlMock).toHaveBeenCalledTimes(1)
+    expect(anchorClickMock).toHaveBeenCalledTimes(1)
+    expect(revokeObjectUrlMock).toHaveBeenCalledTimes(1)
   })
 })

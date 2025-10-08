@@ -5,13 +5,19 @@ import type { ReactNode } from 'react'
 import { useEffect } from 'react'
 import { HomePage } from './HomePage'
 import { ShopProvider } from '@/state/ShopContext'
-import type { ConflictZoneDetail, InventorySummary, Location } from '../../types/inventory'
+import type {
+  CompletedRunDetail,
+  ConflictZoneDetail,
+  InventorySummary,
+  Location,
+} from '../../types/inventory'
 import type { HttpError } from '@/lib/api/http'
 import {
   fetchInventorySummary,
   fetchLocationSummaries,
   fetchLocations,
   getConflictZoneDetail,
+  getCompletedRunDetail,
 } from '../../api/inventoryApi'
 import { ThemeProvider } from '../../../theme/ThemeProvider'
 import { InventoryProvider, useInventory } from '../../contexts/InventoryContext'
@@ -33,6 +39,7 @@ vi.mock('../../api/inventoryApi', () => ({
   fetchLocationSummaries: vi.fn(),
   fetchLocations: vi.fn(),
   getConflictZoneDetail: vi.fn(),
+  getCompletedRunDetail: vi.fn(),
 }))
 
 const {
@@ -40,11 +47,13 @@ const {
   fetchLocationSummaries: mockedFetchLocationSummaries,
   fetchLocations: mockedFetchLocations,
   getConflictZoneDetail: mockedGetDetail,
+  getCompletedRunDetail: mockedGetCompletedRunDetail,
 } = vi.mocked({
   fetchInventorySummary,
   fetchLocationSummaries,
   fetchLocations,
   getConflictZoneDetail,
+  getCompletedRunDetail,
 })
 
 const defaultUser: ShopUser = {
@@ -54,6 +63,19 @@ const defaultUser: ShopUser = {
   displayName: 'Alice',
   isAdmin: false,
   disabled: false,
+}
+
+const emptyCompletedRunDetail: CompletedRunDetail = {
+  runId: 'run-default',
+  locationId: 'loc-default',
+  locationCode: 'Z0',
+  locationLabel: 'Zone 0',
+  countType: 1,
+  ownerDisplayName: null,
+  ownerUserId: null,
+  startedAtUtc: '',
+  completedAtUtc: '',
+  items: [],
 }
 
 const InventoryUserInitializer = ({ user }: { user: ShopUser | null }) => {
@@ -91,6 +113,8 @@ describe('HomePage', () => {
     mockedFetchLocationSummaries.mockReset()
     mockedFetchLocations.mockReset()
     mockedGetDetail.mockReset()
+    mockedGetCompletedRunDetail.mockReset()
+    mockedGetCompletedRunDetail.mockResolvedValue(emptyCompletedRunDetail)
     navigateMock.mockReset()
   })
 
