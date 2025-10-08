@@ -15,10 +15,7 @@ namespace CineBoutique.Inventory.Api.Tests;
 [Collection("api-tests")]
 public sealed class ShopUserCrudTests : IntegrationTestBase
 {
-    public ShopUserCrudTests(InventoryApiFixture fixture)
-        : base(fixture)
-    {
-    }
+    public ShopUserCrudTests(InventoryApiFixture fx) { UseFixture(fx); }
 
     [SkippableFact]
     public async Task ShopUserEndpointsManageUserLifecycle()

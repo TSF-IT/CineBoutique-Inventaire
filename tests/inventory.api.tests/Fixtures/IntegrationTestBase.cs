@@ -6,29 +6,32 @@ namespace CineBoutique.Inventory.Api.Tests.Fixtures;
 
 public abstract class IntegrationTestBase : IAsyncLifetime
 {
-    protected IntegrationTestBase(InventoryApiFixture fixture)
-    {
-        Fixture = fixture;
-    }
+    // La fixture est fournie par chaque classe dérivée via UseFixture(...)
+    protected InventoryApiFixture Fixture { get; private set; } = default!;
 
-    protected InventoryApiFixture Fixture { get; }
+    // A appeler dans le ctor de CHAQUE classe de tests dérivée
+    protected void UseFixture(InventoryApiFixture fixture) => Fixture = fixture;
 
     protected HttpClient CreateClient() => Fixture.CreateClient();
 
     public async Task InitializeAsync()
     {
-        if (!Fixture.IsDockerAvailable)
-        {
+        // Si Docker indisponible: on sort proprement
+        if (Fixture is null || !Fixture.IsDockerAvailable)
             return;
-        }
 
-        await Fixture.DbResetAsync().ConfigureAwait(true);
+        // S’assure que la fixture est initialisée (DB, migrations, factory, client prêt)
+        await Fixture.EnsureReadyAsync().ConfigureAwait(false);
+
+        // Reset complet avant chaque classe de tests
+        await Fixture.DbResetAsync().ConfigureAwait(false);
     }
 
     public Task DisposeAsync() => Task.CompletedTask;
 
     protected void SkipIfDockerUnavailable()
     {
-        Skip.If(!Fixture.IsDockerAvailable, Fixture.SkipReason ?? "Tests d'intégration ignorés : Docker est indisponible.");
+        var reason = Fixture?.SkipReason ?? "Tests d'intégration ignorés : Docker est indisponible.";
+        Skip.If(Fixture is null || !Fixture.IsDockerAvailable, reason);
     }
 }
