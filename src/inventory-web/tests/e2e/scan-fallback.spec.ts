@@ -168,22 +168,26 @@ test.describe('Scanner fallback', () => {
     await expect(btnCount2).toBeVisible({ timeout: 5000 })
 
     if (await btnCount1.isDisabled()) {
-      await btnCount2.click()
+      await Promise.all([
+        page.waitForURL(/\/inventory\/session/, { timeout: 5000 }),
+        btnCount2.click(),
+      ])
     } else {
-      await btnCount1.click()
+      await Promise.all([
+        page.waitForURL(/\/inventory\/session/, { timeout: 5000 }),
+        btnCount1.click(),
+      ])
     }
-
-    await page.evaluate(() => {
-      window.history.pushState({}, '', '/inventory/session')
-      window.dispatchEvent(new PopStateEvent('popstate'))
-    })
 
     await expect(page).toHaveURL(/\/inventory\/session/, { timeout: 5000 })
     await expect(page.getByTestId('page-session')).toBeVisible({ timeout: 5000 })
 
-    const enableCameraButton = page.getByRole('button', { name: 'Activer la caméra' })
-    await expect(enableCameraButton).toBeVisible({ timeout: 5000 })
-    await enableCameraButton.click()
+    const scanCameraButton = page.getByTestId('btn-scan-camera')
+    await expect(scanCameraButton).toBeVisible({ timeout: 5000 })
+    await scanCameraButton.click()
+
+    await expect(page).toHaveURL(/\/inventory\/scan-camera/, { timeout: 5000 })
+    await expect(page.getByTestId('scan-camera-page')).toBeVisible({ timeout: 5000 })
 
     await expect(
       page.getByText('Caméra indisponible (connexion non sécurisée ou navigateur incompatible).'),
