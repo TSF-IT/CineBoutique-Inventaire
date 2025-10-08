@@ -22,8 +22,14 @@ public sealed class ShopUserCrudTests : IntegrationTestBase
     {
         SkipIfDockerUnavailable();
 
+        Guid shopId = Guid.Empty;
+
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.CreateShopAsync("Boutique Lyon").ConfigureAwait(true);
+        }).ConfigureAwait(true);
+
         var client = CreateClient();
-        var shopId = await Fixture.Seeder.CreateShopAsync("Boutique Lyon").ConfigureAwait(true);
 
         var createResponse = await client
             .PostAsJsonAsync(
@@ -44,7 +50,10 @@ public sealed class ShopUserCrudTests : IntegrationTestBase
         listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var users = await listResponse.Content.ReadFromJsonAsync<ShopUserDto[]>().ConfigureAwait(true);
         users.Should().NotBeNull();
-        users!.Should().ContainSingle(user => user.Id == createdUser.Id);
+        var createdListingEntry = users!.SingleOrDefault(user => user.Id == createdUser.Id);
+        createdListingEntry.Should().NotBeNull(
+            "l'utilisateur nouvellement créé doit être présent dans la liste retournée pour la boutique concernée");
+        createdListingEntry!.Disabled.Should().BeFalse();
 
         var updateResponse = await client
             .PutAsJsonAsync(
@@ -76,6 +85,9 @@ public sealed class ShopUserCrudTests : IntegrationTestBase
         finalListResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var finalUsers = await finalListResponse.Content.ReadFromJsonAsync<ShopUserDto[]>().ConfigureAwait(true);
         finalUsers.Should().NotBeNull();
-        finalUsers!.Single(user => user.Id == createdUser.Id).Disabled.Should().BeTrue();
+        var disabledEntry = finalUsers!.SingleOrDefault(user => user.Id == createdUser.Id);
+        disabledEntry.Should().NotBeNull(
+            "l'utilisateur désactivé doit rester visible dans la liste finale pour permettre la vérification de son statut");
+        disabledEntry!.Disabled.Should().BeTrue();
     }
 }
