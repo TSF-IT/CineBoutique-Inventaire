@@ -12,12 +12,9 @@ using Xunit;
 namespace CineBoutique.Inventory.Api.Tests;
 
 [Collection("api-tests")]
-public sealed class ShopCrudTests : IntegrationTestBase
+public sealed class ShopCrudTests : IntegrationTestBase, IAsyncLifetime
 {
-    public ShopCrudTests(InventoryApiFixture fixture)
-        : base(fixture)
-    {
-    }
+    public ShopCrudTests(InventoryApiFixture fx) { UseFixture(fx); }
 
     [SkippableFact]
     public async Task ShopCrudEndpointsManageShopLifecycle()
