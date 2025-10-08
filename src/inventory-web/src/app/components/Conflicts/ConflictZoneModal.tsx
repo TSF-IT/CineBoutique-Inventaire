@@ -36,6 +36,11 @@ const formatOrdinalFr = (value: number) => {
   return value === 1 ? '1er' : `${value}ᵉ`
 }
 
+const formatSku = (value: string | null | undefined) => {
+  const trimmed = value?.trim()
+  return trimmed && trimmed.length > 0 ? trimmed : '—'
+}
+
 export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: ConflictZoneModalProps) => {
   const [state, setState] = useState<DetailState>({ status: 'idle', detail: null, error: null })
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -342,6 +347,9 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
                   <header className="conflict-card__header">
                     <p className="conflict-card__ean">
                       <span className="conflict-card__label">EAN</span> {item.ean}
+                    </p>
+                    <p className="conflict-card__ean">
+                      <span className="conflict-card__label">SKU</span> {formatSku(item.sku)}
                     </p>
                   </header>
                   <div className={runsContainerClass}>{renderRunSections(item)}</div>
