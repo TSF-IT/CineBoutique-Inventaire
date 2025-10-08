@@ -19,6 +19,8 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
     {
         SkipIfDockerUnavailable();
 
+        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(true);
+
         var client = CreateClient();
 
         var createResponse = await client
@@ -41,7 +43,10 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
         bySku.Should().NotBeNull();
         bySku!.Ean.Should().Be("1234567890123");
 
-        var byEanResponse = await client.GetAsync(client.CreateRelativeUri("/api/products/0001234567890")).ConfigureAwait(true);
+        const string eanLookupCode = "0001234567890";
+        var byEanResponse = await client
+            .GetAsync(client.CreateRelativeUri($"/api/products/{eanLookupCode}"))
+            .ConfigureAwait(true);
         byEanResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         var byEan = await byEanResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(true);
         byEan.Should().NotBeNull();
@@ -52,6 +57,8 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
     public async Task CreateProductRejectsInvalidPayloads()
     {
         SkipIfDockerUnavailable();
+
+        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(true);
 
         var client = CreateClient();
 
