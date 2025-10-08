@@ -129,12 +129,10 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
             throw new InvalidOperationException("Le DataSource Postgres n'est pas initialisé.");
         }
 
-        await using (var connection = await _dataSource.OpenConnectionAsync().ConfigureAwait(false))
-        {
-            const string resetSql = "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;";
-            await using var command = new NpgsqlCommand(resetSql, connection);
-            await command.ExecuteNonQueryAsync().ConfigureAwait(false);
-        }
+        await using var connection = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
+        const string resetSql = "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;";
+        await using var command = new NpgsqlCommand(resetSql, connection);
+        await command.ExecuteNonQueryAsync().ConfigureAwait(false);
 
         await ApplyMigrationsAsync().ConfigureAwait(false);
     }
