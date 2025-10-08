@@ -40,6 +40,7 @@ describe('ConflictZoneModal', () => {
       items: [
         {
           productId: 'prod-1',
+          sku: 'SKU-111',
           ean: '111',
           qtyC1: 5,
           qtyC2: 8,
@@ -61,11 +62,8 @@ describe('ConflictZoneModal', () => {
     expect(await screen.findByText('Comptage 2')).toBeInTheDocument()
     expect(screen.getByText('Comptage 3')).toBeInTheDocument()
 
-    const cardHeading = await screen.findByText((content, element) => {
-      if (!element) return false
-      return element.classList.contains('conflict-card__ean') && content.includes('111')
-    })
-    const card = cardHeading.closest('article.conflict-card') as HTMLElement | null
+    const skuElement = await screen.findByText('SKU-111')
+    const card = skuElement.closest('article.conflict-card') as HTMLElement | null
     expect(card).not.toBeNull()
     if (card) {
       const scoped = within(card)
@@ -73,6 +71,8 @@ describe('ConflictZoneModal', () => {
       expect(scoped.getByText('Chloé')).toBeInTheDocument()
       expect(scoped.getByText('6')).toBeInTheDocument()
       expect(scoped.getByText('-3')).toBeInTheDocument()
+      const skuLabel = scoped.getByText('SKU')
+      expect(skuLabel.parentElement?.textContent).toContain('SKU-111')
     }
   })
 
@@ -98,15 +98,14 @@ describe('ConflictZoneModal', () => {
 
     expect(await screen.findByText('Comptage 1')).toBeInTheDocument()
     expect(await screen.findByText('Comptage 2')).toBeInTheDocument()
-    const cardHeading = await screen.findByText((content, element) => {
-      if (!element) return false
-      return element.classList.contains('conflict-card__ean') && content.includes('222')
-    })
-    const card = cardHeading.closest('article.conflict-card') as HTMLElement | null
+    const eanElement = await screen.findByText('222')
+    const card = eanElement.closest('article.conflict-card') as HTMLElement | null
     expect(card).not.toBeNull()
     if (card) {
       const scoped = within(card)
       expect(scoped.queryByText('Comptage 3')).not.toBeInTheDocument()
+      const skuLabel = scoped.getByText('SKU')
+      expect(skuLabel.parentElement?.textContent).toContain('—')
     }
   })
 
