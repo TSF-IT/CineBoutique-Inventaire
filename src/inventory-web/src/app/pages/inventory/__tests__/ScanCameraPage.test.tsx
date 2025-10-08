@@ -123,6 +123,10 @@ const renderScanCameraPage = (options?: {
 const scrollToMock = vi.fn()
 const scrollIntoViewMock = vi.fn()
 const originalScrollTo = HTMLElement.prototype.scrollTo
+const hadScrollIntoView = Object.prototype.hasOwnProperty.call(
+  HTMLElement.prototype,
+  'scrollIntoView',
+)
 const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
 
 beforeAll(() => {
@@ -147,14 +151,13 @@ afterAll(() => {
     configurable: true,
     value: originalScrollTo,
   })
-  if (originalScrollIntoView) {
+  if (hadScrollIntoView && originalScrollIntoView) {
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
       configurable: true,
       value: originalScrollIntoView,
     })
   } else {
-    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-    delete HTMLElement.prototype.scrollIntoView
+    Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView')
   }
 })
 
