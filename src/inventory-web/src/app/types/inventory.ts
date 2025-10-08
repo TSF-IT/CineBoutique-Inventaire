@@ -151,6 +151,7 @@ export type LocationCountStatus = Location['countStatuses'][number]
 export interface Product {
   ean: string
   name: string
+  sku?: string
   stock?: number
   lastCountedAt?: string | null
 }
@@ -162,6 +163,7 @@ export interface InventoryItem {
   lastScanAt: string
   isManual: boolean
   addedAt: number
+  hasConflict?: boolean
 }
 
 export type InventoryLogEventType =

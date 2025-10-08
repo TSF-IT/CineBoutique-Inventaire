@@ -1,8 +1,12 @@
 import { render, screen } from '@testing-library/react'
-import { MemoryRouter, useLocation } from 'react-router-dom'
+import { MemoryRouter, Outlet, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useEffect } from 'react'
 import type { Shop } from '@/types/shop'
+import type { ShopUser } from '@/types/user'
+import type { Location } from '@/app/types/inventory'
+import { CountType } from '@/app/types/inventory'
+import type { InventoryContextValue } from '@/app/contexts/InventoryContext'
 import { SELECTED_USER_STORAGE_PREFIX } from '@/lib/selectedUserStorage'
 
 type UseShopValue = {
@@ -13,7 +17,7 @@ type UseShopValue = {
 
 const createUseShopValue = (overrides: Partial<UseShopValue> = {}): UseShopValue => ({
   shop: null,
-  setShop: (_shop: Shop | null) => undefined,
+  setShop: () => undefined,
   isLoaded: true,
   ...overrides,
 })
@@ -21,13 +25,63 @@ const createUseShopValue = (overrides: Partial<UseShopValue> = {}): UseShopValue
 const useShopMock = vi.hoisted(() =>
   vi.fn(() => ({
     shop: null,
-    setShop: (_shop: Shop | null) => undefined,
+    setShop: () => undefined,
     isLoaded: true,
   } as UseShopValue)),
 )
 
+type UseInventoryValue = InventoryContextValue
+
+const defaultInventoryUser: ShopUser = {
+  id: 'user-default',
+  shopId: 'shop-1',
+  login: 'user.default',
+  displayName: 'Utilisateur démo',
+  isAdmin: false,
+  disabled: false,
+}
+
+const defaultInventoryLocation: Location = {
+  id: '11111111-1111-1111-1111-111111111111',
+  code: 'LOC-1',
+  label: 'Zone 1',
+  isBusy: false,
+  busyBy: null,
+  activeRunId: null,
+  activeCountType: null,
+  activeStartedAtUtc: null,
+  countStatuses: [],
+}
+
+const createUseInventoryValue = (overrides: Partial<UseInventoryValue> = {}): UseInventoryValue => ({
+  selectedUser: { ...defaultInventoryUser },
+  countType: CountType.Count1,
+  location: { ...defaultInventoryLocation, countStatuses: [...defaultInventoryLocation.countStatuses] },
+  sessionId: null,
+  items: [],
+  logs: [],
+  setSelectedUser: vi.fn(),
+  setCountType: vi.fn(),
+  setLocation: vi.fn(),
+  setSessionId: vi.fn(),
+  addOrIncrementItem: vi.fn(),
+  setQuantity: vi.fn(),
+  removeItem: vi.fn(),
+  reset: vi.fn(),
+  clearSession: vi.fn(),
+  logEvent: vi.fn(),
+  clearLogs: vi.fn(),
+  ...overrides,
+})
+
+const useInventoryMock = vi.hoisted(() => vi.fn(() => createUseInventoryValue()))
+
 vi.mock('@/state/ShopContext', () => ({
   useShop: () => useShopMock(),
+}))
+
+vi.mock('@/app/contexts/InventoryContext', () => ({
+  useInventory: () => useInventoryMock(),
 }))
 
 vi.mock('@/app/pages/home/HomePage', () => ({
@@ -43,7 +97,11 @@ vi.mock('@/app/pages/SelectUserPage', () => ({
 }))
 
 vi.mock('@/app/pages/inventory/InventoryLayout', () => ({
-  InventoryLayout: () => <div data-testid="inventory-layout" />, 
+  InventoryLayout: () => (
+    <div data-testid="inventory-layout">
+      <Outlet />
+    </div>
+  ),
 }))
 
 vi.mock('@/app/pages/inventory/InventoryLocationStep', () => ({
@@ -72,6 +130,8 @@ import { AppRoutes } from '@/App'
 describe('AppRoutes', () => {
   beforeEach(() => {
     useShopMock.mockReset()
+    useInventoryMock.mockReset()
+    useInventoryMock.mockReturnValue(createUseInventoryValue())
     sessionStorage.clear()
   })
 
@@ -162,5 +222,34 @@ describe('AppRoutes', () => {
     )
 
     expect(await screen.findByTestId('select-user-page')).toBeInTheDocument()
+  })
+
+  it('redirige vers la sélection de zone avant la caméra quand aucune zone n’est définie', async () => {
+    const shop: Shop = { id: 'shop-3', name: 'Boutique 3' }
+    useShopMock.mockReturnValue(
+      createUseShopValue({
+        shop,
+        setShop: vi.fn() as unknown as UseShopValue['setShop'],
+        isLoaded: true,
+      }),
+    )
+    sessionStorage.setItem(
+      `${SELECTED_USER_STORAGE_PREFIX}.${shop.id}`,
+      JSON.stringify({ userId: defaultInventoryUser.id }),
+    )
+    useInventoryMock.mockReturnValue(
+      createUseInventoryValue({
+        location: null,
+        selectedUser: defaultInventoryUser,
+      }),
+    )
+
+    render(
+      <MemoryRouter initialEntries={['/inventory/scan-camera']}>
+        <AppRoutes />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByTestId('inventory-location-step')).toBeInTheDocument()
   })
 })

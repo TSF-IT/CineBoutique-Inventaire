@@ -5,36 +5,9 @@ import { Card } from '../../components/Card'
 import { useInventory } from '../../contexts/InventoryContext'
 import { CountType } from '../../types/inventory'
 import type { LocationCountStatus } from '../../types/inventory'
-import { getLocationDisplayName, isLocationLabelRedundant } from '../../utils/locationDisplay'
+import { getLocationDisplayName } from '../../utils/locationDisplay'
 
 const DISPLAYED_COUNT_TYPES: CountType[] = [CountType.Count1, CountType.Count2]
-
-const computeDurationLabel = (startedAtUtc: string | Date | null | undefined) => {
-  if (!startedAtUtc) {
-    return null
-  }
-  const started = startedAtUtc instanceof Date ? startedAtUtc : new Date(startedAtUtc)
-  if (Number.isNaN(started.getTime())) {
-    return null
-  }
-  const diffMs = Date.now() - started.getTime()
-  if (diffMs < 0) {
-    return null
-  }
-  const totalMinutes = Math.floor(diffMs / 60000)
-  if (totalMinutes <= 0) {
-    return "depuis moins d'1 min"
-  }
-  if (totalMinutes < 60) {
-    return `depuis ${totalMinutes} min`
-  }
-  const hours = Math.floor(totalMinutes / 60)
-  const minutes = totalMinutes % 60
-  if (minutes === 0) {
-    return `depuis ${hours} h`
-  }
-  return `depuis ${hours} h ${minutes} min`
-}
 
 const resolveOwnerNameForMessage = (
   status: LocationCountStatus | undefined,
@@ -61,15 +34,6 @@ const resolveOwnerNameForMessage = (
   return 'un opérateur non identifié'
 }
 
-const formatOwnerLabel = (
-  status: LocationCountStatus,
-  selectedUserId: string | null,
-  selectedUserDisplayName: string | null,
-) => {
-  const ownerName = resolveOwnerNameForMessage(status, selectedUserId, selectedUserDisplayName)
-  return ownerName ? `par ${ownerName}` : null
-}
-
 const isStatusOwnedByUser = (
   status: LocationCountStatus | undefined,
   selectedUserId: string | null,
@@ -90,45 +54,6 @@ const isStatusOwnedByUser = (
     return true
   }
   return false
-}
-
-const statusTextClass = (status: LocationCountStatus) => {
-  if (status.status === 'completed') {
-    return 'text-sm font-medium text-emerald-700 dark:text-emerald-200'
-  }
-  if (status.status === 'in_progress') {
-    return 'text-sm font-medium text-amber-700 dark:text-amber-200'
-  }
-  return 'text-sm text-slate-600 dark:text-slate-300'
-}
-
-const statusIcon = (status: LocationCountStatus) => {
-  if (status.status === 'completed') {
-    return '✅'
-  }
-  if (status.status === 'in_progress') {
-    return '⏳'
-  }
-  return '•'
-}
-
-const describeCountStatus = (
-  status: LocationCountStatus,
-  selectedUserId: string | null,
-  selectedUserDisplayName: string | null,
-) => {
-  const baseLabel = `Comptage n°${status.countType}`
-  if (status.status === 'completed') {
-    const ownerLabel = formatOwnerLabel(status, selectedUserId, selectedUserDisplayName)
-    return `${baseLabel} terminé${ownerLabel ? ` (${ownerLabel})` : ''}`
-  }
-  if (status.status === 'in_progress') {
-    const ownerLabel = formatOwnerLabel(status, selectedUserId, selectedUserDisplayName)
-    const duration = computeDurationLabel(status.startedAtUtc ?? null)
-    const meta = [ownerLabel, duration].filter(Boolean).join(' • ')
-    return `${baseLabel} en cours${meta ? ` (${meta})` : ''}`
-  }
-  return `${baseLabel} disponible`
 }
 
 export const InventoryCountTypeStep = () => {
@@ -196,7 +121,6 @@ export const InventoryCountTypeStep = () => {
   )
 
   const displayName = location ? getLocationDisplayName(location.code, location.label) : ''
-  const shouldDisplayLabel = location ? !isLocationLabelRedundant(location.code, location.label) : false
 
   const handleSelect = (type: CountType) => {
     const status = countStatuses.find((item) => item.countType === type)

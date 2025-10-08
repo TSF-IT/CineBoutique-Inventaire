@@ -1,5 +1,6 @@
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
 import { BarcodeFormat, DecodeHintType, NotFoundException } from '@zxing/library'
+import clsx from 'clsx'
 import {
   useCallback,
   useEffect,
@@ -23,6 +24,7 @@ interface BarcodeScannerProps {
   onPickImage?: (file: File) => void
   enableTorchToggle?: boolean
   preferredFormats?: SupportedFormat[]
+  presentation?: 'embedded' | 'immersive'
 }
 
 const DEFAULT_FORMATS: SupportedFormat[] = ['EAN_13', 'EAN_8', 'CODE_128', 'CODE_39', 'ITF', 'QR_CODE']
@@ -97,6 +99,7 @@ export const BarcodeScanner = ({
   onPickImage,
   enableTorchToggle = true,
   preferredFormats,
+  presentation = 'embedded',
 }: BarcodeScannerProps) => {
   const [status, setStatus] = useState<string>('')
   const [error, setError] = useState<string | null>(null)
@@ -471,56 +474,82 @@ export const BarcodeScanner = ({
 
   const cameraAvailable = isCameraAvailable()
 
+  const containerClass =
+    presentation === 'immersive'
+      ? 'relative h-full w-full bg-black text-slate-100'
+      : 'relative overflow-hidden rounded-3xl border border-slate-700 bg-black/80 text-slate-100'
+
+  const videoClass =
+    presentation === 'immersive'
+      ? 'h-full w-full object-cover'
+      : 'h-64 w-full object-contain bg-black'
+
   return (
-    <div className="relative overflow-hidden rounded-3xl border border-slate-700 bg-black/80 text-slate-100">
+    <div className={containerClass}>
       {cameraAvailable ? (
-        <div className="flex flex-col gap-3">
-          <div className="relative">
-            <video
-              ref={videoRef}
-              className="h-64 w-full object-contain bg-black"
-              muted
-              playsInline
-              autoPlay
-            />
+        <div className={presentation === 'immersive' ? 'relative h-full w-full' : 'flex flex-col gap-3'}>
+          <div className="relative h-full w-full">
+            <video ref={videoRef} className={videoClass} muted playsInline autoPlay />
             <div
-              className="pointer-events-none absolute left-1/2 top-1/2 h-32 w-64 -translate-x-1/2 -translate-y-1/2 rounded-2xl border-4 border-brand-400/70"
+              className={clsx(
+                'pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-2xl border-4 border-brand-400/70',
+                presentation === 'immersive' ? 'h-1/2 w-3/4 max-w-md' : 'h-32 w-64',
+              )}
               aria-hidden
             />
             <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-black/40" aria-hidden />
           </div>
-          <div className="space-y-2 px-4 pb-4">
-            {status && <p className="text-sm text-brand-200">{status}</p>}
-            {error && <p className="text-sm text-red-300">{error}</p>}
-            {!error && !status && active && <p className="text-sm text-slate-200">Visez le code-barres.</p>}
-            {showHelp && (
-              <p className="text-xs text-amber-200">
-                Aucune détection pour l’instant. Approchez le code, ajustez l’éclairage ou importez une photo.
-              </p>
-            )}
-            {enableTorchToggle && (
-              <button
-                type="button"
-                className="rounded-xl border border-slate-500 px-3 py-2 text-sm font-semibold text-slate-100 transition hover:border-brand-400 disabled:cursor-not-allowed disabled:border-slate-700 disabled:text-slate-500"
-                onClick={() => void handleTorchToggle()}
-                disabled={!torchSupported}
-              >
-                {torchSupported ? (torchEnabled ? 'Éteindre la lampe' : 'Allumer la lampe') : 'Lampe non prise en charge'}
-              </button>
-            )}
-            {showHelp && onPickImage && (
-              <label className="flex cursor-pointer flex-col gap-2 rounded-2xl border border-slate-500 bg-slate-800/40 p-3 text-sm text-slate-100 hover:border-brand-400">
-                <span className="font-medium">Importer une photo du code-barres</span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="text-xs text-slate-300"
-                  onChange={handleImageChange}
-                />
-              </label>
-            )}
-          </div>
+          {presentation !== 'immersive' && (
+            <div className="space-y-2 px-4 pb-4">
+              {status && <p className="text-sm text-brand-200">{status}</p>}
+              {error && <p className="text-sm text-red-300">{error}</p>}
+              {!error && !status && active && <p className="text-sm text-slate-200">Visez le code-barres.</p>}
+              {showHelp && (
+                <p className="text-xs text-amber-200">
+                  Aucune détection pour l’instant. Approchez le code, ajustez l’éclairage ou importez une photo.
+                </p>
+              )}
+              {enableTorchToggle && (
+                <button
+                  type="button"
+                  className="rounded-xl border border-slate-500 px-3 py-2 text-sm font-semibold text-slate-100 transition hover:border-brand-400 disabled:cursor-not-allowed disabled:border-slate-700 disabled:text-slate-500"
+                  onClick={() => void handleTorchToggle()}
+                  disabled={!torchSupported}
+                >
+                  {torchSupported ? (torchEnabled ? 'Éteindre la lampe' : 'Allumer la lampe') : 'Lampe non prise en charge'}
+                </button>
+              )}
+              {showHelp && onPickImage && (
+                <label className="flex cursor-pointer flex-col gap-2 rounded-2xl border border-slate-500 bg-slate-800/40 p-3 text-sm text-slate-100 hover:border-brand-400">
+                  <span className="font-medium">Importer une photo du code-barres</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="text-xs text-slate-300"
+                    onChange={handleImageChange}
+                  />
+                </label>
+              )}
+            </div>
+          )}
+          {presentation === 'immersive' && enableTorchToggle && (
+            <button
+              type="button"
+              className="absolute right-4 top-4 rounded-full bg-black/60 px-3 py-2 text-sm font-semibold text-white backdrop-blur focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={() => void handleTorchToggle()}
+              disabled={!torchSupported}
+            >
+              {torchSupported ? (torchEnabled ? 'Lampe off' : 'Lampe on') : 'Lampe indisponible'}
+            </button>
+          )}
+          {presentation === 'immersive' && status && (
+            <div className="pointer-events-none absolute inset-x-0 bottom-6 flex justify-center">
+              <span className="rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-emerald-200 backdrop-blur">
+                {status}
+              </span>
+            </div>
+          )}
         </div>
       ) : (
         <div className="space-y-3 p-4">
