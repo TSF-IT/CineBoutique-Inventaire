@@ -65,6 +65,8 @@ export const ScanCameraPage = () => {
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [highlightEan, setHighlightEan] = useState<string | null>(null)
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
+  const [pendingManualEan, setPendingManualEan] = useState<string | null>(null)
+  const [manualAddLoading, setManualAddLoading] = useState(false)
   const dragStateRef = useRef<{ startY: number; pointerId: number } | null>(null)
   const manualInputActiveRef = useRef(false)
   const focusedRowKeyRef = useRef<string | null>(null)
@@ -193,7 +195,7 @@ export const ScanCameraPage = () => {
   }, [countTypeValue, ensureScanPrerequisites, items.length, locationId, ownerUserId, sessionRunId, setSessionId, shop])
 
   const addProductToSession = useCallback(
-    async (product: Product) => {
+    async (product: Product, options?: { isManual?: boolean }) => {
       try {
         await ensureActiveRun()
       } catch (error) {
@@ -201,7 +203,7 @@ export const ScanCameraPage = () => {
         setErrorMessage(error instanceof Error ? error.message : 'Impossible de démarrer le comptage.')
         return false
       }
-      addOrIncrementItem(product)
+      addOrIncrementItem(product, options)
       return true
     },
     [addOrIncrementItem, ensureActiveRun],
@@ -211,6 +213,7 @@ export const ScanCameraPage = () => {
     async (rawValue: string) => {
       const sanitized = sanitizeEan(rawValue.trim())
       if (!sanitized) {
+        setPendingManualEan(null)
         return
       }
       if (!isEanLengthValid(sanitized)) {
@@ -218,6 +221,7 @@ export const ScanCameraPage = () => {
           `EAN ${sanitized} invalide : saisir entre ${MIN_EAN_LENGTH} et ${MAX_EAN_LENGTH} chiffres.`,
         )
         setStatusMessage(null)
+        setPendingManualEan(null)
         return
       }
       try {
@@ -225,10 +229,12 @@ export const ScanCameraPage = () => {
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : 'Impossible de lancer le scan.')
         setStatusMessage(null)
+        setPendingManualEan(null)
         return
       }
       setStatusMessage(`Lecture de ${sanitized}…`)
       setErrorMessage(null)
+      setPendingManualEan(null)
       try {
         const product = await fetchProductByEan(sanitized)
         const added = await addProductToSession(product)
@@ -245,14 +251,55 @@ export const ScanCameraPage = () => {
         const err = error as HttpError
         if (err?.status === 404) {
           setErrorMessage(`Aucun produit trouvé pour ${sanitized}.`)
+          setPendingManualEan(sanitized)
         } else {
           setErrorMessage('Échec de la récupération du produit. Réessayez.')
+          setPendingManualEan(null)
         }
         setStatusMessage(null)
       }
     },
     [addProductToSession, ensureScanPrerequisites],
   )
+
+  const handleManualAdd = useCallback(async () => {
+    if (manualAddLoading) {
+      return
+    }
+    const manualEan = sanitizeEan(pendingManualEan ?? '')
+    if (!manualEan) {
+      return
+    }
+    if (!isEanLengthValid(manualEan)) {
+      setErrorMessage(
+        `EAN ${manualEan} invalide : saisir entre ${MIN_EAN_LENGTH} et ${MAX_EAN_LENGTH} chiffres.`,
+      )
+      setPendingManualEan(null)
+      return
+    }
+
+    setManualAddLoading(true)
+    try {
+      const product: Product = {
+        ean: manualEan,
+        name: `Produit inconnu EAN ${manualEan}`,
+      }
+      const added = await addProductToSession(product, { isManual: true })
+      if (!added) {
+        return
+      }
+      setStatusMessage(`${product.name} ajouté manuellement`)
+      setErrorMessage(null)
+      setHighlightEan(product.ean)
+      scrollToEndRef.current = true
+      if (manualInputActiveRef.current) {
+        pendingFocusEanRef.current = product.ean
+      }
+      setPendingManualEan(null)
+    } finally {
+      setManualAddLoading(false)
+    }
+  }, [addProductToSession, manualAddLoading, pendingManualEan])
 
   const handleDec = useCallback(
     (ean: string, quantity: number) => {
@@ -514,8 +561,20 @@ export const ScanCameraPage = () => {
       </div>
       {errorMessage && (
         <div className="absolute inset-x-0 bottom-[calc(100%+8px)] z-30 flex justify-center p-3">
-          <div className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-lg">
-            {errorMessage}
+          <div className="flex items-center gap-3 rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-lg">
+            <span>{errorMessage}</span>
+            {pendingManualEan && (
+              <Button
+                variant="ghost"
+                className="rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs font-semibold text-white hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60"
+                onClick={() => {
+                  void handleManualAdd()
+                }}
+                disabled={manualAddLoading}
+              >
+                {manualAddLoading ? 'Ajout…' : 'Ajouter manuellement'}
+              </Button>
+            )}
           </div>
         </div>
       )}
