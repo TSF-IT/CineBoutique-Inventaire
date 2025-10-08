@@ -121,17 +121,24 @@ const renderScanCameraPage = (options?: {
 }
 
 const scrollToMock = vi.fn()
+const scrollIntoViewMock = vi.fn()
 const originalScrollTo = HTMLElement.prototype.scrollTo
+const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
 
 beforeAll(() => {
   Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
     configurable: true,
     value: scrollToMock,
   })
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+    configurable: true,
+    value: scrollIntoViewMock,
+  })
 })
 
 afterEach(() => {
   scrollToMock.mockClear()
+  scrollIntoViewMock.mockClear()
   cleanup()
 })
 
@@ -140,6 +147,15 @@ afterAll(() => {
     configurable: true,
     value: originalScrollTo,
   })
+  if (originalScrollIntoView) {
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: originalScrollIntoView,
+    })
+  } else {
+    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+    delete HTMLElement.prototype.scrollIntoView
+  }
 })
 
 describe('ScanCameraPage', () => {
@@ -260,6 +276,31 @@ describe('ScanCameraPage', () => {
     expect(startInventoryRunMock).toHaveBeenCalled()
     await waitFor(() => expect(latestItems.some((item) => item.product.ean === '9876543210987')).toBe(true))
     expect(await screen.findByText('Produit détecté')).toBeInTheDocument()
+  })
+
+  it('permet d’ajouter manuellement un produit introuvable après un scan', async () => {
+    fetchProductByEanMock.mockRejectedValue({ status: 404 })
+    startInventoryRunMock.mockResolvedValue({ runId: 'run-manual' })
+
+    let latestItems: InventoryItem[] = []
+    renderScanCameraPage({
+      onItemsChange: (items) => {
+        latestItems = items
+      },
+    })
+
+    await waitFor(() => expect(typeof scannerCallbacks.onDetected).toBe('function'))
+    await scannerCallbacks.onDetected?.('0123456789012')
+
+    const error = await screen.findByText('Aucun produit trouvé pour 0123456789012.')
+    expect(error).toBeInTheDocument()
+
+    const manualButton = await screen.findByRole('button', { name: /ajouter manuellement/i })
+    await userEvent.click(manualButton)
+
+    await waitFor(() => expect(latestItems.some((item) => item.product.ean === '0123456789012')).toBe(true))
+    await waitFor(() => expect(screen.queryByText(/Aucun produit trouvé/)).not.toBeInTheDocument())
+    expect(await screen.findByText('Produit inconnu EAN 0123456789012')).toBeInTheDocument()
   })
 })
 
