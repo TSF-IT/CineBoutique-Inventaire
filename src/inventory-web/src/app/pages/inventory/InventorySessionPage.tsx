@@ -316,7 +316,7 @@ export const InventorySessionPage = () => {
   ])
 
   const addProductToSession = useCallback(
-    async (product: Product, options?: { isManual?: boolean }) => {
+    async (product: Product, options?: { isManual?: boolean; variant?: string | null }) => {
       if (items.length === 0) {
         try {
           await ensureActiveRun()

@@ -166,6 +166,11 @@ describe('ScanCameraPage', () => {
     fetchProductByEanMock.mockReset()
     startInventoryRunMock.mockReset()
     scannerCallbacks.onDetected = undefined
+    try {
+      sessionStorage.clear()
+    } catch {
+      // ignore when storage not available
+    }
   })
 
   it('affiche uniquement les trois derniers articles en mode fermé', async () => {
@@ -279,6 +284,81 @@ describe('ScanCameraPage', () => {
     expect(startInventoryRunMock).toHaveBeenCalled()
     await waitFor(() => expect(latestItems.some((item) => item.product.ean === '9876543210987')).toBe(true))
     expect(await screen.findByText('Produit détecté')).toBeInTheDocument()
+  })
+
+  it('accepte un code alphanumérique issu du scan', async () => {
+    fetchProductByEanMock.mockResolvedValue({ ean: 'K20013252', name: 'Produit alpha' })
+    startInventoryRunMock.mockResolvedValue({ runId: 'run-2' })
+
+    renderScanCameraPage()
+
+    await waitFor(() => expect(typeof scannerCallbacks.onDetected).toBe('function'))
+    await scannerCallbacks.onDetected?.('K2.0013252')
+
+    await waitFor(() => expect(fetchProductByEanMock).toHaveBeenCalledWith('K20013252'))
+    expect(screen.queryByText(/Code invalide/)).not.toBeInTheDocument()
+    expect(await screen.findByText('Produit alpha')).toBeInTheDocument()
+  })
+
+  it('transmet le suffixe de variante lorsque présent', async () => {
+    fetchProductByEanMock.mockResolvedValue({ ean: '1560000', name: 'Produit suffixe' })
+    startInventoryRunMock.mockResolvedValue({ runId: 'run-3' })
+
+    let latestItems: InventoryItem[] = []
+    renderScanCameraPage({
+      onItemsChange: (items) => {
+        latestItems = items
+      },
+    })
+
+    await waitFor(() => expect(typeof scannerCallbacks.onDetected).toBe('function'))
+    await scannerCallbacks.onDetected?.('1560000#1')
+
+    await waitFor(() => expect(fetchProductByEanMock).toHaveBeenCalledWith('1560000'))
+    await waitFor(() => expect(latestItems[0]?.product.ean).toBe('1560000'))
+    expect(latestItems[0]?.variant).toBe('1')
+  })
+
+  it('continue d’accepter les EAN-13 et UPC-A', async () => {
+    fetchProductByEanMock
+      .mockResolvedValueOnce({ ean: '3557191310038', name: 'Produit EAN13' })
+      .mockResolvedValueOnce({ ean: '012345678905', name: 'Produit UPC' })
+    startInventoryRunMock.mockResolvedValue({ runId: 'run-4' })
+
+    let latestItems: InventoryItem[] = []
+    renderScanCameraPage({
+      onItemsChange: (items) => {
+        latestItems = items
+      },
+    })
+
+    await waitFor(() => expect(typeof scannerCallbacks.onDetected).toBe('function'))
+    await scannerCallbacks.onDetected?.('3557191310038')
+    await scannerCallbacks.onDetected?.('012345678905')
+
+    await waitFor(() => expect(fetchProductByEanMock).toHaveBeenCalledWith('3557191310038'))
+    await waitFor(() => expect(fetchProductByEanMock).toHaveBeenCalledWith('012345678905'))
+    await waitFor(() => expect(latestItems.some((item) => item.product.ean === '3557191310038')).toBe(true))
+    await waitFor(() => expect(latestItems.some((item) => item.product.ean === '012345678905')).toBe(true))
+  })
+
+  it('bloque un code restant mixte après normalisation', async () => {
+    fetchProductByEanMock.mockResolvedValue({ ean: 'should-not-pass', name: 'Ne doit pas être appelé' })
+    startInventoryRunMock.mockResolvedValue({ runId: 'run-5' })
+
+    let latestItems: InventoryItem[] = []
+    renderScanCameraPage({
+      onItemsChange: (items) => {
+        latestItems = items
+      },
+    })
+
+    await waitFor(() => expect(typeof scannerCallbacks.onDetected).toBe('function'))
+    await scannerCallbacks.onDetected?.('1234*56')
+
+    await waitFor(() => expect(screen.getByText(/Code invalide/)).toBeInTheDocument())
+    expect(fetchProductByEanMock).not.toHaveBeenCalled()
+    expect(latestItems).toHaveLength(0)
   })
 
   it('permet d’ajouter manuellement un produit introuvable après un scan', async () => {

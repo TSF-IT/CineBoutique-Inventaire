@@ -164,6 +164,7 @@ export interface InventoryItem {
   lastScanAt: string
   isManual: boolean
   addedAt: number
+  variant?: string | null
   hasConflict?: boolean
 }
 
@@ -179,6 +180,7 @@ export interface InventoryLogEntryContext {
   productName?: string
   quantity?: number
   isManual?: boolean
+  variant?: string | null
 }
 
 export interface InventoryLogEntry {

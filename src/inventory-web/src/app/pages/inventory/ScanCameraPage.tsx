@@ -19,9 +19,8 @@ import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
 import { CountType, type ConflictZoneSummary, type Product } from '../../types/inventory'
 import { fetchProductByEan, startInventoryRun } from '../../api/inventoryApi'
 import type { HttpError } from '@/lib/api/http'
-
-const MIN_EAN_LENGTH = 8
-const MAX_EAN_LENGTH = 13
+import { parseRfid } from '@/lib/rfid'
+import { logParsedRfid } from '../../scan/sessionLog'
 
 type SheetState = 'closed' | 'half' | 'full'
 
@@ -30,10 +29,6 @@ const SHEET_HEIGHTS: Record<SheetState, string> = {
   half: '62vh',
   full: '90vh',
 }
-
-const sanitizeEan = (value: string) => value.replace(/\D+/g, '')
-
-const isEanLengthValid = (ean: string) => ean.length >= MIN_EAN_LENGTH && ean.length <= MAX_EAN_LENGTH
 
 const moveState = (current: SheetState, direction: 'up' | 'down'): SheetState => {
   if (direction === 'up') {
@@ -195,7 +190,7 @@ export const ScanCameraPage = () => {
   }, [countTypeValue, ensureScanPrerequisites, items.length, locationId, ownerUserId, sessionRunId, setSessionId, shop])
 
   const addProductToSession = useCallback(
-    async (product: Product, options?: { isManual?: boolean }) => {
+    async (product: Product, options?: { isManual?: boolean; variant?: string | null }) => {
       try {
         await ensureActiveRun()
       } catch (error) {
@@ -211,15 +206,17 @@ export const ScanCameraPage = () => {
 
   const handleDetected = useCallback(
     async (rawValue: string) => {
-      const sanitized = sanitizeEan(rawValue.trim())
-      if (!sanitized) {
+      const parsed = parseRfid(rawValue)
+      logParsedRfid(parsed)
+      const { normalized, suffix, verdict } = parsed
+      if (!normalized) {
+        setErrorMessage('Code invalide: vide après normalisation')
+        setStatusMessage(null)
         setPendingManualEan(null)
         return
       }
-      if (!isEanLengthValid(sanitized)) {
-        setErrorMessage(
-          `EAN ${sanitized} invalide : saisir entre ${MIN_EAN_LENGTH} et ${MAX_EAN_LENGTH} chiffres.`,
-        )
+      if (verdict.level === 'red') {
+        setErrorMessage(`Code invalide: ${verdict.reason ?? 'format non reconnu'}`)
         setStatusMessage(null)
         setPendingManualEan(null)
         return
@@ -232,14 +229,18 @@ export const ScanCameraPage = () => {
         setPendingManualEan(null)
         return
       }
-      setStatusMessage(`Lecture de ${sanitized}…`)
+      setStatusMessage(`Lecture de ${normalized}…`)
       setErrorMessage(null)
       setPendingManualEan(null)
       try {
-        const product = await fetchProductByEan(sanitized)
-        const added = await addProductToSession(product)
+        const product = await fetchProductByEan(normalized)
+        const added = await addProductToSession(product, { isManual: false, variant: suffix ?? null })
         if (added) {
-          setStatusMessage(`${product.name} ajouté`)
+          if (verdict.level === 'amber') {
+            setStatusMessage(`Format inhabituel (${verdict.type}, ${verdict.length} char.). Vérifier l’étiquette.`)
+          } else {
+            setStatusMessage(`${product.name} ajouté`)
+          }
           setHighlightEan(product.ean)
           scrollToEndRef.current = true
           if (manualInputActiveRef.current) {
@@ -250,8 +251,8 @@ export const ScanCameraPage = () => {
       } catch (error) {
         const err = error as HttpError
         if (err?.status === 404) {
-          setErrorMessage(`Aucun produit trouvé pour ${sanitized}.`)
-          setPendingManualEan(sanitized)
+          setErrorMessage(`Aucun produit trouvé pour ${normalized}.`)
+          setPendingManualEan(normalized)
         } else {
           setErrorMessage('Échec de la récupération du produit. Réessayez.')
           setPendingManualEan(null)
@@ -266,14 +267,17 @@ export const ScanCameraPage = () => {
     if (manualAddLoading) {
       return
     }
-    const manualEan = sanitizeEan(pendingManualEan ?? '')
-    if (!manualEan) {
+    const parsed = parseRfid(pendingManualEan ?? '')
+    logParsedRfid(parsed)
+    const { normalized, suffix, verdict } = parsed
+    if (!normalized) {
+      setErrorMessage('Code invalide: vide après normalisation')
+      setPendingManualEan(null)
       return
     }
-    if (!isEanLengthValid(manualEan)) {
-      setErrorMessage(
-        `EAN ${manualEan} invalide : saisir entre ${MIN_EAN_LENGTH} et ${MAX_EAN_LENGTH} chiffres.`,
-      )
+    if (verdict.level === 'red') {
+      setErrorMessage(`Code invalide: ${verdict.reason ?? 'format non reconnu'}`)
+      setStatusMessage(null)
       setPendingManualEan(null)
       return
     }
@@ -281,14 +285,18 @@ export const ScanCameraPage = () => {
     setManualAddLoading(true)
     try {
       const product: Product = {
-        ean: manualEan,
-        name: `Produit inconnu EAN ${manualEan}`,
+        ean: normalized,
+        name: `Produit inconnu EAN ${normalized}`,
       }
-      const added = await addProductToSession(product, { isManual: true })
+      const added = await addProductToSession(product, { isManual: true, variant: suffix ?? null })
       if (!added) {
         return
       }
-      setStatusMessage(`${product.name} ajouté manuellement`)
+      if (verdict.level === 'amber') {
+        setStatusMessage(`Format inhabituel (${verdict.type}, ${verdict.length} char.). Vérifier l’étiquette.`)
+      } else {
+        setStatusMessage(`${product.name} ajouté manuellement`)
+      }
       setErrorMessage(null)
       setHighlightEan(product.ean)
       scrollToEndRef.current = true

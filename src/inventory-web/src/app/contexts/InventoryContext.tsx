@@ -14,7 +14,10 @@ export interface InventoryContextValue {
   setCountType: (type: number | null) => void
   setLocation: (location: Location) => void
   setSessionId: (sessionId: string | null) => void
-  addOrIncrementItem: (product: Product, options?: { isManual?: boolean }) => void
+  addOrIncrementItem: (
+    product: Product,
+    options?: { isManual?: boolean; variant?: string | null },
+  ) => void
   setQuantity: (ean: string, quantity: number) => void
   removeItem: (ean: string) => void
   reset: () => void
@@ -85,17 +88,19 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
     setState((prev) => ({ ...prev, sessionId }))
   }, [])
 
-  const addOrIncrementItem = useCallback((product: Product, options?: { isManual?: boolean }) => {
-    setState((prev) => {
-      const existingIndex = prev.items.findIndex((item) => item.product.ean === product.ean)
-      const timestamp = new Date().toISOString()
-      if (existingIndex >= 0) {
-        const existing = prev.items[existingIndex]
+  const addOrIncrementItem = useCallback(
+    (product: Product, options?: { isManual?: boolean; variant?: string | null }) => {
+      setState((prev) => {
+        const existingIndex = prev.items.findIndex((item) => item.product.ean === product.ean)
+        const timestamp = new Date().toISOString()
+        if (existingIndex >= 0) {
+          const existing = prev.items[existingIndex]
         const updated: InventoryItem = {
           ...existing,
           quantity: existing.quantity + 1,
           lastScanAt: timestamp,
           isManual: existing.isManual || Boolean(options?.isManual),
+          variant: existing.variant ?? options?.variant ?? null,
         }
         const remaining = prev.items.filter((_, index) => index !== existingIndex)
         return {
@@ -109,6 +114,7 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
               productName: updated.product.name,
               quantity: updated.quantity,
               isManual: updated.isManual,
+              variant: updated.variant,
             },
           }),
         }
@@ -120,6 +126,7 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
         lastScanAt: timestamp,
         isManual: Boolean(options?.isManual),
         addedAt: Date.now(),
+        variant: options?.variant ?? null,
       }
       return {
         ...prev,
@@ -132,6 +139,7 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
             productName: product.name,
             quantity: nextItem.quantity,
             isManual: nextItem.isManual,
+            variant: nextItem.variant,
           },
         }),
       }
