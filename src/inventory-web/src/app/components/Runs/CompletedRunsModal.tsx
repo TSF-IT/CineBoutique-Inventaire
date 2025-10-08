@@ -91,6 +91,20 @@ const formatQuantity = (value: number) =>
     minimumFractionDigits: 0,
   }).format(value)
 
+const formatSku = (value: string | null | undefined) => {
+  const trimmed = value?.trim()
+  return trimmed && trimmed.length > 0 ? trimmed : '—'
+}
+
+const formatZoneLabel = (detail: CompletedRunSummary | CompletedRunDetail) => {
+  const code = detail.locationCode?.trim()
+  const label = detail.locationLabel?.trim()
+  if (code && label) {
+    return `${code} · ${label}`
+  }
+  return code ?? label ?? ''
+}
+
 const buildRunTitle = (run: CompletedRunSummary, detail?: CompletedRunDetail | null) => {
   const owner = formatOwnerForTitle(run, detail)
   const completedOn = formatDateOnly(detail?.completedAtUtc ?? run.completedAtUtc)
@@ -100,16 +114,86 @@ const buildRunTitle = (run: CompletedRunSummary, detail?: CompletedRunDetail | n
 const escapeCsvValue = (value: string) => `"${value.replace(/"/g, '""')}"`
 
 const buildCsvContent = (title: string, detail: CompletedRunDetail) => {
-  const header = ['EAN', 'Libellé', 'Quantité']
-  const lines = detail.items.map((item) =>
-    [
-      escapeCsvValue(item.ean ?? ''),
+  const header = ['SKU', 'EAN', 'Libellé', 'Quantité']
+  const lines = detail.items.map((item) => {
+    const sku = item.sku?.trim() ?? ''
+    const ean = item.ean?.trim() ?? ''
+    return [
+      escapeCsvValue(sku),
+      escapeCsvValue(ean),
       escapeCsvValue(item.name),
       escapeCsvValue(formatQuantity(item.quantity)),
-    ].join(';'),
-  )
+    ].join(';')
+  })
 
   return [escapeCsvValue(title), header.map(escapeCsvValue).join(';'), ...lines].join('\n')
+}
+
+const buildGlobalCsvContent = (details: CompletedRunDetail[]) => {
+  const header = ['Zone', 'Comptage', 'Opérateur', 'Terminé le', 'SKU', 'EAN', 'Libellé', 'Quantité']
+  const lines = details.flatMap((detail) => {
+    const zone = formatZoneLabel(detail)
+    const countLabel = describeCountType(detail.countType)
+    const owner = formatOwnerName(detail.ownerDisplayName)
+    const completed = formatDateTime(detail.completedAtUtc)
+
+    if (!detail.items || detail.items.length === 0) {
+      return [
+        [
+          zone,
+          countLabel,
+          owner,
+          completed,
+          '',
+          '',
+          '',
+          formatQuantity(0),
+        ],
+      ]
+    }
+
+    return detail.items.map((item) => {
+      const sku = item.sku?.trim() ?? ''
+      const ean = item.ean?.trim() ?? ''
+      return [
+        zone,
+        countLabel,
+        owner,
+        completed,
+        sku,
+        ean,
+        item.name,
+        formatQuantity(item.quantity),
+      ]
+    })
+  })
+
+  const encodedLines = lines.map((line) => line.map(escapeCsvValue).join(';'))
+  return [
+    escapeCsvValue('Comptages terminés'),
+    header.map(escapeCsvValue).join(';'),
+    ...encodedLines,
+  ].join('\n')
+}
+
+const triggerCsvDownload = (fileName: string, content: string, testId?: string) => {
+  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = fileName
+  if (testId) {
+    anchor.setAttribute('data-testid', testId)
+  }
+
+  document.body.appendChild(anchor)
+  try {
+    anchor.click()
+  } finally {
+    document.body.removeChild(anchor)
+    URL.revokeObjectURL(url)
+  }
 }
 
 const slugify = (value: string) =>
@@ -150,11 +234,15 @@ const describeDetailError = (
 
 export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRunsModalProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const detailsCacheRef = useRef<Map<string, CompletedRunDetail>>(new Map())
   const [selectedRun, setSelectedRun] = useState<CompletedRunSummary | null>(null)
   const [runDetail, setRunDetail] = useState<CompletedRunDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<unknown>(null)
   const [reloadKey, setReloadKey] = useState(0)
+  const [globalExporting, setGlobalExporting] = useState(false)
+  const [globalExportError, setGlobalExportError] = useState<string | null>(null)
+  const hasCompletedRuns = completedRuns.length > 0
 
   useEffect(() => {
     if (open) {
@@ -165,6 +253,8 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
     setDetailError(null)
     setDetailLoading(false)
     setReloadKey(0)
+    setGlobalExportError(null)
+    setGlobalExporting(false)
   }, [open])
 
   useEffect(() => {
@@ -242,7 +332,19 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
       return
     }
 
+    const bypassCache = reloadKey > 0
+    if (!bypassCache) {
+      const cached = detailsCacheRef.current.get(selectedRun.runId)
+      if (cached) {
+        setRunDetail(cached)
+        setDetailError(null)
+        setDetailLoading(false)
+        return
+      }
+    }
+
     let cancelled = false
+    const currentReloadKey = reloadKey
     setDetailLoading(true)
     setDetailError(null)
 
@@ -250,7 +352,9 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
       try {
         const detail = await getCompletedRunDetail(selectedRun.runId)
         if (!cancelled) {
+          detailsCacheRef.current.set(detail.runId, detail)
           setRunDetail(detail)
+          setDetailError(null)
         }
       } catch (error) {
         if (!cancelled) {
@@ -259,6 +363,9 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
       } finally {
         if (!cancelled) {
           setDetailLoading(false)
+          if (currentReloadKey > 0) {
+            setReloadKey(0)
+          }
         }
       }
     }
@@ -283,7 +390,6 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
     setSelectedRun(run)
     setRunDetail(null)
     setDetailError(null)
-    setReloadKey((key) => key + 1)
   }, [])
 
   const handleBackToList = useCallback(() => {
@@ -306,28 +412,49 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
 
     const title = buildRunTitle(selectedRun, runDetail)
     const csv = `\ufeff${buildCsvContent(title, runDetail)}`
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = `${slugify(title)}.csv`
-    anchor.setAttribute('data-testid', 'csv-download-link')
-
-    document.body.appendChild(anchor)
-    try {
-      anchor.click()
-    } finally {
-      document.body.removeChild(anchor)
-      URL.revokeObjectURL(url)
-    }
+    triggerCsvDownload(`${slugify(title)}.csv`, csv, 'csv-download-link')
   }, [runDetail, selectedRun])
 
-  const hasCompletedRuns = completedRuns.length > 0
   const orderedCompletedRuns = useMemo(
     () => [...completedRuns].sort((a, b) => (a.completedAtUtc > b.completedAtUtc ? -1 : 1)),
     [completedRuns],
   )
+
+  const handleExportAll = useCallback(async () => {
+    if (!hasCompletedRuns || globalExporting) {
+      return
+    }
+
+    setGlobalExportError(null)
+    setGlobalExporting(true)
+
+    try {
+      const details: CompletedRunDetail[] = []
+      for (const run of orderedCompletedRuns) {
+        let detail = detailsCacheRef.current.get(run.runId)
+        if (!detail) {
+          detail = await getCompletedRunDetail(run.runId)
+          detailsCacheRef.current.set(detail.runId, detail)
+        }
+        details.push(detail)
+      }
+
+      const csvContent = buildGlobalCsvContent(details)
+      const csv = `\ufeff${csvContent}`
+      const today = new Date()
+      const isoDate = Number.isNaN(today.getTime()) ? 'export' : today.toISOString().slice(0, 10)
+      const fileName = `comptages-termines-${isoDate}.csv`
+      triggerCsvDownload(fileName, csv, 'csv-download-link-all')
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message.trim().length > 0
+          ? `Export impossible : ${error.message}`
+          : "Impossible de générer l’export global. Réessaie."
+      setGlobalExportError(message)
+    } finally {
+      setGlobalExporting(false)
+    }
+  }, [globalExporting, hasCompletedRuns, orderedCompletedRuns, getCompletedRunDetail])
 
   const detailErrorDescription = useMemo(() => describeDetailError(detailError), [detailError])
   const hasDetailView = Boolean(selectedRun)
@@ -441,6 +568,7 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
                     <table className="table min-w-full divide-y divide-emerald-100 dark:divide-emerald-800/40">
                       <thead className="bg-emerald-50/80 text-left text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-200">
                         <tr>
+                          <th scope="col" className="px-4 py-3">SKU</th>
                           <th scope="col" className="px-4 py-3">EAN</th>
                           <th scope="col" className="px-4 py-3">Libellé</th>
                           <th scope="col" className="px-4 py-3 text-right">Quantité</th>
@@ -449,6 +577,12 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
                       <tbody className="divide-y divide-emerald-100 text-sm text-slate-700 dark:divide-emerald-800/40 dark:text-slate-200">
                         {runDetail.items.map((item) => (
                           <tr key={item.productId}>
+                            <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">
+                              <span className="table-label">SKU</span>
+                              <span className="table-value font-mono text-sm text-slate-700 dark:text-slate-200">
+                                {formatSku(item.sku)}
+                              </span>
+                            </td>
                             <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-slate-600 dark:text-slate-300">
                               <span className="table-label">EAN</span>
                               <span className="table-value font-mono text-sm text-slate-700 dark:text-slate-200">
@@ -477,9 +611,27 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
             </section>
           ) : (
             <section className="flex flex-col gap-3">
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-200">
-                Comptages terminés
-              </h3>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-200">
+                  Comptages terminés
+                </h3>
+                {hasCompletedRuns && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      void handleExportAll()
+                    }}
+                    disabled={globalExporting}
+                  >
+                    {globalExporting ? 'Export en cours…' : 'Exporter tous les comptages'}
+                  </Button>
+                )}
+              </div>
+              {globalExportError && (
+                <p className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
+                  {globalExportError}
+                </p>
+              )}
               {hasCompletedRuns ? (
                 <ul className="space-y-2">
                   {orderedCompletedRuns.map((run) => {
