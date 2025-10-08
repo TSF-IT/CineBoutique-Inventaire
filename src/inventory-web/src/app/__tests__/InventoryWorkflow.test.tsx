@@ -639,6 +639,7 @@ describe("Workflow d'inventaire", () => {
       ],
       items: [
         {
+          sku: 'SKU-111',
           productId: 'prod-111',
           ean: '1111111111111',
           qtyC1: 10,

@@ -113,6 +113,7 @@ describe('Responsive layout smoke tests', () => {
       ],
       items: [
         {
+          sku: 'SKU-123',
           productId: 'prod-1',
           ean: '1234567890123',
           qtyC1: 5,

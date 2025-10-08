@@ -135,8 +135,8 @@ describe('HomePage', () => {
       locationCode: 'B1',
       locationLabel: 'Zone B1',
       items: [
-        { productId: 'p1', ean: '111', qtyC1: 5, qtyC2: 8, delta: -3 },
-        { productId: 'p2', ean: '222', qtyC1: 3, qtyC2: 1, delta: 2 },
+        { sku: 'SKU-001', productId: 'p1', ean: '111', qtyC1: 5, qtyC2: 8, delta: -3 },
+        { sku: 'SKU-002', productId: 'p2', ean: '222', qtyC1: 3, qtyC2: 1, delta: 2 },
       ],
     }
 

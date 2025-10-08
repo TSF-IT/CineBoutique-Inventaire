@@ -39,6 +39,7 @@ describe('ConflictZoneModal', () => {
       ],
       items: [
         {
+          sku: 'SKU-111',
           productId: 'prod-1',
           ean: '111',
           qtyC1: 5,
@@ -83,6 +84,7 @@ describe('ConflictZoneModal', () => {
       locationLabel: baseZone.locationLabel,
       items: [
         {
+          sku: 'SKU-222',
           productId: 'prod-2',
           ean: '222',
           qtyC1: 4,
