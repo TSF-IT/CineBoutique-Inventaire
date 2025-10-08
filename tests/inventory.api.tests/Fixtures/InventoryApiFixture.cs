@@ -97,6 +97,8 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
 
         Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Testing");
         Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", "Testing");
+        // Ceinture + bretelles pour tout code qui lit la config via env:
+        Environment.SetEnvironmentVariable("ConnectionStrings__Default", cs);
 
         _connectionString = cs;
         _dataSource = NpgsqlDataSource.Create(cs);
@@ -211,18 +213,18 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
 
     private static async Task WaitUntilReadyAsync(HttpClient client)
     {
-        for (var attempt = 0; attempt < 10; attempt++)
+        for (var attempt = 0; attempt < 20; attempt++) // 20 au lieu de 10
         {
             var response = await client.GetAsync(client.CreateRelativeUri("/ready")).ConfigureAwait(false);
             if (response.IsSuccessStatusCode)
                 return;
 
-            await Task.Delay(TimeSpan.FromMilliseconds(200)).ConfigureAwait(false);
+            await Task.Delay(TimeSpan.FromMilliseconds(300)).ConfigureAwait(false); // 300 ms
         }
 
-        // Last attempt with detailed error
         var finalResponse = await client.GetAsync(client.CreateRelativeUri("/ready")).ConfigureAwait(false);
         var payload = await finalResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
         throw new InvalidOperationException($"API not ready. Status={finalResponse.StatusCode}, Payload={payload}");
     }
+
 }
