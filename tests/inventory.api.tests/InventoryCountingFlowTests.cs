@@ -21,14 +21,23 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
     {
         SkipIfDockerUnavailable();
 
-        var client = CreateClient();
-        var seeder = Fixture.Seeder;
+        Guid shopId = Guid.Empty;
+        Guid locationId = Guid.Empty;
+        Guid primaryUserId = Guid.Empty;
+        Guid secondaryUserId = Guid.Empty;
+        const string productSku = "SKU-001";
+        const string productEan = "12345678";
 
-        var shopId = await seeder.CreateShopAsync("Boutique Tests").ConfigureAwait(true);
-        var locationId = await seeder.CreateLocationAsync(shopId, "Z-001", "Zone Pilote").ConfigureAwait(true);
-        var primaryUserId = await seeder.CreateShopUserAsync(shopId, "alice", "Alice").ConfigureAwait(true);
-        var secondaryUserId = await seeder.CreateShopUserAsync(shopId, "bob", "Bob").ConfigureAwait(true);
-        await seeder.CreateProductAsync("SKU-001", "Film collector", "12345678").ConfigureAwait(true);
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.CreateShopAsync("Boutique Tests").ConfigureAwait(true);
+            locationId = await seeder.CreateLocationAsync(shopId, "Z-001", "Zone Pilote").ConfigureAwait(true);
+            primaryUserId = await seeder.CreateShopUserAsync(shopId, "alice", "Alice").ConfigureAwait(true);
+            secondaryUserId = await seeder.CreateShopUserAsync(shopId, "bob", "Bob").ConfigureAwait(true);
+            await seeder.CreateProductAsync(productSku, "Film collector", productEan).ConfigureAwait(true);
+        }).ConfigureAwait(true);
+
+        var client = CreateClient();
 
         var startPrimary = await client
             .PostAsJsonAsync(
@@ -46,7 +55,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
                     primaryRun.RunId,
                     primaryUserId,
                     1,
-                    new[] { new CompleteRunItemRequest("12345678", 5, false) })).ConfigureAwait(true);
+                    new[] { new CompleteRunItemRequest(productEan, 5, false) })).ConfigureAwait(true);
         completePrimary.StatusCode.Should().Be(HttpStatusCode.OK);
         var primarySummary = await completePrimary.Content.ReadFromJsonAsync<CompleteInventoryRunResponse>().ConfigureAwait(true);
         primarySummary.Should().NotBeNull();
@@ -69,7 +78,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
                     secondaryRun.RunId,
                     secondaryUserId,
                     2,
-                    new[] { new CompleteRunItemRequest("12345678", 3, false) })).ConfigureAwait(true);
+                    new[] { new CompleteRunItemRequest(productEan, 3, false) })).ConfigureAwait(true);
         completeMismatch.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var conflictResponse = await client.GetAsync(client.CreateRelativeUri($"/api/conflicts/{locationId}")).ConfigureAwait(true);
@@ -96,7 +105,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
                     restartedRun!.RunId,
                     secondaryUserId,
                     2,
-                    new[] { new CompleteRunItemRequest("12345678", 5, false) })).ConfigureAwait(true);
+                    new[] { new CompleteRunItemRequest(productEan, 5, false) })).ConfigureAwait(true);
         completeAligned.StatusCode.Should().Be(HttpStatusCode.OK);
 
         var resolvedResponse = await client.GetAsync(client.CreateRelativeUri($"/api/conflicts/{locationId}")).ConfigureAwait(true);
@@ -107,7 +116,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
 
         var locationsResponse = await client.GetAsync(client.CreateRelativeUri($"/locations?shopId={shopId}")).ConfigureAwait(true);
         locationsResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var locations = await locationsResponse.Content.ReadFromJsonAsync<LocationDto[]>().ConfigureAwait(true);
+        var locations = await locationsResponse.Content.ReadFromJsonAsync<LocationListItemDto[]>().ConfigureAwait(true);
         locations.Should().NotBeNull();
         var nonNullLocations = locations!;
         nonNullLocations.Should().ContainSingle();
@@ -115,6 +124,6 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
         location.IsBusy.Should().BeFalse();
         location.CountStatuses.Should().NotBeNull();
         location.CountStatuses.Should().HaveCountGreaterThan(0);
-        location.CountStatuses.Should().OnlyContain(status => status.CountType == 1 || status.CountType == 2);
+        location.CountStatuses.Should().OnlyContain(status => status.CountType is 1 or 2);
     }
 }

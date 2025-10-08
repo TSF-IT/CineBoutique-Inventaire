@@ -132,6 +132,19 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
         await ResetDatabaseSchemaAsync().ConfigureAwait(false);
     }
 
+    public async Task ResetAndSeedAsync(Func<TestDataSeeder, Task> plan)
+    {
+        if (!IsDockerAvailable)
+            return;
+
+        ArgumentNullException.ThrowIfNull(plan);
+
+        await DbResetAsync().ConfigureAwait(false);
+        EnsureInitialized();
+
+        await plan(Seeder).ConfigureAwait(false);
+    }
+
     private void EnsureInitialized()
     {
         if (!_initialized || _dataSource is null || _factory is null || string.IsNullOrWhiteSpace(_connectionString))
