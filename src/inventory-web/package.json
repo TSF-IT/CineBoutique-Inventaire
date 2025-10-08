@@ -9,8 +9,10 @@
     "dev:api8080": "cross-env DEV_BACKEND_ORIGIN=http://localhost:8080 vite",
     "dev:scan-sim": "vite --mode scan-sim",
     "build": "tsc -b && vite build",
+    "pwa:build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
+    "pwa:preview": "vite preview --https",
     "check:health": "node -e \"fetch('http://localhost:5173/api/healthz').then(r=>r.text()).then(console.log).catch(e=>{console.error(e);process.exit(1)})\"",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -51,6 +53,7 @@
     "typescript-eslint": "^8.43.0",
     "vite": "^5.4.10",
     "vite-plugin-pwa": "^0.20.5",
-    "vitest": "^2.1.8"
+    "vitest": "^2.1.8",
+    "workbox-window": "^7.3.0"
   }
 }

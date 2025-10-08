@@ -27,6 +27,8 @@ body {
   min-height: 100dvh;
   background-color: var(--cb-background);
   color: var(--cb-text);
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
   transition: background-color 200ms ease, color 200ms ease;
 }
 
