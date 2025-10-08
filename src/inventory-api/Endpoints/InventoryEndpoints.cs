@@ -457,13 +457,14 @@ product_runs AS (
 )
 SELECT
     pr."ProductId" AS "ProductId",
+    p."Sku"        AS "Sku",
     p."Ean"        AS "Ean",
     pr."RunId"     AS "RunId",
     COALESCE(SUM(cl."Quantity"), 0)::int AS "Quantity"
 FROM product_runs pr
 JOIN "Product" p ON p."Id" = pr."ProductId"
 LEFT JOIN "CountLine" cl ON cl."ProductId" = pr."ProductId" AND cl."CountingRunId" = pr."RunId"
-GROUP BY pr."ProductId", p."Ean", pr."RunId"
+GROUP BY pr."ProductId", p."Sku", p."Ean", pr."RunId"
 ORDER BY p."Ean", pr."RunId";
 """;
 
@@ -509,6 +510,7 @@ ORDER BY p."Ean", pr."RunId";
                     return new ConflictZoneItemDto
                     {
                         ProductId = productId,
+                        Sku = sampleRow.Sku ?? string.Empty,
                         Ean = sampleRow.Ean ?? string.Empty,
                         QtyC1 = qtyC1,
                         QtyC2 = qtyC2,

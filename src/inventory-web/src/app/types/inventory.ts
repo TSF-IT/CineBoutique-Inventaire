@@ -82,6 +82,7 @@ export interface ConflictRunHeader {
 }
 
 export interface ConflictZoneItem {
+  sku: string
   ean: string
   productId: string
   qtyC1: number
@@ -149,6 +150,7 @@ export type Location = z.infer<typeof LocationSchema>
 export type LocationCountStatus = Location['countStatuses'][number]
 
 export interface Product {
+  sku: string
   ean: string
   name: string
   stock?: number

@@ -129,6 +129,8 @@ internal sealed class ConflictRunQuantityRow
 {
     public Guid ProductId { get; set; }
 
+    public string Sku { get; set; } = string.Empty;
+
     public string Ean { get; set; } = string.Empty;
 
     public Guid RunId { get; set; }

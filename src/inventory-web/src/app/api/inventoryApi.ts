@@ -199,8 +199,29 @@ export const getConflictZoneDetail = async (
   locationId: string,
   signal?: AbortSignal,
 ): Promise<ConflictZoneDetail> => {
-  const data = await http(`${API_BASE}/conflicts/${encodeURIComponent(locationId)}`, { signal })
-  return data as ConflictZoneDetail
+  const data = (await http(`${API_BASE}/conflicts/${encodeURIComponent(locationId)}`, { signal })) as
+    | Partial<ConflictZoneDetail>
+    | null
+    | undefined
+
+  const items = Array.isArray(data?.items) ? data.items : []
+  const runs = Array.isArray(data?.runs) ? data.runs : []
+
+  return {
+    locationId: data?.locationId ?? locationId,
+    locationCode: data?.locationCode ?? '',
+    locationLabel: data?.locationLabel ?? '',
+    runs,
+    items: items.map((item) => ({
+      productId: item?.productId ?? '',
+      sku: typeof item?.sku === 'string' ? item.sku : '',
+      ean: typeof item?.ean === 'string' ? item.ean : '',
+      qtyC1: typeof item?.qtyC1 === 'number' ? item.qtyC1 : Number(item?.qtyC1 ?? 0),
+      qtyC2: typeof item?.qtyC2 === 'number' ? item.qtyC2 : Number(item?.qtyC2 ?? 0),
+      delta: typeof item?.delta === 'number' ? item.delta : Number(item?.delta ?? 0),
+      allCounts: Array.isArray(item?.allCounts) ? item.allCounts : [],
+    })),
+  }
 }
 
 export const getCompletedRunDetail = async (runId: string): Promise<CompletedRunDetail> => {
@@ -260,8 +281,22 @@ export const fetchProductByEan = async (ean: string): Promise<Product> => {
   if (trimmed.length === 0 || !/^\d+$/.test(trimmed)) {
     throw new Error("EAN invalide (valeur vide ou non numérique)")
   }
-  const data = await http(`${API_BASE}/products/${encodeURIComponent(trimmed)}`)
-  return data as Product
+  const data = (await http(`${API_BASE}/products/${encodeURIComponent(trimmed)}`)) as
+    | (Product & { lastCountedAt?: string | null })
+    | Record<string, unknown>
+    | null
+    | undefined
+
+  return {
+    sku: typeof data?.sku === 'string' ? data.sku : '',
+    ean: typeof data?.ean === 'string' ? data.ean : trimmed,
+    name: typeof data?.name === 'string' ? data.name : '',
+    stock: typeof (data as { stock?: number })?.stock === 'number' ? (data as { stock?: number }).stock : undefined,
+    lastCountedAt:
+      typeof (data as { lastCountedAt?: string | null })?.lastCountedAt === 'string'
+        ? (data as { lastCountedAt?: string | null }).lastCountedAt
+        : null,
+  }
 }
 
 /* --------------------------- Runs start/complete -------------------------- */

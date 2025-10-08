@@ -264,19 +264,12 @@ describe('HomePage', () => {
     mockedFetchSummary.mockResolvedValue(summary)
     mockedFetchLocations.mockResolvedValue([])
 
-    render(
-      <ThemeProvider>
-        <ShopProvider>
-          <MemoryRouter>
-            <HomePage />
-          </MemoryRouter>
-        </ShopProvider>
-      </ThemeProvider>,
-    )
+    renderHomePage()
 
     await waitFor(() => {
       expect(mockedFetchSummary).toHaveBeenCalledTimes(1)
       expect(mockedFetchLocations).toHaveBeenCalledTimes(1)
+    })
   })
 
   it("permet de reprendre un comptage appartenant à l'utilisateur courant", async () => {
@@ -335,7 +328,8 @@ describe('HomePage', () => {
 
     await waitFor(() => expect(mockedFetchSummary).toHaveBeenCalled())
 
-    expect(await screen.findByText(/Vous avez un comptage en cours/i)).toBeInTheDocument()
+    const inProgressMessages = await screen.findAllByText(/Vous avez un comptage en cours/i)
+    expect(inProgressMessages.length).toBeGreaterThan(0)
 
     const openRunsCards = screen.getAllByRole('button', { name: /Comptages en cours/i })
     const openRunsCard = openRunsCards.find((button) => !button.hasAttribute('disabled')) ?? openRunsCards[0]
@@ -437,8 +431,6 @@ describe('HomePage', () => {
       expect(screen.queryByRole('dialog', { name: /Zone B1/i })).not.toBeInTheDocument()
     })
   })
-})
-
   it("redirige vers l'assistant d'inventaire au clic sur le CTA principal", async () => {
     const summary: InventorySummary = {
       activeSessions: 0,
@@ -456,15 +448,7 @@ describe('HomePage', () => {
     mockedFetchSummary.mockResolvedValue(summary)
     mockedFetchLocations.mockResolvedValue(locations)
 
-    render(
-      <ThemeProvider>
-        <ShopProvider>
-          <MemoryRouter>
-            <HomePage />
-          </MemoryRouter>
-        </ShopProvider>
-      </ThemeProvider>,
-    )
+    renderHomePage()
 
     const buttons = await screen.findAllByRole('button', { name: /Débuter un comptage/i })
     fireEvent.click(buttons[0])
@@ -485,29 +469,21 @@ describe('HomePage', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     try {
-      render(
-        <ThemeProvider>
-          <ShopProvider>
-            <MemoryRouter>
-              <HomePage />
-            </MemoryRouter>
-          </ShopProvider>
-        </ThemeProvider>,
-      )
+      renderHomePage()
 
       await waitFor(() => expect(mockedFetchSummary).toHaveBeenCalled())
 
       await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledWith('[home] produit introuvable ignoré', productNotFound)
-    })
+        expect(warnSpy).toHaveBeenCalledWith('[home] produit introuvable ignoré', productNotFound)
+      })
 
-    expect(errorSpy).not.toHaveBeenCalledWith('[home] http error', expect.anything())
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    const placeholders = await screen.findAllByText('Les indicateurs ne sont pas disponibles pour le moment.')
-    expect(placeholders.length).toBeGreaterThan(0)
-  } finally {
-    warnSpy.mockRestore()
-    errorSpy.mockRestore()
-  }
-})
+      expect(errorSpy).not.toHaveBeenCalledWith('[home] http error', expect.anything())
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      const placeholders = await screen.findAllByText('Les indicateurs ne sont pas disponibles pour le moment.')
+      expect(placeholders.length).toBeGreaterThan(0)
+    } finally {
+      warnSpy.mockRestore()
+      errorSpy.mockRestore()
+    }
+  })
 })

@@ -961,7 +961,7 @@ describe("Workflow d'inventaire", () => {
         inventory.setCountType(CountType.Count1)
         inventory.setLocation({ ...reserveLocation })
         inventory.setSessionId('run-lock-1')
-        inventory.addOrIncrementItem({ ean: '1234567890123', name: 'Popcorn caramel' })
+        inventory.addOrIncrementItem({ sku: 'SKU-POP', ean: '1234567890123', name: 'Popcorn caramel' })
       },
     })
 
@@ -993,8 +993,8 @@ describe("Workflow d'inventaire", () => {
         inventory.setCountType(CountType.Count1)
         inventory.setLocation({ ...reserveLocation })
         inventory.clearSession()
-        inventory.addOrIncrementItem({ ean: '001', name: 'Produit A' })
-        inventory.addOrIncrementItem({ ean: '0000', name: 'Produit B' })
+        inventory.addOrIncrementItem({ sku: 'SKU-A', ean: '001', name: 'Produit A' })
+        inventory.addOrIncrementItem({ sku: 'SKU-B', ean: '0000', name: 'Produit B' })
       },
     })
 
@@ -1042,7 +1042,7 @@ describe("Workflow d'inventaire", () => {
         inventory.setCountType(CountType.Count1)
         inventory.setLocation({ ...reserveLocation })
         inventory.clearSession()
-        inventory.addOrIncrementItem({ ean: '1234567890123', name: 'Popcorn caramel' })
+        inventory.addOrIncrementItem({ sku: 'SKU-POP', ean: '1234567890123', name: 'Popcorn caramel' })
       },
     })
 

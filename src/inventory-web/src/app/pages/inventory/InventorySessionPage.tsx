@@ -664,6 +664,7 @@ export const InventorySessionPage = () => {
     }
 
     const product: Product = {
+      sku: '',
       ean: sanitizedEan,
       name: `Produit inconnu EAN ${sanitizedEan}`,
     }
@@ -1169,7 +1170,9 @@ export const InventorySessionPage = () => {
             >
               <div>
                 <p className="text-lg font-semibold text-slate-900 dark:text-white">{item.product.name}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">EAN {item.product.ean}</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  SKU {item.product.sku || '—'} • EAN {item.product.ean || '—'}
+                </p>
                 {item.isManual && <p className="text-xs text-amber-600 dark:text-amber-300">Ajout manuel</p>}
               </div>
               <div className="flex items-center gap-3">

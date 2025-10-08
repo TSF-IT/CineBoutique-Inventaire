@@ -341,6 +341,9 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
                 <article key={item.productId} className="conflict-card">
                   <header className="conflict-card__header">
                     <p className="conflict-card__ean">
+                      <span className="conflict-card__label">SKU</span> {item.sku || '—'}
+                    </p>
+                    <p className="conflict-card__ean">
                       <span className="conflict-card__label">EAN</span> {item.ean}
                     </p>
                   </header>

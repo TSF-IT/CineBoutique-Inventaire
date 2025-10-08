@@ -179,6 +179,7 @@ public sealed class ConflictZoneDetailEndpointTests : IAsyncLifetime
         Assert.All(payload.Items, item => Assert.Equal(payload.Runs.Count, item.AllCounts.Count));
 
         var firstItem = Assert.Single(payload.Items, item => item.ProductId == product1Id);
+        Assert.Equal("SKU-1", firstItem.Sku);
         Assert.Equal("111", firstItem.Ean);
         Assert.Equal(5, firstItem.QtyC1);
         Assert.Equal(8, firstItem.QtyC2);
@@ -187,6 +188,7 @@ public sealed class ConflictZoneDetailEndpointTests : IAsyncLifetime
         Assert.Contains(firstItem.AllCounts, count => count.RunId == run2Id && count.CountType == 2 && count.Quantity == 8);
 
         var secondItem = Assert.Single(payload.Items, item => item.ProductId == product2Id);
+        Assert.Equal("SKU-2", secondItem.Sku);
         Assert.Equal("222", secondItem.Ean);
         Assert.Equal(3, secondItem.QtyC1);
         Assert.Equal(1, secondItem.QtyC2);

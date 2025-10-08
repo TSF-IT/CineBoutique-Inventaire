@@ -152,6 +152,7 @@ describe('InventorySessionPage - ajout manuel', () => {
       expect(startInventoryRunMock).toHaveBeenCalled()
       expect(addOrIncrementItemMock).toHaveBeenCalledWith(
         {
+          sku: '',
           ean: '12345678',
           name: 'Produit inconnu EAN 12345678',
         },

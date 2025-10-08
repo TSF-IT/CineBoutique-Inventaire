@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ThemeProvider } from '../../theme/ThemeProvider'
 import { HomePage } from '../pages/home/HomePage'
 import { ShopProvider } from '@/state/ShopContext'
+import { InventoryProvider } from '../contexts/InventoryContext'
 import type { InventorySummary, Location } from '../types/inventory'
 import type { LocationSummary } from '@/types/summary'
 
@@ -163,9 +164,11 @@ describe('HomePage', () => {
     render(
       <ThemeProvider>
         <ShopProvider>
-          <MemoryRouter>
-            <HomePage />
-          </MemoryRouter>
+          <InventoryProvider>
+            <MemoryRouter>
+              <HomePage />
+            </MemoryRouter>
+          </InventoryProvider>
         </ShopProvider>
       </ThemeProvider>,
     )
@@ -209,9 +212,11 @@ describe('HomePage', () => {
     render(
       <ThemeProvider>
         <ShopProvider>
-          <MemoryRouter>
-            <HomePage />
-          </MemoryRouter>
+          <InventoryProvider>
+            <MemoryRouter>
+              <HomePage />
+            </MemoryRouter>
+          </InventoryProvider>
         </ShopProvider>
       </ThemeProvider>,
     )
