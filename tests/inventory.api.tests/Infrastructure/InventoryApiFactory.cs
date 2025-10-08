@@ -1,6 +1,6 @@
-using System;
-using System.Collections.Generic;
-using System.Net.Http;
+using System.Linq;
+using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -34,10 +34,25 @@ public sealed class InventoryApiFactory : WebApplicationFactory<Program>
                 ["RunMigrationsOnStart"] = "false",
                 ["AppSettings:SeedOnStartup"] = "false"
             };
-
             configurationBuilder.AddInMemoryCollection(overrides!);
         });
+
+        // >>> clé: on remplace les services DB pour stopper 127.0.0.1
+        builder.ConfigureServices(services =>
+        {
+            var doomed = services.Where(d =>
+                    d.ServiceType == typeof(NpgsqlDataSource) ||
+                    d.ServiceType == typeof(NpgsqlConnection))
+                .ToList();
+
+            foreach (var d in doomed)
+                services.Remove(d);
+
+            services.AddSingleton(_ => NpgsqlDataSource.Create(_connectionString));
+            services.AddScoped(sp => sp.GetRequiredService<NpgsqlDataSource>().CreateConnection());
+        });
     }
+
 
     protected override void ConfigureClient(HttpClient client)
     {
