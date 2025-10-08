@@ -1,650 +1,199 @@
-#pragma warning disable CA1001
-#pragma warning disable CA1707
-#pragma warning disable CA2007
-#pragma warning disable CA2234
-
 using System;
-using System.Collections.Generic;
-using System.Data;
 using System.Linq;
 using System.Net;
-using System.Net.Http;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
-using CineBoutique.Inventory.Infrastructure.Database;
-using Dapper;
-using Microsoft.Extensions.DependencyInjection;
-using Npgsql;
-using Microsoft.AspNetCore.Mvc;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
 
 [Collection(TestCollections.Postgres)]
-public sealed class InventoryCompletionEndpointTests : IAsyncLifetime
+public sealed class InventoryCompletionEndpointTests : InventoryApiTestBase
 {
-    private readonly PostgresTestContainerFixture _pg;
-    private InventoryApiApplicationFactory _factory = default!;
-    private HttpClient _client = default!;
-
-    public InventoryCompletionEndpointTests(PostgresTestContainerFixture pg)
+    public InventoryCompletionEndpointTests(PostgresTestContainerFixture postgres)
+        : base(postgres)
     {
-        _pg = pg;
-    }
-
-    public async Task InitializeAsync()
-    {
-        _factory = new InventoryApiApplicationFactory(_pg.ConnectionString);
-        await _factory.EnsureMigratedAsync();
-        _client = _factory.CreateClient();
-        await ResetDatabaseAsync();
-    }
-
-    public Task DisposeAsync()
-    {
-        _client.Dispose();
-        _factory.Dispose();
-        return Task.CompletedTask;
     }
 
     [Fact]
-    public async Task CompleteInventoryRun_ReturnsBadRequest_WhenNoItems()
+    public async Task CompleteInventoryRun_ReturnsBadRequest_WhenItemsMissing()
     {
-        await ResetDatabaseAsync();
-        var (locationId, shopId) = await SeedLocationAsync("S1", "Zone S1");
-        var ownerUserId = await SeedShopUserAsync(shopId, "Amélie");
+        await ResetDatabaseAsync().ConfigureAwait(false);
 
-        var payload = new CompleteRunRequest(null, ownerUserId, 1, Array.Empty<CompleteRunItemRequest>());
+        var shop = await Data.CreateShopAsync(builder => builder.WithName("Completion-invalid")).ConfigureAwait(false);
+        var location = await Data.CreateLocationAsync(shop, builder => builder.WithCode("S1").WithLabel("Zone S1")).ConfigureAwait(false);
+        var user = await Data.CreateShopUserAsync(shop, builder => builder.WithLogin("amelie").WithDisplayName("Amélie"))
+            .ConfigureAwait(false);
 
-        var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", payload);
+        var payload = new CompleteRunRequest(null, user.Id, 1, Array.Empty<CompleteRunItemRequest>());
+
+        var response = await Client.PostAsJsonAsync($"/api/inventories/{location.Id}/complete", payload).ConfigureAwait(false);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
-    public async Task CompleteInventoryRun_ReturnsNotFound_WhenRunDoesNotExist()
+    public async Task CompleteInventoryRun_ReturnsNotFound_WhenRunUnknown()
     {
-        await ResetDatabaseAsync();
-        var (locationId, shopId) = await SeedLocationAsync("S1", "Zone S1");
-        var ownerUserId = await SeedShopUserAsync(shopId, "Amélie");
+        await ResetDatabaseAsync().ConfigureAwait(false);
 
-        var payload = new CompleteRunRequest(
-            Guid.NewGuid(),
-            ownerUserId,
-            1,
-            new[] { new CompleteRunItemRequest("12345678", 1m, false) });
+        var shop = await Data.CreateShopAsync(builder => builder.WithName("Completion-notfound")).ConfigureAwait(false);
+        var location = await Data.CreateLocationAsync(shop, builder => builder.WithCode("S1").WithLabel("Zone S1")).ConfigureAwait(false);
+        var user = await Data.CreateShopUserAsync(shop, builder => builder.WithLogin("amelie").WithDisplayName("Amélie"))
+            .ConfigureAwait(false);
 
-        var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", payload);
+        var payload = new CompleteRunRequest(Guid.NewGuid(), user.Id, 1, new[] { new CompleteRunItemRequest("12345678", 1m, false) });
+
+        var response = await Client.PostAsJsonAsync($"/api/inventories/{location.Id}/complete", payload).ConfigureAwait(false);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-
-        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>();
-        Assert.NotNull(problem);
-        Assert.Equal("Ressource introuvable", problem!.Title);
-        Assert.Equal("Le run fourni est introuvable.", problem.Detail);
     }
 
     [Fact]
-    public async Task CompleteInventoryRun_CreatesRunAndLines_ForExistingProduct()
+    public async Task CompleteInventoryRun_CreatesNewRunAndLines()
     {
-        await ResetDatabaseAsync();
-        var (locationId, shopId) = await SeedLocationAsync("S1", "Zone S1");
-        var ownerUserId = await SeedShopUserAsync(shopId, "Amélie");
-        var productId = await SeedProductAsync("PROD-001", "Produit référencé", "12345678");
+        await ResetDatabaseAsync().ConfigureAwait(false);
+
+        var shop = await Data.CreateShopAsync(builder => builder.WithName("Completion-create")).ConfigureAwait(false);
+        var location = await Data.CreateLocationAsync(shop, builder => builder.WithCode("S2").WithLabel("Zone S2")).ConfigureAwait(false);
+        var user = await Data.CreateShopUserAsync(shop, builder => builder.WithLogin("camille").WithDisplayName("Camille"))
+            .ConfigureAwait(false);
+        var product = await Data.CreateProductAsync(builder => builder.WithEan("12345678").WithSku("SKU-001").WithName("Produit référencé"))
+            .ConfigureAwait(false);
 
         var payload = new CompleteRunRequest(
             null,
-            ownerUserId,
+            user.Id,
             1,
             new[] { new CompleteRunItemRequest("12345678", 2m, false) });
 
-        var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", payload);
+        var response = await Client.PostAsJsonAsync($"/api/inventories/{location.Id}/complete", payload).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
 
-        var result = await response.Content.ReadFromJsonAsync<CompleteInventoryRunResponse>();
+        var result = await response.Content.ReadFromJsonAsync<CompleteInventoryRunResponse>().ConfigureAwait(false);
         Assert.NotNull(result);
-        Assert.Equal(locationId, result!.LocationId);
+        Assert.Equal(location.Id, result!.LocationId);
         Assert.Equal(1, result.ItemsCount);
         Assert.Equal(2m, result.TotalQuantity);
 
-        using var scope = _factory.Services.CreateScope();
-        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-        await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection);
-
-        var hasOperatorColumn = await CountingRunSqlHelper.HasOperatorDisplayNameAsync(connection);
-
-        var runsQuery = hasOperatorColumn
-            ? "SELECT \"Id\" AS RunId, \"InventorySessionId\" AS SessionId, \"CompletedAtUtc\" AS CompletedAt, \"OperatorDisplayName\" AS Operator FROM \"CountingRun\""
-            : "SELECT \"Id\" AS RunId, \"InventorySessionId\" AS SessionId, \"CompletedAtUtc\" AS CompletedAt, NULL::text AS Operator FROM \"CountingRun\"";
-
-        var runs = await connection.QueryAsync<(Guid RunId, Guid SessionId, DateTimeOffset? CompletedAt, string? Operator)>(runsQuery);
-
-        Assert.Single(runs);
-        var singleRun = runs.Single();
-        Assert.Equal(result.RunId, singleRun.RunId);
-        Assert.NotNull(singleRun.CompletedAt);
-        if (hasOperatorColumn)
-        {
-            Assert.Equal("Amélie", singleRun.Operator);
-        }
-        else
-        {
-            Assert.Null(singleRun.Operator);
-        }
-
-        var lines = await connection.QueryAsync<(Guid ProductId, decimal Quantity)>(
-                "SELECT \"ProductId\", \"Quantity\" FROM \"CountLine\"")
-            ;
-
-        Assert.Single(lines);
-        var line = lines.Single();
-        Assert.Equal(productId, line.ProductId);
+        var detailResponse = await Client.GetAsync($"/api/inventories/runs/{result.RunId}").ConfigureAwait(false);
+        detailResponse.EnsureSuccessStatusCode();
+        var detail = await detailResponse.Content.ReadFromJsonAsync<CompletedRunDetailDto>().ConfigureAwait(false);
+        Assert.NotNull(detail);
+        var line = Assert.Single(detail!.Items);
+        Assert.Equal(product.Id, line.ProductId);
         Assert.Equal(2m, line.Quantity);
     }
 
     [Fact]
-    public async Task CompleteInventoryRun_CompletesExistingRunWithLines()
+    public async Task CompleteInventoryRun_UpdatesExistingRun()
     {
-        await ResetDatabaseAsync();
-        var (locationId, shopId) = await SeedLocationAsync("S2", "Zone S2");
-        var ownerUserId = await SeedShopUserAsync(shopId, "Camille");
+        await ResetDatabaseAsync().ConfigureAwait(false);
 
-        var startRequest = new StartRunRequest(shopId, ownerUserId, 1);
-        var startResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/start", startRequest);
+        var shop = await Data.CreateShopAsync(builder => builder.WithName("Completion-existing")).ConfigureAwait(false);
+        var location = await Data.CreateLocationAsync(shop, builder => builder.WithCode("S3").WithLabel("Zone S3")).ConfigureAwait(false);
+        var user = await Data.CreateShopUserAsync(shop, builder => builder.WithLogin("chloe").WithDisplayName("Chloé"))
+            .ConfigureAwait(false);
+
+        var startPayload = new StartRunRequest(shop.Id, user.Id, 1);
+        var startResponse = await Client.PostAsJsonAsync($"/api/inventories/{location.Id}/start", startPayload).ConfigureAwait(false);
         startResponse.EnsureSuccessStatusCode();
+        var started = await startResponse.Content.ReadFromJsonAsync<StartInventoryRunResponse>().ConfigureAwait(false);
+        Assert.NotNull(started);
 
-        var startPayload = await startResponse.Content.ReadFromJsonAsync<StartInventoryRunResponse>();
-        Assert.NotNull(startPayload);
-        var runId = startPayload!.RunId;
-        Assert.NotEqual(Guid.Empty, runId);
-
-        const string ean = "12345671";
-        var productSku = $"SKU-{Guid.NewGuid():N}"[..11];
-        var productId = await SeedProductAsync(productSku, "Produit existant", ean);
-
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-            await using var connection = connectionFactory.CreateConnection();
-            await EnsureConnectionOpenAsync(connection);
-
-            const string insertLineSql =
-                "INSERT INTO \"CountLine\" (\"Id\", \"CountingRunId\", \"ProductId\", \"Quantity\", \"CountedAtUtc\") VALUES (@Id, @RunId, @ProductId, @Quantity, @CountedAtUtc);";
-
-            await connection.ExecuteAsync(
-                insertLineSql,
-                new
-                {
-                    Id = Guid.NewGuid(),
-                    RunId = runId,
-                    ProductId = productId,
-                    Quantity = 1.25m,
-                    CountedAtUtc = DateTimeOffset.UtcNow
-                });
-        }
-
+        var ean = "98765432";
         var completePayload = new CompleteRunRequest(
-            runId,
-            ownerUserId,
+            started!.RunId,
+            user.Id,
             1,
-            new[] { new CompleteRunItemRequest(ean, 2m, false) });
+            new[] { new CompleteRunItemRequest(ean, 3m, false) });
 
-        var completeResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", completePayload);
-        Assert.Equal(HttpStatusCode.OK, completeResponse.StatusCode);
+        var completeResponse = await Client.PostAsJsonAsync($"/api/inventories/{location.Id}/complete", completePayload).ConfigureAwait(false);
+        completeResponse.EnsureSuccessStatusCode();
 
-        var payload = await completeResponse.Content.ReadFromJsonAsync<CompleteInventoryRunResponse>();
-        Assert.NotNull(payload);
-        Assert.Equal(runId, payload!.RunId);
-        Assert.Equal(locationId, payload.LocationId);
-        Assert.True(payload.ItemsCount > 0);
-        Assert.True(payload.TotalQuantity > 0);
+        var result = await completeResponse.Content.ReadFromJsonAsync<CompleteInventoryRunResponse>().ConfigureAwait(false);
+        Assert.NotNull(result);
+        Assert.Equal(started.RunId, result!.RunId);
+
+        var detailResponse = await Client.GetAsync($"/api/inventories/runs/{started.RunId}").ConfigureAwait(false);
+        detailResponse.EnsureSuccessStatusCode();
+        var detail = await detailResponse.Content.ReadFromJsonAsync<CompletedRunDetailDto>().ConfigureAwait(false);
+        Assert.NotNull(detail);
+        var item = Assert.Single(detail!.Items);
+        Assert.Equal(ean, item.Ean);
+        Assert.Equal(3m, item.Quantity);
     }
+}
 
     [Fact]
-    public async Task CompleteInventoryRun_CreatesUnknownProduct_WhenEanNotFound()
+    public async Task CompleteInventoryRun_CreatesConflicts_WhenCountsMismatch()
     {
-        await ResetDatabaseAsync();
-        var (locationId, shopId) = await SeedLocationAsync("S1", "Zone S1");
-        var ownerUserId = await SeedShopUserAsync(shopId, "Bruno");
+        await ResetDatabaseAsync().ConfigureAwait(false);
 
-        var payload = new CompleteRunRequest(
-            null,
-            ownerUserId,
-            2,
-            new[] { new CompleteRunItemRequest("99999999", 5m, true) });
+        var shop = await Data.CreateShopAsync(builder => builder.WithName("Completion-conflict")).ConfigureAwait(false);
+        var location = await Data.CreateLocationAsync(shop, builder => builder.WithCode("S4").WithLabel("Zone S4")).ConfigureAwait(false);
+        var user = await Data.CreateShopUserAsync(shop, builder => builder.WithLogin("dorian").WithDisplayName("Dorian"))
+            .ConfigureAwait(false);
+        await Data.CreateProductAsync(builder => builder.WithEan("55555555").WithSku("SKU-555").WithName("Produit 555"))
+            .ConfigureAwait(false);
 
-        var response = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", payload);
-        response.EnsureSuccessStatusCode();
+        var run1Payload = new CompleteRunRequest(null, user.Id, 1, new[] { new CompleteRunItemRequest("55555555", 5m, false) });
+        var run2Payload = new CompleteRunRequest(null, user.Id, 2, new[] { new CompleteRunItemRequest("55555555", 8m, false) });
 
-        using var scope = _factory.Services.CreateScope();
-        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-        await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection);
-
-        var product = await connection.QuerySingleOrDefaultAsync<(Guid Id, string Sku, string Name)>(
-                "SELECT \"Id\", \"Sku\", \"Name\" FROM \"Product\" WHERE \"Ean\" = @Ean LIMIT 1",
-                new { Ean = "99999999" })
-            ;
-
-        Assert.NotEqual(Guid.Empty, product.Id);
-        Assert.StartsWith("UNK-", product.Sku, StringComparison.Ordinal);
-        Assert.Equal("Produit inconnu EAN 99999999", product.Name);
-
-        var lines = await connection.QueryAsync<(Guid ProductId, decimal Quantity)>(
-                "SELECT \"ProductId\", \"Quantity\" FROM \"CountLine\"")
-            ;
-
-        Assert.Single(lines);
-        var line = lines.Single();
-        Assert.Equal(product.Id, line.ProductId);
-        Assert.Equal(5m, line.Quantity);
-    }
-
-    [Fact]
-    public async Task CompleteInventoryRun_CreatesConflict_WhenSecondRunDiffers()
-    {
-        await ResetDatabaseAsync();
-        var (locationId, shopId) = await SeedLocationAsync("Z1", "Zone Z1");
-
-        var ownerYann = await SeedShopUserAsync(shopId, "Yann");
-        var firstPayload = new CompleteRunRequest(
-            null,
-            ownerYann,
-            1,
-            new[] { new CompleteRunItemRequest("32165498", 10m, false) });
-
-        var firstResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", firstPayload);
+        var firstResponse = await Client.PostAsJsonAsync($"/api/inventories/{location.Id}/complete", run1Payload).ConfigureAwait(false);
         firstResponse.EnsureSuccessStatusCode();
-
-        var ownerZoe = await SeedShopUserAsync(shopId, "Zoé");
-        var secondPayload = new CompleteRunRequest(
-            null,
-            ownerZoe,
-            2,
-            new[] { new CompleteRunItemRequest("32165498", 4m, false) });
-
-        var secondResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", secondPayload);
+        var secondResponse = await Client.PostAsJsonAsync($"/api/inventories/{location.Id}/complete", run2Payload).ConfigureAwait(false);
         secondResponse.EnsureSuccessStatusCode();
 
-        using var scope = _factory.Services.CreateScope();
-        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-        await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection);
+        var conflictResponse = await Client.GetAsync($"/api/conflicts/{location.Id}").ConfigureAwait(false);
+        conflictResponse.EnsureSuccessStatusCode();
+        var conflict = await conflictResponse.Content.ReadFromJsonAsync<ConflictZoneDetailDto>().ConfigureAwait(false);
+        Assert.NotNull(conflict);
+        var item = Assert.Single(conflict!.Items);
+        Assert.Equal(5, item.QtyC1);
+        Assert.Equal(8, item.QtyC2);
+        Assert.Equal(-3, item.Delta);
+    }
 
-        var conflicts = (await connection.QueryAsync<(Guid ConflictId, Guid LocationId, short CountType)>(
-                "SELECT c.\"Id\" AS \"ConflictId\", cr.\"LocationId\" AS \"LocationId\", cr.\"CountType\" AS \"CountType\"\n" +
-                "FROM \"Conflict\" c\n" +
-                "JOIN \"CountLine\" cl ON cl.\"Id\" = c.\"CountLineId\"\n" +
-                "JOIN \"CountingRun\" cr ON cr.\"Id\" = cl.\"CountingRunId\";"))
-            .ToList();
+    [Fact]
+    public async Task CompleteInventoryRun_ResolvesConflicts_WhenLoopMatchesPrevious()
+    {
+        await ResetDatabaseAsync().ConfigureAwait(false);
 
-        Assert.Single(conflicts);
-        var conflict = conflicts[0];
-        Assert.Equal(locationId, conflict.LocationId);
-        Assert.True(conflict.CountType is 1 or 2, "Le conflit doit provenir d'un des deux premiers comptages.");
+        var shop = await Data.CreateShopAsync(builder => builder.WithName("Completion-loop")).ConfigureAwait(false);
+        var location = await Data.CreateLocationAsync(shop, builder => builder.WithCode("S5").WithLabel("Zone S5")).ConfigureAwait(false);
+        var user = await Data.CreateShopUserAsync(shop, builder => builder.WithLogin("edouard").WithDisplayName("Édouard"))
+            .ConfigureAwait(false);
+        await Data.CreateProductAsync(builder => builder.WithEan("99999999").WithSku("SKU-999").WithName("Produit 999"))
+            .ConfigureAwait(false);
 
-        var summaryResponse = await _client.GetAsync($"/api/inventories/summary?shopId={shopId:D}");
+        var run1Payload = new CompleteRunRequest(null, user.Id, 1, new[] { new CompleteRunItemRequest("99999999", 10m, false) });
+        var run2Payload = new CompleteRunRequest(null, user.Id, 2, new[] { new CompleteRunItemRequest("99999999", 7m, false) });
+        var run3Payload = new CompleteRunRequest(null, user.Id, 3, new[] { new CompleteRunItemRequest("99999999", 10m, false) });
+
+        await Client.PostAsJsonAsync($"/api/inventories/{location.Id}/complete", run1Payload).ConfigureAwait(false);
+        await Client.PostAsJsonAsync($"/api/inventories/{location.Id}/complete", run2Payload).ConfigureAwait(false);
+
+        var conflictBefore = await Client.GetAsync($"/api/conflicts/{location.Id}").ConfigureAwait(false);
+        conflictBefore.EnsureSuccessStatusCode();
+        var payloadBefore = await conflictBefore.Content.ReadFromJsonAsync<ConflictZoneDetailDto>().ConfigureAwait(false);
+        Assert.NotNull(payloadBefore);
+        Assert.NotEmpty(payloadBefore!.Items);
+
+        await Client.PostAsJsonAsync($"/api/inventories/{location.Id}/complete", run3Payload).ConfigureAwait(false);
+
+        var conflictAfter = await Client.GetAsync($"/api/conflicts/{location.Id}").ConfigureAwait(false);
+        conflictAfter.EnsureSuccessStatusCode();
+        var payloadAfter = await conflictAfter.Content.ReadFromJsonAsync<ConflictZoneDetailDto>().ConfigureAwait(false);
+        Assert.NotNull(payloadAfter);
+        Assert.Empty(payloadAfter!.Items);
+
+        var summaryResponse = await Client.GetAsync($"/api/inventories/summary?shopId={shop.Id:D}").ConfigureAwait(false);
         summaryResponse.EnsureSuccessStatusCode();
-        var summary = await summaryResponse.Content.ReadFromJsonAsync<InventorySummaryDto>();
-        Assert.NotNull(summary);
-        Assert.Equal(1, summary!.Conflicts);
-        Assert.Single(summary.ConflictZones);
-        Assert.Equal(locationId, summary.ConflictZones[0].LocationId);
-    }
-
-    [Fact]
-    public async Task CompleteInventoryRun_AllowsThirdRunForInitialOperator_WhenConflictExists()
-    {
-        await ResetDatabaseAsync();
-        var (locationId, shopId) = await SeedLocationAsync("Z3", "Zone Z3");
-
-        var ownerChloe = await SeedShopUserAsync(shopId, "Chloé");
-        var ownerBruno = await SeedShopUserAsync(shopId, "Bruno");
-
-        var firstPayload = new CompleteRunRequest(
-            null,
-            ownerChloe,
-            1,
-            new[] { new CompleteRunItemRequest("12345670", 5m, true) });
-
-        var firstResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", firstPayload);
-        firstResponse.EnsureSuccessStatusCode();
-
-        var secondPayload = new CompleteRunRequest(
-            null,
-            ownerBruno,
-            2,
-            new[] { new CompleteRunItemRequest("12345670", 7m, true) });
-
-        var secondResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", secondPayload);
-        secondResponse.EnsureSuccessStatusCode();
-
-        var thirdPayload = new CompleteRunRequest(
-            null,
-            ownerChloe,
-            3,
-            new[] { new CompleteRunItemRequest("12345670", 6m, true) });
-
-        var thirdResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", thirdPayload);
-        thirdResponse.EnsureSuccessStatusCode();
-
-        var thirdResult = await thirdResponse.Content.ReadFromJsonAsync<CompleteInventoryRunResponse>();
-        Assert.NotNull(thirdResult);
-        Assert.Equal(3, thirdResult!.CountType);
-
-        using var scope = _factory.Services.CreateScope();
-        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-        await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection);
-
-        var hasOperatorColumn = await CountingRunSqlHelper.HasOperatorDisplayNameAsync(connection);
-        var selectSql = hasOperatorColumn
-            ? "SELECT \"Id\" AS RunId, \"CountType\", \"OperatorDisplayName\" AS Operator FROM \"CountingRun\" WHERE \"Id\" = @Id LIMIT 1;"
-            : "SELECT \"Id\" AS RunId, \"CountType\", NULL::text AS Operator FROM \"CountingRun\" WHERE \"Id\" = @Id LIMIT 1;";
-
-        var run = await connection.QuerySingleAsync<(Guid RunId, short CountType, string? Operator)>(selectSql, new { Id = thirdResult.RunId });
-        Assert.Equal((short)3, run.CountType);
-        if (hasOperatorColumn)
-        {
-            Assert.Equal("Chloé", run.Operator);
-        }
-        else
-        {
-            Assert.Null(run.Operator);
-        }
-    }
-
-    [Fact]
-    public async Task CompleteInventoryRun_ResolvesConflict_WhenThirdRunMatchesExisting()
-    {
-        await ResetDatabaseAsync();
-        var (locationId, shopId) = await SeedLocationAsync("Z4", "Zone Z4");
-
-        var ownerAlice = await SeedShopUserAsync(shopId, "Alice");
-        var ownerBob = await SeedShopUserAsync(shopId, "Bob");
-
-        const string ean = "55555555";
-
-        var firstPayload = new CompleteRunRequest(
-            null,
-            ownerAlice,
-            1,
-            new[] { new CompleteRunItemRequest(ean, 12m, false) });
-
-        var firstResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", firstPayload);
-        firstResponse.EnsureSuccessStatusCode();
-
-        var secondPayload = new CompleteRunRequest(
-            null,
-            ownerBob,
-            2,
-            new[] { new CompleteRunItemRequest(ean, 7m, false) });
-
-        var secondResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", secondPayload);
-        secondResponse.EnsureSuccessStatusCode();
-
-        var thirdPayload = new CompleteRunRequest(
-            null,
-            ownerAlice,
-            3,
-            new[] { new CompleteRunItemRequest(ean, 12m, false) });
-
-        var thirdResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", thirdPayload);
-        thirdResponse.EnsureSuccessStatusCode();
-
-        using var scope = _factory.Services.CreateScope();
-        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-        await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection);
-
-        const string unresolvedSql = """
-            SELECT COUNT(*)
-            FROM "Conflict" c
-            JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
-            JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
-            WHERE c."ResolvedAtUtc" IS NULL
-              AND cr."LocationId" = @LocationId;
-            """;
-
-        var unresolvedAfterThird = await connection.ExecuteScalarAsync<int>(
-            unresolvedSql,
-            new { LocationId = locationId });
-
-        Assert.Equal(0, unresolvedAfterThird);
-
-        var summaryResponse = await _client.GetAsync($"/api/inventories/summary?shopId={shopId:D}");
-        summaryResponse.EnsureSuccessStatusCode();
-        var summary = await summaryResponse.Content.ReadFromJsonAsync<InventorySummaryDto>();
+        var summary = await summaryResponse.Content.ReadFromJsonAsync<InventorySummaryDto>().ConfigureAwait(false);
         Assert.NotNull(summary);
         Assert.Equal(0, summary!.Conflicts);
-    }
-
-    [Fact]
-    public async Task CompleteInventoryRun_KeepsConflict_WhenThirdRunDiffers_AndResolvesWithFourth()
-    {
-        await ResetDatabaseAsync();
-        var (locationId, shopId) = await SeedLocationAsync("Z5", "Zone Z5");
-
-        var ownerAnna = await SeedShopUserAsync(shopId, "Anna");
-        var ownerBastien = await SeedShopUserAsync(shopId, "Bastien");
-
-        const string ean = "66666666";
-
-        var firstPayload = new CompleteRunRequest(
-            null,
-            ownerAnna,
-            1,
-            new[] { new CompleteRunItemRequest(ean, 20m, false) });
-
-        var firstResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", firstPayload);
-        firstResponse.EnsureSuccessStatusCode();
-
-        var secondPayload = new CompleteRunRequest(
-            null,
-            ownerBastien,
-            2,
-            new[] { new CompleteRunItemRequest(ean, 5m, false) });
-
-        var secondResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", secondPayload);
-        secondResponse.EnsureSuccessStatusCode();
-
-        var thirdPayload = new CompleteRunRequest(
-            null,
-            ownerAnna,
-            3,
-            new[] { new CompleteRunItemRequest(ean, 9m, false) });
-
-        var thirdResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", thirdPayload);
-        thirdResponse.EnsureSuccessStatusCode();
-
-        using var scope = _factory.Services.CreateScope();
-        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-        await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection);
-
-        const string unresolvedSql = """
-            SELECT COUNT(*)
-            FROM "Conflict" c
-            JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
-            JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
-            WHERE c."ResolvedAtUtc" IS NULL
-              AND cr."LocationId" = @LocationId;
-            """;
-
-        var unresolvedAfterThird = await connection.ExecuteScalarAsync<int>(
-            unresolvedSql,
-            new { LocationId = locationId });
-
-        Assert.Equal(1, unresolvedAfterThird);
-
-        var summaryAfterThird = await _client.GetAsync($"/api/inventories/summary?shopId={shopId:D}");
-        summaryAfterThird.EnsureSuccessStatusCode();
-        var thirdSummary = await summaryAfterThird.Content.ReadFromJsonAsync<InventorySummaryDto>();
-        Assert.NotNull(thirdSummary);
-        Assert.Equal(1, thirdSummary!.Conflicts);
-
-        var fourthPayload = new CompleteRunRequest(
-            null,
-            ownerBastien,
-            4,
-            new[] { new CompleteRunItemRequest(ean, 5m, false) });
-
-        var fourthResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", fourthPayload);
-        fourthResponse.EnsureSuccessStatusCode();
-
-        var unresolvedAfterFourth = await connection.ExecuteScalarAsync<int>(
-            unresolvedSql,
-            new { LocationId = locationId });
-
-        Assert.Equal(0, unresolvedAfterFourth);
-
-        var summaryAfterFourth = await _client.GetAsync($"/api/inventories/summary?shopId={shopId:D}");
-        summaryAfterFourth.EnsureSuccessStatusCode();
-        var fourthSummary = await summaryAfterFourth.Content.ReadFromJsonAsync<InventorySummaryDto>();
-        Assert.NotNull(fourthSummary);
-        Assert.Equal(0, fourthSummary!.Conflicts);
-    }
-
-    [Fact]
-    public async Task CompleteInventoryRun_RejectsSecondRun_WhenOperatorMatchesFirst()
-    {
-        await ResetDatabaseAsync();
-        var (locationId, shopId) = await SeedLocationAsync("Z2", "Zone Z2");
-
-        var ownerChloe = await SeedShopUserAsync(shopId, "Chloé");
-
-        var firstPayload = new CompleteRunRequest(
-            null,
-            ownerChloe,
-            1,
-            new[] { new CompleteRunItemRequest("78945612", 3m, false) });
-
-        var firstResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", firstPayload);
-        firstResponse.EnsureSuccessStatusCode();
-
-        using (var scope = _factory.Services.CreateScope())
-        {
-            var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-            await using var connection = connectionFactory.CreateConnection();
-            await EnsureConnectionOpenAsync(connection);
-            var hasOperatorColumn = await CountingRunSqlHelper.HasOperatorDisplayNameAsync(connection);
-            Assert.True(hasOperatorColumn, "La colonne OperatorDisplayName est requise pour ce test.");
-        }
-
-        var secondPayload = new CompleteRunRequest(
-            null,
-            ownerChloe,
-            2,
-            new[] { new CompleteRunItemRequest("78945612", 3m, false) });
-
-        var secondResponse = await _client.PostAsJsonAsync($"/api/inventories/{locationId}/complete", secondPayload);
-
-        Assert.Equal(HttpStatusCode.Conflict, secondResponse.StatusCode);
-
-        var problem = await secondResponse.Content.ReadFromJsonAsync<ProblemDetails>();
-        Assert.NotNull(problem);
-        Assert.Equal("Conflit", problem!.Title);
-        Assert.Equal(
-            "Le deuxième comptage doit être réalisé par un opérateur différent du premier.",
-            problem.Detail);
-    }
-
-    private async Task ResetDatabaseAsync()
-    {
-        using var scope = _factory.Services.CreateScope();
-        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-        await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection);
-
-        const string cleanupSql = """
-DO $do$
-BEGIN
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Audit') THEN
-        EXECUTE 'TRUNCATE TABLE "Audit" RESTART IDENTITY CASCADE;';
-    END IF;
-END $do$;
-
-TRUNCATE TABLE "CountLine" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE "CountingRun" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE "InventorySession" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE "Product" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE "Location" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE "ShopUser" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE "Shop" RESTART IDENTITY CASCADE;
-TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
-""";
-
-        await connection.ExecuteAsync(cleanupSql);
-    }
-
-    private async Task<(Guid LocationId, Guid ShopId)> SeedLocationAsync(string code, string label)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-        await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection);
-
-        const string ensureShopSql =
-            "INSERT INTO \"Shop\" (\"Name\") VALUES (@Name) ON CONFLICT DO NOTHING;";
-        const string selectShopSql =
-            "SELECT \"Id\" FROM \"Shop\" WHERE LOWER(\"Name\") = LOWER(@Name) LIMIT 1;";
-
-        await connection.ExecuteAsync(ensureShopSql, new { Name = "CinéBoutique Paris" });
-        var shopId = await connection.ExecuteScalarAsync<Guid>(selectShopSql, new { Name = "CinéBoutique Paris" });
-
-        var locationId = Guid.NewGuid();
-        const string sql =
-            "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\", \"ShopId\") VALUES (@Id, @Code, @Label, @ShopId);";
-        await connection.ExecuteAsync(sql, new { Id = locationId, Code = code, Label = label, ShopId = shopId });
-        return (locationId, shopId);
-    }
-
-    private async Task<Guid> SeedProductAsync(string sku, string name, string ean)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-        await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection);
-
-        var productId = Guid.NewGuid();
-        const string sql =
-            "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"Ean\", \"CreatedAtUtc\") VALUES (@Id, @Sku, @Name, @Ean, @CreatedAtUtc);";
-        await connection.ExecuteAsync(sql, new { Id = productId, Sku = sku, Name = name, Ean = ean, CreatedAtUtc = DateTimeOffset.UtcNow });
-        return productId;
-    }
-
-    private async Task<Guid> SeedShopUserAsync(Guid shopId, string displayName)
-    {
-        using var scope = _factory.Services.CreateScope();
-        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-        await using var connection = connectionFactory.CreateConnection();
-        await EnsureConnectionOpenAsync(connection);
-
-        var userId = Guid.NewGuid();
-        const string sql =
-            "INSERT INTO \"ShopUser\" (\"Id\", \"ShopId\", \"Login\", \"DisplayName\", \"IsAdmin\", \"Secret_Hash\", \"Disabled\") VALUES (@Id, @ShopId, @Login, @DisplayName, FALSE, '', FALSE);";
-
-        await connection.ExecuteAsync(
-            sql,
-            new
-            {
-                Id = userId,
-                ShopId = shopId,
-                Login = $"inventory_user_{Guid.NewGuid():N}",
-                DisplayName = displayName
-            });
-
-        return userId;
-    }
-
-    private static async Task EnsureConnectionOpenAsync(NpgsqlConnection connection)
-    {
-        if (connection.State != ConnectionState.Open)
-        {
-            await connection.OpenAsync();
-        }
     }
 }

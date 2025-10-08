@@ -1,185 +1,81 @@
-#pragma warning disable CA1001
-#pragma warning disable CA1707
-#pragma warning disable CA2007
-#pragma warning disable CA2234
-
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
+using System.Net.Http.Json;
 using System.Threading.Tasks;
+using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
-using CineBoutique.Inventory.Infrastructure.Database;
-using Dapper;
-using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
 
 [Collection(TestCollections.Postgres)]
-public sealed class CountingRunOwnershipTests : IAsyncLifetime
+public sealed class CountingRunOwnershipTests : InventoryApiTestBase
 {
-    private readonly PostgresTestContainerFixture _pg;
-    private InventoryApiApplicationFactory _factory = default!;
-
-    public CountingRunOwnershipTests(PostgresTestContainerFixture pg)
+    public CountingRunOwnershipTests(PostgresTestContainerFixture postgres)
+        : base(postgres)
     {
-        _pg = pg;
-    }
-
-    public async Task InitializeAsync()
-    {
-        _factory = new InventoryApiApplicationFactory(_pg.ConnectionString);
-        await _factory.EnsureMigratedAsync();
-        await ResetDatabaseAsync();
-    }
-
-    public Task DisposeAsync()
-    {
-        _factory.Dispose();
-        return Task.CompletedTask;
     }
 
     [Fact]
-    public async Task OwnerUserId_AllowsOptionalJoinWithShopUser()
+    public async Task InventorySummary_UsesOwnerDisplayName_WhenOwnerAssigned()
     {
-        await ResetDatabaseAsync();
+        await ResetDatabaseAsync().ConfigureAwait(false);
 
-        using var scope = _factory.Services.CreateScope();
-        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-        await using var connection = await connectionFactory.CreateOpenConnectionAsync(CancellationToken.None);
+        var now = DateTimeOffset.UtcNow;
+        var shop = await Data.CreateShopAsync(builder => builder.WithName("Ownership-shop")).ConfigureAwait(false);
+        var location = await Data.CreateLocationAsync(shop, builder => builder.WithCode("Z1").WithLabel("Zone 1")).ConfigureAwait(false);
+        var user = await Data.CreateShopUserAsync(shop, builder => builder.WithDisplayName("Camille").WithLogin("camille"))
+            .ConfigureAwait(false);
+        var session = await Data.CreateInventorySessionAsync(builder => builder.StartedAt(now.AddHours(-1)).CompletedAt(now.AddMinutes(-10)))
+            .ConfigureAwait(false);
+        await Data.CreateCountingRunAsync(
+            session,
+            location,
+            builder => builder
+                .WithCountType(1)
+                .StartedAt(now.AddHours(-1))
+                .CompletedAt(now.AddMinutes(-10))
+                .WithOwner(user.Id)
+                .WithOperatorDisplayName("Camille"))
+            .ConfigureAwait(false);
 
-        var hasOwnerColumn = await CountingRunSqlHelper.HasOwnerUserIdAsync(connection);
-        Assert.True(hasOwnerColumn, "La colonne OwnerUserId est requise pour ce test.");
+        var response = await Client.GetAsync($"/api/inventories/summary?shopId={shop.Id:D}").ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
 
-        var shopId = Guid.NewGuid();
-        await connection.ExecuteAsync(
-            "INSERT INTO \"Shop\" (\"Id\", \"Name\") VALUES (@Id, @Name);",
-            new { Id = shopId, Name = $"Boutique test {Guid.NewGuid():N}" });
-
-        var locationId = Guid.NewGuid();
-        await connection.ExecuteAsync(
-            "INSERT INTO \"Location\" (\"Id\", \"Code\", \"Label\", \"ShopId\") VALUES (@Id, @Code, @Label, @ShopId);",
-            new
-            {
-                Id = locationId,
-                Code = "Z1",
-                Label = "Zone Z1",
-                ShopId = shopId
-            });
-
-        var sessionWithOwnerId = Guid.NewGuid();
-        await connection.ExecuteAsync(
-            "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc);",
-            new
-            {
-                Id = sessionWithOwnerId,
-                Name = "Session propriétaire",
-                StartedAtUtc = DateTimeOffset.UtcNow
-            });
-
-        var sessionWithoutOwnerId = Guid.NewGuid();
-        await connection.ExecuteAsync(
-            "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc);",
-            new
-            {
-                Id = sessionWithoutOwnerId,
-                Name = "Session libre",
-                StartedAtUtc = DateTimeOffset.UtcNow
-            });
-
-        var ownerUserId = await connection.ExecuteScalarAsync<Guid>(
-            """
-            INSERT INTO "ShopUser" ("ShopId", "Login", "DisplayName", "IsAdmin", "Secret_Hash", "Disabled")
-            VALUES (@ShopId, @Login, @DisplayName, FALSE, '', FALSE)
-            RETURNING "Id";
-            """,
-            new
-            {
-                ShopId = shopId,
-                Login = "compteur1",
-                DisplayName = "Camille Compteur"
-            });
-
-        var startedAt = DateTimeOffset.UtcNow.AddMinutes(-5);
-        var completedAt = startedAt.AddMinutes(2);
-
-        var runWithOwnerId = Guid.NewGuid();
-        await CountingRunSqlHelper.InsertAsync(
-            connection,
-            new CountingRunInsert(
-                runWithOwnerId,
-                sessionWithOwnerId,
-                locationId,
-                CountType: 1,
-                StartedAtUtc: startedAt,
-                CompletedAtUtc: completedAt,
-                OperatorDisplayName: "Camille Compteur",
-                OwnerUserId: ownerUserId),
-            CancellationToken.None);
-
-        var runWithoutOwnerId = Guid.NewGuid();
-        await CountingRunSqlHelper.InsertAsync(
-            connection,
-            new CountingRunInsert(
-                runWithoutOwnerId,
-                sessionWithoutOwnerId,
-                locationId,
-                CountType: 2,
-                StartedAtUtc: startedAt,
-                CompletedAtUtc: completedAt,
-                OperatorDisplayName: "Équipe nuit"),
-            CancellationToken.None);
-
-        const string joinSql =
-            """
-            SELECT cr."Id" AS RunId, su."DisplayName" AS OwnerDisplayName
-            FROM "CountingRun" cr
-            LEFT JOIN "ShopUser" su ON su."Id" = cr."OwnerUserId"
-            WHERE cr."Id" = ANY(@RunIds)
-            ORDER BY cr."Id";
-            """;
-
-        var rows = (await connection.QueryAsync<(Guid RunId, string? OwnerDisplayName)>(
-                joinSql,
-                new { RunIds = new[] { runWithOwnerId, runWithoutOwnerId } }))
-            .ToList();
-
-        Assert.Equal(2, rows.Count);
-
-        var ownedRun = Assert.Single(rows.Where(row => row.RunId == runWithOwnerId));
-        Assert.Equal("Camille Compteur", ownedRun.OwnerDisplayName);
-
-        var unownedRun = Assert.Single(rows.Where(row => row.RunId == runWithoutOwnerId));
-        Assert.Null(unownedRun.OwnerDisplayName);
+        var payload = await response.Content.ReadFromJsonAsync<InventorySummaryDto>().ConfigureAwait(false);
+        Assert.NotNull(payload);
+        var completedRun = Assert.Single(payload!.CompletedRunDetails);
+        Assert.Equal(user.Id, completedRun.OwnerUserId);
+        Assert.Equal("Camille", completedRun.OwnerDisplayName);
     }
 
-    private async Task ResetDatabaseAsync()
+    [Fact]
+    public async Task InventorySummary_FallsBackToOperator_WhenOwnerMissing()
     {
-        using var scope = _factory.Services.CreateScope();
-        var connectionFactory = scope.ServiceProvider.GetRequiredService<IDbConnectionFactory>();
-        await using var connection = await connectionFactory.CreateOpenConnectionAsync(CancellationToken.None);
+        await ResetDatabaseAsync().ConfigureAwait(false);
 
-        const string cleanupSql =
-            """
-            DO $do$
-            BEGIN
-                IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'Audit') THEN
-                    EXECUTE 'TRUNCATE TABLE "Audit" RESTART IDENTITY CASCADE;';
-                END IF;
-            END $do$;
+        var now = DateTimeOffset.UtcNow;
+        var shop = await Data.CreateShopAsync(builder => builder.WithName("Ownership-fallback")).ConfigureAwait(false);
+        var location = await Data.CreateLocationAsync(shop, builder => builder.WithCode("Z2").WithLabel("Zone 2")).ConfigureAwait(false);
+        var session = await Data.CreateInventorySessionAsync(builder => builder.StartedAt(now.AddHours(-1)).CompletedAt(now.AddMinutes(-5)))
+            .ConfigureAwait(false);
+        await Data.CreateCountingRunAsync(
+            session,
+            location,
+            builder => builder
+                .WithCountType(1)
+                .StartedAt(now.AddHours(-1))
+                .CompletedAt(now.AddMinutes(-5))
+                .WithOperatorDisplayName("Équipe nuit"))
+            .ConfigureAwait(false);
 
-            TRUNCATE TABLE "Conflict" RESTART IDENTITY CASCADE;
-            TRUNCATE TABLE "CountLine" RESTART IDENTITY CASCADE;
-            TRUNCATE TABLE "CountingRun" RESTART IDENTITY CASCADE;
-            TRUNCATE TABLE "InventorySession" RESTART IDENTITY CASCADE;
-            TRUNCATE TABLE "Location" RESTART IDENTITY CASCADE;
-            TRUNCATE TABLE "ShopUser" RESTART IDENTITY CASCADE;
-            TRUNCATE TABLE "Shop" RESTART IDENTITY CASCADE;
-            TRUNCATE TABLE "Product" RESTART IDENTITY CASCADE;
-            TRUNCATE TABLE "audit_logs" RESTART IDENTITY CASCADE;
-            """;
+        var response = await Client.GetAsync($"/api/inventories/summary?shopId={shop.Id:D}").ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
 
-        await connection.ExecuteAsync(cleanupSql);
+        var payload = await response.Content.ReadFromJsonAsync<InventorySummaryDto>().ConfigureAwait(false);
+        Assert.NotNull(payload);
+        var completedRun = Assert.Single(payload!.CompletedRunDetails);
+        Assert.Null(completedRun.OwnerUserId);
+        Assert.Equal("Équipe nuit", completedRun.OwnerDisplayName);
     }
 }
