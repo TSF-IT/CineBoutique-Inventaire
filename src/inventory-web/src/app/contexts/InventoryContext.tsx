@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useMemo, useState } from 'react
 import type { InventoryItem, InventoryLogEntry, InventoryLogEventType, Location, Product } from '../types/inventory'
 import type { ShopUser } from '@/types/user'
 
-interface InventoryContextValue {
+export interface InventoryContextValue {
   selectedUser: ShopUser | null
   countType: number | null
   location: Location | null
@@ -234,7 +234,20 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
       logEvent,
       clearLogs,
     }),
-    [state],
+    [
+      state,
+      addOrIncrementItem,
+      clearLogs,
+      clearSession,
+      logEvent,
+      removeItem,
+      reset,
+      setCountType,
+      setLocation,
+      setQuantity,
+      setSelectedUser,
+      setSessionId,
+    ],
   )
 
   return <InventoryContext.Provider value={value}>{children}</InventoryContext.Provider>
