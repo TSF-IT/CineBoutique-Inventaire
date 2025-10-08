@@ -20,6 +20,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="Isopoh.Cryptography.Argon2" />
     <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Xunit.SkippableFact" />
 
     <!-- Testcontainers v3 (nouveaux IDs de package) -->
     <PackageReference Include="Testcontainers" />
