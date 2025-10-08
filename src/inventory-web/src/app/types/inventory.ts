@@ -82,6 +82,7 @@ export interface ConflictRunHeader {
 }
 
 export interface ConflictZoneItem {
+  sku?: string
   ean: string
   productId: string
   qtyC1: number

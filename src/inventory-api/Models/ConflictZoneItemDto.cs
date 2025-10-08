@@ -5,6 +5,8 @@ namespace CineBoutique.Inventory.Api.Models;
 
 public sealed class ConflictZoneItemDto
 {
+    public string Sku { get; set; } = string.Empty;
+
     public string Ean { get; set; } = string.Empty;
 
     public Guid ProductId { get; set; }
