@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using Xunit;
+using CineBoutique.Inventory.Api.Tests.Helpers;
 
 namespace CineBoutique.Inventory.Api.Tests.Fixtures;
 
@@ -132,6 +133,19 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
         await ResetDatabaseSchemaAsync().ConfigureAwait(false);
     }
 
+    public async Task ResetAndSeedAsync(Func<TestDataSeeder, Task> plan)
+    {
+        if (!IsDockerAvailable)
+            return;
+
+        ArgumentNullException.ThrowIfNull(plan);
+
+        await DbResetAsync().ConfigureAwait(false);
+        EnsureInitialized();
+
+        await plan(Seeder).ConfigureAwait(false);
+    }
+
     private void EnsureInitialized()
     {
         if (!_initialized || _dataSource is null || _factory is null || string.IsNullOrWhiteSpace(_connectionString))
@@ -201,8 +215,8 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
 
     private PostgresContainerFixture GetOrCachePostgres()
     {
-        if (_postgres is { } existing)
-            return existing;
+        if (_postgres != null)
+            return _postgres;
 
         var fixture = PostgresContainerFixture.Instance
             ?? throw new InvalidOperationException("PostgresContainerFixture n'est pas initialisée.");
