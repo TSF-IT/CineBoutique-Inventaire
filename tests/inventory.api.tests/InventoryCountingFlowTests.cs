@@ -58,7 +58,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
                 primaryRun.RunId,
                 primaryUserId,
                 1,
-                new[] { new CompleteRunItemRequest(productEan, 5, false) })).ConfigureAwait(false);
+                new[] { new CompleteRunItemRequest(productSku, 5, false) })).ConfigureAwait(false);
 
         completePrimary.StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -78,7 +78,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
                 secondaryRun.RunId,
                 secondaryUserId,
                 2,
-                new[] { new CompleteRunItemRequest(productEan, 3, false) })).ConfigureAwait(false);
+                new[] { new CompleteRunItemRequest(productSku, 3, false) })).ConfigureAwait(false);
 
         completeMismatch.StatusCode.Should().Be(HttpStatusCode.OK);
 
@@ -122,7 +122,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
                 restartedRun!.RunId,
                 secondaryUserId,
                 2,
-                new[] { new CompleteRunItemRequest(productEan, 5, false) })).ConfigureAwait(false);
+                new[] { new CompleteRunItemRequest(productSku, 5, false) })).ConfigureAwait(false);
 
         completeAligned.StatusCode.Should().Be(HttpStatusCode.OK);
 
