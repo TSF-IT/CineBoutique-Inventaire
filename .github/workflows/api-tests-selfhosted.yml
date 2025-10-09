@@ -7,9 +7,13 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+concurrency:
+  group: api-tests-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   tests:
-    runs-on: [self-hosted, linux, tsf-inventaire]  # <= utiliser exactement ces labels
+    runs-on: [self-hosted, linux, tsf-inventaire]   # <— labels de mon runner
     timeout-minutes: 40
     permissions:
       contents: read
@@ -51,12 +55,11 @@ jobs:
         run: |
           for i in {1..30}; do
             pg_isready -h 127.0.0.1 -p 5432 -U postgres && exit 0
-            echo "Waiting for Postgres... ($i/30)"
-            sleep 2
+            echo "Waiting for Postgres... ($i/30)"; sleep 2
           done
-          echo "Postgres not ready" && exit 1
+          echo "Postgres not ready"; exit 1
 
-      - name: Test (integration)
+      - name: Test (all)
         run: dotnet test tests/inventory.api.tests/CineBoutique.Inventory.Api.Tests.csproj -c Release --logger "trx;LogFileName=test_results.trx"
 
       - name: Publish TRX
