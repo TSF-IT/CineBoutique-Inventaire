@@ -23,7 +23,7 @@ export const PageShell = ({
       style={style}
       {...rest}
     >
-      <main className={clsx('layout-main container', mainClassName)}>
+      <main className={clsx('layout-main cb-container', mainClassName)}>
         {header ?? null}
         {children}
       </main>
