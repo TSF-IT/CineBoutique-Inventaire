@@ -13,7 +13,7 @@ using Xunit;
 namespace CineBoutique.Inventory.Api.Tests;
 
 [Collection("api-tests")]
-public sealed class ShopCrudTests : IntegrationTestBase, IAsyncLifetime
+public sealed class ShopCrudTests : IntegrationTestBase
 {
     public ShopCrudTests(InventoryApiFixture fx) { UseFixture(fx); }
 
@@ -24,44 +24,54 @@ public sealed class ShopCrudTests : IntegrationTestBase, IAsyncLifetime
 
         var client = CreateClient();
 
-        var createResponse = await client
-            .PostAsJsonAsync(
-                client.CreateRelativeUri("/api/shops"),
-                new CreateShopRequest { Name = "Boutique Marseille" }).ConfigureAwait(true);
+        // Create
+        var createResponse = await client.PostAsJsonAsync(
+            client.CreateRelativeUri("/api/shops"),
+            new CreateShopRequest { Name = "Boutique Marseille" }
+        ).ConfigureAwait(false);
+
         createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
-        var createdShop = await createResponse.Content.ReadFromJsonAsync<ShopDto>().ConfigureAwait(true);
+
+        var createdShop = await createResponse.Content.ReadFromJsonAsync<ShopDto>().ConfigureAwait(false);
         createdShop.Should().NotBeNull();
         createdShop!.Name.Should().Be("Boutique Marseille");
 
-        var listResponse = await client.GetAsync(client.CreateRelativeUri("/api/shops")).ConfigureAwait(true);
+        // List
+        var listResponse = await client.GetAsync(client.CreateRelativeUri("/api/shops")).ConfigureAwait(false);
         listResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var shops = await listResponse.Content.ReadFromJsonAsync<ShopDto[]>().ConfigureAwait(true);
+
+        var shops = await listResponse.Content.ReadFromJsonAsync<ShopDto[]>().ConfigureAwait(false);
         shops.Should().NotBeNull();
         shops!.Should().ContainSingle(shop => shop.Id == createdShop.Id);
 
-        var updateResponse = await client
-            .PutAsJsonAsync(
-                client.CreateRelativeUri("/api/shops"),
-                new UpdateShopRequest
-                {
-                    Id = createdShop.Id,
-                    Name = "Boutique Marseille - Renommée"
-                }).ConfigureAwait(true);
+        // Update
+        var updateResponse = await client.PutAsJsonAsync(
+            client.CreateRelativeUri("/api/shops"),
+            new UpdateShopRequest { Id = createdShop.Id, Name = "Boutique Marseille - Renommée" }
+        ).ConfigureAwait(false);
+
         updateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var updatedShop = await updateResponse.Content.ReadFromJsonAsync<ShopDto>().ConfigureAwait(true);
+
+        var updatedShop = await updateResponse.Content.ReadFromJsonAsync<ShopDto>().ConfigureAwait(false);
         updatedShop.Should().NotBeNull();
         updatedShop!.Name.Should().Be("Boutique Marseille - Renommée");
 
-        using var deleteRequest = new HttpRequestMessage(HttpMethod.Delete, client.CreateRelativeUri("/api/shops"))
+        // Delete
+        using var deleteRequest = new HttpRequestMessage(
+            HttpMethod.Delete,
+            client.CreateRelativeUri("/api/shops"))
         {
             Content = JsonContent.Create(new DeleteShopRequest { Id = createdShop.Id })
         };
-        var deleteResponse = await client.SendAsync(deleteRequest).ConfigureAwait(true);
+
+        var deleteResponse = await client.SendAsync(deleteRequest).ConfigureAwait(false);
         deleteResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
 
-        var finalListResponse = await client.GetAsync(client.CreateRelativeUri("/api/shops")).ConfigureAwait(true);
+        // Final list (shop doit avoir disparu)
+        var finalListResponse = await client.GetAsync(client.CreateRelativeUri("/api/shops")).ConfigureAwait(false);
         finalListResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var finalShops = await finalListResponse.Content.ReadFromJsonAsync<ShopDto[]>().ConfigureAwait(true);
+
+        var finalShops = await finalListResponse.Content.ReadFromJsonAsync<ShopDto[]>().ConfigureAwait(false);
         finalShops.Should().NotBeNull();
         finalShops!.Should().NotContain(shop => shop.Id == createdShop.Id);
     }
