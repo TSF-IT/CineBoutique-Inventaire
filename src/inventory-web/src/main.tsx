@@ -4,10 +4,11 @@ import './index.css'
 import { App } from './App'
 import { initializeTheme } from './app/utils/theme'
 import { ShopProvider } from './state/ShopContext'
-import { enablePwa } from './pwa/sw-register'
+if (import.meta.env.PROD) {
+  import('./pwa/sw-register').then(m => m.setupPWA())
+}
 
 initializeTheme()
-enablePwa()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
