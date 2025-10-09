@@ -2,9 +2,9 @@ name: API Integration Tests (self-hosted)
 
 on:
   push:
-    branches: [ main ]
+    branches: ['**']
   pull_request:
-    branches: [ main ]
+    branches: ['**']
   workflow_dispatch:
 
 concurrency:
@@ -39,6 +39,12 @@ jobs:
       DOTNET_ROOT: ${{ runner.temp }}/.dotnet
 
     steps:
+      - name: Debug runner
+        run: |
+          echo "runner.os=${{ runner.os }}"
+          echo "runner.arch=${{ runner.arch }}"
+          echo "labels: self-hosted tsf (et plus côté UI)"
+
       - uses: actions/checkout@v4
 
       - name: Setup .NET
@@ -53,6 +59,18 @@ jobs:
         run: |
           echo "${DOTNET_INSTALL_DIR}" >> "$GITHUB_PATH"
           echo "${DOTNET_INSTALL_DIR}/tools" >> "$GITHUB_PATH"
+
+      - name: Confirm dotnet is available
+        run: |
+          which dotnet || echo "dotnet not found"
+          dotnet --info
+
+      - name: Show repo tree (debug)
+        run: |
+          ls -la
+          ls -la tests || true
+          ls -la tests/inventory.api.tests || true
+          test -f tests/inventory.api.tests/CineBoutique.Inventory.Api.Tests.csproj
 
       - name: Restore
         run: dotnet restore
@@ -69,6 +87,9 @@ jobs:
           done
           echo "Postgres not ready"; exit 1
 
+      - name: Verify test project exists
+        run: |
+          test -f tests/inventory.api.tests/CineBoutique.Inventory.Api.Tests.csproj || (echo "Missing csproj" && exit 1)
       - name: Test (all)
         run: dotnet test tests/inventory.api.tests/CineBoutique.Inventory.Api.Tests.csproj -c Release --logger "trx;LogFileName=test_results.trx"
 

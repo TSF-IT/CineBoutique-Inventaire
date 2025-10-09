@@ -119,6 +119,38 @@ public sealed class ShopCrudTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task Delete_Twice_IsIdempotentOr404()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        Guid shopId = Guid.Empty;
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.CreateShopAsync("Boutique À Effacer").ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var client = CreateClient();
+
+        using (var firstDelete = new HttpRequestMessage(
+                   HttpMethod.Delete,
+                   client.CreateRelativeUri("/api/shops"))
+               { Content = JsonContent.Create(new DeleteShopRequest { Id = shopId }) })
+        {
+            var firstResponse = await client.SendAsync(firstDelete).ConfigureAwait(false);
+            await firstResponse.ShouldBeAsync(HttpStatusCode.NoContent, "initial deletion succeeds");
+        }
+
+        using (var secondDelete = new HttpRequestMessage(
+                   HttpMethod.Delete,
+                   client.CreateRelativeUri("/api/shops"))
+               { Content = JsonContent.Create(new DeleteShopRequest { Id = shopId }) })
+        {
+            var secondResponse = await client.SendAsync(secondDelete).ConfigureAwait(false);
+            secondResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        }
+    }
+
+    [SkippableFact]
     public async Task DeleteShop_ThenGetReturns404()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
