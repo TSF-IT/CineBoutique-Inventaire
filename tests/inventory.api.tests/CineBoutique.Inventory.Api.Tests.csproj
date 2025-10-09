@@ -50,13 +50,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Helpers réellement utilisés -->
-    <Compile Include="Helpers\HttpClientExtensions.cs" />
-    <Compile Include="Helpers\HttpAsserts.cs" />
-    <!-- Si tu as d'autres helpers encore utilisés, ajoute-les ici -->
-  </ItemGroup>
-
-  <ItemGroup>
     <!-- Exclure explicitement les reliques pour que l’IDE arrête de les “projeter” -->
     <Compile Remove="Infrastructure\HttpClientTestExtensions.cs" />
     <Compile Remove="Helpers\TestClientExtensions.cs" />
