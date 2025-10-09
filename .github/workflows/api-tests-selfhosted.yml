@@ -2,9 +2,9 @@ name: API Integration Tests (self-hosted)
 
 on:
   push:
-    branches: [ main ]
+    branches: ['**']
   pull_request:
-    branches: [ main ]
+    branches: ['**']
   workflow_dispatch:
 
 concurrency:
@@ -39,6 +39,12 @@ jobs:
       DOTNET_ROOT: ${{ runner.temp }}/.dotnet
 
     steps:
+      - name: Debug runner
+        run: |
+          echo "runner.os=${{ runner.os }}"
+          echo "runner.arch=${{ runner.arch }}"
+          echo "labels: self-hosted tsf (et plus côté UI)"
+
       - uses: actions/checkout@v4
 
       - name: Setup .NET
