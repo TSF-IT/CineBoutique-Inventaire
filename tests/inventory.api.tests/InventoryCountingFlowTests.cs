@@ -124,6 +124,6 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
         location.IsBusy.Should().BeFalse();
         location.CountStatuses.Should().NotBeNull();
         location.CountStatuses.Should().HaveCountGreaterThan(0);
-        location.CountStatuses.Should().OnlyContain(status => status.CountType is 1 or 2);
+        location.CountStatuses.Should().OnlyContain(status => status.CountType == 1 || status.CountType == 2);
     }
 }
