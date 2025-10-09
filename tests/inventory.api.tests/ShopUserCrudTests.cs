@@ -168,6 +168,121 @@ public sealed class ShopUserCrudTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task ListUsers_DefaultExcludesDisabled_IncludeDisabledShowsAll()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        Guid shopId = Guid.Empty;
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.CreateShopAsync("Boutique Visibilité").ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var client = CreateClient();
+
+        var firstCreate = await client.PostAsJsonAsync(
+            client.CreateRelativeUri($"/api/shops/{shopId}/users"),
+            new CreateShopUserRequest
+            {
+                Login = "visible",
+                DisplayName = "Visible",
+                IsAdmin = false
+            }).ConfigureAwait(false);
+
+        await firstCreate.ShouldBeAsync(HttpStatusCode.Created, "create active user");
+        var activeUser = await firstCreate.Content.ReadFromJsonAsync<ShopUserDto>().ConfigureAwait(false);
+        activeUser.Should().NotBeNull();
+
+        var secondCreate = await client.PostAsJsonAsync(
+            client.CreateRelativeUri($"/api/shops/{shopId}/users"),
+            new CreateShopUserRequest
+            {
+                Login = "disabled",
+                DisplayName = "Désactivé",
+                IsAdmin = false
+            }).ConfigureAwait(false);
+
+        await secondCreate.ShouldBeAsync(HttpStatusCode.Created, "create user to disable");
+        var disabledUser = await secondCreate.Content.ReadFromJsonAsync<ShopUserDto>().ConfigureAwait(false);
+        disabledUser.Should().NotBeNull();
+
+        using (var disableRequest = new HttpRequestMessage(
+                   HttpMethod.Delete,
+                   client.CreateRelativeUri($"/api/shops/{shopId}/users"))
+               { Content = JsonContent.Create(new DeleteShopUserRequest { Id = disabledUser!.Id }) })
+        {
+            var disableResponse = await client.SendAsync(disableRequest).ConfigureAwait(false);
+            await disableResponse.ShouldBeAsync(HttpStatusCode.OK, "disable secondary user");
+        }
+
+        var defaultList = await client.GetAsync(
+            client.CreateRelativeUri($"/api/shops/{shopId}/users")
+        ).ConfigureAwait(false);
+        await defaultList.ShouldBeAsync(HttpStatusCode.OK, "default listing");
+
+        var activeOnly = await defaultList.Content.ReadFromJsonAsync<ShopUserDto[]>().ConfigureAwait(false);
+        activeOnly.Should().NotBeNull();
+        activeOnly!.Select(user => user.Id).Should().Contain(activeUser!.Id);
+        activeOnly.Select(user => user.Id).Should().NotContain(disabledUser!.Id);
+
+        var includeDisabledResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/shops/{shopId}/users?includeDisabled=true")
+        ).ConfigureAwait(false);
+
+        await includeDisabledResponse.ShouldBeAsync(HttpStatusCode.OK, "listing with includeDisabled");
+
+        static bool ReadDisabled(JsonElement element)
+        {
+            if (element.TryGetProperty("disabled", out var disabledProp))
+            {
+                if (disabledProp.ValueKind == JsonValueKind.True) return true;
+                if (disabledProp.ValueKind == JsonValueKind.False) return false;
+            }
+
+            if (element.TryGetProperty("isDisabled", out var isDisabledProp))
+            {
+                if (isDisabledProp.ValueKind == JsonValueKind.True) return true;
+                if (isDisabledProp.ValueKind == JsonValueKind.False) return false;
+            }
+
+            return false;
+        }
+
+        var includeBody = await includeDisabledResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
+        using var includeDoc = JsonDocument.Parse(includeBody);
+        var root = includeDoc.RootElement;
+
+        var entries = root.ValueKind == JsonValueKind.Array
+            ? root.EnumerateArray().ToList()
+            : (root.TryGetProperty("items", out var itemsElement) && itemsElement.ValueKind == JsonValueKind.Array)
+                ? itemsElement.EnumerateArray().ToList()
+                : new List<JsonElement>();
+
+        entries.Should().NotBeEmpty("includeDisabled should expose at least one user entry");
+
+        var lookup = entries
+            .Select(element =>
+            {
+                if (element.TryGetProperty("id", out var idProp) &&
+                    idProp.ValueKind == JsonValueKind.String &&
+                    Guid.TryParse(idProp.GetString(), out var id))
+                {
+                    return (Id: id, Disabled: ReadDisabled(element));
+                }
+
+                return (Id: Guid.Empty, Disabled: false);
+            })
+            .Where(tuple => tuple.Id != Guid.Empty)
+            .ToDictionary(tuple => tuple.Id, tuple => tuple.Disabled);
+
+        lookup.Should().ContainKey(activeUser.Id);
+        lookup[activeUser.Id].Should().BeFalse();
+
+        lookup.Should().ContainKey(disabledUser.Id);
+        lookup[disabledUser.Id].Should().BeTrue();
+    }
+
+    [SkippableFact]
     public async Task CreateUser_DuplicateLogin_Returns409()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
