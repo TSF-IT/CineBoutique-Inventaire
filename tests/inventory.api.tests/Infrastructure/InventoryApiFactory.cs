@@ -1,0 +1,64 @@
+using System.Linq;
+using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
+using System.Net.Http.Headers;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
+
+namespace CineBoutique.Inventory.Api.Tests.Infrastructure;
+
+public sealed class InventoryApiFactory : WebApplicationFactory<Program>
+{
+    private readonly string _connectionString;
+
+    public InventoryApiFactory(string connectionString)
+    {
+        _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
+    }
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        builder.UseEnvironment("Testing");
+
+        builder.ConfigureAppConfiguration((_, configurationBuilder) =>
+        {
+            var overrides = new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:Default"] = _connectionString,
+                ["DISABLE_SERILOG"] = "true",
+                ["APPLY_MIGRATIONS"] = "false",
+                ["DISABLE_MIGRATIONS"] = "false",
+                ["RunMigrationsOnStart"] = "false",
+                ["AppSettings:SeedOnStartup"] = "false"
+            };
+            configurationBuilder.AddInMemoryCollection(overrides!);
+        });
+
+        // >>> clé: on remplace les services DB pour stopper 127.0.0.1
+        builder.ConfigureServices(services =>
+        {
+            var doomed = services.Where(d =>
+                    d.ServiceType == typeof(NpgsqlDataSource) ||
+                    d.ServiceType == typeof(NpgsqlConnection))
+                .ToList();
+
+            foreach (var d in doomed)
+                services.Remove(d);
+
+            services.AddSingleton(_ => NpgsqlDataSource.Create(_connectionString));
+            services.AddScoped(sp => sp.GetRequiredService<NpgsqlDataSource>().CreateConnection());
+        });
+    }
+
+
+    protected override void ConfigureClient(HttpClient client)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+
+        client.BaseAddress ??= new Uri("http://localhost");
+        client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+    }
+}
