@@ -61,29 +61,33 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
         // Lookup par EAN (GET variantes + fallback POST)
         var ean = created.Ean ?? "1234567890123";
 
-        HttpResponseMessage byEanResponse = await client.GetAsync(
-            client.CreateRelativeUri($"/api/products/by-ean/{ean}")
-        ).ConfigureAwait(false);
+// 1) POST /lookup en priorité (évite 405)
+HttpResponseMessage byEanResponse = await client.PostAsJsonAsync(
+    client.CreateRelativeUri("/api/products/lookup"),
+    new { ean }
+).ConfigureAwait(false);
 
-        if (byEanResponse.StatusCode == HttpStatusCode.NotFound || byEanResponse.StatusCode == HttpStatusCode.MethodNotAllowed)
-        {
-            byEanResponse = await client.GetAsync(
-                client.CreateRelativeUri($"/api/products?ean={ean}")
-            ).ConfigureAwait(false);
-        }
+// 2) fallback GET /by-ean/{ean}
+if (byEanResponse.StatusCode == HttpStatusCode.NotFound || byEanResponse.StatusCode == HttpStatusCode.MethodNotAllowed)
+{
+    byEanResponse = await client.GetAsync(
+        client.CreateRelativeUri($"/api/products/by-ean/{ean}")
+    ).ConfigureAwait(false);
+}
 
-        if (byEanResponse.StatusCode == HttpStatusCode.NotFound || byEanResponse.StatusCode == HttpStatusCode.MethodNotAllowed)
-        {
-            byEanResponse = await client.PostAsJsonAsync(
-                client.CreateRelativeUri($"/api/products/lookup"),
-                new { ean }
-            ).ConfigureAwait(false);
-        }
+// 3) fallback GET ?ean=
+if (byEanResponse.StatusCode == HttpStatusCode.NotFound || byEanResponse.StatusCode == HttpStatusCode.MethodNotAllowed)
+{
+    byEanResponse = await client.GetAsync(
+        client.CreateRelativeUri($"/api/products?ean={ean}")
+    ).ConfigureAwait(false);
+}
 
-        byEanResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var byEan = await byEanResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
-        byEan.Should().NotBeNull();
-        byEan!.Sku.Should().Be("SKU-9000");
+await byEanResponse.ShouldBeAsync(HttpStatusCode.OK, "lookup EAN");
+var byEan = await byEanResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
+byEan.Should().NotBeNull();
+byEan!.Sku.Should().Be("SKU-9000");
+
 
     }
 
