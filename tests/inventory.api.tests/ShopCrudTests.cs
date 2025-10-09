@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -5,7 +6,6 @@ using System.Net.Http.Json;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Fixtures;
-using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Api.Tests.Helpers;
 using FluentAssertions;
 using Xunit;
@@ -74,5 +74,76 @@ public sealed class ShopCrudTests : IntegrationTestBase
         var finalShops = await finalListResponse.Content.ReadFromJsonAsync<ShopDto[]>().ConfigureAwait(false);
         finalShops.Should().NotBeNull();
         finalShops!.Should().NotContain(shop => shop.Id == createdShop.Id);
+    }
+
+    [SkippableFact]
+    public async Task GetShop_UnknownId_Returns404()
+    {
+        SkipIfDockerUnavailable();
+
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            await seeder.CreateShopAsync("Boutique Présente").ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var client = CreateClient();
+
+        var response = await client.GetAsync(
+            client.CreateRelativeUri($"/api/shops/{Guid.NewGuid()}")
+        ).ConfigureAwait(false);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [SkippableFact]
+    public async Task RenameShop_ToExistingName_Returns409()
+    {
+        SkipIfDockerUnavailable();
+
+        Guid firstShopId = Guid.Empty;
+        Guid secondShopId = Guid.Empty;
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            firstShopId = await seeder.CreateShopAsync("Boutique Alpha").ConfigureAwait(false);
+            secondShopId = await seeder.CreateShopAsync("Boutique Beta").ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var client = CreateClient();
+
+        var response = await client.PutAsJsonAsync(
+            client.CreateRelativeUri("/api/shops"),
+            new UpdateShopRequest { Id = secondShopId, Name = "Boutique Alpha" }
+        ).ConfigureAwait(false);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [SkippableFact]
+    public async Task DeleteShop_ThenGetReturns404()
+    {
+        SkipIfDockerUnavailable();
+
+        Guid shopId = Guid.Empty;
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.CreateShopAsync("Boutique Éphémère").ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var client = CreateClient();
+
+        using (var deleteRequest = new HttpRequestMessage(
+                   HttpMethod.Delete,
+                   client.CreateRelativeUri("/api/shops"))
+               { Content = JsonContent.Create(new DeleteShopRequest { Id = shopId }) })
+        {
+            var deleteResponse = await client.SendAsync(deleteRequest).ConfigureAwait(false);
+            deleteResponse.StatusCode.Should().Be(HttpStatusCode.NoContent);
+        }
+
+        var getResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/shops/{shopId}")
+        ).ConfigureAwait(false);
+
+        getResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 }
