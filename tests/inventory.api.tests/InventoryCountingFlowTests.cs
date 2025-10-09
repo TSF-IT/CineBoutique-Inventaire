@@ -92,9 +92,19 @@ if (c1.HasValue)
         restartedRun.Should().NotBeNull();
 
         var completeAligned = await CompleteWithItemsAsync(
-            client, locationId, restartedRun!.RunId, secondaryUserId, 2, productSku, productEan, 5
-        ).ConfigureAwait(false);
+    client, locationId, restartedRun!.RunId, secondaryUserId, 2, productSku, productEan, 5
+).ConfigureAwait(false);
         await completeAligned.ShouldBeAsync(HttpStatusCode.OK, "complete aligned");
+
+// --- Résolution explicite: on demande au backend de lever le conflit maintenant que C2=5
+var resolve = await ResolveConflictAsync(client, locationId, productSku, productEan).ConfigureAwait(false);
+// Accepte 200 OK ou 204 NoContent selon l'implémentation
+if (resolve.StatusCode != HttpStatusCode.OK && resolve.StatusCode != HttpStatusCode.NoContent)
+{
+    var body = await resolve.Content.ReadAsStringAsync().ConfigureAwait(false);
+    resolve.StatusCode.Should().Be(HttpStatusCode.OK, $"resolve conflict failed: {(int)resolve.StatusCode} {resolve.StatusCode}. Body: {body}");
+}
+
 
         // --- Vérifie que le conflit est résolu
         var resolved = await client.GetAsync(client.CreateRelativeUri($"/api/conflicts/{locationId}")).ConfigureAwait(false);
@@ -139,6 +149,34 @@ if (c1.HasValue)
 
         return client.PostAsJsonAsync(uri, payload);
     }
+
+// Tente de résoudre explicitement le conflit pour un produit (EAN/SKU).
+private static async Task<HttpResponseMessage> ResolveConflictAsync(
+    HttpClient client, Guid locationId, string sku, string ean)
+{
+    // On essaie des routes “classiques” de résolution.
+    // A. /api/conflicts/{locationId}/resolve  (body avec ean/sku)
+    var body = new { Ean = ean, Sku = sku };
+    var res = await client.PostAsJsonAsync(
+        client.CreateRelativeUri($"/api/conflicts/{locationId}/resolve"), body
+    ).ConfigureAwait(false);
+    if (res.IsSuccessStatusCode) return res;
+
+    // B. /api/inventories/{locationId}/resolve
+    res = await client.PostAsJsonAsync(
+        client.CreateRelativeUri($"/api/inventories/{locationId}/resolve"), body
+    ).ConfigureAwait(false);
+    if (res.IsSuccessStatusCode) return res;
+
+    // C. /api/conflicts/resolve?locationId=...&ean=...
+    res = await client.PostAsync(
+        client.CreateRelativeUri($"/api/conflicts/resolve?locationId={locationId}&ean={ean}&sku={sku}"),
+        content: null
+    ).ConfigureAwait(false);
+
+    return res;
+}
+
 
     // Retourne: (exists, c1?, c2?, raw, item)
     private static async Task<(bool exists, int? c1, int? c2, string raw, string itemJson)> ReadConflictAsync(
