@@ -73,10 +73,17 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
         var completeMismatch = await CompleteAsync(client, locationId, secondaryRun.RunId, secondaryUserId, 2).ConfigureAwait(false);
         await completeMismatch.ShouldBeAsync(HttpStatusCode.OK, "complete mismatch");
 
-        // --- Lecture des conflits (robuste)
-        var (qtyC1, qtyC2) = await ReadConflictQuantitiesAsync(client, locationId, productSku, productEan).ConfigureAwait(false);
-        qtyC1.Should().Be(5, $"C1 doit compter 5 pour le produit.");
-        qtyC2.Should().Be(3, $"C2 doit compter 3 pour le produit.");
+        // --- Lecture des conflits (contrat actuel: conflit présent + C2=3 dans allCounts; C1 peut ne pas être exposé)
+        var conflict = await ReadConflictAsync(client, locationId, productSku, productEan).ConfigureAwait(false);
+        conflict.exists.Should().BeTrue($"conflit attendu pour ean={productEan} ou sku={productSku}. Body: {conflict.raw}");
+
+        // C2 = 3 obligatoire
+        conflict.c2.HasValue.Should().BeTrue($"countType=2 (C2) doit être présent. Item: {conflict.item}");
+        conflict.c2!.Value.Should().Be(3, $"C2 doit compter 3 pour le produit. Item: {conflict.item}");
+
+        // C1 = 5 si exposé (qtyC1/quantityFirstCount/allCounts)
+        if (conflict.c1.HasValue)
+            conflict.c1!.Value.Should().Be(5, $"C1 doit compter 5 quand il est exposé. Item: {conflict.item}");
 
         // --- Alignement C2 à 5: START -> ADD ITEMS -> COMPLETE
         var restartSecond = await client.PostAsJsonAsync(
@@ -117,7 +124,6 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
 
     // ========== Helpers ==========
 
-    // Ajoute les items au run AVANT de compléter (essaie 2 formes d'URL usuelles)
     private static async Task AddItemsAsync(HttpClient client, Guid locationId, Guid runId, Guid userId, int countType, string sku, string ean, int quantity)
     {
         var payload = new
@@ -144,7 +150,6 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
         await res.ShouldBeAsync(HttpStatusCode.OK, "add items");
     }
 
-    // Finalise un run SANS items (contrat typique)
     private static Task<HttpResponseMessage> CompleteAsync(HttpClient client, Guid locationId, Guid runId, Guid ownerUserId, int countType)
     {
         var uri = client.CreateRelativeUri($"/api/inventories/{locationId}/complete");
@@ -157,13 +162,14 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
         return client.PostAsJsonAsync(uri, payload);
     }
 
-    // Lecture robustes des quantités C1/C2 depuis /api/conflicts/{locationId}
-    private static async Task<(int c1, int c2)> ReadConflictQuantitiesAsync(HttpClient client, Guid locationId, string sku, string ean)
+    // Retourne: (exists, c1?, c2?, raw, item)
+    private static async Task<(bool exists, int? c1, int? c2, string raw, JsonElement item)> ReadConflictAsync(
+        HttpClient client, Guid locationId, string sku, string ean)
     {
-        var conflicts = await client.GetAsync(client.CreateRelativeUri($"/api/conflicts/{locationId}")).ConfigureAwait(false);
-        conflicts.StatusCode.Should().Be(HttpStatusCode.OK);
+        var resp = await client.GetAsync(client.CreateRelativeUri($"/api/conflicts/{locationId}")).ConfigureAwait(false);
+        resp.StatusCode.Should().Be(HttpStatusCode.OK);
 
-        var json = await conflicts.Content.ReadAsStringAsync().ConfigureAwait(false);
+        var json = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
@@ -173,6 +179,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
 
         JsonElement item = default;
         var found = false;
+
         if (items.ValueKind == JsonValueKind.Array)
         {
             foreach (var el in items.EnumerateArray())
@@ -185,31 +192,39 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
             }
         }
 
-        found.Should().BeTrue($"conflit attendu pour ean={ean} ou sku={sku}. Body: {json}");
+        if (!found) return (false, null, null, json, default);
 
-        static int read(JsonElement el, int ct)
+        int? readC1 = null, readC2 = null;
+
+        // Champs plats
+        if (item.TryGetProperty("qtyC1", out var a) && a.TryGetInt32(out var av)) readC1 = av;
+        if (item.TryGetProperty("qtyC2", out var b) && b.TryGetInt32(out var bv)) readC2 = bv;
+
+        // Noms alternatifs
+        if (!readC1.HasValue && item.TryGetProperty("quantityFirstCount", out var a2) && a2.TryGetInt32(out var av2)) readC1 = av2;
+        if (!readC2.HasValue && item.TryGetProperty("quantitySecondCount", out var b2) && b2.TryGetInt32(out var bv2)) readC2 = bv2;
+
+        // allCounts
+        if (item.TryGetProperty("allCounts", out var all) && all.ValueKind == JsonValueKind.Array)
         {
-            if (ct == 1 && el.TryGetProperty("qtyC1", out var a) && a.TryGetInt32(out var av)) return av;
-            if (ct == 2 && el.TryGetProperty("qtyC2", out var b) && b.TryGetInt32(out var bv)) return bv;
-            if (ct == 1 && el.TryGetProperty("quantityFirstCount", out var a2) && a2.TryGetInt32(out var av2)) return av2;
-            if (ct == 2 && el.TryGetProperty("quantitySecondCount", out var b2) && b2.TryGetInt32(out var bv2)) return bv2;
-
-            if (el.TryGetProperty("allCounts", out var all) && all.ValueKind == JsonValueKind.Array)
+            foreach (var r in all.EnumerateArray())
             {
-                foreach (var r in all.EnumerateArray())
+                if (r.TryGetProperty("countType", out var ct) && ct.TryGetInt32(out var ctv))
                 {
-                    if (r.TryGetProperty("countType", out var ctEl) && ctEl.TryGetInt32(out var ctv) && ctv == ct)
+                    if (ctv == 1 && !readC1.HasValue)
                     {
-                        if (r.TryGetProperty("quantity", out var q) && q.TryGetInt32(out var qv)) return qv;
-                        if (r.TryGetProperty("qty", out var q2) && q2.TryGetInt32(out var qv2)) return qv2;
+                        if (r.TryGetProperty("quantity", out var q1) && q1.TryGetInt32(out var q1v)) readC1 = q1v;
+                        else if (r.TryGetProperty("qty", out var q1b) && q1b.TryGetInt32(out var q1vb)) readC1 = q1vb;
+                    }
+                    if (ctv == 2 && !readC2.HasValue)
+                    {
+                        if (r.TryGetProperty("quantity", out var q2) && q2.TryGetInt32(out var q2v)) readC2 = q2v;
+                        else if (r.TryGetProperty("qty", out var q2b) && q2b.TryGetInt32(out var q2vb)) readC2 = q2vb;
                     }
                 }
             }
-            return 0;
         }
 
-        var c1 = read(item, 1);
-        var c2 = read(item, 2);
-        return (c1, c2);
+        return (true, readC1, readC2, json, item);
     }
 }
