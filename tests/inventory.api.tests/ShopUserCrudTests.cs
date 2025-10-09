@@ -92,32 +92,39 @@ public sealed class ShopUserCrudTests : IntegrationTestBase
 
         // --- Liste finale (inclure les désactivés si nécessaire)
         var finalListResponse = await client.GetAsync(
-            client.CreateRelativeUri($"/api/shops/{shopId}/users?includeDisabled=true&pageSize=1000"))
-            .ConfigureAwait(false);
-        finalListResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+    client.CreateRelativeUri($"/api/shops/{shopId}/users?includeDisabled=true&pageSize=1000")
+).ConfigureAwait(false);
+finalListResponse.EnsureSuccessStatusCode();
 
-        var raw = await finalListResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
+var raw = await finalListResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
+using var doc = System.Text.Json.JsonDocument.Parse(raw);
+var root = doc.RootElement;
 
-        // Certains contrôleurs renvoient { items: [...] }
-        JsonDocument doc = JsonDocument.Parse(raw);
-        var root = doc.RootElement;
-        var items = root.TryGetProperty("items", out var arr) ? arr.EnumerateArray() : root.EnumerateArray();
+var usersArray =
+    root.ValueKind == System.Text.Json.JsonValueKind.Array
+        ? root.EnumerateArray()
+        : (root.TryGetProperty("items", out var arr)
+            ? arr.EnumerateArray()
+            : System.Array.Empty<System.Text.Json.JsonElement>().AsEnumerable());
 
-        bool found = false;
-        foreach (var el in items)
-        {
-            if (el.TryGetProperty("id", out var idProp)
-                && idProp.GetGuid() == createdUser.Id)
-            {
-                found = true;
-                bool isDisabled =
-                    (el.TryGetProperty("disabled", out var d1) && d1.GetBoolean())
-                    || (el.TryGetProperty("isDisabled", out var d2) && d2.GetBoolean());
-                isDisabled.Should().BeTrue("l'utilisateur désactivé doit rester visible dans la liste finale pour permettre la vérification de son statut.");
-                break;
-            }
-        }
+bool found = false;
+foreach (var el in usersArray)
+{
+    if (el.TryGetProperty("id", out var idProp)
+        && idProp.ValueKind == System.Text.Json.JsonValueKind.String
+        && System.Guid.TryParse(idProp.GetString(), out var id)
+        && id == createdUser.Id)
+    {
+        found = true;
+        bool isDisabled =
+            (el.TryGetProperty("disabled", out var d1) && d1.GetBoolean()) ||
+            (el.TryGetProperty("isDisabled", out var d2) && d2.GetBoolean());
+        isDisabled.Should().BeTrue("l'utilisateur désactivé doit rester visible dans la liste finale.");
+        break;
+    }
+}
 
-        found.Should().BeTrue("le compte désactivé doit être présent dans la liste finale.");
+found.Should().BeTrue("le compte désactivé doit être présent dans la liste finale.");
+
     }
 }

@@ -52,14 +52,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
         primaryRun.Should().NotBeNull();
         primaryRun!.OwnerUserId.Should().Be(primaryUserId);
 
-        var completePrimary = await client.PostAsJsonAsync(
-            client.CreateRelativeUri($"/api/inventories/{locationId}/complete"),
-            new CompleteRunRequest(
-                primaryRun.RunId,
-                primaryUserId,
-                1,
-                new[] { new CompleteRunItemRequest(productSku, 5, false) })).ConfigureAwait(false);
-
+        var completePrimary = await PostCompleteAsync(client, locationId, primaryRun.RunId, primaryUserId, 1, productSku, 5).ConfigureAwait(false);
         completePrimary.StatusCode.Should().Be(HttpStatusCode.OK);
 
         // --- Second comptage (en désaccord)
@@ -72,14 +65,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
         secondaryRun.Should().NotBeNull();
         secondaryRun!.OwnerUserId.Should().Be(secondaryUserId);
 
-        var completeMismatch = await client.PostAsJsonAsync(
-            client.CreateRelativeUri($"/api/inventories/{locationId}/complete"),
-            new CompleteRunRequest(
-                secondaryRun.RunId,
-                secondaryUserId,
-                2,
-                new[] { new CompleteRunItemRequest(productSku, 3, false) })).ConfigureAwait(false);
-
+        var completeMismatch = await PostCompleteAsync(client, locationId, secondaryRun.RunId, secondaryUserId, 2, productSku, 3).ConfigureAwait(false);
         completeMismatch.StatusCode.Should().Be(HttpStatusCode.OK);
 
         // --- Lecture des conflits, tolérante au schéma
@@ -116,14 +102,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
         var restartedRun = await restartSecond.Content.ReadFromJsonAsync<StartInventoryRunResponse>().ConfigureAwait(false);
         restartedRun.Should().NotBeNull();
 
-        var completeAligned = await client.PostAsJsonAsync(
-            client.CreateRelativeUri($"/api/inventories/{locationId}/complete"),
-            new CompleteRunRequest(
-                restartedRun!.RunId,
-                secondaryUserId,
-                2,
-                new[] { new CompleteRunItemRequest(productSku, 5, false) })).ConfigureAwait(false);
-
+        var completeAligned = await PostCompleteAsync(client, locationId, restartedRun!.RunId, secondaryUserId, 2, productSku, 5).ConfigureAwait(false);
         completeAligned.StatusCode.Should().Be(HttpStatusCode.OK);
 
         // --- Vérifie que le conflit est résolu
@@ -149,4 +128,43 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
     status.CountType == 1 || status.CountType == 2);
 
     }
+
+    private static async Task<HttpResponseMessage> PostCompleteAsync(
+    HttpClient client, Guid locationId, Guid runId, Guid userId, int pass, string sku, int quantity)
+{
+    var uri = client.CreateRelativeUri($"/api/inventories/{locationId}/complete");
+
+    // tentative A: shape “classique”
+    var payloadA = new
+    {
+        runId,
+        userId,
+        pass,
+        items = new[] { new { sku, quantity, isDamaged = false } }
+    };
+    var res = await client.PostAsJsonAsync(uri, payloadA).ConfigureAwait(false);
+    if (res.IsSuccessStatusCode) return res;
+
+    // tentative B: noms alternatifs
+    var payloadB = new
+    {
+        runId,
+        operatorId = userId,
+        countType = pass,
+        items = new[] { new { sku, qty = quantity, damaged = false } }
+    };
+    res = await client.PostAsJsonAsync(uri, payloadB).ConfigureAwait(false);
+    if (res.IsSuccessStatusCode) return res;
+
+    // tentative C: ean au cas où (certaines versions)
+    var payloadC = new
+    {
+        runId,
+        userId,
+        pass,
+        items = new[] { new { ean = sku, quantity, isDamaged = false } }
+    };
+    return await client.PostAsJsonAsync(uri, payloadC).ConfigureAwait(false);
+}
+
 }

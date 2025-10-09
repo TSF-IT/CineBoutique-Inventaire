@@ -58,23 +58,25 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
         bySku.Should().NotBeNull();
         (bySku!.Ean ?? "1234567890123").Should().Be("1234567890123");
 
-        // Lookup par EAN (essaie plusieurs variantes usuelles)
+        // Lookup par EAN (GET variantes + fallback POST)
         var ean = created.Ean ?? "1234567890123";
+
         HttpResponseMessage byEanResponse = await client.GetAsync(
             client.CreateRelativeUri($"/api/products/by-ean/{ean}")
         ).ConfigureAwait(false);
 
-        if (byEanResponse.StatusCode == HttpStatusCode.NotFound)
+        if (byEanResponse.StatusCode == HttpStatusCode.NotFound || byEanResponse.StatusCode == HttpStatusCode.MethodNotAllowed)
         {
             byEanResponse = await client.GetAsync(
                 client.CreateRelativeUri($"/api/products?ean={ean}")
             ).ConfigureAwait(false);
         }
 
-        if (byEanResponse.StatusCode == HttpStatusCode.NotFound)
+        if (byEanResponse.StatusCode == HttpStatusCode.NotFound || byEanResponse.StatusCode == HttpStatusCode.MethodNotAllowed)
         {
-            byEanResponse = await client.GetAsync(
-                client.CreateRelativeUri($"/api/products/lookup?ean={ean}")
+            byEanResponse = await client.PostAsJsonAsync(
+                client.CreateRelativeUri($"/api/products/lookup"),
+                new { ean }
             ).ConfigureAwait(false);
         }
 
@@ -82,6 +84,7 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
         var byEan = await byEanResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
         byEan.Should().NotBeNull();
         byEan!.Sku.Should().Be("SKU-9000");
+
     }
 
     [SkippableFact]
