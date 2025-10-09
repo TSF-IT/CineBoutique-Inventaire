@@ -59,23 +59,14 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
         (bySku!.Ean ?? "1234567890123").Should().Be("1234567890123");
 
         // Lookup par EAN (GET variantes + fallback POST)
-        var ean = created.Ean ?? "1234567890123";
+var ean = created.Ean ?? "1234567890123";
 
-// 1) POST /lookup en priorité (évite 405)
-HttpResponseMessage byEanResponse = await client.PostAsJsonAsync(
-    client.CreateRelativeUri("/api/products/lookup"),
-    new { ean }
+// 1) GET /by-ean/{ean}
+HttpResponseMessage byEanResponse = await client.GetAsync(
+    client.CreateRelativeUri($"/api/products/by-ean/{ean}")
 ).ConfigureAwait(false);
 
-// 2) fallback GET /by-ean/{ean}
-if (byEanResponse.StatusCode == HttpStatusCode.NotFound || byEanResponse.StatusCode == HttpStatusCode.MethodNotAllowed)
-{
-    byEanResponse = await client.GetAsync(
-        client.CreateRelativeUri($"/api/products/by-ean/{ean}")
-    ).ConfigureAwait(false);
-}
-
-// 3) fallback GET ?ean=
+// 2) fallback GET ?ean=
 if (byEanResponse.StatusCode == HttpStatusCode.NotFound || byEanResponse.StatusCode == HttpStatusCode.MethodNotAllowed)
 {
     byEanResponse = await client.GetAsync(
@@ -83,10 +74,20 @@ if (byEanResponse.StatusCode == HttpStatusCode.NotFound || byEanResponse.StatusC
     ).ConfigureAwait(false);
 }
 
+// 3) dernier recours: POST /lookup (si vraiment dispo)
+if (byEanResponse.StatusCode == HttpStatusCode.NotFound || byEanResponse.StatusCode == HttpStatusCode.MethodNotAllowed)
+{
+    byEanResponse = await client.PostAsJsonAsync(
+        client.CreateRelativeUri("/api/products/lookup"),
+        new { ean }
+    ).ConfigureAwait(false);
+}
+
 await byEanResponse.ShouldBeAsync(HttpStatusCode.OK, "lookup EAN");
 var byEan = await byEanResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
 byEan.Should().NotBeNull();
 byEan!.Sku.Should().Be("SKU-9000");
+
 
 
     }
