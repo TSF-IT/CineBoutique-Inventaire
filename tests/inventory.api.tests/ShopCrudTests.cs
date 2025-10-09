@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Fixtures;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
+using CineBoutique.Inventory.Api.Tests.Helpers;
 using FluentAssertions;
 using Xunit;
 
