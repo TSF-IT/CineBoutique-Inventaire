@@ -21,7 +21,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
     [SkippableFact]
     public async Task ConflictsAreDetectedThenResolvedWhenCountsMatch()
     {
-        SkipIfDockerUnavailable();
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
 
         Guid shopId = Guid.Empty;
         Guid locationId = Guid.Empty;
@@ -144,7 +144,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
 
 
 var locationsResponse = await client
-    .GetAsync(client.CreateRelativeUri($"/api/locations?shopId={shopId}"))
+    .GetAsync(client.CreateRelativeUri($"/locations?shopId={shopId}"))
     .ConfigureAwait(false);
 
 // Si l’API est bien câblée, on valide l’état de la zone.

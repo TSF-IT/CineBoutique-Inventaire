@@ -1,5 +1,6 @@
 using System.Net.Http;
 using System.Threading.Tasks;
+using CineBoutique.Inventory.Api.Tests.Infra;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests.Fixtures;
@@ -17,7 +18,7 @@ public abstract class IntegrationTestBase : IAsyncLifetime
     public async Task InitializeAsync()
     {
         // Si Docker indisponible: on sort proprement
-        if (Fixture is null || !Fixture.IsDockerAvailable)
+        if (Fixture is null || !TestEnvironment.IsIntegrationBackendAvailable())
             return;
 
         // S’assure que la fixture est initialisée (DB, migrations, factory, client prêt)
@@ -28,10 +29,4 @@ public abstract class IntegrationTestBase : IAsyncLifetime
     }
 
     public Task DisposeAsync() => Task.CompletedTask;
-
-    protected void SkipIfDockerUnavailable()
-    {
-        var reason = Fixture?.SkipReason ?? "Tests d'intégration ignorés : Docker est indisponible.";
-        Skip.If(Fixture is null || !Fixture.IsDockerAvailable, reason);
-    }
 }
