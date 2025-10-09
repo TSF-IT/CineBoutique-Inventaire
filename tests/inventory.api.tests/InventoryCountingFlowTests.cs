@@ -51,7 +51,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
         primaryRun.Should().NotBeNull();
         primaryRun!.OwnerUserId.Should().Be(primaryUserId);
 
-        var completePrimary = await PostCompleteAsync(client, locationId, primaryRun.RunId, primaryUserId, 1, productEan, 5);
+var completePrimary  = await PostCompleteAsync(client, locationId, primaryRun.RunId,  primaryUserId, 1, productSku,  productEan, 5);
         await completePrimary.ShouldBeAsync(HttpStatusCode.OK, "complete primary");
 
         // --- Second comptage (en désaccord)
@@ -64,7 +64,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
         secondaryRun.Should().NotBeNull();
         secondaryRun!.OwnerUserId.Should().Be(secondaryUserId);
 
-        var completeMismatch = await PostCompleteAsync(client, locationId, secondaryRun.RunId, secondaryUserId, 2, productEan, 3);
+var completeMismatch = await PostCompleteAsync(client, locationId, secondaryRun.RunId, secondaryUserId, 2, productSku,  productEan, 3);
         await completeMismatch.ShouldBeAsync(HttpStatusCode.OK, "complete mismatch");
 
         // --- Lecture des conflits, extraction robuste (match EAN/SKU + schémas multiples)
@@ -173,7 +173,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
         var restartedRun = await restartSecond.Content.ReadFromJsonAsync<StartInventoryRunResponse>().ConfigureAwait(false);
         restartedRun.Should().NotBeNull();
 
-        var completeAligned = await PostCompleteAsync(client, locationId, restartedRun!.RunId, secondaryUserId, 2, productEan, 5);
+var completeAligned  = await PostCompleteAsync(client, locationId, restartedRun!.RunId, secondaryUserId, 2, productSku,  productEan, 5);
         await completeAligned.ShouldBeAsync(HttpStatusCode.OK, "complete aligned");
 
         // --- Vérifie que le conflit est résolu
@@ -199,19 +199,17 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
     }
 
     private static Task<HttpResponseMessage> PostCompleteAsync(
-        HttpClient client, Guid locationId, Guid runId, Guid ownerUserId, int countType, string ean, int quantity)
+        HttpClient client, Guid locationId, Guid runId, Guid ownerUserId, int countType, string sku, string ean, int quantity)
     {
         var uri = client.CreateRelativeUri($"/api/inventories/{locationId}/complete");
-
-        // CONTRAT annoncé: OwnerUserId + CountType + Items[] avec Ean obligatoire
         var payload = new
         {
             RunId = runId,
             OwnerUserId = ownerUserId,
             CountType = countType,
-            Items = new[] { new { Ean = ean, Quantity = quantity, IsDamaged = false } }
+            Items = new[] { new { Sku = sku, Ean = ean, Quantity = quantity, IsDamaged = false } }
         };
-
         return client.PostAsJsonAsync(uri, payload);
     }
+
 }
