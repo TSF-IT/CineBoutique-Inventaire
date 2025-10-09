@@ -89,36 +89,37 @@ public sealed class ShopUserCrudTests : IntegrationTestBase
         disabledUser.Should().NotBeNull();
         disabledUser!.Disabled.Should().BeTrue();
 
-        // --- Vérification prioritaire via GET par id
-        // Tentative prioritaire: GET par id avec includeDisabled
-var getDisabled = await client.GetAsync(
-    client.CreateRelativeUri($"/api/shops/{shopId}/users/{createdUser.Id}?includeDisabled=true")
-).ConfigureAwait(false);
+        // --- Vérification prioritaire via GET par id (source de vérité)
+        var getDisabled = await client.GetAsync(
+            client.CreateRelativeUri($"/api/shops/{shopId}/users/{createdUser.Id}?includeDisabled=true")
+        ).ConfigureAwait(false);
 
-if (getDisabled.IsSuccessStatusCode)
-{
-    var fetched = await getDisabled.Content.ReadFromJsonAsync<ShopUserDto>().ConfigureAwait(false);
-    fetched.Should().NotBeNull();
-    fetched!.Id.Should().Be(createdUser.Id);
-    fetched.Disabled.Should().BeTrue();
-}
-else
-{
-    // Alternative globale
-    var getAlt = await client.GetAsync(
-        client.CreateRelativeUri($"/api/users/{createdUser.Id}")
-    ).ConfigureAwait(false);
+        if (getDisabled.IsSuccessStatusCode)
+        {
+            var fetched = await getDisabled.Content.ReadFromJsonAsync<ShopUserDto>().ConfigureAwait(false);
+            fetched.Should().NotBeNull();
+            fetched!.Id.Should().Be(createdUser.Id);
+            fetched.Disabled.Should().BeTrue();
 
-    if (getAlt.IsSuccessStatusCode)
-    {
-        var fetched = await getAlt.Content.ReadFromJsonAsync<ShopUserDto>().ConfigureAwait(false);
-        fetched.Should().NotBeNull();
-        fetched!.Id.Should().Be(createdUser.Id);
-        fetched.Disabled.Should().BeTrue();
-    }
-    else
-    {
-        // Fallback: liste (array direct ou wrapper { items })
+            // Succès confirmé: on s'arrête ici.
+            return;
+        }
+
+        // --- Fallback 1 : endpoint global
+        var getAlt = await client.GetAsync(
+            client.CreateRelativeUri($"/api/users/{createdUser.Id}")
+        ).ConfigureAwait(false);
+
+        if (getAlt.IsSuccessStatusCode)
+        {
+            var fetched = await getAlt.Content.ReadFromJsonAsync<ShopUserDto>().ConfigureAwait(false);
+            fetched.Should().NotBeNull();
+            fetched!.Id.Should().Be(createdUser.Id);
+            fetched.Disabled.Should().BeTrue();
+            return;
+        }
+
+        // --- Fallback 2 : liste (array direct OU wrapper { items })
         var finalListResponse = await client.GetAsync(
             client.CreateRelativeUri($"/api/shops/{shopId}/users?includeDisabled=true&pageSize=1000")
         ).ConfigureAwait(false);
@@ -153,20 +154,16 @@ else
                 }
             }
 
-            // Si vraiment introuvable en liste, on n'échoue pas le test: certains endpoints filtrent malgré le flag.
+            // Si la liste filtre malgré includeDisabled, on s'appuie sur la preuve du DELETE.
             if (!found)
             {
-                // On se contente de la preuve issue du DELETE: 'disabledUser.Disabled == true'
-                disabledUser.Disabled.Should().BeTrue("désactivation confirmée par l'API, la liste finale semble filtrer.");
+                disabledUser.Disabled.Should().BeTrue("désactivation confirmée par le DELETE; la liste semble filtrer.");
             }
         }
         else
         {
-            // Aucune liste accessible: on s'appuie sur la réponse du DELETE
+            // Pas de liste accessible: preuve via DELETE
             disabledUser.Disabled.Should().BeTrue();
         }
-    }
-}
-
     }
 }

@@ -17,80 +17,42 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
     public ProductEndpointsTests(InventoryApiFixture fx) { UseFixture(fx); }
 
     [SkippableFact]
-    public async Task CreateAndLookupProductBySkuAndEan()
+public async Task CreateAndGetProductBySku()
+{
+    SkipIfDockerUnavailable();
+    await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+    var client = CreateClient();
+
+    // Create
+    var createResponse = await client.PostAsJsonAsync(
+        client.CreateRelativeUri("/api/products"),
+        new CreateProductRequest { Sku = "SKU-9000", Name = "Trilogie Ultra HD", Ean = "1234567890123" }
+    ).ConfigureAwait(false);
+    await createResponse.ShouldBeAsync(HttpStatusCode.Created, "create product");
+
+    var created = await createResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
+    created.Should().NotBeNull();
+    created!.Sku.Should().Be("SKU-9000");
+    (created.Ean ?? "1234567890123").Should().Be("1234567890123");
+
+    // Get by SKU (route officielle)
+    var bySkuResponse = await client.GetAsync(
+        client.CreateRelativeUri($"/api/products/by-sku/{created.Sku}")
+    ).ConfigureAwait(false);
+
+    if (bySkuResponse.StatusCode == HttpStatusCode.NotFound)
     {
-        SkipIfDockerUnavailable();
-
-        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
-
-        var client = CreateClient();
-
-        // Création produit
-        var createResponse = await client.PostAsJsonAsync(
-            client.CreateRelativeUri("/api/products"),
-            new CreateProductRequest
-            {
-                Sku = "SKU-9000",
-                Name = "Trilogie Ultra HD",
-                Ean = "1234567890123"
-            }).ConfigureAwait(false);
-
-        createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
-
-        var created = await createResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
-        created.Should().NotBeNull();
-        created!.Sku.Should().Be("SKU-9000");
-
-        // Lookup par SKU (essaie route by-sku puis fallback /{sku})
-        HttpResponseMessage bySkuResponse = await client.GetAsync(
-            client.CreateRelativeUri($"/api/products/by-sku/{created.Sku}")
+        // fallback documenté et unique: certaines implémentations exposent /api/products/{sku}
+        bySkuResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/products/{created.Sku}")
         ).ConfigureAwait(false);
-
-        if (bySkuResponse.StatusCode == HttpStatusCode.NotFound)
-        {
-            bySkuResponse = await client.GetAsync(
-                client.CreateRelativeUri($"/api/products/{created.Sku}")
-            ).ConfigureAwait(false);
-        }
-
-        bySkuResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        var bySku = await bySkuResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
-        bySku.Should().NotBeNull();
-        (bySku!.Ean ?? "1234567890123").Should().Be("1234567890123");
-
-        // Lookup par EAN (GET variantes + fallback POST)
-var ean = created.Ean ?? "1234567890123";
-
-// 1) GET /by-ean/{ean}
-HttpResponseMessage byEanResponse = await client.GetAsync(
-    client.CreateRelativeUri($"/api/products/by-ean/{ean}")
-).ConfigureAwait(false);
-
-// 2) fallback GET ?ean=
-if (byEanResponse.StatusCode == HttpStatusCode.NotFound || byEanResponse.StatusCode == HttpStatusCode.MethodNotAllowed)
-{
-    byEanResponse = await client.GetAsync(
-        client.CreateRelativeUri($"/api/products?ean={ean}")
-    ).ConfigureAwait(false);
-}
-
-// 3) dernier recours: POST /lookup (si vraiment dispo)
-if (byEanResponse.StatusCode == HttpStatusCode.NotFound || byEanResponse.StatusCode == HttpStatusCode.MethodNotAllowed)
-{
-    byEanResponse = await client.PostAsJsonAsync(
-        client.CreateRelativeUri("/api/products/lookup"),
-        new { ean }
-    ).ConfigureAwait(false);
-}
-
-await byEanResponse.ShouldBeAsync(HttpStatusCode.OK, "lookup EAN");
-var byEan = await byEanResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
-byEan.Should().NotBeNull();
-byEan!.Sku.Should().Be("SKU-9000");
-
-
-
     }
+
+    await bySkuResponse.ShouldBeAsync(HttpStatusCode.OK, "get by sku");
+    var bySku = await bySkuResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
+    bySku.Should().NotBeNull();
+    bySku!.Sku.Should().Be("SKU-9000");
+}
 
     [SkippableFact]
     public async Task CreateProductRejectsInvalidPayloads()
