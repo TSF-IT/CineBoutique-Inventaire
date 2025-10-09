@@ -19,7 +19,7 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
     [SkippableFact]
     public async Task CreateAndGetProductBySku()
     {
-        SkipIfDockerUnavailable();
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
         var client = CreateClient();
 
@@ -54,7 +54,7 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
     [SkippableFact]
     public async Task CreateProductRejectsInvalidPayloads()
     {
-        SkipIfDockerUnavailable();
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
 
@@ -95,7 +95,7 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
     [SkippableFact]
     public async Task UpdateProduct_Succeeds_AndGetReflectsChanges()
     {
-        SkipIfDockerUnavailable();
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
 
@@ -170,7 +170,7 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
     [SkippableFact]
     public async Task GetProduct_UnknownSku_Returns404()
     {
-        SkipIfDockerUnavailable();
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
         var client = CreateClient();
@@ -185,7 +185,7 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
     [SkippableFact]
     public async Task CreateProduct_DuplicateSku_Returns409()
     {
-        SkipIfDockerUnavailable();
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
 
