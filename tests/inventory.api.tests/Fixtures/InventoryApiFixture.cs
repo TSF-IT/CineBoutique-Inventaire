@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using Xunit;
+using CineBoutique.Inventory.Api.Tests.Helpers;
 
 namespace CineBoutique.Inventory.Api.Tests.Fixtures;
 
