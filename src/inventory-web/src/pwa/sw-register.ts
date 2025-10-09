@@ -1,12 +1,13 @@
-import { registerSW } from 'virtual:pwa-register'
+export async function setupPWA() {
+  // garde-fou: seulement en prod, et seulement côté client
+  if (!import.meta.env.PROD) return
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return
 
-export const enablePwa = () => {
+  // import dynamique du module virtuel — uniquement en prod
+  const { registerSW } = await import('virtual:pwa-register')
   registerSW({
-    onNeedRefresh() {
-      // TODO: afficher un toast / bannière si nécessaire
-    },
-    onOfflineReady() {
-      // TODO: notifier l'utilisateur que le cache est prêt
-    },
+    immediate: true,
+    onNeedRefresh() {},
+    onOfflineReady() {},
   })
 }
