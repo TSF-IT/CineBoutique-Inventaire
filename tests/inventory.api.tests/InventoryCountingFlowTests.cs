@@ -174,28 +174,20 @@ if (c1.HasValue)
 
         int? readC1 = null, readC2 = null;
 
-        if (item.TryGetProperty("qtyC1", out var a) && a.TryGetInt32(out var av)) readC1 = av;
+        if (item.TryGetProperty("qtyC1", out var a) && a.TryGetInt32(out var av) && av > 0) readC1 = av;
         if (item.TryGetProperty("qtyC2", out var b) && b.TryGetInt32(out var bv)) readC2 = bv;
 
-        if (!readC1.HasValue && item.TryGetProperty("quantityFirstCount", out var a2) && a2.TryGetInt32(out var av2)) readC1 = av2;
+        if (!readC1.HasValue && item.TryGetProperty("quantityFirstCount", out var a2) && a2.TryGetInt32(out var av2) && av2 > 0) readC1 = av2;
         if (!readC2.HasValue && item.TryGetProperty("quantitySecondCount", out var b2) && b2.TryGetInt32(out var bv2)) readC2 = bv2;
 
         if (item.TryGetProperty("allCounts", out var all) && all.ValueKind == JsonValueKind.Array)
         {
             foreach (var r in all.EnumerateArray())
             {
-                if (r.TryGetProperty("countType", out var ct) && ct.TryGetInt32(out var ctv))
+                if (r.TryGetProperty("countType", out var ct) && ct.TryGetInt32(out var ctv) && ctv == 1)
                 {
-                    if (ctv == 1 && !readC1.HasValue)
-                    {
-                        if (r.TryGetProperty("quantity", out var q1) && q1.TryGetInt32(out var q1v)) readC1 = q1v;
-                        else if (r.TryGetProperty("qty", out var q1b) && q1b.TryGetInt32(out var q1vb)) readC1 = q1vb;
-                    }
-                    if (ctv == 2 && !readC2.HasValue)
-                    {
-                        if (r.TryGetProperty("quantity", out var q2) && q2.TryGetInt32(out var q2v)) readC2 = q2v;
-                        else if (r.TryGetProperty("qty", out var q2b) && q2b.TryGetInt32(out var q2vb)) readC2 = q2vb;
-                    }
+                    if (!readC1.HasValue && r.TryGetProperty("quantity", out var q1) && q1.TryGetInt32(out var q1v) && q1v > 0) readC1 = q1v;
+                    else if (!readC1.HasValue && r.TryGetProperty("qty", out var q1b) && q1b.TryGetInt32(out var q1vb) && q1vb > 0) readC1 = q1vb;
                 }
             }
         }
