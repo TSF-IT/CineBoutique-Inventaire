@@ -134,40 +134,21 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
 
     private static async Task<HttpResponseMessage> PostCompleteAsync(
     HttpClient client, Guid locationId, Guid runId, Guid userId, int pass, string sku, int quantity)
+{
+    var uri = client.CreateRelativeUri($"/api/inventories/{locationId}/complete");
+
+    // Contrat strict: OwnerUserId + CountType + Items[{ Sku, Quantity, IsDamaged }]
+    var payload = new
     {
-        var uri = client.CreateRelativeUri($"/api/inventories/{locationId}/complete");
+        RunId = runId,
+        OwnerUserId = userId,
+        CountType = pass,
+        Items = new[] { new { Sku = sku, Quantity = quantity, IsDamaged = false } }
+    };
 
-        // Tentative A: champs canoniques
-        var a = new
-        {
-            runId,
-            userId,
-            pass,
-            items = new[] { new { sku, quantity, isDamaged = false } }
-        };
-        var res = await client.PostAsJsonAsync(uri, a).ConfigureAwait(false);
-        if (res.IsSuccessStatusCode) return res;
+    var res = await client.PostAsJsonAsync(uri, payload).ConfigureAwait(false);
+    return res;
+}
 
-        // Tentative B: aliases fréquents
-        var b = new
-        {
-            runId,
-            operatorId = userId,
-            countType = pass,
-            items = new[] { new { sku, qty = quantity, damaged = false } }
-        };
-        res = await client.PostAsJsonAsync(uri, b).ConfigureAwait(false);
-        if (res.IsSuccessStatusCode) return res;
-
-        // Tentative C: certains schémas veulent ean à la place
-        var c = new
-        {
-            runId,
-            userId,
-            pass,
-            items = new[] { new { ean = sku, quantity, isDamaged = false } }
-        };
-        return await client.PostAsJsonAsync(uri, c).ConfigureAwait(false);
-    }
 
 }
