@@ -63,6 +63,7 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
         conflict.Items.Should().NotBeEmpty();
         conflict.Items.SelectMany(item => item.AllCounts).Should().NotBeEmpty();
 
+        await RunCountAsync(client, seeded, seeded.PrimaryUserId, 1, 6m).ConfigureAwait(false);
         await RunCountAsync(client, seeded, seeded.SecondaryUserId, 2, 6m).ConfigureAwait(false);
 
         var resolvedResponse = await client.GetAsync(
