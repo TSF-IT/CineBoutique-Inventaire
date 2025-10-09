@@ -54,6 +54,18 @@ jobs:
           echo "${DOTNET_INSTALL_DIR}" >> "$GITHUB_PATH"
           echo "${DOTNET_INSTALL_DIR}/tools" >> "$GITHUB_PATH"
 
+      - name: Confirm dotnet is available
+        run: |
+          which dotnet || echo "dotnet not found"
+          dotnet --info
+
+      - name: Show repo tree (debug)
+        run: |
+          ls -la
+          ls -la tests || true
+          ls -la tests/inventory.api.tests || true
+          test -f tests/inventory.api.tests/CineBoutique.Inventory.Api.Tests.csproj
+
       - name: Restore
         run: dotnet restore
 
