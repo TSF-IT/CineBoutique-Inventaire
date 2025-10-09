@@ -41,7 +41,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
 
         var client = CreateClient();
 
-        // --- Premier comptage: START -> ADD ITEMS -> COMPLETE
+        // --- Premier comptage: START -> COMPLETE(+items)
         var startPrimary = await client.PostAsJsonAsync(
             client.CreateRelativeUri($"/api/inventories/{locationId}/start"),
             new StartRunRequest(shopId, primaryUserId, 1)).ConfigureAwait(false);
@@ -51,13 +51,12 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
         primaryRun.Should().NotBeNull();
         primaryRun!.OwnerUserId.Should().Be(primaryUserId);
 
-        await AddItemsAsync(client, locationId, primaryRun.RunId, primaryUserId, 1, productSku, productEan, 5)
-            .ConfigureAwait(false);
-
-        var completePrimary = await CompleteAsync(client, locationId, primaryRun.RunId, primaryUserId, 1).ConfigureAwait(false);
+        var completePrimary = await CompleteWithItemsAsync(
+            client, locationId, primaryRun.RunId, primaryUserId, 1, productSku, productEan, 5
+        ).ConfigureAwait(false);
         await completePrimary.ShouldBeAsync(HttpStatusCode.OK, "complete primary");
 
-        // --- Deuxième comptage (désaccord): START -> ADD ITEMS -> COMPLETE
+        // --- Deuxième comptage (désaccord): START -> COMPLETE(+items)
         var startSecondary = await client.PostAsJsonAsync(
             client.CreateRelativeUri($"/api/inventories/{locationId}/start"),
             new StartRunRequest(shopId, secondaryUserId, 2)).ConfigureAwait(false);
@@ -67,25 +66,22 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
         secondaryRun.Should().NotBeNull();
         secondaryRun!.OwnerUserId.Should().Be(secondaryUserId);
 
-        await AddItemsAsync(client, locationId, secondaryRun.RunId, secondaryUserId, 2, productSku, productEan, 3)
-            .ConfigureAwait(false);
-
-        var completeMismatch = await CompleteAsync(client, locationId, secondaryRun.RunId, secondaryUserId, 2).ConfigureAwait(false);
+        var completeMismatch = await CompleteWithItemsAsync(
+            client, locationId, secondaryRun.RunId, secondaryUserId, 2, productSku, productEan, 3
+        ).ConfigureAwait(false);
         await completeMismatch.ShouldBeAsync(HttpStatusCode.OK, "complete mismatch");
 
-        // --- Lecture des conflits (contrat actuel: conflit présent + C2=3 dans allCounts; C1 peut ne pas être exposé)
-        var conflict = await ReadConflictAsync(client, locationId, productSku, productEan).ConfigureAwait(false);
-        conflict.exists.Should().BeTrue($"conflit attendu pour ean={productEan} ou sku={productSku}. Body: {conflict.raw}");
+        // --- Lecture des conflits (contrat actuel: conflit présent + C2=3 dans allCounts; C1 peut être non matérialisé)
+        var (exists, c1, c2, raw, item) = await ReadConflictAsync(client, locationId, productSku, productEan).ConfigureAwait(false);
+        exists.Should().BeTrue($"conflit attendu pour ean={productEan} ou sku={productSku}. Body: {raw}");
 
-        // C2 = 3 obligatoire
-        conflict.c2.HasValue.Should().BeTrue($"countType=2 (C2) doit être présent. Item: {conflict.item}");
-        conflict.c2!.Value.Should().Be(3, $"C2 doit compter 3 pour le produit. Item: {conflict.item}");
+        c2.HasValue.Should().BeTrue($"countType=2 (C2) doit être présent. Item: {item}");
+        c2!.Value.Should().Be(3, $"C2 doit compter 3 pour le produit. Item: {item}");
 
-        // C1 = 5 si exposé (qtyC1/quantityFirstCount/allCounts)
-        if (conflict.c1.HasValue)
-            conflict.c1!.Value.Should().Be(5, $"C1 doit compter 5 quand il est exposé. Item: {conflict.item}");
+        if (c1.HasValue)
+            c1!.Value.Should().Be(5, $"C1 doit compter 5 quand il est exposé. Item: {item}");
 
-        // --- Alignement C2 à 5: START -> ADD ITEMS -> COMPLETE
+        // --- Alignement C2 à 5: START -> COMPLETE(+items)
         var restartSecond = await client.PostAsJsonAsync(
             client.CreateRelativeUri($"/api/inventories/{locationId}/start"),
             new StartRunRequest(shopId, secondaryUserId, 2)).ConfigureAwait(false);
@@ -94,10 +90,9 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
         var restartedRun = await restartSecond.Content.ReadFromJsonAsync<StartInventoryRunResponse>().ConfigureAwait(false);
         restartedRun.Should().NotBeNull();
 
-        await AddItemsAsync(client, locationId, restartedRun!.RunId, secondaryUserId, 2, productSku, productEan, 5)
-            .ConfigureAwait(false);
-
-        var completeAligned = await CompleteAsync(client, locationId, restartedRun.RunId, secondaryUserId, 2).ConfigureAwait(false);
+        var completeAligned = await CompleteWithItemsAsync(
+            client, locationId, restartedRun!.RunId, secondaryUserId, 2, productSku, productEan, 5
+        ).ConfigureAwait(false);
         await completeAligned.ShouldBeAsync(HttpStatusCode.OK, "complete aligned");
 
         // --- Vérifie que le conflit est résolu
@@ -124,41 +119,23 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
 
     // ========== Helpers ==========
 
-    private static async Task AddItemsAsync(HttpClient client, Guid locationId, Guid runId, Guid userId, int countType, string sku, string ean, int quantity)
-    {
-        var payload = new
-        {
-            RunId = runId,
-            OwnerUserId = userId,
-            CountType = countType,
-            Items = new[] { new { Sku = sku, Ean = ean, Quantity = quantity, IsDamaged = false } }
-        };
-
-        // Forme A: items adressés par location
-        var res = await client.PostAsJsonAsync(
-            client.CreateRelativeUri($"/api/inventories/{locationId}/items"), payload
-        ).ConfigureAwait(false);
-
-        if (!res.IsSuccessStatusCode)
-        {
-            // Forme B: items adressés par run
-            res = await client.PostAsJsonAsync(
-                client.CreateRelativeUri($"/api/inventories/runs/{runId}/items"), payload
-            ).ConfigureAwait(false);
-        }
-
-        await res.ShouldBeAsync(HttpStatusCode.OK, "add items");
-    }
-
-    private static Task<HttpResponseMessage> CompleteAsync(HttpClient client, Guid locationId, Guid runId, Guid ownerUserId, int countType)
+    // COMPLETE qui transporte les items (contrat effectif chez toi)
+    private static Task<HttpResponseMessage> CompleteWithItemsAsync(
+        HttpClient client, Guid locationId, Guid runId, Guid ownerUserId, int countType, string sku, string ean, int quantity)
     {
         var uri = client.CreateRelativeUri($"/api/inventories/{locationId}/complete");
+
         var payload = new
         {
             RunId = runId,
             OwnerUserId = ownerUserId,
-            CountType = countType
+            CountType = countType,
+            Items = new[]
+            {
+                new { Sku = sku, Ean = ean, Quantity = quantity, IsDamaged = false }
+            }
         };
+
         return client.PostAsJsonAsync(uri, payload);
     }
 
@@ -196,15 +173,12 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
 
         int? readC1 = null, readC2 = null;
 
-        // Champs plats
         if (item.TryGetProperty("qtyC1", out var a) && a.TryGetInt32(out var av)) readC1 = av;
         if (item.TryGetProperty("qtyC2", out var b) && b.TryGetInt32(out var bv)) readC2 = bv;
 
-        // Noms alternatifs
         if (!readC1.HasValue && item.TryGetProperty("quantityFirstCount", out var a2) && a2.TryGetInt32(out var av2)) readC1 = av2;
         if (!readC2.HasValue && item.TryGetProperty("quantitySecondCount", out var b2) && b2.TryGetInt32(out var bv2)) readC2 = bv2;
 
-        // allCounts
         if (item.TryGetProperty("allCounts", out var all) && all.ValueKind == JsonValueKind.Array)
         {
             foreach (var r in all.EnumerateArray())
