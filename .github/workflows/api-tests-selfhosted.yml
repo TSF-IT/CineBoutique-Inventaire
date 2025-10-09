@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   tests:
-    runs-on: [self-hosted, linux, tsf-inventaire]   # <— labels de mon runner
+    runs-on: [self-hosted, tsf]
     timeout-minutes: 40
     permissions:
       contents: read
