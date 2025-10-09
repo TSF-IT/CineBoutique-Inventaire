@@ -72,14 +72,15 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
         await completeMismatch.ShouldBeAsync(HttpStatusCode.OK, "complete mismatch");
 
         // --- Lecture des conflits (contrat actuel: conflit présent + C2=3 dans allCounts; C1 peut être non matérialisé)
-        var (exists, c1, c2, raw, item) = await ReadConflictAsync(client, locationId, productSku, productEan).ConfigureAwait(false);
-        exists.Should().BeTrue($"conflit attendu pour ean={productEan} ou sku={productSku}. Body: {raw}");
+        var (exists, c1, c2, raw, itemJson) = await ReadConflictAsync(client, locationId, productSku, productEan).ConfigureAwait(false);
+exists.Should().BeTrue($"conflit attendu pour ean={productEan} ou sku={productSku}. Body: {raw}");
 
-        c2.HasValue.Should().BeTrue($"countType=2 (C2) doit être présent. Item: {item}");
-        c2!.Value.Should().Be(3, $"C2 doit compter 3 pour le produit. Item: {item}");
+c2.HasValue.Should().BeTrue($"countType=2 (C2) doit être présent. Item: {itemJson}");
+c2!.Value.Should().Be(3, $"C2 doit compter 3 pour le produit. Item: {itemJson}");
 
-        if (c1.HasValue)
-            c1!.Value.Should().Be(5, $"C1 doit compter 5 quand il est exposé. Item: {item}");
+if (c1.HasValue)
+    c1!.Value.Should().Be(5, $"C1 doit compter 5 quand il est exposé. Item: {itemJson}");
+
 
         // --- Alignement C2 à 5: START -> COMPLETE(+items)
         var restartSecond = await client.PostAsJsonAsync(
@@ -140,8 +141,8 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
     }
 
     // Retourne: (exists, c1?, c2?, raw, item)
-    private static async Task<(bool exists, int? c1, int? c2, string raw, JsonElement item)> ReadConflictAsync(
-        HttpClient client, Guid locationId, string sku, string ean)
+    private static async Task<(bool exists, int? c1, int? c2, string raw, string itemJson)> ReadConflictAsync(
+    HttpClient client, Guid locationId, string sku, string ean)
     {
         var resp = await client.GetAsync(client.CreateRelativeUri($"/api/conflicts/{locationId}")).ConfigureAwait(false);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -169,7 +170,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
             }
         }
 
-        if (!found) return (false, null, null, json, default);
+        if (!found) return (false, null, null, json, "<not-found>");
 
         int? readC1 = null, readC2 = null;
 
@@ -199,6 +200,8 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
             }
         }
 
-        return (true, readC1, readC2, json, item);
+        var itemJson = item.ValueKind == JsonValueKind.Undefined ? "<undefined>" : item.GetRawText();
+        return (true, readC1, readC2, json, itemJson);
+
     }
 }
