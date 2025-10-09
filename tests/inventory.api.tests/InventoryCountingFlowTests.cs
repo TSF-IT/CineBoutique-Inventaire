@@ -72,7 +72,8 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
         await completeMismatch.ShouldBeAsync(HttpStatusCode.OK, "complete mismatch");
 
         // --- Lecture des conflits (contrat actuel: conflit présent + C2=3 dans allCounts; C1 peut être non matérialisé)
-        var (exists, c1, c2, raw, itemJson) = await ReadConflictAsync(client, locationId, productSku, productEan).ConfigureAwait(false);
+        var (exists, c1, c2, raw, itemJson, productId) = await ReadConflictAsync(client, locationId, productSku, productEan);
+
 exists.Should().BeTrue($"conflit attendu pour ean={productEan} ou sku={productSku}. Body: {raw}");
 
 c2.HasValue.Should().BeTrue($"countType=2 (C2) doit être présent. Item: {itemJson}");
@@ -97,13 +98,18 @@ if (c1.HasValue)
         await completeAligned.ShouldBeAsync(HttpStatusCode.OK, "complete aligned");
 
 // --- Résolution explicite: on demande au backend de lever le conflit maintenant que C2=5
-var resolve = await ResolveConflictAsync(client, locationId, productSku, productEan).ConfigureAwait(false);
-// Accepte 200 OK ou 204 NoContent selon l'implémentation
+var resolve = await ResolveConflictAsync(client, locationId, productSku, productEan, productId).ConfigureAwait(false);
 if (resolve.StatusCode != HttpStatusCode.OK && resolve.StatusCode != HttpStatusCode.NoContent)
 {
     var body = await resolve.Content.ReadAsStringAsync().ConfigureAwait(false);
-    resolve.StatusCode.Should().Be(HttpStatusCode.OK, $"resolve conflict failed: {(int)resolve.StatusCode} {resolve.StatusCode}. Body: {body}");
+    var tried = resolve.RequestMessage?.Headers.TryGetValues("X-Tried-Routes", out var vals) == true
+        ? string.Join("", vals)
+        : "<not-captured>";
+    resolve.StatusCode.Should().Be(HttpStatusCode.OK,
+        $"resolve conflict failed: {(int)resolve.StatusCode} {resolve.StatusCode}. Tried: {tried}. Body: {body}");
 }
+
+
 
 
         // --- Vérifie que le conflit est résolu
@@ -152,35 +158,73 @@ if (resolve.StatusCode != HttpStatusCode.OK && resolve.StatusCode != HttpStatusC
 
 // Tente de résoudre explicitement le conflit pour un produit (EAN/SKU).
 private static async Task<HttpResponseMessage> ResolveConflictAsync(
-    HttpClient client, Guid locationId, string sku, string ean)
+    HttpClient client, Guid locationId, string sku, string ean, Guid? productId)
 {
-    // On essaie des routes “classiques” de résolution.
-    // A. /api/conflicts/{locationId}/resolve  (body avec ean/sku)
+    var tried = new System.Collections.Generic.List<string>();
+
+    // 1) DELETE /api/conflicts/{locationId}/{productId}
+    if (productId.HasValue)
+    {
+        var uri = client.CreateRelativeUri($"/api/conflicts/{locationId}/{productId.Value}");
+        tried.Add($"DELETE {uri}");
+        var del = await client.DeleteAsync(uri).ConfigureAwait(false);
+        if (del.StatusCode == HttpStatusCode.OK || del.StatusCode == HttpStatusCode.NoContent) return del;
+
+        // 2) POST /api/conflicts/{locationId}/{productId}/resolve
+        uri = client.CreateRelativeUri($"/api/conflicts/{locationId}/{productId.Value}/resolve");
+        tried.Add($"POST {uri}");
+        var postPid = await client.PostAsJsonAsync(uri, new { }).ConfigureAwait(false);
+        if (postPid.StatusCode == HttpStatusCode.OK || postPid.StatusCode == HttpStatusCode.NoContent) return postPid;
+
+        // 3) PUT /api/conflicts/{locationId}/{productId}/resolve
+        tried.Add($"PUT {uri}");
+        var putPid = await client.PutAsJsonAsync(uri, new { }).ConfigureAwait(false);
+        if (putPid.StatusCode == HttpStatusCode.OK || putPid.StatusCode == HttpStatusCode.NoContent) return putPid;
+    }
+
+    // 4) PUT /api/conflicts/{locationId}/resolve  (body avec ean/sku)
     var body = new { Ean = ean, Sku = sku };
-    var res = await client.PostAsJsonAsync(
-        client.CreateRelativeUri($"/api/conflicts/{locationId}/resolve"), body
-    ).ConfigureAwait(false);
-    if (res.IsSuccessStatusCode) return res;
+    var uri2 = client.CreateRelativeUri($"/api/conflicts/{locationId}/resolve");
+    tried.Add($"PUT {uri2}");
+    var put = await client.PutAsJsonAsync(uri2, body).ConfigureAwait(false);
+    if (put.StatusCode == HttpStatusCode.OK || put.StatusCode == HttpStatusCode.NoContent) return put;
 
-    // B. /api/inventories/{locationId}/resolve
-    res = await client.PostAsJsonAsync(
-        client.CreateRelativeUri($"/api/inventories/{locationId}/resolve"), body
-    ).ConfigureAwait(false);
-    if (res.IsSuccessStatusCode) return res;
+    // 5) POST /api/conflicts/{locationId}/resolve
+    tried.Add($"POST {uri2}");
+    var post = await client.PostAsJsonAsync(uri2, body).ConfigureAwait(false);
+    if (post.StatusCode == HttpStatusCode.OK || post.StatusCode == HttpStatusCode.NoContent) return post;
 
-    // C. /api/conflicts/resolve?locationId=...&ean=...
-    res = await client.PostAsync(
-        client.CreateRelativeUri($"/api/conflicts/resolve?locationId={locationId}&ean={ean}&sku={sku}"),
-        content: null
-    ).ConfigureAwait(false);
+    // 6) PUT /api/inventories/{locationId}/resolve
+    var uri3 = client.CreateRelativeUri($"/api/inventories/{locationId}/resolve");
+    tried.Add($"PUT {uri3}");
+    var put2 = await client.PutAsJsonAsync(uri3, body).ConfigureAwait(false);
+    if (put2.StatusCode == HttpStatusCode.OK || put2.StatusCode == HttpStatusCode.NoContent) return put2;
 
-    return res;
+    // 7) POST /api/inventories/{locationId}/resolve
+    tried.Add($"POST {uri3}");
+    var post2 = await client.PostAsJsonAsync(uri3, body).ConfigureAwait(false);
+    if (post2.StatusCode == HttpStatusCode.OK || post2.StatusCode == HttpStatusCode.NoContent) return post2;
+
+    // 8) DELETE /api/conflicts/{locationId}?productId=...  (plan Z)
+    if (productId.HasValue)
+    {
+        var uriQ = client.CreateRelativeUri($"/api/conflicts/{locationId}?productId={productId.Value}");
+        tried.Add($"DELETE {uriQ}");
+        var delQ = await client.DeleteAsync(uriQ).ConfigureAwait(false);
+        if (delQ.StatusCode == HttpStatusCode.OK || delQ.StatusCode == HttpStatusCode.NoContent) return delQ;
+    }
+
+    // Si rien ne marche, renvoyer la dernière réponse avec le détail des routes tentées (visible dans l'assert appelant)
+    post2.Headers.TryGetValues("X-Debug", out _); // no-op, juste pour garder post2 comme "dernier"
+    post2.RequestMessage!.Headers.Add("X-Tried-Routes", string.Join(" | ", tried));
+    return post2;
 }
 
 
     // Retourne: (exists, c1?, c2?, raw, item)
-    private static async Task<(bool exists, int? c1, int? c2, string raw, string itemJson)> ReadConflictAsync(
+    private static async Task<(bool exists, int? c1, int? c2, string raw, string itemJson, Guid? productId)> ReadConflictAsync(
     HttpClient client, Guid locationId, string sku, string ean)
+
     {
         var resp = await client.GetAsync(client.CreateRelativeUri($"/api/conflicts/{locationId}")).ConfigureAwait(false);
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -208,7 +252,7 @@ private static async Task<HttpResponseMessage> ResolveConflictAsync(
             }
         }
 
-        if (!found) return (false, null, null, json, "<not-found>");
+        if (!found) return (false, null, null, json, "<not-found>", null);
 
         int? readC1 = null, readC2 = null;
 
@@ -230,8 +274,17 @@ private static async Task<HttpResponseMessage> ResolveConflictAsync(
             }
         }
 
-        var itemJson = item.ValueKind == JsonValueKind.Undefined ? "<undefined>" : item.GetRawText();
-        return (true, readC1, readC2, json, itemJson);
+
+var itemJson = item.ValueKind == JsonValueKind.Undefined ? "<undefined>" : item.GetRawText();
+Guid? pid = null;
+if (item.TryGetProperty("productId", out var pidEl)
+    && pidEl.ValueKind == JsonValueKind.String
+    && Guid.TryParse(pidEl.GetString(), out var pidGuid))
+{
+    pid = pidGuid;
+}
+return (true, readC1, readC2, json, itemJson, pid);
+
 
     }
 }
