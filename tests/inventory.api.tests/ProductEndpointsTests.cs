@@ -5,6 +5,7 @@ using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Fixtures;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using FluentAssertions;
+using CineBoutique.Inventory.Api.Tests.Helpers;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;

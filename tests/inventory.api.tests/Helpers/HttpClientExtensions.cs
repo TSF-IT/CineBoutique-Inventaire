@@ -15,7 +15,7 @@ namespace CineBoutique.Inventory.Api.Tests.Helpers
             if (string.IsNullOrWhiteSpace(relativePath))
                 throw new ArgumentException("Chemin relatif vide.", nameof(relativePath));
 
-            if (!relativePath.StartsWith('/'))
+            if (!relativePath.StartsWith("/"))
                 relativePath = "/" + relativePath;
 
             return new Uri(client.BaseAddress, relativePath);
