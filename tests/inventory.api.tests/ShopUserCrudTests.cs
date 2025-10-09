@@ -166,4 +166,96 @@ public sealed class ShopUserCrudTests : IntegrationTestBase
             disabledUser.Disabled.Should().BeTrue();
         }
     }
+
+    [SkippableFact]
+    public async Task CreateUser_DuplicateLogin_Returns409()
+    {
+        SkipIfDockerUnavailable();
+
+        Guid shopId = Guid.Empty;
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.CreateShopAsync("Boutique Doublon").ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var client = CreateClient();
+
+        var firstCreate = await client.PostAsJsonAsync(
+            client.CreateRelativeUri($"/api/shops/{shopId}/users"),
+            new CreateShopUserRequest
+            {
+                Login = "duplicate",
+                DisplayName = "Premier",
+                IsAdmin = false
+            }).ConfigureAwait(false);
+        await firstCreate.ShouldBeAsync(HttpStatusCode.Created, "create initial user");
+
+        var duplicateResponse = await client.PostAsJsonAsync(
+            client.CreateRelativeUri($"/api/shops/{shopId}/users"),
+            new CreateShopUserRequest
+            {
+                Login = "duplicate",
+                DisplayName = "Clone",
+                IsAdmin = false
+            }).ConfigureAwait(false);
+
+        duplicateResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [SkippableFact]
+    public async Task GetUser_UnknownId_Returns404()
+    {
+        SkipIfDockerUnavailable();
+
+        Guid shopId = Guid.Empty;
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.CreateShopAsync("Boutique Recherche").ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var client = CreateClient();
+
+        var response = await client.GetAsync(
+            client.CreateRelativeUri($"/api/shops/{shopId}/users/{Guid.NewGuid()}")
+        ).ConfigureAwait(false);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [SkippableFact]
+    public async Task DisableUser_Twice_IsIdempotent()
+    {
+        SkipIfDockerUnavailable();
+
+        Guid shopId = Guid.Empty;
+        Guid userId = Guid.Empty;
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.CreateShopAsync("Boutique Idempotence").ConfigureAwait(false);
+            userId = await seeder.CreateShopUserAsync(shopId, "repeat", "Utilisateur Répétable").ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var client = CreateClient();
+
+        async Task<HttpResponseMessage> DisableAsync()
+        {
+            using var request = new HttpRequestMessage(
+                HttpMethod.Delete,
+                client.CreateRelativeUri($"/api/shops/{shopId}/users"))
+            { Content = JsonContent.Create(new DeleteShopUserRequest { Id = userId }) };
+            return await client.SendAsync(request).ConfigureAwait(false);
+        }
+
+        var firstDisable = await DisableAsync().ConfigureAwait(false);
+        await firstDisable.ShouldBeAsync(HttpStatusCode.OK, "first disable");
+        var firstPayload = await firstDisable.Content.ReadFromJsonAsync<ShopUserDto>().ConfigureAwait(false);
+        firstPayload.Should().NotBeNull();
+        firstPayload!.Disabled.Should().BeTrue();
+
+        var secondDisable = await DisableAsync().ConfigureAwait(false);
+        await secondDisable.ShouldBeAsync(HttpStatusCode.OK, "second disable");
+        var secondPayload = await secondDisable.Content.ReadFromJsonAsync<ShopUserDto>().ConfigureAwait(false);
+        secondPayload.Should().NotBeNull();
+        secondPayload!.Disabled.Should().BeTrue();
+    }
 }
