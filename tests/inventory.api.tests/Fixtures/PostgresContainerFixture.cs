@@ -1,5 +1,6 @@
 using System;
 using System.Threading.Tasks;
+using CineBoutique.Inventory.Api.Tests.Infra;
 using Docker.DotNet;
 using Npgsql;
 using Testcontainers.PostgreSql;
@@ -30,10 +31,9 @@ public sealed class PostgresContainerFixture : IAsyncLifetime, IAsyncDisposable
 
     public async Task InitializeAsync()
     {
-        var externalConnection = Environment.GetEnvironmentVariable("TEST_DB_CONNECTION");
-        if (!string.IsNullOrWhiteSpace(externalConnection))
+        if (TestDbOptions.UseExternalDb)
         {
-            ConnectionString = externalConnection;
+            ConnectionString = TestDbOptions.ExternalConnectionString!;
             IsExternalDatabase = true;
             IsDatabaseAvailable = true;
             return;

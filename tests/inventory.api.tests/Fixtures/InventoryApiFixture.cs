@@ -1,7 +1,9 @@
 using System;
 using System.Net.Http;
 using System.Threading.Tasks;
+using CineBoutique.Inventory.Api.Tests.Helpers;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
+using CineBoutique.Inventory.Api.Tests.Infra;
 using CineBoutique.Inventory.Infrastructure.Migrations;
 using FluentMigrator.Runner;
 using FluentMigrator.Runner.Processors;
@@ -9,7 +11,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using Xunit;
-using CineBoutique.Inventory.Api.Tests.Helpers;
 
 namespace CineBoutique.Inventory.Api.Tests.Fixtures;
 
@@ -24,13 +25,13 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
     private bool _initialized;
 
     public TestDataSeeder Seeder { get; private set; } = default!;
-    public bool IsDockerAvailable => GetOrCachePostgres().IsDatabaseAvailable;
+    public bool IsBackendAvailable => TestDbOptions.UseExternalDb || GetOrCachePostgres().IsDatabaseAvailable;
     public string? SkipReason => GetOrCachePostgres().SkipReason;
 
     // xUnit l’appelle si la fixture est enregistrée comme ICollectionFixture
     public async Task InitializeAsync()
     {
-        if (!IsDockerAvailable)
+        if (!IsBackendAvailable)
             return;
 
         await EnsureReadyAsync().ConfigureAwait(false);
@@ -68,7 +69,7 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
 
     /// <summary>
     /// Initialisation paresseuse et idempotente:
-    /// - choisit la connection string (TEST_DB_CONNECTION ou container)
+    /// - choisit la connection string (TEST_DB_CONN ou container)
     /// - applique les migrations
     /// - crée la factory et vérifie /ready
     /// - crée le seeder
@@ -85,13 +86,12 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
                 return;
         }
 
-        if (!IsDockerAvailable)
+        if (!IsBackendAvailable)
             return;
 
-        var overrideConnectionString = Environment.GetEnvironmentVariable("TEST_DB_CONNECTION");
-        var cs = string.IsNullOrWhiteSpace(overrideConnectionString)
-            ? GetOrCachePostgres().ConnectionString
-            : overrideConnectionString;
+        var cs = TestDbOptions.UseExternalDb
+            ? TestDbOptions.ExternalConnectionString!
+            : GetOrCachePostgres().ConnectionString;
 
         if (string.IsNullOrWhiteSpace(cs))
             throw new InvalidOperationException("La chaîne de connexion de test doit être définie.");
@@ -126,7 +126,7 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
 
     public async Task DbResetAsync()
     {
-        if (!IsDockerAvailable)
+        if (!IsBackendAvailable)
             return;
 
         await EnsureReadyAsync().ConfigureAwait(false);
@@ -135,7 +135,7 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
 
     public async Task ResetAndSeedAsync(Func<TestDataSeeder, Task> plan)
     {
-        if (!IsDockerAvailable)
+        if (!IsBackendAvailable)
             return;
 
         ArgumentNullException.ThrowIfNull(plan);
@@ -159,9 +159,31 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
 
         await using var connection = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
 
-        const string resetSql = "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;";
-        await using var command = new NpgsqlCommand(resetSql, connection);
-        await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+        if (TestDbOptions.UseExternalDb)
+        {
+            const string truncateSql = @"DO $$
+DECLARE
+    stmt text;
+BEGIN
+    FOR stmt IN
+        SELECT format('TRUNCATE TABLE %I.%I RESTART IDENTITY CASCADE;', schemaname, tablename)
+        FROM pg_tables
+        WHERE schemaname = 'public'
+          AND tablename <> 'VersionInfo'
+    LOOP
+        EXECUTE stmt;
+    END LOOP;
+END$$;";
+
+            await using var truncateCommand = new NpgsqlCommand(truncateSql, connection);
+            await truncateCommand.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+        else
+        {
+            const string resetSql = "DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;";
+            await using var resetCommand = new NpgsqlCommand(resetSql, connection);
+            await resetCommand.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
 
         await ApplyMigrationsAsync().ConfigureAwait(false);
     }
