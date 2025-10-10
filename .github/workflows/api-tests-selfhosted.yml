@@ -28,18 +28,23 @@ jobs:
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: inv_test
-        # Port hôte FIXE -> évite les expressions job.services[...] et calme le linter
+        # Port fixe pour éviter l'usage de job.services[...] (qui faisait râler le linter)
         ports:
           - 5432:5432
         options: >-
           --health-cmd="pg_isready -U postgres"
           --health-interval=10s
           --health-timeout=5s
-          --health-retries=10
+          --health-retries=30
 
     env:
-      TEST_DB_CONNECTION: Host=127.0.0.1;Port=5432;Database=inv_test;Username=postgres;Password=postgres
+      # === Env de test : traces détaillées et logs console ===
+      ASPNETCORE_ENVIRONMENT: Development
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DISABLE_SERILOG: "true"   # évite d’écrire sur disque si Serilog est configuré fichier
+
+      # === Connexion DB (service Postgres ci-dessus) ===
+      TEST_DB_CONNECTION: Host=127.0.0.1;Port=5432;Database=inv_test;Username=postgres;Password=postgres
 
     steps:
       - uses: actions/checkout@v4
@@ -56,13 +61,17 @@ jobs:
       - name: Build
         run: dotnet build -c Release --no-restore
 
+      # Double attente: TCP + readiness Postgres (pg_isready depuis une image officielle)
       - name: Wait for Postgres service
         run: |
-          for i in {1..30}; do
-            (echo > /dev/tcp/127.0.0.1/5432) >/dev/null 2>&1 && exit 0
-            echo "Waiting for Postgres... ($i/30)"; sleep 2
+          for i in {1..60}; do
+            (echo > /dev/tcp/127.0.0.1/5432) >/dev/null 2>&1 && break
+            echo "Waiting for Postgres TCP... ($i/60)"; sleep 1
           done
-          echo "Postgres not ready"; exit 1
+          if command -v docker >/dev/null 2>&1; then
+            docker run --rm --network host -e PGPASSWORD=postgres postgres:16-alpine \
+              sh -lc 'for i in $(seq 1 60); do pg_isready -h 127.0.0.1 -p 5432 -U postgres && exit 0; echo "pg_isready... ($i/60)"; sleep 1; done; exit 1'
+          fi
 
       - name: Test (API)
         env:
@@ -72,8 +81,10 @@ jobs:
           dotnet test tests/inventory.api.tests/CineBoutique.Inventory.Api.Tests.csproj \
             -c Release --no-build \
             --logger "trx;LogFileName=test_results.trx" \
+            --logger "console;verbosity=detailed" \
             --results-directory tests/inventory.api.tests/TestResults
 
+      # Rapport sympa dans l'onglet Checks + artefacts bruts
       - name: Publish test report (TRX)
         if: always()
         uses: dorny/test-reporter@v1
@@ -83,9 +94,12 @@ jobs:
           reporter: dotnet-trx
           fail-on-error: false
 
-      - name: Upload raw TRX
+      - name: Upload artifacts (TRX + logs éventuels)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-trx
-          path: tests/inventory.api.tests/TestResults
+          name: api-test-artifacts
+          path: |
+            tests/inventory.api.tests/TestResults
+            **/logs/**
+            **/TestResults/**
