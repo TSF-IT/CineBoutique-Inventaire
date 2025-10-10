@@ -1,10 +1,12 @@
-name: API Integration Tests (self-hosted)
+name: API Integration Tests
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - '**'
   pull_request:
-    branches: [ main ]
+    branches:
+      - '**'
   workflow_dispatch:
 
 concurrency:
@@ -13,7 +15,7 @@ concurrency:
 
 jobs:
   tests:
-    runs-on: [self-hosted, tsf]
+    runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
       contents: read
@@ -33,10 +35,11 @@ jobs:
           --health-retries=10
 
     env:
-      TEST_DB_CONNECTION: Host=localhost;Port=5432;Database=inv_test;Username=postgres;Password=postgres
+      TEST_DB_CONN: Host=localhost;Port=5432;Database=inv_test;Username=postgres;Password=postgres
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
       DOTNET_INSTALL_DIR: ${{ runner.temp }}/.dotnet
       DOTNET_ROOT: ${{ runner.temp }}/.dotnet
+      DOTNET_NOLOGO: 1
 
     steps:
       - uses: actions/checkout@v4
@@ -46,19 +49,20 @@ jobs:
         env:
           DOTNET_INSTALL_DIR: ${{ env.DOTNET_INSTALL_DIR }}
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '8.0.414'
           cache: true
-
-      - name: Export dotnet to PATH
-        run: |
-          echo "${DOTNET_INSTALL_DIR}" >> "$GITHUB_PATH"
-          echo "${DOTNET_INSTALL_DIR}/tools" >> "$GITHUB_PATH"
 
       - name: Restore
         run: dotnet restore
 
       - name: Build
-        run: dotnet build -c Release
+        run: dotnet build -c Release --no-restore
+
+      - name: Run domain tests
+        run: dotnet test tests/inventory.domain.tests/CineBoutique.Inventory.Domain.Tests.csproj -c Release --no-build
+
+      - name: Install Postgres client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
       - name: Wait for Postgres service
         shell: bash
@@ -69,8 +73,8 @@ jobs:
           done
           echo "Postgres not ready"; exit 1
 
-      - name: Test (all)
-        run: dotnet test tests/inventory.api.tests/CineBoutique.Inventory.Api.Tests.csproj -c Release --logger "trx;LogFileName=test_results.trx"
+      - name: Test API (integration)
+        run: dotnet test tests/inventory.api.tests/CineBoutique.Inventory.Api.Tests.csproj -c Release --no-build --logger "trx;LogFileName=test_results.trx"
 
       - name: Publish TRX
         if: always()

@@ -21,7 +21,7 @@ public sealed class ShopUserCrudTests : IntegrationTestBase
     [SkippableFact]
     public async Task ShopUserEndpointsManageUserLifecycle()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         Guid shopId = Guid.Empty;
 
@@ -170,7 +170,7 @@ public sealed class ShopUserCrudTests : IntegrationTestBase
     [SkippableFact]
     public async Task CreateUser_DuplicateLogin_Returns409()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         Guid shopId = Guid.Empty;
         await Fixture.ResetAndSeedAsync(async seeder =>
@@ -205,7 +205,7 @@ public sealed class ShopUserCrudTests : IntegrationTestBase
     [SkippableFact]
     public async Task GetUser_UnknownId_Returns404()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         Guid shopId = Guid.Empty;
         await Fixture.ResetAndSeedAsync(async seeder =>
@@ -225,7 +225,7 @@ public sealed class ShopUserCrudTests : IntegrationTestBase
     [SkippableFact]
     public async Task DisableUser_Twice_IsIdempotent()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         Guid shopId = Guid.Empty;
         Guid userId = Guid.Empty;

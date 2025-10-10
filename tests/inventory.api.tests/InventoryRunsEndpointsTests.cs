@@ -20,7 +20,7 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
     [SkippableFact]
     public async Task StartRun_CreatesActiveRun_ThenSummaryListsIt()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
@@ -53,7 +53,7 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
     [SkippableFact]
     public async Task CompleteRun_MakesRunCompleted_ActiveRunLookupReturnsNotFound()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
@@ -91,7 +91,7 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
     [SkippableFact]
     public async Task ReleaseRun_ReleasesLock_ThenAnotherStartIsAllowed()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
@@ -131,7 +131,7 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
     [SkippableFact]
     public async Task RestartRun_FromActiveRun_CompletesAndAllowsNewStart()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
@@ -168,7 +168,7 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
     [SkippableFact]
     public async Task DeleteRun_RemovesIt_ThenGetByIdReturns404()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
@@ -195,7 +195,7 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
     [SkippableFact]
     public async Task StartRun_WhenAlreadyActiveWithAnotherOperator_Returns409()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
@@ -217,7 +217,7 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
     [SkippableFact]
     public async Task CompleteRun_WhenRunMissing_Returns404()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
@@ -238,7 +238,7 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
     [SkippableFact]
     public async Task AnyRunEndpoint_WithUnknownLocation_Returns404()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         Guid shopId = Guid.Empty;
         Guid operatorId = Guid.Empty;

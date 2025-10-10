@@ -69,7 +69,7 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
 
     /// <summary>
     /// Initialisation paresseuse et idempotente:
-    /// - choisit la connection string (TEST_DB_CONN ou container)
+    /// - choisit la connection string (TEST_DB_CONN / TEST_DB_CONNECTION ou container)
     /// - applique les migrations
     /// - crée la factory et vérifie /ready
     /// - crée le seeder

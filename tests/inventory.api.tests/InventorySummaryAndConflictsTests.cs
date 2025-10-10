@@ -20,7 +20,7 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
     [SkippableFact]
     public async Task Summary_WhenCountsDisagree_ShowsConflictForLocation()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
@@ -43,7 +43,7 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
     [SkippableFact]
     public async Task ConflictsEndpoint_ListsConflicts_ThenResolvingClearsIt()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
@@ -78,7 +78,7 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
     [SkippableFact]
     public async Task Locations_ListByShop_ReturnsZonesWithStates()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();

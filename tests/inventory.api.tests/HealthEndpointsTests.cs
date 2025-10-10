@@ -16,7 +16,7 @@ public sealed class HealthEndpointsTests : IntegrationTestBase
     [SkippableFact]
     public async Task Health_Returns200_WithExpectedPayloadShape()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
         var client = CreateClient();
@@ -40,7 +40,7 @@ public sealed class HealthEndpointsTests : IntegrationTestBase
     [SkippableFact]
     public async Task Ready_Returns200()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
         var client = CreateClient();

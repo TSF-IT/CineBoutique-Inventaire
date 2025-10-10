@@ -4,6 +4,9 @@ namespace CineBoutique.Inventory.Api.Tests.Infra;
 
 public static class TestEnvironment
 {
+    public const string MissingBackendSkipReason =
+        "No Docker/Testcontainers and no TEST_DB_CONN/TEST_DB_CONNECTION provided.";
+
     public static bool IsIntegrationBackendAvailable()
     {
         if (TestDbOptions.UseExternalDb)

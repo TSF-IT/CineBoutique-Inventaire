@@ -42,16 +42,16 @@ Si l’environnement CI ne peut pas exécuter Docker, utilisez un service Postgr
 #       --health-retries=5
 ```
 
-Pointez alors les tests vers cette instance via `TEST_DB_CONN` (voir ci-dessous).
+Pointez alors les tests vers cette instance via `TEST_DB_CONN` (alias `TEST_DB_CONNECTION`, voir ci-dessous).
 
 ## Variables d’environnement
 | Variable | Description | Valeur par défaut |
 |----------|-------------|-------------------|
-| `TEST_DB_CONN` | Chaîne de connexion explicite pour réutiliser une base Postgres existante (désactive Testcontainers). | Vide → Testcontainers démarre une DB éphémère |
+| `TEST_DB_CONN` / `TEST_DB_CONNECTION` | Chaîne de connexion explicite pour réutiliser une base Postgres existante (désactive Testcontainers). | Vide → Testcontainers démarre une DB éphémère |
 | `CI_SKIP_DOCKER_TESTS` | Forcer le skip des tests d’intégration quand Docker est indisponible. | Vide |
 | `ASPNETCORE_ENVIRONMENT` | Fixé à `Testing` par les fixtures pour désactiver les migrations automatiques au démarrage. | `Testing` pendant les tests |
 
 ## Conseils
 - Ne jamais cibler `localhost:5432` en dur : utilisez toujours la chaîne fournie par `InventoryApiFixture`.
 - Pour diagnostiquer un échec de conteneur, lancez `docker ps -a` et `docker logs` localement.
-- Les tests peuvent être redirigés vers une base locale existante en positionnant `TEST_DB_CONN` avant `dotnet test`.
+- Les tests peuvent être redirigés vers une base locale existante en positionnant `TEST_DB_CONN` (ou `TEST_DB_CONNECTION`) avant `dotnet test`.

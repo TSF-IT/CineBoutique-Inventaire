@@ -20,7 +20,7 @@ public sealed class ShopCrudTests : IntegrationTestBase
     [SkippableFact]
     public async Task ShopCrudEndpointsManageShopLifecycle()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         var client = CreateClient();
 
@@ -79,7 +79,7 @@ public sealed class ShopCrudTests : IntegrationTestBase
     [SkippableFact]
     public async Task GetShop_UnknownId_Returns404()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         await Fixture.ResetAndSeedAsync(async seeder =>
         {
@@ -98,7 +98,7 @@ public sealed class ShopCrudTests : IntegrationTestBase
     [SkippableFact]
     public async Task RenameShop_ToExistingName_Returns409()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         Guid firstShopId = Guid.Empty;
         Guid secondShopId = Guid.Empty;
@@ -121,7 +121,7 @@ public sealed class ShopCrudTests : IntegrationTestBase
     [SkippableFact]
     public async Task DeleteShop_ThenGetReturns404()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         Guid shopId = Guid.Empty;
         await Fixture.ResetAndSeedAsync(async seeder =>

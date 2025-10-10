@@ -21,7 +21,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
     [SkippableFact]
     public async Task ConflictsAreDetectedThenResolvedWhenCountsMatch()
     {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), TestEnvironment.MissingBackendSkipReason);
 
         Guid shopId = Guid.Empty;
         Guid locationId = Guid.Empty;
