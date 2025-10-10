@@ -369,7 +369,10 @@ ORDER BY COALESCE(p.""Ean"", p.""Sku""), p.""Name"";";
                 return Results.NotFound();
             }
 
-            const string runsSql = """
+            var columnsState = await DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
+            var runOperatorSql = BuildOperatorSqlFragments("cr2", "owner", columnsState);
+
+            var runsSql = $"""
 WITH active_runs AS (
   SELECT DISTINCT cr."Id" AS "RunId", cr."CompletedAtUtc"
   FROM "Conflict" c
@@ -392,10 +395,10 @@ conflict_runs AS (
     AND cr."CompletedAtUtc" >= sb."MinCompletedAtUtc"
 )
 SELECT cr."RunId", cr."CountType", cr."CompletedAtUtc",
-       COALESCE(su."DisplayName", cr2."OperatorDisplayName") AS "OwnerDisplayName"
+       {runOperatorSql.Projection} AS "OwnerDisplayName"
 FROM conflict_runs cr
 JOIN "CountingRun" cr2 ON cr2."Id" = cr."RunId"
-LEFT JOIN "ShopUser" su ON su."Id" = cr2."OwnerUserId"
+{AppendJoinClause(runOperatorSql.JoinClause)}
 ORDER BY cr."CompletedAtUtc" ASC, cr."CountType" ASC;
 """;
 
