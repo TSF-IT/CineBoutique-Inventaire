@@ -28,7 +28,7 @@ jobs:
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: inv_test
-        # Port fixe (évite l'utilisation de job.services[...] qui faisait râler le linter)
+        # Port fixe -> pas d'expressions job.services[...] (VS Code était allergique)
         ports:
           - 5432:5432
         options: >-
@@ -38,31 +38,49 @@ jobs:
           --health-retries=30
 
     env:
+      # === Env .NET / ASP.NET détaillée ===
+      DOTNET_ENVIRONMENT: Development
       ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_DETAILED_ERRORS: "true"
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
-      DISABLE_SERILOG: "true"
+
+      # (si tu utilises Serilog, ces clés activent la console + niveau debug)
+      Serilog__MinimumLevel__Default: Debug
+      Serilog__WriteTo__0__Name: Console
+      Serilog__Enrich__FromLogContext: "true"
+      # Si ton app écrit aussi en fichier avec Serilog et que ton runner n'a pas les droits,
+      # tu peux désactiver en mettant DISABLE_SERILOG="true" et gérer uniquement la console.
+      # DISABLE_SERILOG: "true"
+
+      # === Logging Microsoft/EF Core verbeux (console) ===
+      Logging__Console__FormatterName: simple
+      Logging__Console__IncludeScopes: "true"
+      Logging__LogLevel__Default: Debug
+      Logging__LogLevel__Microsoft: Information
+      Logging__LogLevel__Microsoft.EntityFrameworkCore: Information
+      Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command: Information
+
+      # === Connexion DB (service Postgres ci-dessus) ===
       TEST_DB_CONNECTION: Host=127.0.0.1;Port=5432;Database=inv_test;Username=postgres;Password=postgres
 
     steps:
       - uses: actions/checkout@v4
 
-      # Installe .NET dans un dossier "user" (pas de sudo) + répertoire NuGet local
-      - name: Prepare .NET install dir (user-writable) + NuGet cache dir
+      # Installer .NET dans un dossier user-writable + nuget cache local
+      - name: Prepare .NET install dir (user) + NuGet cache dir
         run: |
-          echo "DOTNET_INSTALL_DIR=$HOME/.dotnet"          >> "$GITHUB_ENV"
-          echo "DOTNET_ROOT=$HOME/.dotnet"                 >> "$GITHUB_ENV"
-          echo "NUGET_PACKAGES=$HOME/.nuget/packages"      >> "$GITHUB_ENV"
+          echo "DOTNET_INSTALL_DIR=$HOME/.dotnet"     >> "$GITHUB_ENV"
+          echo "DOTNET_ROOT=$HOME/.dotnet"            >> "$GITHUB_ENV"
+          echo "NUGET_PACKAGES=$HOME/.nuget/packages" >> "$GITHUB_ENV"
           mkdir -p "$HOME/.dotnet" "$HOME/.nuget/packages"
 
-      # IMPORTANT : pas de 'cache: true' (sinon l'action exige packages.lock.json)
+      # IMPORTANT : pas de cache:true (nécessite packages.lock.json)
       - name: Setup .NET (no cache)
         uses: actions/setup-dotnet@v4
         env:
           DOTNET_INSTALL_DIR: ${{ env.DOTNET_INSTALL_DIR }}
         with:
           dotnet-version: '8.0.x'
-          cache: true
-          cache-dependency-path: '**/packages.lock.json'
 
       - name: Verify dotnet
         run: |
@@ -70,39 +88,47 @@ jobs:
           echo "${DOTNET_INSTALL_DIR}/tools" >> "$GITHUB_PATH"
           dotnet --info
 
-      - uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props', '**/Directory.Build.props') }}
-          restore-keys: |
-            nuget-${{ runner.os }}-
-
       - name: Restore
         run: dotnet restore
 
       - name: Build
         run: dotnet build -c Release --no-restore
 
+      # Attente robuste : TCP + pg_isready
       - name: Wait for Postgres service
         run: |
-          for i in {1..60}; do
-            (echo > /dev/tcp/127.0.0.1/5432) >/dev/null 2>&1 && exit 0
-            echo "Waiting for Postgres... ($i/60)"; sleep 1
+          for i in {1..90}; do
+            (echo > /dev/tcp/127.0.0.1/5432) >/dev/null 2>&1 && break
+            echo "Waiting for TCP 5432... ($i/90)"; sleep 1
           done
-          echo "Postgres not ready"; exit 1
+          docker run --rm --network host -e PGPASSWORD=postgres postgres:16-alpine \
+            sh -lc 'for i in $(seq 1 60); do pg_isready -h 127.0.0.1 -p 5432 -U postgres && exit 0; echo "pg_isready... ($i/60)"; sleep 1; done; exit 1'
 
+      # Extensions Postgres usuelles (au cas où l'app/migrations en ont besoin)
+      - name: Ensure Postgres extensions
+        run: |
+          docker run --rm --network host -e PGPASSWORD=postgres postgres:16-alpine \
+            psql -h 127.0.0.1 -p 5432 -U postgres -d inv_test -v "ON_ERROR_STOP=1" \
+              -c 'CREATE EXTENSION IF NOT EXISTS pgcrypto;' \
+              -c 'CREATE EXTENSION IF NOT EXISTS "uuid-ossp";' \
+              -c 'CREATE EXTENSION IF NOT EXISTS citext;' \
+              -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm;'
+
+      # Tests API (capture de la console dans un fichier pour debug)
       - name: Test (API)
         env:
           TEST_DB_CONNECTION: ${{ env.TEST_DB_CONNECTION }}
         run: |
           mkdir -p tests/inventory.api.tests/TestResults
+          set -o pipefail
           dotnet test tests/inventory.api.tests/CineBoutique.Inventory.Api.Tests.csproj \
             -c Release --no-build \
             --logger "trx;LogFileName=test_results.trx" \
             --logger "console;verbosity=detailed" \
-            --results-directory tests/inventory.api.tests/TestResults
+            --results-directory tests/inventory.api.tests/TestResults \
+          2>&1 | tee tests/inventory.api.tests/TestResults/console.log
 
-      # Ces deux steps ne se lancent que si des TRX existent
+      # Reporter + artefacts seulement s'il y a des TRX
       - name: Publish test report (TRX)
         if: ${{ always() && hashFiles('tests/inventory.api.tests/TestResults/**/*.trx') != '' }}
         uses: dorny/test-reporter@v1
@@ -112,7 +138,7 @@ jobs:
           reporter: dotnet-trx
           fail-on-error: false
 
-      - name: Upload artifacts (TRX + logs éventuels)
+      - name: Upload artifacts (TRX + console)
         if: ${{ always() && hashFiles('tests/inventory.api.tests/TestResults/**/*.trx') != '' }}
         uses: actions/upload-artifact@v4
         with:
