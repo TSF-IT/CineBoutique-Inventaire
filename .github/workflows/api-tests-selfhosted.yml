@@ -15,10 +15,9 @@ defaults:
 
 jobs:
   tests:
-    runs-on: [self-hosted, tsf]
+    runs-on: [self-hosted, tsf, Linux, X64]
     timeout-minutes: 40
 
-    # Permissions minimales + lecture artefacts pour le reporter
     permissions:
       contents: read
       checks: write
@@ -29,6 +28,7 @@ jobs:
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: inv_test
+        # Port hôte FIXE -> évite les expressions job.services[...] et calme le linter
         ports:
           - 5432:5432
         options: >-
@@ -38,19 +38,11 @@ jobs:
           --health-retries=10
 
     env:
-      TEST_DB_CONNECTION: Host=localhost;Port=5432;Database=inv_test;Username=postgres;Password=postgres
+      TEST_DB_CONNECTION: Host=127.0.0.1;Port=5432;Database=inv_test;Username=postgres;Password=postgres
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
 
     steps:
       - uses: actions/checkout@v4
-
-      # 👇 Pas d’expression ${{ runner.temp }} dans le YAML (VS Code content)
-      - name: Prepare .NET locations
-        run: |
-          echo "DOTNET_INSTALL_DIR=$RUNNER_TEMP/.dotnet" >> "$GITHUB_ENV"
-          echo "DOTNET_ROOT=$RUNNER_TEMP/.dotnet" >> "$GITHUB_ENV"
-          echo "$RUNNER_TEMP/.dotnet" >> "$GITHUB_PATH"
-          echo "$RUNNER_TEMP/.dotnet/tools" >> "$GITHUB_PATH"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -64,7 +56,6 @@ jobs:
       - name: Build
         run: dotnet build -c Release --no-restore
 
-      # Attente Postgres (pas besoin du client psql sur le runner)
       - name: Wait for Postgres service
         run: |
           for i in {1..30}; do
@@ -73,7 +64,9 @@ jobs:
           done
           echo "Postgres not ready"; exit 1
 
-      - name: Test (all)
+      - name: Test (API)
+        env:
+          TEST_DB_CONNECTION: ${{ env.TEST_DB_CONNECTION }}
         run: |
           mkdir -p tests/inventory.api.tests/TestResults
           dotnet test tests/inventory.api.tests/CineBoutique.Inventory.Api.Tests.csproj \
@@ -81,7 +74,6 @@ jobs:
             --logger "trx;LogFileName=test_results.trx" \
             --results-directory tests/inventory.api.tests/TestResults
 
-      # Annotation des échecs de tests dans l'onglet Checks (UX ++)
       - name: Publish test report (TRX)
         if: always()
         uses: dorny/test-reporter@v1
@@ -89,7 +81,7 @@ jobs:
           name: API Tests
           path: tests/inventory.api.tests/TestResults/**/*.trx
           reporter: dotnet-trx
-          fail-on-error: false  # laisse le job échouer sur l’étape test, pas ici
+          fail-on-error: false
 
       - name: Upload raw TRX
         if: always()
