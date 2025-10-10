@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Tests.Helpers;
@@ -27,6 +28,14 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
     public TestDataSeeder Seeder { get; private set; } = default!;
     public bool IsBackendAvailable => TestDbOptions.UseExternalDb || GetOrCachePostgres().IsDatabaseAvailable;
     public string? SkipReason => GetOrCachePostgres().SkipReason;
+    public TestAuditLogger AuditLogger
+    {
+        get
+        {
+            EnsureInitialized();
+            return _factory!.Services.GetRequiredService<TestAuditLogger>();
+        }
+    }
 
     // xUnit l’appelle si la fixture est enregistrée comme ICollectionFixture
     public async Task InitializeAsync()
@@ -124,6 +133,28 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
         return _factory!.CreateClient();
     }
 
+    public void ClearAuditLogs()
+    {
+        if (!IsBackendAvailable)
+        {
+            return;
+        }
+
+        EnsureInitialized();
+        AuditLogger.Clear();
+    }
+
+    public IReadOnlyList<AuditLogEntry> DrainAuditLogs()
+    {
+        if (!IsBackendAvailable)
+        {
+            return Array.Empty<AuditLogEntry>();
+        }
+
+        EnsureInitialized();
+        return AuditLogger.Drain();
+    }
+
     public async Task DbResetAsync()
     {
         if (!IsBackendAvailable)
@@ -131,6 +162,7 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
 
         await EnsureReadyAsync().ConfigureAwait(false);
         await ResetDatabaseSchemaAsync().ConfigureAwait(false);
+        ClearAuditLogs();
     }
 
     public async Task ResetAndSeedAsync(Func<TestDataSeeder, Task> plan)
