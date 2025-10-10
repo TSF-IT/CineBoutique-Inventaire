@@ -1,4 +1,6 @@
 using System.Linq;
+using CineBoutique.Inventory.Api.Infrastructure.Audit;
+using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using System.Net.Http.Headers;
@@ -50,6 +52,18 @@ public sealed class InventoryApiFactory : WebApplicationFactory<Program>
 
             services.AddSingleton(_ => NpgsqlDataSource.Create(_connectionString));
             services.AddScoped(sp => sp.GetRequiredService<NpgsqlDataSource>().CreateConnection());
+
+            var auditDescriptors = services
+                .Where(descriptor => descriptor.ServiceType == typeof(IAuditLogger))
+                .ToList();
+
+            foreach (var descriptor in auditDescriptors)
+            {
+                services.Remove(descriptor);
+            }
+
+            services.AddSingleton<TestAuditLogger>();
+            services.AddSingleton<IAuditLogger>(sp => sp.GetRequiredService<TestAuditLogger>());
         });
     }
 
