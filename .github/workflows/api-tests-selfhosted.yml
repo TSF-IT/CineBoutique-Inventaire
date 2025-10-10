@@ -28,7 +28,7 @@ jobs:
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: inv_test
-        # Port hôte fixe pour éviter les expressions job.services[...] (qui faisaient râler le linter)
+        # Port fixe (évite l'utilisation de job.services[...] qui faisait râler le linter)
         ports:
           - 5432:5432
         options: >-
@@ -38,40 +38,44 @@ jobs:
           --health-retries=30
 
     env:
-      # === Env de test : traces détaillées et logs console ===
       ASPNETCORE_ENVIRONMENT: Development
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
       DISABLE_SERILOG: "true"
-
-      # === Connexion DB (service Postgres ci-dessus) ===
       TEST_DB_CONNECTION: Host=127.0.0.1;Port=5432;Database=inv_test;Username=postgres;Password=postgres
 
     steps:
       - uses: actions/checkout@v4
 
-      # >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-      # Forcer l'installation .NET dans un répertoire user-writable
-      - name: Prepare .NET install dir (user-writable)
+      # Installe .NET dans un dossier "user" (pas de sudo) + répertoire NuGet local
+      - name: Prepare .NET install dir (user-writable) + NuGet cache dir
         run: |
-          echo "DOTNET_INSTALL_DIR=$HOME/.dotnet" >> "$GITHUB_ENV"
-          echo "DOTNET_ROOT=$HOME/.dotnet"        >> "$GITHUB_ENV"
-          mkdir -p "$HOME/.dotnet"
-      # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+          echo "DOTNET_INSTALL_DIR=$HOME/.dotnet"          >> "$GITHUB_ENV"
+          echo "DOTNET_ROOT=$HOME/.dotnet"                 >> "$GITHUB_ENV"
+          echo "NUGET_PACKAGES=$HOME/.nuget/packages"      >> "$GITHUB_ENV"
+          mkdir -p "$HOME/.dotnet" "$HOME/.nuget/packages"
 
-      - name: Setup .NET
+      # IMPORTANT : pas de 'cache: true' (sinon l'action exige packages.lock.json)
+      - name: Setup .NET (no cache)
         uses: actions/setup-dotnet@v4
         env:
-          DOTNET_INSTALL_DIR: ${{ env.DOTNET_INSTALL_DIR }}  # évite /usr/share/dotnet
+          DOTNET_INSTALL_DIR: ${{ env.DOTNET_INSTALL_DIR }}
         with:
           dotnet-version: '8.0.x'
           cache: true
+          cache-dependency-path: '**/packages.lock.json'
 
-      # (optionnel mais utile en self-hosted) on s'assure que le PATH est OK et on log l'info
       - name: Verify dotnet
         run: |
           echo "${DOTNET_INSTALL_DIR}" >> "$GITHUB_PATH"
           echo "${DOTNET_INSTALL_DIR}/tools" >> "$GITHUB_PATH"
           dotnet --info
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props', '**/Directory.Build.props') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
 
       - name: Restore
         run: dotnet restore
@@ -98,8 +102,9 @@ jobs:
             --logger "console;verbosity=detailed" \
             --results-directory tests/inventory.api.tests/TestResults
 
+      # Ces deux steps ne se lancent que si des TRX existent
       - name: Publish test report (TRX)
-        if: always()
+        if: ${{ always() && hashFiles('tests/inventory.api.tests/TestResults/**/*.trx') != '' }}
         uses: dorny/test-reporter@v1
         with:
           name: API Tests
@@ -108,7 +113,7 @@ jobs:
           fail-on-error: false
 
       - name: Upload artifacts (TRX + logs éventuels)
-        if: always()
+        if: ${{ always() && hashFiles('tests/inventory.api.tests/TestResults/**/*.trx') != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: api-test-artifacts
