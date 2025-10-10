@@ -2,34 +2,57 @@ name: ci
 
 on:
   push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
+  build-and-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Restore .NET dependencies
+
+      - name: Restore
         run: dotnet restore CineBoutique.Inventory.sln
-      - name: Build .NET solution
+
+      - name: Build
         run: dotnet build CineBoutique.Inventory.sln --configuration Release --no-restore
+
       - name: Test .NET solution
-        run: dotnet test CineBoutique.Inventory.sln --configuration Release --no-build
+        run: dotnet test CineBoutique.Inventory.sln --configuration Release --no-build --logger "trx;LogFileName=solution_results.trx"
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: src/inventory-web/package-lock.json
+
       - name: Install web dependencies
         working-directory: src/inventory-web
-        run: npm install
+        run: npm ci
+
       - name: Run web tests
         working-directory: src/inventory-web
         run: npm test -- --runInBand
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-test-results
+          path: |
+            **/TestResults/**/*.trx
+            src/inventory-web/coverage/**
