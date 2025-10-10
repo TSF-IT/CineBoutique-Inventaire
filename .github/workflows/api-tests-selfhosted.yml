@@ -61,7 +61,7 @@ jobs:
       Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command: Information
 
       # === Connexion DB (service Postgres ci-dessus) ===
-      TEST_DB_CONNECTION: Host=127.0.0.1;Port=5432;Database=inv_test;Username=postgres;Password=postgres
+      TEST_DB_CONN: Host=127.0.0.1;Port=5432;Database=inv_test;Username=postgres;Password=postgres
 
     steps:
       - uses: actions/checkout@v4
@@ -117,7 +117,7 @@ jobs:
       # Tests API (capture de la console dans un fichier pour debug)
       - name: Test (API)
         env:
-          TEST_DB_CONNECTION: ${{ env.TEST_DB_CONNECTION }}
+          TEST_DB_CONN: ${{ env.TEST_DB_CONN }}
         run: |
           mkdir -p tests/inventory.api.tests/TestResults
           set -o pipefail

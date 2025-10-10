@@ -1,14 +1,9 @@
-using System;
-using System.Linq;
 using System.Net;
-using System.Net.Http;
 using System.Net.Http.Json;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Fixtures;
 using CineBoutique.Inventory.Api.Tests.Helpers;
 using FluentAssertions;
-using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
 
@@ -32,7 +27,7 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
             client.CreateRelativeUri($"/api/inventories/summary?shopId={seeded.ShopId}")
         ).ConfigureAwait(false);
 
-        await summaryResponse.ShouldBeAsync(HttpStatusCode.OK, "inventory summary");
+        await summaryResponse.ShouldBeAsync(HttpStatusCode.OK, "inventory summary").ConfigureAwait(false);
         var summary = await summaryResponse.Content.ReadFromJsonAsync<InventorySummaryDto>().ConfigureAwait(false);
         summary.Should().NotBeNull();
         summary!.Conflicts.Should().BeGreaterOrEqualTo(1);
@@ -56,7 +51,7 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
         var conflictResponse = await client.GetAsync(
             client.CreateRelativeUri($"/api/conflicts/{seeded.LocationId}")
         ).ConfigureAwait(false);
-        await conflictResponse.ShouldBeAsync(HttpStatusCode.OK, "conflicts before resolution");
+        await conflictResponse.ShouldBeAsync(HttpStatusCode.OK, "conflicts before resolution").ConfigureAwait(false);
         var conflict = await conflictResponse.Content.ReadFromJsonAsync<ConflictZoneDetailDto>().ConfigureAwait(false);
         conflict.Should().NotBeNull();
         conflict!.Items.Should().NotBeNull();
@@ -69,7 +64,7 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
         var resolvedResponse = await client.GetAsync(
             client.CreateRelativeUri($"/api/conflicts/{seeded.LocationId}")
         ).ConfigureAwait(false);
-        await resolvedResponse.ShouldBeAsync(HttpStatusCode.OK, "conflicts after resolution");
+        await resolvedResponse.ShouldBeAsync(HttpStatusCode.OK, "conflicts after resolution").ConfigureAwait(false);
         var resolved = await resolvedResponse.Content.ReadFromJsonAsync<ConflictZoneDetailDto>().ConfigureAwait(false);
         resolved.Should().NotBeNull();
         resolved!.Items.Should().BeEmpty("conflit résolu");
@@ -92,14 +87,14 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
         started.Should().NotBeNull();
 
         var locationsResponse = await client.GetAsync(
-            client.CreateRelativeUri($"/locations?shopId={seeded.ShopId}")
+            client.CreateRelativeUri($"/api/locations?shopId={seeded.ShopId}")
         ).ConfigureAwait(false);
 
-        await locationsResponse.ShouldBeAsync(HttpStatusCode.OK, "list locations");
+        await locationsResponse.ShouldBeAsync(HttpStatusCode.OK, "list locations").ConfigureAwait(false);
         var locations = await locationsResponse.Content.ReadFromJsonAsync<LocationListItemDto[]>().ConfigureAwait(false);
         locations.Should().NotBeNull();
         locations!.Should().ContainSingle(loc => loc.Id == seeded.LocationId);
-        var location = locations.Single(loc => loc.Id == seeded.LocationId);
+        var location = locations!.Single(loc => loc.Id == seeded.LocationId);
         location.IsBusy.Should().BeTrue();
         location.ActiveRunId.Should().Be(started!.RunId);
         location.CountStatuses.Should().NotBeNullOrEmpty();
@@ -109,10 +104,10 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
 
     private async Task<(Guid ShopId, Guid LocationId, Guid PrimaryUserId, Guid SecondaryUserId, string ProductEan)> SeedInventoryContextAsync()
     {
-        Guid shopId = Guid.Empty;
-        Guid locationId = Guid.Empty;
-        Guid primaryUserId = Guid.Empty;
-        Guid secondaryUserId = Guid.Empty;
+        var shopId = Guid.Empty;
+        var locationId = Guid.Empty;
+        var primaryUserId = Guid.Empty;
+        var secondaryUserId = Guid.Empty;
         const string productSku = "SKU-CONFLICT-001";
         const string productEan = "2345678901234";
 
@@ -139,7 +134,7 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
             client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
             new StartRunRequest(seeded.ShopId, operatorId, countType)
         ).ConfigureAwait(false);
-        await startResponse.ShouldBeAsync(HttpStatusCode.OK, "start run for count");
+        await startResponse.ShouldBeAsync(HttpStatusCode.OK, "start run for count").ConfigureAwait(false);
         var started = await startResponse.Content.ReadFromJsonAsync<StartInventoryRunResponse>().ConfigureAwait(false);
         started.Should().NotBeNull();
 
@@ -149,7 +144,7 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
                 started!.RunId,
                 operatorId,
                 countType,
-                new[] { new CompleteRunItemRequest(seeded.ProductEan, quantity, false) }
+                [new CompleteRunItemRequest(seeded.ProductEan, quantity, false)]
             )
         ).ConfigureAwait(false);
         await completeResponse.ShouldBeAsync(HttpStatusCode.OK, "complete run for count");

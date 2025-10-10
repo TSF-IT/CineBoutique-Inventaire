@@ -105,7 +105,8 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
             client.CreateRelativeUri("/api/products"),
             new CreateProductRequest { Sku = "SKU-UP-100", Name = "Edition Originale", Ean = "3012345678901" }
         ).ConfigureAwait(false);
-        await createResponse.ShouldBeAsync(HttpStatusCode.Created, "create product before update");
+
+        await createResponse.ShouldBeAsync(HttpStatusCode.Created, "create product before update").ConfigureAwait(false);
 
         var created = await createResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
         created.Should().NotBeNull();
@@ -117,7 +118,7 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
         HttpResponseMessage? success = null;
         foreach (var candidate in BuildUpdateCandidates(created!, fullPayload, updatedName, updatedEan))
         {
-            var response = await client.PutAsJsonAsync(
+            var response = await client.PostAsJsonAsync(
                 client.CreateRelativeUri(candidate.Path),
                 candidate.Body
             ).ConfigureAwait(false);
@@ -211,13 +212,13 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
         string updatedName,
         string updatedEan)
     {
-        return new[]
-        {
+        return
+        [
             ($"/api/products/{created.Id}", fullPayload),
             ($"/api/products/{Uri.EscapeDataString(created.Sku)}", fullPayload),
             ("/api/products", fullPayload),
-            ($"/api/products/{Uri.EscapeDataString(created.Sku)}", new { Sku = created.Sku, Name = updatedName, Ean = updatedEan }),
+            ($"/api/products/{Uri.EscapeDataString(created.Sku)}", new { created.Sku, Name = updatedName, Ean = updatedEan }),
             ($"/api/products/{Uri.EscapeDataString(created.Sku)}", new { Name = updatedName, Ean = updatedEan })
-        };
+        ];
     }
 }

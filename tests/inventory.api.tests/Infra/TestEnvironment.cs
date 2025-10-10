@@ -17,6 +17,11 @@ public static class TestEnvironment
             return false;
         }
 
+        if (!fixture.IsDatabaseAvailable && !string.IsNullOrWhiteSpace(fixture.SkipReason))
+        {
+            Console.WriteLine($"[tests] Integration backend indisponible: {fixture.SkipReason}");
+        }
+        
         return fixture.IsDatabaseAvailable;
     }
 }

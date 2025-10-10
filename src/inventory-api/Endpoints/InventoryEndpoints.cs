@@ -230,15 +230,14 @@ ORDER BY l.""Code"";",
                             cancellationToken: cancellationToken))
                     .ConfigureAwait(false)).ToList();
 
-            summary.ConflictZones = conflictZoneRows
+            summary.ConflictZones = [.. conflictZoneRows
                 .Select(row => new ConflictZoneSummaryDto
                 {
                     LocationId = row.LocationId,
                     LocationCode = row.LocationCode,
                     LocationLabel = row.LocationLabel,
                     ConflictLines = row.ConflictLines
-                })
-                .ToList();
+                })];
 
             summary.Conflicts = summary.ConflictZones.Count;
 
@@ -792,7 +791,7 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                 }
                 else
                 {
-                    location.IsBusy = openRunsForLocation.Any();
+                    location.IsBusy = openRunsForLocation.Count != 0;
 
                     var mostRecent = openRunsForLocation
                         .OrderByDescending(r => r.StartedAtUtc)
@@ -1391,7 +1390,7 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc, @CompletedAtUtc
                                 CountType = countType,
                                 StartedAtUtc = now,
                                 CompletedAtUtc = now,
-                                OwnerUserId = request.OwnerUserId,
+                                request.OwnerUserId,
                                 OperatorDisplayName = storedOperatorDisplayName
                             },
                             transaction,
@@ -1419,7 +1418,7 @@ WHERE ""Id"" = @RunId;";
                 RunId = countingRunId,
                 CountType = countType,
                 CompletedAtUtc = now,
-                OwnerUserId = request.OwnerUserId,
+                request.OwnerUserId,
                 OperatorDisplayName = storedOperatorDisplayName
             };
 
