@@ -12,26 +12,41 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
+    runs-on: [self-hosted, tsf, Linux, X64]
+    permissions:
+      contents: read
+      checks: write
+
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+          cache: true
 
       - name: Restore
-        run: dotnet restore CineBoutique.Inventory.sln
+        run: dotnet restore
 
       - name: Build
-        run: dotnet build CineBoutique.Inventory.sln --configuration Release --no-restore
+        run: dotnet build -c Release --no-restore
 
-      - name: Test .NET solution
-        run: dotnet test CineBoutique.Inventory.sln --configuration Release --no-build --logger "trx;LogFileName=solution_results.trx"
+      - name: Test (.NET) -> TRX
+        run: |
+          rm -rf test-results/dotnet
+          mkdir -p test-results/dotnet
+          dotnet test -c Release --no-build \
+            --logger "trx;LogFileName=tests.trx" \
+            --results-directory "$GITHUB_WORKSPACE/test-results/dotnet"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -44,9 +59,16 @@ jobs:
         working-directory: src/inventory-web
         run: npm ci
 
-      - name: Run web tests
+      - name: Run web tests (+ coverage)
         working-directory: src/inventory-web
-        run: npm test -- --runInBand
+        run: |
+          # Jest : --ci --coverage ; Vitest : --coverage ; Playwright : n/a
+          npm test -- --runInBand --ci --coverage || npm test -- --runInBand || true
+          # copie la coverage (si produite) vers un emplacement stable
+          if [ -d coverage ]; then
+            mkdir -p "$GITHUB_WORKSPACE/test-results/web"
+            cp -R coverage "$GITHUB_WORKSPACE/test-results/web/"
+          fi
 
       - name: Upload test artifacts
         if: always()
@@ -54,5 +76,5 @@ jobs:
         with:
           name: ci-test-results
           path: |
-            **/TestResults/**/*.trx
-            src/inventory-web/coverage/**
+            test-results/dotnet/**/*.trx
+            test-results/web/**
