@@ -1,13 +1,18 @@
 // Modifications : déplacement des endpoints produits depuis Program.cs avec mutualisation des helpers locaux.
+using System;
 using System.Data;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Models;
 using Dapper;
+using Npgsql;
 
 namespace CineBoutique.Inventory.Api.Endpoints;
 
 internal static class ProductEndpoints
 {
+    private const string LowerSkuConstraintName = "UX_Product_LowerSku";
+    private const string EanNotNullConstraintName = "UX_Product_Ean_NotNull";
+
     public static IEndpointRouteBuilder MapProductEndpoints(this IEndpointRouteBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
@@ -81,31 +86,33 @@ internal static class ProductEndpoints
                 return Results.NotFound(new { message = $"Aucun produit avec le SKU '{sanitizedSku}'." });
             }
 
-            // Conflit EAN (si fourni, il ne doit pas appartenir à un autre produit)
-            if (!string.IsNullOrWhiteSpace(sanitizedEan))
-            {
-                const string eanCheckSql = @"SELECT 1
-                                         FROM ""Product""
-                                         WHERE ""Ean"" = @Ean AND ""Id"" <> @Id
-                                         LIMIT 1;";
-                var taken = await connection.ExecuteScalarAsync<int?>(
-                    new CommandDefinition(eanCheckSql, new { Ean = sanitizedEan, Id = existing.Id }, cancellationToken: cancellationToken)).ConfigureAwait(false);
-
-                if (taken.HasValue)
-                {
-                    await LogProductUpdateAttemptAsync(auditLogger, httpContext, sanitizedSku, $"EAN déjà utilisé ({sanitizedEan})", "products.update.conflict", cancellationToken).ConfigureAwait(false);
-                    return Results.Conflict(new { message = "Cet EAN est déjà utilisé par un autre produit." });
-                }
-            }
-
             const string updateSql = @"UPDATE ""Product""
                                    SET ""Name"" = @Name, ""Ean"" = @Ean
                                    WHERE ""Id"" = @Id
                                    RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
-            var updated = await connection.QuerySingleAsync<ProductDto>(
-                new CommandDefinition(updateSql, new { Id = existing.Id, Name = sanitizedName, Ean = sanitizedEan }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+            try
+            {
+                var updated = await connection.QuerySingleAsync<ProductDto>(
+                    new CommandDefinition(updateSql, new { Id = existing.Id, Name = sanitizedName, Ean = sanitizedEan }, cancellationToken: cancellationToken)).ConfigureAwait(false);
 
-            return Results.Ok(updated);
+                return Results.Ok(updated);
+            }
+            catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+            {
+                if (string.Equals(ex.ConstraintName, EanNotNullConstraintName, StringComparison.Ordinal))
+                {
+                    await LogProductUpdateAttemptAsync(auditLogger, httpContext, sanitizedSku, $"EAN déjà utilisé ({sanitizedEan})", "products.update.conflict", cancellationToken).ConfigureAwait(false);
+                    return Results.Conflict(new { message = "Cet EAN est déjà utilisé." });
+                }
+
+                if (string.Equals(ex.ConstraintName, LowerSkuConstraintName, StringComparison.Ordinal))
+                {
+                    await LogProductUpdateAttemptAsync(auditLogger, httpContext, sanitizedSku, "SKU déjà utilisé", "products.update.conflict", cancellationToken).ConfigureAwait(false);
+                    return Results.Conflict(new { message = "Ce SKU est déjà utilisé." });
+                }
+
+                throw;
+            }
         };
 
         app.MapPost("/api/products/{sku}", updateBySku)
@@ -181,31 +188,33 @@ internal static class ProductEndpoints
                 return Results.NotFound(new { message = $"Aucun produit avec l'Id '{id}'." });
             }
 
-            // Conflit EAN (si fourni, il ne doit pas appartenir à un autre produit)
-            if (!string.IsNullOrWhiteSpace(sanitizedEan))
-            {
-                const string eanCheckSql = @"SELECT 1
-                                         FROM ""Product""
-                                         WHERE ""Ean"" = @Ean AND ""Id"" <> @Id
-                                         LIMIT 1;";
-                var taken = await connection.ExecuteScalarAsync<int?>(
-                    new CommandDefinition(eanCheckSql, new { Ean = sanitizedEan, Id = id }, cancellationToken: cancellationToken)).ConfigureAwait(false);
-
-                if (taken.HasValue)
-                {
-                    await LogProductUpdateAttemptAsync(auditLogger, httpContext, id.ToString(), $"EAN déjà utilisé ({sanitizedEan})", "products.update.conflict", cancellationToken).ConfigureAwait(false);
-                    return Results.Conflict(new { message = "Cet EAN est déjà utilisé par un autre produit." });
-                }
-            }
-
             const string updateSql = @"UPDATE ""Product""
                                    SET ""Name"" = @Name, ""Ean"" = @Ean
                                    WHERE ""Id"" = @Id
                                    RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
-            var updated = await connection.QuerySingleAsync<ProductDto>(
-                new CommandDefinition(updateSql, new { Id = id, Name = sanitizedName, Ean = sanitizedEan }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+            try
+            {
+                var updated = await connection.QuerySingleAsync<ProductDto>(
+                    new CommandDefinition(updateSql, new { Id = id, Name = sanitizedName, Ean = sanitizedEan }, cancellationToken: cancellationToken)).ConfigureAwait(false);
 
-            return Results.Ok(updated);
+                return Results.Ok(updated);
+            }
+            catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+            {
+                if (string.Equals(ex.ConstraintName, EanNotNullConstraintName, StringComparison.Ordinal))
+                {
+                    await LogProductUpdateAttemptAsync(auditLogger, httpContext, id.ToString(), $"EAN déjà utilisé ({sanitizedEan})", "products.update.conflict", cancellationToken).ConfigureAwait(false);
+                    return Results.Conflict(new { message = "Cet EAN est déjà utilisé." });
+                }
+
+                if (string.Equals(ex.ConstraintName, LowerSkuConstraintName, StringComparison.Ordinal))
+                {
+                    await LogProductUpdateAttemptAsync(auditLogger, httpContext, id.ToString(), "SKU déjà utilisé", "products.update.conflict", cancellationToken).ConfigureAwait(false);
+                    return Results.Conflict(new { message = "Ce SKU est déjà utilisé." });
+                }
+
+                throw;
+            }
         };
 
         app.MapPost("/api/products/{id:guid}", updateById)
@@ -276,49 +285,53 @@ internal static class ProductEndpoints
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-            const string skuCheckSql = "SELECT 1 FROM \"Product\" WHERE LOWER(\"Sku\") = LOWER(@Sku) LIMIT 1;";
-            var skuExists = await connection.ExecuteScalarAsync<int?>(
-                new CommandDefinition(skuCheckSql, new { Sku = sanitizedSku }, cancellationToken: cancellationToken)).ConfigureAwait(false);
-
-            if (skuExists.HasValue)
-            {
-                await LogProductCreationAttemptAsync(auditLogger, httpContext, $"avec un SKU déjà utilisé ({sanitizedSku})", "products.create.conflict", cancellationToken).ConfigureAwait(false);
-                return Results.Conflict(new { message = "Ce SKU est déjà utilisé." });
-            }
-
-            if (!string.IsNullOrWhiteSpace(sanitizedEan))
-            {
-                const string eanCheckSql = "SELECT 1 FROM \"Product\" WHERE \"Ean\" = @Ean LIMIT 1;";
-                var eanExists = await connection.ExecuteScalarAsync<int?>(
-                    new CommandDefinition(eanCheckSql, new { Ean = sanitizedEan }, cancellationToken: cancellationToken)).ConfigureAwait(false);
-
-                if (eanExists.HasValue)
-                {
-                    await LogProductCreationAttemptAsync(auditLogger, httpContext, $"avec un EAN déjà utilisé ({sanitizedEan})", "products.create.conflict", cancellationToken).ConfigureAwait(false);
-                    return Results.Conflict(new { message = "Cet EAN est déjà utilisé." });
-                }
-            }
-
             const string insertSql = @"INSERT INTO ""Product"" (""Id"", ""Sku"", ""Name"", ""Ean"", ""CreatedAtUtc"")
 VALUES (@Id, @Sku, @Name, @Ean, @CreatedAtUtc)
+ON CONFLICT ON CONSTRAINT ""UX_Product_LowerSku"" DO NOTHING
 RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
             var now = DateTimeOffset.UtcNow;
-            var createdProduct = await connection.QuerySingleAsync<ProductDto>(
-                new CommandDefinition(
-                    insertSql,
-                    new
-                    {
-                        Id = Guid.NewGuid(),
-                        Sku = sanitizedSku,
-                        Name = sanitizedName,
-                        Ean = sanitizedEan,
-                        CreatedAtUtc = now
-                    },
-                    cancellationToken: cancellationToken)).ConfigureAwait(false);
+            try
+            {
+                var createdProduct = await connection.QuerySingleOrDefaultAsync<ProductDto>(
+                    new CommandDefinition(
+                        insertSql,
+                        new
+                        {
+                            Id = Guid.NewGuid(),
+                            Sku = sanitizedSku,
+                            Name = sanitizedName,
+                            Ean = sanitizedEan,
+                            CreatedAtUtc = now
+                        },
+                        cancellationToken: cancellationToken)).ConfigureAwait(false);
 
-            var location = $"/api/products/{Uri.EscapeDataString(createdProduct.Sku)}";
-            return Results.Created(location, createdProduct);
+                if (createdProduct is null)
+                {
+                    await LogProductCreationAttemptAsync(auditLogger, httpContext, $"avec un SKU déjà utilisé ({sanitizedSku})", "products.create.conflict", cancellationToken).ConfigureAwait(false);
+                    return Results.Conflict(new { message = "Ce SKU est déjà utilisé." });
+                }
+
+                var location = $"/api/products/{Uri.EscapeDataString(createdProduct.Sku)}";
+                return Results.Created(location, createdProduct);
+            }
+            catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
+            {
+                if (string.Equals(ex.ConstraintName, EanNotNullConstraintName, StringComparison.Ordinal))
+                {
+                    var eanLabel = string.IsNullOrWhiteSpace(sanitizedEan) ? "(EAN non renseigné)" : sanitizedEan;
+                    await LogProductCreationAttemptAsync(auditLogger, httpContext, $"avec un EAN déjà utilisé ({eanLabel})", "products.create.conflict", cancellationToken).ConfigureAwait(false);
+                    return Results.Conflict(new { message = "Cet EAN est déjà utilisé." });
+                }
+
+                if (string.Equals(ex.ConstraintName, LowerSkuConstraintName, StringComparison.Ordinal))
+                {
+                    await LogProductCreationAttemptAsync(auditLogger, httpContext, $"avec un SKU déjà utilisé ({sanitizedSku})", "products.create.conflict", cancellationToken).ConfigureAwait(false);
+                    return Results.Conflict(new { message = "Ce SKU est déjà utilisé." });
+                }
+
+                throw;
+            }
         })
         .WithName("CreateProduct")
         .WithTags("Produits")
@@ -438,12 +451,12 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
     }
 
     private static async Task LogProductUpdateAttemptAsync(
-    IAuditLogger auditLogger,
-    HttpContext httpContext,
-    string target,          // SKU ou Id
-    string details,         // ex: "sans nom", "EAN invalide", "inexistant", ...
-    string category,        // ex: "products.update.invalid"
-    CancellationToken cancellationToken)
+        IAuditLogger auditLogger,
+        HttpContext httpContext,
+        string target,          // SKU ou Id
+        string details,         // ex: "sans nom", "EAN invalide", "inexistant", ...
+        string category,        // ex: "products.update.invalid"
+        CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
         var userName = EndpointUtilities.GetAuthenticatedUserName(httpContext);
