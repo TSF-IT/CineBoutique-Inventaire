@@ -2,21 +2,26 @@ name: API Integration Tests (self-hosted)
 
 on:
   push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
   workflow_dispatch:
 
 concurrency:
   group: api-tests-${{ github.ref }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   tests:
     runs-on: [self-hosted, tsf]
     timeout-minutes: 40
+
+    # Permissions minimales + lecture artefacts pour le reporter
     permissions:
       contents: read
+      checks: write
 
     services:
       postgres:
@@ -35,44 +40,58 @@ jobs:
     env:
       TEST_DB_CONNECTION: Host=localhost;Port=5432;Database=inv_test;Username=postgres;Password=postgres
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
-      DOTNET_INSTALL_DIR: ${{ runner.temp }}/.dotnet
-      DOTNET_ROOT: ${{ runner.temp }}/.dotnet
 
     steps:
       - uses: actions/checkout@v4
 
+      # 👇 Pas d’expression ${{ runner.temp }} dans le YAML (VS Code content)
+      - name: Prepare .NET locations
+        run: |
+          echo "DOTNET_INSTALL_DIR=$RUNNER_TEMP/.dotnet" >> "$GITHUB_ENV"
+          echo "DOTNET_ROOT=$RUNNER_TEMP/.dotnet" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/.dotnet" >> "$GITHUB_PATH"
+          echo "$RUNNER_TEMP/.dotnet/tools" >> "$GITHUB_PATH"
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
-        env:
-          DOTNET_INSTALL_DIR: ${{ env.DOTNET_INSTALL_DIR }}
         with:
           dotnet-version: '8.0.x'
           cache: true
-
-      - name: Export dotnet to PATH
-        run: |
-          echo "${DOTNET_INSTALL_DIR}" >> "$GITHUB_PATH"
-          echo "${DOTNET_INSTALL_DIR}/tools" >> "$GITHUB_PATH"
 
       - name: Restore
         run: dotnet restore
 
       - name: Build
-        run: dotnet build -c Release
+        run: dotnet build -c Release --no-restore
 
+      # Attente Postgres (pas besoin du client psql sur le runner)
       - name: Wait for Postgres service
-        shell: bash
         run: |
           for i in {1..30}; do
-            pg_isready -h 127.0.0.1 -p 5432 -U postgres && exit 0
+            (echo > /dev/tcp/127.0.0.1/5432) >/dev/null 2>&1 && exit 0
             echo "Waiting for Postgres... ($i/30)"; sleep 2
           done
           echo "Postgres not ready"; exit 1
 
       - name: Test (all)
-        run: dotnet test tests/inventory.api.tests/CineBoutique.Inventory.Api.Tests.csproj -c Release --logger "trx;LogFileName=test_results.trx"
+        run: |
+          mkdir -p tests/inventory.api.tests/TestResults
+          dotnet test tests/inventory.api.tests/CineBoutique.Inventory.Api.Tests.csproj \
+            -c Release --no-build \
+            --logger "trx;LogFileName=test_results.trx" \
+            --results-directory tests/inventory.api.tests/TestResults
 
-      - name: Publish TRX
+      # Annotation des échecs de tests dans l'onglet Checks (UX ++)
+      - name: Publish test report (TRX)
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: API Tests
+          path: tests/inventory.api.tests/TestResults/**/*.trx
+          reporter: dotnet-trx
+          fail-on-error: false  # laisse le job échouer sur l’étape test, pas ici
+
+      - name: Upload raw TRX
         if: always()
         uses: actions/upload-artifact@v4
         with:
