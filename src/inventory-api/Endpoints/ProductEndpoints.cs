@@ -1,18 +1,8 @@
 // Modifications : déplacement des endpoints produits depuis Program.cs avec mutualisation des helpers locaux.
-using System;
-using System.Collections.Generic;
 using System.Data;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Models;
 using Dapper;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.OpenApi;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.OpenApi.Models;
 
 namespace CineBoutique.Inventory.Api.Endpoints;
 
@@ -24,9 +14,217 @@ internal static class ProductEndpoints
 
         MapCreateProductEndpoint(app);
         MapGetProductEndpoint(app);
+        MapUpdateProductEndpoints(app);
 
         return app;
     }
+
+    private static void MapUpdateProductEndpoints(IEndpointRouteBuilder app)
+    {
+        // --- MAJ par SKU ---
+
+        var updateBySku = async (
+            string sku,
+            CreateProductRequest request,
+            IDbConnection connection,
+            IAuditLogger auditLogger,
+            HttpContext httpContext,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(sku))
+            {
+                await LogProductUpdateAttemptAsync(auditLogger, httpContext, "(SKU vide)", "sans sku", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                return Results.BadRequest(new { message = "Le SKU (dans l'URL) est requis." });
+            }
+
+            if (request is null)
+            {
+                await LogProductUpdateAttemptAsync(auditLogger, httpContext, sku, "corps null", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                return Results.BadRequest(new { message = "Le corps de la requête est requis." });
+            }
+
+            var sanitizedSku = sku.Trim();
+            var sanitizedName = request.Name?.Trim();
+            var sanitizedEan = string.IsNullOrWhiteSpace(request.Ean) ? null : request.Ean.Trim();
+
+            if (string.IsNullOrWhiteSpace(sanitizedName))
+            {
+                await LogProductUpdateAttemptAsync(auditLogger, httpContext, sanitizedSku, "sans nom", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                return Results.BadRequest(new { message = "Le nom du produit est requis." });
+            }
+
+            if (sanitizedName.Length > 256)
+            {
+                await LogProductUpdateAttemptAsync(auditLogger, httpContext, sanitizedSku, "nom trop long", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                return Results.BadRequest(new { message = "Le nom du produit ne peut pas dépasser 256 caractères." });
+            }
+
+            if (sanitizedEan is { Length: > 0 } && (sanitizedEan.Length is < 8 or > 13 || !sanitizedEan.All(char.IsDigit)))
+            {
+                await LogProductUpdateAttemptAsync(auditLogger, httpContext, sanitizedSku, "EAN invalide", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                return Results.BadRequest(new { message = "L'EAN doit contenir entre 8 et 13 chiffres." });
+            }
+
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+            // Récupère le produit par SKU (case-insensitive)
+            const string fetchSql = @"SELECT ""Id"", ""Sku"", ""Name"", ""Ean""
+                                  FROM ""Product""
+                                  WHERE LOWER(""Sku"") = LOWER(@Sku)
+                                  LIMIT 1;";
+            var existing = await connection.QueryFirstOrDefaultAsync<ProductDto>(
+                new CommandDefinition(fetchSql, new { Sku = sanitizedSku }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            if (existing is null)
+            {
+                await LogProductUpdateAttemptAsync(auditLogger, httpContext, sanitizedSku, "inexistant", "products.update.notfound", cancellationToken).ConfigureAwait(false);
+                return Results.NotFound(new { message = $"Aucun produit avec le SKU '{sanitizedSku}'." });
+            }
+
+            // Conflit EAN (si fourni, il ne doit pas appartenir à un autre produit)
+            if (!string.IsNullOrWhiteSpace(sanitizedEan))
+            {
+                const string eanCheckSql = @"SELECT 1
+                                         FROM ""Product""
+                                         WHERE ""Ean"" = @Ean AND ""Id"" <> @Id
+                                         LIMIT 1;";
+                var taken = await connection.ExecuteScalarAsync<int?>(
+                    new CommandDefinition(eanCheckSql, new { Ean = sanitizedEan, Id = existing.Id }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+                if (taken.HasValue)
+                {
+                    await LogProductUpdateAttemptAsync(auditLogger, httpContext, sanitizedSku, $"EAN déjà utilisé ({sanitizedEan})", "products.update.conflict", cancellationToken).ConfigureAwait(false);
+                    return Results.Conflict(new { message = "Cet EAN est déjà utilisé par un autre produit." });
+                }
+            }
+
+            const string updateSql = @"UPDATE ""Product""
+                                   SET ""Name"" = @Name, ""Ean"" = @Ean
+                                   WHERE ""Id"" = @Id
+                                   RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
+            var updated = await connection.QuerySingleAsync<ProductDto>(
+                new CommandDefinition(updateSql, new { Id = existing.Id, Name = sanitizedName, Ean = sanitizedEan }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            return Results.Ok(updated);
+        };
+
+        app.MapPost("/api/products/{sku}", updateBySku)
+           .WithName("UpdateProductBySkuPost")
+           .WithTags("Produits")
+           .Produces<ProductDto>(StatusCodes.Status200OK)
+           .Produces(StatusCodes.Status400BadRequest)
+           .Produces(StatusCodes.Status404NotFound)
+           .Produces(StatusCodes.Status409Conflict)
+           .WithOpenApi(op =>
+           {
+               op.Summary = "Met à jour un produit par SKU (POST compat).";
+               op.Description = "Modifie le nom et/ou l'EAN du produit identifié par son SKU.";
+               return op;
+           });
+
+        app.MapPut("/api/products/{sku}", updateBySku)
+           .WithName("UpdateProductBySku")
+           .WithTags("Produits")
+           .Produces<ProductDto>(StatusCodes.Status200OK)
+           .Produces(StatusCodes.Status400BadRequest)
+           .Produces(StatusCodes.Status404NotFound)
+           .Produces(StatusCodes.Status409Conflict);
+
+        // --- MAJ par Id (GUID) ---
+
+        var updateById = async (
+            Guid id,
+            CreateProductRequest request,
+            IDbConnection connection,
+            IAuditLogger auditLogger,
+            HttpContext httpContext,
+            CancellationToken cancellationToken) =>
+        {
+            if (request is null)
+            {
+                await LogProductUpdateAttemptAsync(auditLogger, httpContext, id.ToString(), "corps null", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                return Results.BadRequest(new { message = "Le corps de la requête est requis." });
+            }
+
+            var sanitizedName = request.Name?.Trim();
+            var sanitizedEan = string.IsNullOrWhiteSpace(request.Ean) ? null : request.Ean.Trim();
+
+            if (string.IsNullOrWhiteSpace(sanitizedName))
+            {
+                await LogProductUpdateAttemptAsync(auditLogger, httpContext, id.ToString(), "sans nom", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                return Results.BadRequest(new { message = "Le nom du produit est requis." });
+            }
+
+            if (sanitizedName.Length > 256)
+            {
+                await LogProductUpdateAttemptAsync(auditLogger, httpContext, id.ToString(), "nom trop long", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                return Results.BadRequest(new { message = "Le nom du produit ne peut pas dépasser 256 caractères." });
+            }
+
+            if (sanitizedEan is { Length: > 0 } && (sanitizedEan.Length is < 8 or > 13 || !sanitizedEan.All(char.IsDigit)))
+            {
+                await LogProductUpdateAttemptAsync(auditLogger, httpContext, id.ToString(), "EAN invalide", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                return Results.BadRequest(new { message = "L'EAN doit contenir entre 8 et 13 chiffres." });
+            }
+
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+            // Vérifie l'existence
+            const string existsSql = @"SELECT ""Id"", ""Sku"", ""Name"", ""Ean""
+                                   FROM ""Product"" WHERE ""Id"" = @Id LIMIT 1;";
+            var existing = await connection.QueryFirstOrDefaultAsync<ProductDto>(
+                new CommandDefinition(existsSql, new { Id = id }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            if (existing is null)
+            {
+                await LogProductUpdateAttemptAsync(auditLogger, httpContext, id.ToString(), "inexistant", "products.update.notfound", cancellationToken).ConfigureAwait(false);
+                return Results.NotFound(new { message = $"Aucun produit avec l'Id '{id}'." });
+            }
+
+            // Conflit EAN (si fourni, il ne doit pas appartenir à un autre produit)
+            if (!string.IsNullOrWhiteSpace(sanitizedEan))
+            {
+                const string eanCheckSql = @"SELECT 1
+                                         FROM ""Product""
+                                         WHERE ""Ean"" = @Ean AND ""Id"" <> @Id
+                                         LIMIT 1;";
+                var taken = await connection.ExecuteScalarAsync<int?>(
+                    new CommandDefinition(eanCheckSql, new { Ean = sanitizedEan, Id = id }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+                if (taken.HasValue)
+                {
+                    await LogProductUpdateAttemptAsync(auditLogger, httpContext, id.ToString(), $"EAN déjà utilisé ({sanitizedEan})", "products.update.conflict", cancellationToken).ConfigureAwait(false);
+                    return Results.Conflict(new { message = "Cet EAN est déjà utilisé par un autre produit." });
+                }
+            }
+
+            const string updateSql = @"UPDATE ""Product""
+                                   SET ""Name"" = @Name, ""Ean"" = @Ean
+                                   WHERE ""Id"" = @Id
+                                   RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
+            var updated = await connection.QuerySingleAsync<ProductDto>(
+                new CommandDefinition(updateSql, new { Id = id, Name = sanitizedName, Ean = sanitizedEan }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            return Results.Ok(updated);
+        };
+
+        app.MapPost("/api/products/{id:guid}", updateById)
+           .WithName("UpdateProductByIdPost")
+           .WithTags("Produits")
+           .Produces<ProductDto>(StatusCodes.Status200OK)
+           .Produces(StatusCodes.Status400BadRequest)
+           .Produces(StatusCodes.Status404NotFound)
+           .Produces(StatusCodes.Status409Conflict);
+
+        app.MapPut("/api/products/{id:guid}", updateById)
+           .WithName("UpdateProductById")
+           .WithTags("Produits")
+           .Produces<ProductDto>(StatusCodes.Status200OK)
+           .Produces(StatusCodes.Status400BadRequest)
+           .Produces(StatusCodes.Status404NotFound)
+           .Produces(StatusCodes.Status409Conflict);
+    }
+
 
     private static void MapCreateProductEndpoint(IEndpointRouteBuilder app)
     {
@@ -236,6 +434,22 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
         var actor = EndpointUtilities.FormatActorLabel(httpContext);
         var timestamp = EndpointUtilities.FormatTimestamp(now);
         var message = $"{actor} a tenté de créer un produit {details} le {timestamp} UTC.";
+        await auditLogger.LogAsync(message, userName, category, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task LogProductUpdateAttemptAsync(
+    IAuditLogger auditLogger,
+    HttpContext httpContext,
+    string target,          // SKU ou Id
+    string details,         // ex: "sans nom", "EAN invalide", "inexistant", ...
+    string category,        // ex: "products.update.invalid"
+    CancellationToken cancellationToken)
+    {
+        var now = DateTimeOffset.UtcNow;
+        var userName = EndpointUtilities.GetAuthenticatedUserName(httpContext);
+        var actor = EndpointUtilities.FormatActorLabel(httpContext);
+        var timestamp = EndpointUtilities.FormatTimestamp(now);
+        var message = $"{actor} a tenté de mettre à jour le produit '{target}' {details} le {timestamp} UTC.";
         await auditLogger.LogAsync(message, userName, category, cancellationToken).ConfigureAwait(false);
     }
 
