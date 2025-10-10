@@ -216,7 +216,7 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
     }
 
     [SkippableFact]
-    public async Task UpdateProduct_WithNullEan_PreservesExistingEan()
+    public async Task UpdateProduct_WithNullEan_ClearsExistingEan()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
 
@@ -240,7 +240,13 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
         var updated = await updateResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
         updated.Should().NotBeNull();
         updated!.Name.Should().Be("Produit renommé");
-        updated.Ean.Should().Be(originalEan, "l'EAN existant doit être conservé");
+        updated.Ean.Should().BeNull("l'EAN doit être effacé si nul est envoyé lors de la mise à jour");
+
+        var fetchResponse = await client.GetAsync(client.CreateRelativeUri($"/api/products/{Uri.EscapeDataString(sku)}")).ConfigureAwait(false);
+        await fetchResponse.ShouldBeAsync(HttpStatusCode.OK, "le produit doit être récupérable après mise à jour").ConfigureAwait(false);
+        var fetched = await fetchResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
+        fetched.Should().NotBeNull();
+        fetched!.Ean.Should().BeNull("l'EAN doit également être vidé côté persistance");
     }
 
     [SkippableFact]
