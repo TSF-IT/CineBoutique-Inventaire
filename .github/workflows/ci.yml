@@ -1,9 +1,5 @@
 name: ci
-
-on:
-  push:
-  pull_request:
-  workflow_dispatch:
+on: [push, pull_request, workflow_dispatch]
 
 permissions:
   contents: read
@@ -22,17 +18,24 @@ jobs:
     permissions:
       contents: read
       checks: write
-
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
 
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-dotnet@v4
+      - name: Prepare .NET locations
+        run: |
+          echo "DOTNET_INSTALL_DIR=$RUNNER_TEMP/.dotnet" >> "$GITHUB_ENV"
+          echo "DOTNET_ROOT=$RUNNER_TEMP/.dotnet" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/.dotnet" >> "$GITHUB_PATH"
+          echo "$RUNNER_TEMP/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-          cache: true
+          cache: false   # ⬅️ pas de lock files pour l’instant
 
       - name: Restore
         run: dotnet restore
@@ -62,9 +65,7 @@ jobs:
       - name: Run web tests (+ coverage)
         working-directory: src/inventory-web
         run: |
-          # Jest : --ci --coverage ; Vitest : --coverage ; Playwright : n/a
           npm test -- --runInBand --ci --coverage || npm test -- --runInBand || true
-          # copie la coverage (si produite) vers un emplacement stable
           if [ -d coverage ]; then
             mkdir -p "$GITHUB_WORKSPACE/test-results/web"
             cp -R coverage "$GITHUB_WORKSPACE/test-results/web/"
