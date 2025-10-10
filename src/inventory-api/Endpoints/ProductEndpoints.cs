@@ -287,7 +287,7 @@ internal static class ProductEndpoints
 
             const string insertSql = @"INSERT INTO ""Product"" (""Id"", ""Sku"", ""Name"", ""Ean"", ""CreatedAtUtc"")
 VALUES (@Id, @Sku, @Name, @Ean, @CreatedAtUtc)
-ON CONFLICT ON CONSTRAINT ""UX_Product_LowerSku"" DO NOTHING
+ON CONFLICT (LOWER(""Sku"")) DO NOTHING
 RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
             var now = DateTimeOffset.UtcNow;
