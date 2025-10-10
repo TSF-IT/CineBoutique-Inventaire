@@ -44,6 +44,8 @@ Si l’environnement CI ne peut pas exécuter Docker, utilisez un service Postgr
 
 Pointez alors les tests vers cette instance via `TEST_DB_CONN` (alias `TEST_DB_CONNECTION`, voir ci-dessous).
 
+> ℹ️ **Workflows CI** : la suite backend est exécutée automatiquement sur chaque `push`, `pull request`, `merge_group` et lancement manuel (`workflow_dispatch`). Les PR dépourvues du workflow sur la branche cible déclenchent malgré tout l’exécution via l’évènement `push` (un simple commit supplémentaire suffit).
+
 ## Variables d’environnement
 | Variable | Description | Valeur par défaut |
 |----------|-------------|-------------------|
