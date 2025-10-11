@@ -1,4 +1,3 @@
-using System;
 using FluentMigrator;
 
 namespace CineBoutique.Inventory.Infrastructure.Migrations
@@ -11,18 +10,18 @@ namespace CineBoutique.Inventory.Infrastructure.Migrations
             // 1) Sécuriser l’unicité du Code (idempotent)
             Execute.Sql("""
 CREATE UNIQUE INDEX IF NOT EXISTS "IX_Location_Code"
-ON "public"."Location" ("Code");
+ON "Location" ("Code");
 """);
 
             // 2) Générer les codes à insérer
             //   - B1..B20
             //   - S1..S19
             var bCodes = new string[20];
-            for (int i = 1; i <= 20; i++)
+            for (var i = 1; i <= 20; i++)
                 bCodes[i - 1] = $"B{i}";
 
             var sCodes = new string[19];
-            for (int i = 1; i <= 19; i++)
+            for (var i = 1; i <= 19; i++)
                 sCodes[i - 1] = $"S{i}";
 
             // 3) Insérer de façon idempotente (WHERE NOT EXISTS)
@@ -37,7 +36,7 @@ ON "public"."Location" ("Code");
         {
             // Supprime uniquement ce que cette migration a ajouté
             Execute.Sql("""
-DELETE FROM "public"."Location"
+DELETE FROM "Location"
 WHERE "Code" LIKE 'B%' OR "Code" LIKE 'S%';
 """);
         }
@@ -51,10 +50,10 @@ WHERE "Code" LIKE 'B%' OR "Code" LIKE 'S%';
             //     Idempotence via WHERE NOT EXISTS.
             //     On échappe les guillemets correctement avec verbatim string et interpolation simple.
             var sql = $"""
-INSERT INTO "public"."Location" ("Id", "Code", "Label")
+INSERT INTO "Location" ("Id", "Code", "Label")
 SELECT uuid_generate_v4(), '{code}', '{label}'
 WHERE NOT EXISTS (
-    SELECT 1 FROM "public"."Location" WHERE "Code" = '{code}'
+    SELECT 1 FROM "Location" WHERE "Code" = '{code}'
 );
 """;
 

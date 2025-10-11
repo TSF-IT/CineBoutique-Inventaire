@@ -34,7 +34,7 @@ public sealed class CreateInventorySchema : Migration
             .WithColumn("Code").AsString(32).NotNullable()
             .WithColumn("Label").AsString(128).NotNullable();
 
-        Execute.Sql("CREATE UNIQUE INDEX IF NOT EXISTS \"IX_Location_Code\" ON \"public\".\"Location\" (\"Code\" ASC);");
+        Execute.Sql("CREATE UNIQUE INDEX IF NOT EXISTS \"IX_Location_Code\" ON \"Location\" (\"Code\" ASC);");
 
         Create.Table("InventorySession")
             .WithColumn("Id").AsGuid().PrimaryKey().WithDefaultValue(SystemMethods.NewGuid)

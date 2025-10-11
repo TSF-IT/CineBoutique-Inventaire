@@ -22,12 +22,12 @@ public sealed class AddProductUniqIndexes : Migration
 
         Execute.Sql($"""
             CREATE UNIQUE INDEX IF NOT EXISTS "{LowerSkuIndexName}"
-            ON "public"."Product" ((LOWER("Sku")));
+            ON "Product" ((LOWER("Sku")));
             """);
 
         Execute.Sql($"""
             CREATE UNIQUE INDEX IF NOT EXISTS "{EanNotNullIndexName}"
-            ON "public"."Product" ("Ean")
+            ON "Product" ("Ean")
             WHERE "Ean" IS NOT NULL;
             """);
     }

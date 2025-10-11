@@ -296,7 +296,7 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
         schemaName = $"it_{Guid.NewGuid():N}";
         var builder = new NpgsqlConnectionStringBuilder(baseConnectionString)
         {
-            SearchPath = schemaName
+            SearchPath = $"{schemaName},public"
         };
 
         return builder.ConnectionString;
