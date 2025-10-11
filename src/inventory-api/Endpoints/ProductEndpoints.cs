@@ -217,7 +217,7 @@ internal static class ProductEndpoints
             }
         };
 
-        app.MapPost("/api/products/{id:guid}", updateById)
+        app.MapPost("/api/products/by-id/{id:guid}", updateById)
            .WithName("UpdateProductByIdPost")
            .WithTags("Produits")
            .Produces<ProductDto>(StatusCodes.Status200OK)
@@ -225,7 +225,7 @@ internal static class ProductEndpoints
            .Produces(StatusCodes.Status404NotFound)
            .Produces(StatusCodes.Status409Conflict);
 
-        app.MapPut("/api/products/{id:guid}", updateById)
+        app.MapPut("/api/products/by-id/{id:guid}", updateById)
            .WithName("UpdateProductById")
            .WithTags("Produits")
            .Produces<ProductDto>(StatusCodes.Status200OK)
@@ -348,14 +348,14 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
     private static void MapGetProductEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/products/{code}", async (
-            string code,
+        app.MapGet("/api/products/{sku}", async (
+            string sku,
             IDbConnection connection,
             IAuditLogger auditLogger,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            if (string.IsNullOrWhiteSpace(code))
+            if (string.IsNullOrWhiteSpace(sku))
             {
                 var nowInvalid = DateTimeOffset.UtcNow;
                 var invalidUser = EndpointUtilities.GetAuthenticatedUserName(httpContext);
@@ -368,7 +368,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-            var sanitizedCode = code.Trim();
+            var sanitizedCode = sku.Trim();
             var candidateEans = BuildCandidateEanCodes(sanitizedCode);
 
             ProductDto? product = null;
