@@ -110,6 +110,16 @@
           "Microsoft.TestPlatform.TestHost": "17.11.1"
         }
       },
+      "Microsoft.OpenApi.Readers": {
+        "type": "Direct",
+        "requested": "[1.6.14, )",
+        "resolved": "1.6.14",
+        "contentHash": "7vZtf+/BT8dL555xvf1hydPwNXTVhm2SffV5kPylII3AtPqP705ILoSDe6oCYRJEDfKf14sRC7KpK72HSxh2Cg==",
+        "dependencies": {
+          "Microsoft.OpenApi": "1.6.14",
+          "SharpYaml": "2.1.1"
+        }
+      },
       "Npgsql": {
         "type": "Direct",
         "requested": "[8.0.3, )",
@@ -886,6 +896,11 @@
         "dependencies": {
           "Serilog": "2.10.0"
         }
+      },
+      "SharpYaml": {
+        "type": "Transitive",
+        "resolved": "2.1.1",
+        "contentHash": "BISoFuW2AwZYXxrZGaBnedo21BvrdgC4kkWd6QYrOdhOGSsZB0RSqcBw09l9caUE1g3sykJoRfSbtSzZS6tYig=="
       },
       "SharpZipLib": {
         "type": "Transitive",

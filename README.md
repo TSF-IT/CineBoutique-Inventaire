@@ -106,7 +106,7 @@ exposés sont :
 - `GET /health` : liveness simple.
 - `GET /ready` : vérifie l'accès à PostgreSQL (`SELECT 1`).
 - `GET /locations` : liste les zones d'inventaire et l'état d'occupation courant (filtrable par type de comptage).
-- `GET /api/products/{code}` : recherche par SKU ou code EAN-8/EAN-13.
+- `GET /api/products/{sku}` : recherche par SKU ou code EAN-8/EAN-13.
 - `POST /api/products` : création manuelle d'un produit (SKU, nom, EAN optionnel).
 - `POST /api/auth/login` : authentification boutique + login + secret (JWT).
 - `POST /api/inventories/{locationId}/restart` : clôture les runs actifs d'une zone pour redémarrer un comptage.

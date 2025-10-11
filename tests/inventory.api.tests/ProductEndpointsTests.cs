@@ -231,7 +231,7 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
     {
         return
         [
-            ($"/api/products/{created.Id}", fullPayload),
+            ($"/api/products/by-id/{created.Id}", fullPayload),
             ($"/api/products/{Uri.EscapeDataString(created.Sku)}", fullPayload),
             ("/api/products", fullPayload),
             ($"/api/products/{Uri.EscapeDataString(created.Sku)}", new { created.Sku, Name = updatedName, Ean = updatedEan }),
