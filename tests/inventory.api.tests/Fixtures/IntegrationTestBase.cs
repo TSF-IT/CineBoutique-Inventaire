@@ -1,8 +1,3 @@
-using System.Net.Http;
-using System.Threading.Tasks;
-using CineBoutique.Inventory.Api.Tests.Infra;
-using Xunit;
-
 namespace CineBoutique.Inventory.Api.Tests.Fixtures;
 
 public abstract class IntegrationTestBase : IAsyncLifetime

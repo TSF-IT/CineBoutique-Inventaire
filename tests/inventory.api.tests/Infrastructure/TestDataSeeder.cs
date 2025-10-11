@@ -1,47 +1,52 @@
-using System;
-using System.Threading.Tasks;
 using Npgsql;
 
 namespace CineBoutique.Inventory.Api.Tests.Infrastructure;
 
-public sealed class TestDataSeeder
+public sealed class TestDataSeeder(NpgsqlDataSource dataSource)
 {
-    private readonly NpgsqlDataSource _dataSource;
-
-    public TestDataSeeder(NpgsqlDataSource dataSource)
-    {
-        _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
-    }
+    private readonly NpgsqlDataSource _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
 
     public async Task<Guid> CreateShopAsync(string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
-        var id = Guid.NewGuid();
+        await using var conn = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
 
-        const string sql = "INSERT INTO \"Shop\" (\"Id\", \"Name\") VALUES (@id, @name);";
+        const string insertSql = """
+        INSERT INTO "Shop" ("Name")
+        VALUES (@name)
+        ON CONFLICT DO NOTHING
+        RETURNING "Id";
+        """;
 
-        var connection = _dataSource.CreateConnection();
-        await connection.OpenAsync().ConfigureAwait(false);
-        try
+        await using (var cmd = new NpgsqlCommand(insertSql, conn))
         {
-            using var command = new NpgsqlCommand(sql, connection)
-            {
-                Parameters =
-                {
-                    new("id", id),
-                    new("name", name)
-                }
-            };
+            cmd.Parameters.AddWithValue("name", name);
+            var inserted = await cmd.ExecuteScalarAsync().ConfigureAwait(false);
+            if (inserted is Guid gid)
+                return gid;
+        }
 
-            await command.ExecuteNonQueryAsync().ConfigureAwait(false);
-        }
-        finally
+        // Conflit => la ligne existait déjà : on récupère l'Id
+        const string selectSql = """
+        SELECT "Id"
+        FROM "Shop"
+        WHERE LOWER("Name") = LOWER(@name)
+        ORDER BY "Id"
+        LIMIT 1;
+        """;
+
+        await using (var sel = new NpgsqlCommand(selectSql, conn))
         {
-            await connection.DisposeAsync().ConfigureAwait(false);
+            sel.Parameters.AddWithValue("name", name);
+            var existing = await sel.ExecuteScalarAsync().ConfigureAwait(false);
+            if (existing is Guid id)
+                return id;
         }
-        return id;
+
+        throw new InvalidOperationException($"Impossible de créer ou récupérer le shop '{name}'.");
     }
+
 
     public async Task<Guid> CreateLocationAsync(Guid shopId, string code, string label)
     {

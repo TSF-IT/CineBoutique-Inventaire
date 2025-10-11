@@ -1,14 +1,9 @@
-using System;
-using System.Linq;
 using System.Net;
-using System.Net.Http;
 using System.Net.Http.Json;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Fixtures;
 using CineBoutique.Inventory.Api.Tests.Helpers;
 using FluentAssertions;
-using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
 
