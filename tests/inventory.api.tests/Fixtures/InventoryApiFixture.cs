@@ -211,22 +211,29 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
 
         if (TestDbOptions.UseExternalDb)
         {
-            // Tolérant : si le schéma n'a pas été capturé, on le dérive du SearchPath.
-            if (string.IsNullOrWhiteSpace(_schemaName) && !string.IsNullOrWhiteSpace(_connectionString))
+            // 1) Tente de prendre le schéma courant de la session (autorité la plus fiable)
+            var schema = await GetCurrentSchemaAsync(connection).ConfigureAwait(false);
+
+            // 2) Repli : si ça ne donne rien, essaye à partir du SearchPath de la connection string
+            if (string.IsNullOrWhiteSpace(schema) && !string.IsNullOrWhiteSpace(_connectionString))
             {
                 var b = new NpgsqlConnectionStringBuilder(_connectionString);
                 if (!string.IsNullOrWhiteSpace(b.SearchPath))
                 {
                     var parts = b.SearchPath.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
                     if (parts.Length > 0)
-                        _schemaName = parts[0];
+                        schema = parts[0];
                 }
             }
-            if (string.IsNullOrWhiteSpace(_schemaName))
+
+            // 3) Repli final : si on n’a toujours rien, on stoppe proprement
+            if (string.IsNullOrWhiteSpace(schema))
                 throw new InvalidOperationException("Le schéma de tests n'est pas initialisé.");
 
-            var resetSql = $"DROP SCHEMA IF EXISTS \"{_schemaName}\" CASCADE; CREATE SCHEMA \"{_schemaName}\";";
+            // On mémorise pour les prochains appels (utile si Reset est invoqué avant EnsureReady dans un autre flux)
+            _schemaName = schema;
 
+            var resetSql = $"DROP SCHEMA IF EXISTS \"{schema}\" CASCADE; CREATE SCHEMA \"{schema}\";";
             await using var resetCommand = new NpgsqlCommand(resetSql, connection);
             await resetCommand.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
@@ -311,6 +318,13 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
         };
 
         return builder.ConnectionString;
+    }
+
+    private static async Task<string?> GetCurrentSchemaAsync(NpgsqlConnection connection)
+    {
+        await using var cmd = new NpgsqlCommand("select current_schema()", connection);
+        var value = await cmd.ExecuteScalarAsync().ConfigureAwait(false);
+        return value as string;
     }
 
     private async Task EnsureSchemaExistsAsync(string schemaName)
