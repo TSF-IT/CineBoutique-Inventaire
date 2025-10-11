@@ -211,6 +211,17 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
 
         if (TestDbOptions.UseExternalDb)
         {
+            // Tolérant : si le schéma n'a pas été capturé, on le dérive du SearchPath.
+            if (string.IsNullOrWhiteSpace(_schemaName) && !string.IsNullOrWhiteSpace(_connectionString))
+            {
+                var b = new NpgsqlConnectionStringBuilder(_connectionString);
+                if (!string.IsNullOrWhiteSpace(b.SearchPath))
+                {
+                    var parts = b.SearchPath.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    if (parts.Length > 0)
+                        _schemaName = parts[0];
+                }
+            }
             if (string.IsNullOrWhiteSpace(_schemaName))
                 throw new InvalidOperationException("Le schéma de tests n'est pas initialisé.");
 
