@@ -41,11 +41,10 @@ public sealed class ShopService : IShopService
 
         try
         {
-            const string sql = """
-            INSERT INTO "Shop" ("Name")
-            VALUES (@Name)
-            RETURNING "Id", "Name";
-            """;
+            const string sql = @"
+            INSERT INTO ""Shop"" (""Id"", ""Name"")
+            VALUES (gen_random_uuid(), @Name)
+            RETURNING ""Id"";";
 
             var created = await connection.QuerySingleAsync<ShopDto>(
                     new CommandDefinition(sql, new { Name = trimmedName }, cancellationToken: cancellationToken))

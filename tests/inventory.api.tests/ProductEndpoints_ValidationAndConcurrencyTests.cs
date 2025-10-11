@@ -1,14 +1,10 @@
-using System;
-using System.Linq;
-using System.Net;
-using System.Net.Http;
-using System.Net.Http.Json;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Fixtures;
 using CineBoutique.Inventory.Api.Tests.Helpers;
+using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using FluentAssertions;
-using Xunit;
+using System.Net;
+using System.Net.Http.Json;
 
 namespace CineBoutique.Inventory.Api.Tests;
 
@@ -73,6 +69,9 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
     [SkippableFact]
     public async Task CreateProduct_ValidatesEanFormats()
     {
+
+        await Fixture.ResetAndSeedAsync((TestDataSeeder _) => Task.CompletedTask);
+
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);

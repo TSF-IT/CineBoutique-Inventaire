@@ -10,16 +10,17 @@ public sealed class TestDataSeeder(NpgsqlDataSource dataSource)
 
     public async Task<Guid> CreateShopAsync(string name)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
         await using var conn = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
 
-        // Tente l'insert ; si conflit, on récupère l'existant
+        // 1) Tente l'insert en s'appuyant sur l'INDEX UNIQUE d'expression (LOWER("Name"))
         await using (var cmd = conn.CreateCommand())
         {
             cmd.CommandText = @"
             INSERT INTO ""Shop"" (""Name"")
             VALUES (@name)
-            ON CONFLICT ON CONSTRAINT ""UQ_Shop_LowerName""
-            DO NOTHING
+            ON CONFLICT (LOWER(""Name"")) DO NOTHING
             RETURNING ""Id"";";
             cmd.Parameters.AddWithValue("name", name);
 
@@ -27,9 +28,13 @@ public sealed class TestDataSeeder(NpgsqlDataSource dataSource)
             if (inserted is Guid id) return id;
         }
 
+        // 2) Récupère l'existant si conflit
         await using (var cmd = conn.CreateCommand())
         {
-            cmd.CommandText = @"SELECT ""Id"" FROM ""Shop"" WHERE LOWER(""Name"") = LOWER(@name) LIMIT 1;";
+            cmd.CommandText = @"SELECT ""Id""
+                            FROM ""Shop""
+                            WHERE LOWER(""Name"") = LOWER(@name)
+                            LIMIT 1;";
             cmd.Parameters.AddWithValue("name", name);
 
             var existing = await cmd.ExecuteScalarAsync().ConfigureAwait(false);
@@ -38,6 +43,7 @@ public sealed class TestDataSeeder(NpgsqlDataSource dataSource)
 
         throw new InvalidOperationException($"Unable to create or find shop '{name}'.");
     }
+
 
     public async Task<Guid> CreateLocationAsync(Guid shopId, string code, string label)
     {
@@ -48,8 +54,7 @@ public sealed class TestDataSeeder(NpgsqlDataSource dataSource)
             cmd.CommandText = @"
             INSERT INTO ""Location"" (""Code"", ""Label"", ""ShopId"")
             VALUES (@code, @label, @shopId)
-            ON CONFLICT ON CONSTRAINT ""UQ_Location_Shop_Code""
-            DO NOTHING
+            ON CONFLICT (""ShopId"", UPPER(""Code"")) DO NOTHING
             RETURNING ""Id"";";
             cmd.Parameters.AddWithValue("code", code);
             cmd.Parameters.AddWithValue("label", label);
@@ -64,7 +69,8 @@ public sealed class TestDataSeeder(NpgsqlDataSource dataSource)
             cmd.CommandText = @"
             SELECT ""Id""
             FROM ""Location""
-            WHERE ""ShopId"" = @shopId AND UPPER(""Code"") = UPPER(@code)
+            WHERE ""ShopId"" = @shopId
+              AND UPPER(""Code"") = UPPER(@code)
             LIMIT 1;";
             cmd.Parameters.AddWithValue("shopId", shopId);
             cmd.Parameters.AddWithValue("code", code);
@@ -75,6 +81,7 @@ public sealed class TestDataSeeder(NpgsqlDataSource dataSource)
 
         throw new InvalidOperationException($"Unable to create or find location '{code}' for shop {shopId}.");
     }
+
 
 
     public async Task<Guid> CreateShopUserAsync(Guid shopId, string login, string displayName, bool isAdmin = false)
