@@ -369,7 +369,7 @@ else
     app.UseCors(PublicApiCorsPolicy);
 }
 
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
 {
     app.UseSwagger();
     app.UseSwaggerUI(c =>
