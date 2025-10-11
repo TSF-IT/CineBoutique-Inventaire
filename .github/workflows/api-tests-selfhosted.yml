@@ -122,7 +122,7 @@ jobs:
           mkdir -p tests/inventory.api.tests/TestResults
           set -o pipefail
           dotnet test tests/inventory.api.tests/CineBoutique.Inventory.Api.Tests.csproj \
-            -c Release --no-build \
+            -c Release --no-build -m:1 \
             --logger "trx;LogFileName=test_results.trx" \
             --logger "console;verbosity=detailed" \
             --results-directory tests/inventory.api.tests/TestResults \

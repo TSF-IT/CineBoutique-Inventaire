@@ -49,6 +49,12 @@
     <PackageReference Update="Microsoft.CodeAnalysis.NetAnalyzers" PrivateAssets="all" />
     <Using Include="Xunit" />
   </ItemGroup>
+  
+  <ItemGroup>
+	  <None Update="xunit.runner.json">
+		<CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </None>
+  </ItemGroup>
 
   <ItemGroup>
     <!-- Exclure explicitement les reliques pour que l’IDE arrête de les “projeter” -->
