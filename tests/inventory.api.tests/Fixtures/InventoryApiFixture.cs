@@ -25,7 +25,8 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
     private string? _connectionString;
     private string? _schemaName;
     private bool _initialized;
-
+    private string? _perClassDbName;
+    private string? _adminConnectionString;
     public TestDataSeeder Seeder { get; private set; } = default!;
     public bool IsBackendAvailable => TestDbOptions.UseExternalDb || GetOrCachePostgres().IsDatabaseAvailable;
     public string? SkipReason => GetOrCachePostgres().SkipReason;
@@ -65,6 +66,8 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
             await _dataSource.DisposeAsync().ConfigureAwait(false);
             _dataSource = null;
         }
+
+        await DropPerClassDatabaseAsync().ConfigureAwait(false);
 
         Seeder = null!;
         _connectionString = null;
@@ -118,6 +121,8 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
         if (string.IsNullOrWhiteSpace(cs))
             throw new InvalidOperationException("La chaîne de connexion de test doit être définie.");
 
+        cs = await EnsureUniqueDatabaseForThisClassAsync(cs).ConfigureAwait(false);
+
         Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", "Testing");
         Environment.SetEnvironmentVariable("DOTNET_ENVIRONMENT", "Testing");
         // Ceinture + bretelles pour tout code qui lit la config via env:
@@ -143,6 +148,61 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
         Seeder = new TestDataSeeder(_dataSource);
 
         lock (_gate) { _initialized = true; }
+    }
+
+    private async Task<string> EnsureUniqueDatabaseForThisClassAsync(string baseConnectionString)
+    {
+        // Parse la CS existante (venant de TEST_DB_CONN ou équivalent)
+        var b = new Npgsql.NpgsqlConnectionStringBuilder(baseConnectionString);
+        var baseDb = string.IsNullOrWhiteSpace(b.Database) ? "inv_test" : b.Database;
+
+        // Nom unique par classe
+        _perClassDbName = $"{baseDb}_{Guid.NewGuid():N}";
+
+        // Connexion admin sur 'postgres' pour créer la DB
+        var adminBuilder = new Npgsql.NpgsqlConnectionStringBuilder(baseConnectionString) { Database = "postgres" };
+        _adminConnectionString = adminBuilder.ConnectionString;
+
+        await using (var admin = new Npgsql.NpgsqlConnection(_adminConnectionString))
+        {
+            await admin.OpenAsync().ConfigureAwait(false);
+
+            // Crée la DB (collation par défaut)
+            await using var create = admin.CreateCommand();
+            create.CommandText = $"CREATE DATABASE \"{_perClassDbName}\"";
+            await create.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+
+        // Retourne la CS pointant vers la DB unique
+        b.Database = _perClassDbName;
+        return b.ConnectionString;
+    }
+
+    private async Task DropPerClassDatabaseAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_perClassDbName) || string.IsNullOrWhiteSpace(_adminConnectionString))
+            return;
+
+        await using var admin = new Npgsql.NpgsqlConnection(_adminConnectionString);
+        await admin.OpenAsync().ConfigureAwait(false);
+
+        // Déconnecte les sessions actives sur la DB à dropper
+        await using (var kill = admin.CreateCommand())
+        {
+            kill.CommandText = @"
+            SELECT pg_terminate_backend(pid)
+            FROM pg_stat_activity
+            WHERE datname = @db AND pid <> pg_backend_pid();";
+            kill.Parameters.AddWithValue("db", _perClassDbName);
+            await kill.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+
+        // DROP DATABASE
+        await using (var drop = admin.CreateCommand())
+        {
+            drop.CommandText = $"DROP DATABASE IF EXISTS \"{_perClassDbName}\";";
+            await drop.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
     }
 
     public HttpClient CreateClient()

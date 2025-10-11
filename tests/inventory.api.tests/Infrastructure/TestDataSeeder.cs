@@ -10,94 +10,72 @@ public sealed class TestDataSeeder(NpgsqlDataSource dataSource)
 
     public async Task<Guid> CreateShopAsync(string name)
     {
-        if (string.IsNullOrWhiteSpace(name))
-            throw new ArgumentException("name is required", nameof(name));
-
         await using var conn = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
 
-        // 1) Insert idempotent (unicité sur LOWER(Name))
-        const string insertSql = @"
-        INSERT INTO ""Shop"" (""Name"")
-        VALUES (@Name)
-        ON CONFLICT DO NOTHING;";
-        await using (var insert = new NpgsqlCommand(insertSql, conn))
+        // Tente l'insert ; si conflit, on récupère l'existant
+        await using (var cmd = conn.CreateCommand())
         {
-            insert.Parameters.AddWithValue("Name", name.Trim());
-            await insert.ExecuteNonQueryAsync().ConfigureAwait(false);
+            cmd.CommandText = @"
+            INSERT INTO ""Shop"" (""Name"")
+            VALUES (@name)
+            ON CONFLICT ON CONSTRAINT ""UQ_Shop_LowerName""
+            DO NOTHING
+            RETURNING ""Id"";";
+            cmd.Parameters.AddWithValue("name", name);
+
+            var inserted = await cmd.ExecuteScalarAsync().ConfigureAwait(false);
+            if (inserted is Guid id) return id;
         }
 
-        // 2) Récupérer l'Id du shop (existant ou nouvellement créé)
-        const string selectSql = @"
-        SELECT ""Id""
-        FROM ""Shop""
-        WHERE LOWER(""Name"") = LOWER(@Name)
-        ORDER BY ""Id""
-        LIMIT 1;";
-        await using (var select = new NpgsqlCommand(selectSql, conn))
+        await using (var cmd = conn.CreateCommand())
         {
-            select.Parameters.AddWithValue("Name", name.Trim());
-            var result = await select.ExecuteScalarAsync().ConfigureAwait(false);
-            if (result is Guid id) return id;
+            cmd.CommandText = @"SELECT ""Id"" FROM ""Shop"" WHERE LOWER(""Name"") = LOWER(@name) LIMIT 1;";
+            cmd.Parameters.AddWithValue("name", name);
+
+            var existing = await cmd.ExecuteScalarAsync().ConfigureAwait(false);
+            if (existing is Guid id) return id;
         }
 
-        throw new InvalidOperationException($"Shop '{name}' not found after insert/select.");
+        throw new InvalidOperationException($"Unable to create or find shop '{name}'.");
     }
 
     public async Task<Guid> CreateLocationAsync(Guid shopId, string code, string label)
     {
-        if (shopId == Guid.Empty) throw new ArgumentException("shopId is empty", nameof(shopId));
-        if (string.IsNullOrWhiteSpace(code)) throw new ArgumentException("code is required", nameof(code));
-
-        var codeUpper = code.Trim().ToUpperInvariant();
         await using var conn = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
 
-        // 1) Déjà présent ? (aligné avec l'index UQ_Location_Shop_Code sur UPPER(Code))
-        const string selectSql = @"
-        SELECT ""Id""
-        FROM ""Location""
-        WHERE ""ShopId"" = @ShopId
-          AND UPPER(""Code"") = @CodeUpper
-        LIMIT 1;";
-        await using (var select = new NpgsqlCommand(selectSql, conn))
+        await using (var cmd = conn.CreateCommand())
         {
-            select.Parameters.AddWithValue("ShopId", shopId);
-            select.Parameters.AddWithValue("CodeUpper", codeUpper);
-            var existing = await select.ExecuteScalarAsync().ConfigureAwait(false);
+            cmd.CommandText = @"
+            INSERT INTO ""Location"" (""Code"", ""Label"", ""ShopId"")
+            VALUES (@code, @label, @shopId)
+            ON CONFLICT ON CONSTRAINT ""UQ_Location_Shop_Code""
+            DO NOTHING
+            RETURNING ""Id"";";
+            cmd.Parameters.AddWithValue("code", code);
+            cmd.Parameters.AddWithValue("label", label);
+            cmd.Parameters.AddWithValue("shopId", shopId);
+
+            var inserted = await cmd.ExecuteScalarAsync().ConfigureAwait(false);
+            if (inserted is Guid id) return id;
+        }
+
+        await using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+            SELECT ""Id""
+            FROM ""Location""
+            WHERE ""ShopId"" = @shopId AND UPPER(""Code"") = UPPER(@code)
+            LIMIT 1;";
+            cmd.Parameters.AddWithValue("shopId", shopId);
+            cmd.Parameters.AddWithValue("code", code);
+
+            var existing = await cmd.ExecuteScalarAsync().ConfigureAwait(false);
             if (existing is Guid id) return id;
         }
 
-        // 2) Insert idempotent, compatible avec la contrainte (UPPER(Code))
-        var newId = Guid.NewGuid();
-        const string insertSql = @"
-        INSERT INTO ""Location"" (""Id"", ""ShopId"", ""Code"", ""Label"")
-        SELECT @Id, @ShopId, @CodeUpper, @Label
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM ""Location""
-            WHERE ""ShopId"" = @ShopId
-              AND UPPER(""Code"") = @CodeUpper
-        );";
-        await using (var insert = new NpgsqlCommand(insertSql, conn))
-        {
-            insert.Parameters.AddWithValue("Id", newId);
-            insert.Parameters.AddWithValue("ShopId", shopId);
-            insert.Parameters.AddWithValue("CodeUpper", codeUpper);
-            insert.Parameters.AddWithValue("Label", string.IsNullOrWhiteSpace(label) ? codeUpper : label.Trim());
-            await insert.ExecuteNonQueryAsync().ConfigureAwait(false);
-        }
-
-        // 3) Retourner l'Id (existant ou inséré)
-        await using (var select2 = new NpgsqlCommand(selectSql, conn))
-        {
-            select2.Parameters.AddWithValue("ShopId", shopId);
-            select2.Parameters.AddWithValue("CodeUpper", codeUpper);
-            var obj = await select2.ExecuteScalarAsync().ConfigureAwait(false);
-            if (obj is Guid id) return id;
-        }
-
-        // Fallback (ne devrait pas arriver)
-        return newId;
+        throw new InvalidOperationException($"Unable to create or find location '{code}' for shop {shopId}.");
     }
+
 
     public async Task<Guid> CreateShopUserAsync(Guid shopId, string login, string displayName, bool isAdmin = false)
     {
