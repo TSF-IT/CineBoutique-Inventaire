@@ -143,6 +143,7 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
         created.Name.Should().Be("Film");
         created.Ean.Should().Be("12345688");
 
+        Fixture.ClearAuditLogs();
         var fetchResponse = await client.GetAsync(client.CreateRelativeUri("/api/products/SKU-TRIM")).ConfigureAwait(false);
         await fetchResponse.ShouldBeAsync(HttpStatusCode.OK, "le produit doit être récupérable avec le SKU trimé").ConfigureAwait(false);
         var fetched = await fetchResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
@@ -150,6 +151,9 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
         fetched!.Sku.Should().Be("SKU-TRIM");
         fetched.Name.Should().Be("Film");
         fetched.Ean.Should().Be("12345688");
+        var successLogs = Fixture.DrainAuditLogs();
+        successLogs.Should().ContainSingle("le scan réussi doit être journalisé")
+            .Which.Category.Should().Be("products.scan.success");
     }
 
     [SkippableFact]
@@ -216,6 +220,26 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
     }
 
     [SkippableFact]
+    public async Task UpdateProduct_WithEmptyName_ReturnsBadRequestAndLogsAudit()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        await Fixture.ResetAndSeedAsync(seeder => seeder.CreateProductAsync("SKU-UPDATE-INVALID", "Produit initial")).ConfigureAwait(false);
+        var client = CreateClient();
+
+        Fixture.ClearAuditLogs();
+        var response = await client.PutAsJsonAsync(
+            client.CreateRelativeUri("/api/products/SKU-UPDATE-INVALID"),
+            new CreateProductRequest { Sku = "SKU-UPDATE-INVALID", Name = "  ", Ean = null }
+        ).ConfigureAwait(false);
+
+        await response.ShouldBeAsync(HttpStatusCode.BadRequest, "la mise à jour sans nom doit être rejetée").ConfigureAwait(false);
+        var logs = Fixture.DrainAuditLogs();
+        logs.Should().ContainSingle("la tentative invalide doit être auditée")
+            .Which.Category.Should().Be("products.update.invalid");
+    }
+
+    [SkippableFact]
     public async Task UpdateProduct_WithNullEan_ClearsExistingEan()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
@@ -271,11 +295,15 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
         ).ConfigureAwait(false);
         await secondCreate.ShouldBeAsync(HttpStatusCode.Created, "le second produit doit être créé").ConfigureAwait(false);
 
+        Fixture.ClearAuditLogs();
         var conflictResponse = await client.PutAsJsonAsync(
             client.CreateRelativeUri("/api/products/SKU-CONFLICT-2"),
             new CreateProductRequest { Sku = "SKU-CONFLICT-2", Name = "Produit B", Ean = ean1 }
         ).ConfigureAwait(false);
 
         await conflictResponse.ShouldBeAsync(HttpStatusCode.Conflict, "la mise à jour vers un EAN existant doit être refusée").ConfigureAwait(false);
+        var conflictLogs = Fixture.DrainAuditLogs();
+        conflictLogs.Should().ContainSingle("le conflit de mise à jour doit être auditée")
+            .Which.Category.Should().Be("products.update.conflict");
     }
 }

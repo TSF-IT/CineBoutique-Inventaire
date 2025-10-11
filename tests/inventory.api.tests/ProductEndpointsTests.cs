@@ -61,6 +61,7 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
         var client = CreateClient();
 
         // Payload invalide
+        Fixture.ClearAuditLogs();
         var invalidResponse = await client.PostAsJsonAsync(
             client.CreateRelativeUri("/api/products"),
             new CreateProductRequest
@@ -70,8 +71,12 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
                 Ean = "abc"
             }).ConfigureAwait(false);
         invalidResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var invalidLogs = Fixture.DrainAuditLogs();
+        invalidLogs.Should().ContainSingle("une tentative invalide doit être auditée")
+            .Which.Category.Should().Be("products.create.invalid");
 
         // Création OK
+        Fixture.ClearAuditLogs();
         var firstCreate = await client.PostAsJsonAsync(
             client.CreateRelativeUri("/api/products"),
             new CreateProductRequest
@@ -82,6 +87,7 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
         firstCreate.StatusCode.Should().Be(HttpStatusCode.Created);
 
         // Doublon SKU
+        Fixture.ClearAuditLogs();
         var duplicateResponse = await client.PostAsJsonAsync(
             client.CreateRelativeUri("/api/products"),
             new CreateProductRequest
@@ -90,6 +96,9 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
                 Name = "Edition limitée bis"
             }).ConfigureAwait(false);
         duplicateResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var duplicateLogs = Fixture.DrainAuditLogs();
+        duplicateLogs.Should().ContainSingle("le conflit de création doit être auditée")
+            .Which.Category.Should().Be("products.create.conflict");
     }
 
     [SkippableFact]
@@ -176,11 +185,15 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
         var client = CreateClient();
 
+        Fixture.ClearAuditLogs();
         var response = await client.GetAsync(
             client.CreateRelativeUri("/api/products/UNKNOWN-0001")
         ).ConfigureAwait(false);
 
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var notFoundLogs = Fixture.DrainAuditLogs();
+        notFoundLogs.Should().ContainSingle("un scan inconnu doit être journalisé")
+            .Which.Category.Should().Be("products.scan.not_found");
     }
 
     [SkippableFact]
@@ -198,12 +211,16 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
         ).ConfigureAwait(false);
         await createResponse.ShouldBeAsync(HttpStatusCode.Created, "initial creation");
 
+        Fixture.ClearAuditLogs();
         var duplicateResponse = await client.PostAsJsonAsync(
             client.CreateRelativeUri("/api/products"),
             new CreateProductRequest { Sku = "SKU-DUP-01", Name = "Produit Clone" }
         ).ConfigureAwait(false);
 
         duplicateResponse.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var duplicateLogs = Fixture.DrainAuditLogs();
+        duplicateLogs.Should().ContainSingle("le conflit de création doit être auditée")
+            .Which.Category.Should().Be("products.create.conflict");
     }
 
     private static (string Path, object Body)[] BuildUpdateCandidates(
