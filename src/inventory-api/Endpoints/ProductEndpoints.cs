@@ -217,7 +217,7 @@ internal static class ProductEndpoints
             }
         };
 
-        app.MapPost("/api/products/{id:guid}", updateById)
+        app.MapPost("/api/products/by-id/{id:guid}", updateById)
            .WithName("UpdateProductByIdPost")
            .WithTags("Produits")
            .Produces<ProductDto>(StatusCodes.Status200OK)
@@ -225,7 +225,7 @@ internal static class ProductEndpoints
            .Produces(StatusCodes.Status404NotFound)
            .Produces(StatusCodes.Status409Conflict);
 
-        app.MapPut("/api/products/{id:guid}", updateById)
+        app.MapPut("/api/products/by-id/{id:guid}", updateById)
            .WithName("UpdateProductById")
            .WithTags("Produits")
            .Produces<ProductDto>(StatusCodes.Status200OK)
