@@ -93,6 +93,7 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "CinéBoutique Inventory API", Version = "v1" });
+    c.SupportNonNullableReferenceTypes();
 
     var asmName = System.Reflection.Assembly.GetExecutingAssembly().GetName().Name;
     var xmlPath = System.IO.Path.Combine(AppContext.BaseDirectory, $"{asmName}.xml");
