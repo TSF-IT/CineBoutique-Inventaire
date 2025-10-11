@@ -23,6 +23,7 @@
     <PackageReference Include="Isopoh.Cryptography.Argon2" />
     <PackageReference Include="FluentAssertions" />
     <PackageReference Include="Xunit.SkippableFact" />
+    <PackageReference Include="Microsoft.OpenApi.Readers" />
 
     <!-- Testcontainers v3 (nouveaux IDs de package) -->
     <PackageReference Include="Testcontainers" />
