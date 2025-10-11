@@ -47,9 +47,9 @@ public sealed class OpenApiContractTests : IntegrationTestBase
         AssertOperation(paths["/api/products/{sku}"], OperationType.Post, "UpdateProductBySkuPost", "200", "400", "404", "409");
         AssertOperation(paths["/api/products/{sku}"], OperationType.Put, "UpdateProductBySku", "200", "400", "404", "409");
 
-        paths.Should().ContainKey("/api/products/{id}");
-        AssertOperation(paths["/api/products/{id}"], OperationType.Post, "UpdateProductByIdPost", "200", "400", "404", "409");
-        AssertOperation(paths["/api/products/{id}"], OperationType.Put, "UpdateProductById", "200", "400", "404", "409");
+        paths.Should().ContainKey("/api/products/by-id/{id}");
+        AssertOperation(paths["/api/products/by-id/{id}"], OperationType.Post, "UpdateProductByIdPost", "200", "400", "404", "409");
+        AssertOperation(paths["/api/products/by-id/{id}"], OperationType.Put, "UpdateProductById", "200", "400", "404", "409");
 
         document.Components.Schemas.Should().ContainKey("ProductDto");
         var productSchema = document.Components.Schemas["ProductDto"];
