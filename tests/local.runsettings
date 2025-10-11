@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RunSettings>
+  <RunConfiguration>
+    <ResultsDirectory>test-results/dotnet</ResultsDirectory>
+    <EnvironmentVariables>
+      <TEST_DB_CONN>Host=127.0.0.1;Port=5432;Database=inventory;Username=postgres;Password=postgres</TEST_DB_CONN>
+      <ASPNETCORE_ENVIRONMENT>Development</ASPNETCORE_ENVIRONMENT>
+      <DOTNET_ENVIRONMENT>Development</DOTNET_ENVIRONMENT>
+    </EnvironmentVariables>
+  </RunConfiguration>
+</RunSettings>

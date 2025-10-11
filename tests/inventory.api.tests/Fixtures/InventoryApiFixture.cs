@@ -23,6 +23,7 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
     private InventoryApiFactory? _factory;
     private NpgsqlDataSource? _dataSource;
     private string? _connectionString;
+    private string? _schemaName;
     private bool _initialized;
 
     public TestDataSeeder Seeder { get; private set; } = default!;
@@ -67,6 +68,7 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
 
         Seeder = null!;
         _connectionString = null;
+        _schemaName = null;
         _initialized = false;
     }
 
@@ -98,9 +100,20 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
         if (!IsBackendAvailable)
             return;
 
-        var cs = TestDbOptions.UseExternalDb
-            ? TestDbOptions.ExternalConnectionString!
-            : GetOrCachePostgres().ConnectionString;
+        string cs;
+        if (TestDbOptions.UseExternalDb)
+        {
+            var externalCs = TestDbOptions.ExternalConnectionString
+                ?? throw new InvalidOperationException("La chaîne de connexion externe doit être définie.");
+
+            cs = BuildExternalConnectionString(externalCs, out var schemaName);
+            _schemaName = schemaName;
+        }
+        else
+        {
+            cs = GetOrCachePostgres().ConnectionString;
+            _schemaName = null;
+        }
 
         if (string.IsNullOrWhiteSpace(cs))
             throw new InvalidOperationException("La chaîne de connexion de test doit être définie.");
@@ -112,6 +125,11 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
 
         _connectionString = cs;
         _dataSource = NpgsqlDataSource.Create(cs);
+
+        if (!string.IsNullOrWhiteSpace(_schemaName))
+        {
+            await EnsureSchemaExistsAsync(_schemaName!).ConfigureAwait(false);
+        }
 
         await ApplyMigrationsAsync().ConfigureAwait(false);
 
@@ -193,22 +211,13 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
 
         if (TestDbOptions.UseExternalDb)
         {
-            const string truncateSql = @"DO $$
-DECLARE
-    stmt text;
-BEGIN
-    FOR stmt IN
-        SELECT format('TRUNCATE TABLE %I.%I RESTART IDENTITY CASCADE;', schemaname, tablename)
-        FROM pg_tables
-        WHERE schemaname = 'public'
-          AND tablename <> 'VersionInfo'
-    LOOP
-        EXECUTE stmt;
-    END LOOP;
-END$$;";
+            if (string.IsNullOrWhiteSpace(_schemaName))
+                throw new InvalidOperationException("Le schéma de tests n'est pas initialisé.");
 
-            await using var truncateCommand = new NpgsqlCommand(truncateSql, connection);
-            await truncateCommand.ExecuteNonQueryAsync().ConfigureAwait(false);
+            var resetSql = $"DROP SCHEMA IF EXISTS \"{_schemaName}\" CASCADE; CREATE SCHEMA \"{_schemaName}\";";
+
+            await using var resetCommand = new NpgsqlCommand(resetSql, connection);
+            await resetCommand.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
         else
         {
@@ -277,6 +286,31 @@ END$$;";
 
         _postgres = fixture;
         return fixture;
+    }
+
+    private static string BuildExternalConnectionString(string baseConnectionString, out string schemaName)
+    {
+        if (string.IsNullOrWhiteSpace(baseConnectionString))
+            throw new ArgumentException("La chaîne de connexion externe doit être fournie.", nameof(baseConnectionString));
+
+        schemaName = $"it_{Guid.NewGuid():N}";
+        var builder = new NpgsqlConnectionStringBuilder(baseConnectionString)
+        {
+            SearchPath = schemaName
+        };
+
+        return builder.ConnectionString;
+    }
+
+    private async Task EnsureSchemaExistsAsync(string schemaName)
+    {
+        if (_dataSource is null)
+            throw new InvalidOperationException("Le DataSource Postgres n'est pas initialisé.");
+
+        await using var connection = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
+        var commandText = $"CREATE SCHEMA IF NOT EXISTS \"{schemaName}\";";
+        await using var command = new NpgsqlCommand(commandText, connection);
+        await command.ExecuteNonQueryAsync().ConfigureAwait(false);
     }
 
     private static async Task WaitUntilReadyAsync(HttpClient client)
