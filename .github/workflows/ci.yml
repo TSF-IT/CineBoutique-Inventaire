@@ -112,7 +112,7 @@ jobs:
             test-results/web/**
 
   e2e-web:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, tsf, Linux, X64]
     needs: build-and-test
     steps:
       - uses: actions/checkout@v4
