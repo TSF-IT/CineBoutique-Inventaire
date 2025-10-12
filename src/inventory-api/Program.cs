@@ -4,6 +4,7 @@ using System.Data;
 using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
+using CineBoutique.Inventory.Api.Infrastructure.Http;
 using CineBoutique.Inventory.Api.Infrastructure.Middleware;
 using CineBoutique.Inventory.Api.Hosting;
 using CineBoutique.Inventory.Api.Services;
@@ -385,7 +386,7 @@ if (useSerilog)
     app.UseSerilogRequestLogging();
 }
 
-app.UseMiddleware<LegacyOperatorGuardMiddleware>();
+app.UseMiddleware<LegacyOperatorNameWriteGuardMiddleware>();
 app.UseMiddleware<SoftOperatorMiddleware>();
 
 app.Use(async (ctx, next) =>
