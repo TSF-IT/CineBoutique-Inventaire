@@ -37,6 +37,20 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
         }
     }
 
+    public string ConnectionString
+    {
+        get
+        {
+            if (!IsBackendAvailable)
+            {
+                throw new InvalidOperationException("Le backend d'intégration n'est pas disponible.");
+            }
+
+            EnsureInitialized();
+            return _connectionString!;
+        }
+    }
+
     // xUnit l’appelle si la fixture est enregistrée comme ICollectionFixture
     public async Task InitializeAsync()
     {
@@ -153,6 +167,17 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
 
         EnsureInitialized();
         return AuditLogger.Drain();
+    }
+
+    public async ValueTask<NpgsqlConnection> OpenConnectionAsync()
+    {
+        if (!IsBackendAvailable)
+        {
+            throw new InvalidOperationException("Le backend d'intégration n'est pas disponible.");
+        }
+
+        EnsureInitialized();
+        return await _dataSource!.OpenConnectionAsync().ConfigureAwait(false);
     }
 
     public async Task DbResetAsync()
