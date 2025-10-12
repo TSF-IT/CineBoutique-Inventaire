@@ -65,7 +65,7 @@ jobs:
       - name: Run web tests (+ coverage)
         working-directory: src/inventory-web
         run: |
-          npm test -- --runInBand --ci --coverage || npm test -- --runInBand || true
+          npm test -- --coverage
           if [ -d coverage ]; then
             mkdir -p "$GITHUB_WORKSPACE/test-results/web"
             cp -R coverage "$GITHUB_WORKSPACE/test-results/web/"
