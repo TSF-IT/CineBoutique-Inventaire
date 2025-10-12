@@ -128,9 +128,16 @@ jobs:
         working-directory: src/inventory-web
         run: npm ci
 
+      - name: Installer les dépendances OS pour Playwright (Linux uniquement)
+        if: runner.os == 'Linux'
+        working-directory: src/inventory-web
+        run: |
+          sudo apt-get update
+          sudo npx playwright install-deps chromium
+
       - name: Installer Playwright (navigateurs)
         working-directory: src/inventory-web
-        run: npx playwright install
+        run: npx playwright install chromium
 
       - name: Build web
         working-directory: src/inventory-web
