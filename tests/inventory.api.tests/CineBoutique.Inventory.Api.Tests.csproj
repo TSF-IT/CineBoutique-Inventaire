@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="coverlet.collector" Version="6.0.0" />
     <PackageReference Include="Azure.Core" />
     <PackageReference Include="BCrypt.Net-Next" />
     <PackageReference Include="xunit" />
