@@ -2,6 +2,7 @@
 using System;
 using System.Data;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
+using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using Dapper;
 using Npgsql;
@@ -33,18 +34,19 @@ internal static class ProductEndpoints
             CreateProductRequest request,
             IDbConnection connection,
             IAuditLogger auditLogger,
+            IClock clock,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
             if (string.IsNullOrWhiteSpace(sku))
             {
-                await LogProductUpdateAttemptAsync(auditLogger, httpContext, "(SKU vide)", "sans sku", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, "(SKU vide)", "sans sku", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le SKU (dans l'URL) est requis." });
             }
 
             if (request is null)
             {
-                await LogProductUpdateAttemptAsync(auditLogger, httpContext, sku, "corps null", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, sku, "corps null", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le corps de la requête est requis." });
             }
 
@@ -54,19 +56,19 @@ internal static class ProductEndpoints
 
             if (string.IsNullOrWhiteSpace(sanitizedName))
             {
-                await LogProductUpdateAttemptAsync(auditLogger, httpContext, sanitizedSku, "sans nom", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, sanitizedSku, "sans nom", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le nom du produit est requis." });
             }
 
             if (sanitizedName.Length > 256)
             {
-                await LogProductUpdateAttemptAsync(auditLogger, httpContext, sanitizedSku, "nom trop long", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, sanitizedSku, "nom trop long", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le nom du produit ne peut pas dépasser 256 caractères." });
             }
 
             if (sanitizedEan is { Length: > 0 } && (sanitizedEan.Length is < 8 or > 13 || !sanitizedEan.All(char.IsDigit)))
             {
-                await LogProductUpdateAttemptAsync(auditLogger, httpContext, sanitizedSku, "EAN invalide", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, sanitizedSku, "EAN invalide", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "L'EAN doit contenir entre 8 et 13 chiffres." });
             }
 
@@ -82,7 +84,7 @@ internal static class ProductEndpoints
 
             if (existing is null)
             {
-                await LogProductUpdateAttemptAsync(auditLogger, httpContext, sanitizedSku, "inexistant", "products.update.notfound", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, sanitizedSku, "inexistant", "products.update.notfound", cancellationToken).ConfigureAwait(false);
                 return Results.NotFound(new { message = $"Aucun produit avec le SKU '{sanitizedSku}'." });
             }
 
@@ -101,13 +103,13 @@ internal static class ProductEndpoints
             {
                 if (string.Equals(ex.ConstraintName, EanNotNullConstraintName, StringComparison.Ordinal))
                 {
-                    await LogProductUpdateAttemptAsync(auditLogger, httpContext, sanitizedSku, $"EAN déjà utilisé ({sanitizedEan})", "products.update.conflict", cancellationToken).ConfigureAwait(false);
+                    await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, sanitizedSku, $"EAN déjà utilisé ({sanitizedEan})", "products.update.conflict", cancellationToken).ConfigureAwait(false);
                     return Results.Conflict(new { message = "Cet EAN est déjà utilisé." });
                 }
 
                 if (string.Equals(ex.ConstraintName, LowerSkuConstraintName, StringComparison.Ordinal))
                 {
-                    await LogProductUpdateAttemptAsync(auditLogger, httpContext, sanitizedSku, "SKU déjà utilisé", "products.update.conflict", cancellationToken).ConfigureAwait(false);
+                    await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, sanitizedSku, "SKU déjà utilisé", "products.update.conflict", cancellationToken).ConfigureAwait(false);
                     return Results.Conflict(new { message = "Ce SKU est déjà utilisé." });
                 }
 
@@ -144,12 +146,13 @@ internal static class ProductEndpoints
             CreateProductRequest request,
             IDbConnection connection,
             IAuditLogger auditLogger,
+            IClock clock,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
             if (request is null)
             {
-                await LogProductUpdateAttemptAsync(auditLogger, httpContext, id.ToString(), "corps null", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(), "corps null", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le corps de la requête est requis." });
             }
 
@@ -158,19 +161,19 @@ internal static class ProductEndpoints
 
             if (string.IsNullOrWhiteSpace(sanitizedName))
             {
-                await LogProductUpdateAttemptAsync(auditLogger, httpContext, id.ToString(), "sans nom", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(), "sans nom", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le nom du produit est requis." });
             }
 
             if (sanitizedName.Length > 256)
             {
-                await LogProductUpdateAttemptAsync(auditLogger, httpContext, id.ToString(), "nom trop long", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(), "nom trop long", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le nom du produit ne peut pas dépasser 256 caractères." });
             }
 
             if (sanitizedEan is { Length: > 0 } && (sanitizedEan.Length is < 8 or > 13 || !sanitizedEan.All(char.IsDigit)))
             {
-                await LogProductUpdateAttemptAsync(auditLogger, httpContext, id.ToString(), "EAN invalide", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(), "EAN invalide", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "L'EAN doit contenir entre 8 et 13 chiffres." });
             }
 
@@ -184,7 +187,7 @@ internal static class ProductEndpoints
 
             if (existing is null)
             {
-                await LogProductUpdateAttemptAsync(auditLogger, httpContext, id.ToString(), "inexistant", "products.update.notfound", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(), "inexistant", "products.update.notfound", cancellationToken).ConfigureAwait(false);
                 return Results.NotFound(new { message = $"Aucun produit avec l'Id '{id}'." });
             }
 
@@ -203,13 +206,13 @@ internal static class ProductEndpoints
             {
                 if (string.Equals(ex.ConstraintName, EanNotNullConstraintName, StringComparison.Ordinal))
                 {
-                    await LogProductUpdateAttemptAsync(auditLogger, httpContext, id.ToString(), $"EAN déjà utilisé ({sanitizedEan})", "products.update.conflict", cancellationToken).ConfigureAwait(false);
+                    await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(), $"EAN déjà utilisé ({sanitizedEan})", "products.update.conflict", cancellationToken).ConfigureAwait(false);
                     return Results.Conflict(new { message = "Cet EAN est déjà utilisé." });
                 }
 
                 if (string.Equals(ex.ConstraintName, LowerSkuConstraintName, StringComparison.Ordinal))
                 {
-                    await LogProductUpdateAttemptAsync(auditLogger, httpContext, id.ToString(), "SKU déjà utilisé", "products.update.conflict", cancellationToken).ConfigureAwait(false);
+                    await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(), "SKU déjà utilisé", "products.update.conflict", cancellationToken).ConfigureAwait(false);
                     return Results.Conflict(new { message = "Ce SKU est déjà utilisé." });
                 }
 
@@ -241,6 +244,7 @@ internal static class ProductEndpoints
             CreateProductRequest request,
             IDbConnection connection,
             IAuditLogger auditLogger,
+            IClock clock,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
@@ -255,31 +259,31 @@ internal static class ProductEndpoints
 
             if (string.IsNullOrWhiteSpace(sanitizedSku))
             {
-                await LogProductCreationAttemptAsync(auditLogger, httpContext, "sans SKU", "products.create.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductCreationAttemptAsync(clock, auditLogger, httpContext, "sans SKU", "products.create.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le SKU est requis." });
             }
 
             if (sanitizedSku.Length > 32)
             {
-                await LogProductCreationAttemptAsync(auditLogger, httpContext, "avec un SKU trop long", "products.create.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductCreationAttemptAsync(clock, auditLogger, httpContext, "avec un SKU trop long", "products.create.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le SKU ne peut pas dépasser 32 caractères." });
             }
 
             if (string.IsNullOrWhiteSpace(sanitizedName))
             {
-                await LogProductCreationAttemptAsync(auditLogger, httpContext, "sans nom", "products.create.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductCreationAttemptAsync(clock, auditLogger, httpContext, "sans nom", "products.create.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le nom du produit est requis." });
             }
 
             if (sanitizedName.Length > 256)
             {
-                await LogProductCreationAttemptAsync(auditLogger, httpContext, "avec un nom trop long", "products.create.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductCreationAttemptAsync(clock, auditLogger, httpContext, "avec un nom trop long", "products.create.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le nom du produit ne peut pas dépasser 256 caractères." });
             }
 
             if (sanitizedEan is { Length: > 0 } && (sanitizedEan.Length is < 8 or > 13 || !sanitizedEan.All(char.IsDigit)))
             {
-                await LogProductCreationAttemptAsync(auditLogger, httpContext, "avec un EAN invalide", "products.create.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductCreationAttemptAsync(clock, auditLogger, httpContext, "avec un EAN invalide", "products.create.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "L'EAN doit contenir entre 8 et 13 chiffres." });
             }
 
@@ -290,7 +294,7 @@ VALUES (@Id, @Sku, @Name, @Ean, @CreatedAtUtc)
 ON CONFLICT (LOWER(""Sku"")) DO NOTHING
 RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
-            var now = DateTimeOffset.UtcNow;
+            var now = clock.UtcNow;
             try
             {
                 var createdProduct = await connection.QuerySingleOrDefaultAsync<ProductDto>(
@@ -308,7 +312,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
                 if (createdProduct is null)
                 {
-                    await LogProductCreationAttemptAsync(auditLogger, httpContext, $"avec un SKU déjà utilisé ({sanitizedSku})", "products.create.conflict", cancellationToken).ConfigureAwait(false);
+                    await LogProductCreationAttemptAsync(clock, auditLogger, httpContext, $"avec un SKU déjà utilisé ({sanitizedSku})", "products.create.conflict", cancellationToken).ConfigureAwait(false);
                     return Results.Conflict(new { message = "Ce SKU est déjà utilisé." });
                 }
 
@@ -320,13 +324,13 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 if (string.Equals(ex.ConstraintName, EanNotNullConstraintName, StringComparison.Ordinal))
                 {
                     var eanLabel = string.IsNullOrWhiteSpace(sanitizedEan) ? "(EAN non renseigné)" : sanitizedEan;
-                    await LogProductCreationAttemptAsync(auditLogger, httpContext, $"avec un EAN déjà utilisé ({eanLabel})", "products.create.conflict", cancellationToken).ConfigureAwait(false);
+                    await LogProductCreationAttemptAsync(clock, auditLogger, httpContext, $"avec un EAN déjà utilisé ({eanLabel})", "products.create.conflict", cancellationToken).ConfigureAwait(false);
                     return Results.Conflict(new { message = "Cet EAN est déjà utilisé." });
                 }
 
                 if (string.Equals(ex.ConstraintName, LowerSkuConstraintName, StringComparison.Ordinal))
                 {
-                    await LogProductCreationAttemptAsync(auditLogger, httpContext, $"avec un SKU déjà utilisé ({sanitizedSku})", "products.create.conflict", cancellationToken).ConfigureAwait(false);
+                    await LogProductCreationAttemptAsync(clock, auditLogger, httpContext, $"avec un SKU déjà utilisé ({sanitizedSku})", "products.create.conflict", cancellationToken).ConfigureAwait(false);
                     return Results.Conflict(new { message = "Ce SKU est déjà utilisé." });
                 }
 
@@ -352,12 +356,13 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             string sku,
             IDbConnection connection,
             IAuditLogger auditLogger,
+            IClock clock,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
             if (string.IsNullOrWhiteSpace(sku))
             {
-                var nowInvalid = DateTimeOffset.UtcNow;
+                var nowInvalid = clock.UtcNow;
                 var invalidUser = EndpointUtilities.GetAuthenticatedUserName(httpContext);
                 var invalidActor = EndpointUtilities.FormatActorLabel(httpContext);
                 var invalidTimestamp = EndpointUtilities.FormatTimestamp(nowInvalid);
@@ -402,7 +407,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                         cancellationToken: cancellationToken)).ConfigureAwait(false);
             }
 
-            var now = DateTimeOffset.UtcNow;
+            var now = clock.UtcNow;
             var userName = EndpointUtilities.GetAuthenticatedUserName(httpContext);
             var actor = EndpointUtilities.FormatActorLabel(httpContext);
             var timestamp = EndpointUtilities.FormatTimestamp(now);
@@ -436,13 +441,14 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
     }
 
     private static async Task LogProductCreationAttemptAsync(
+        IClock clock,
         IAuditLogger auditLogger,
         HttpContext httpContext,
         string details,
         string category,
         CancellationToken cancellationToken)
     {
-        var now = DateTimeOffset.UtcNow;
+        var now = clock.UtcNow;
         var userName = EndpointUtilities.GetAuthenticatedUserName(httpContext);
         var actor = EndpointUtilities.FormatActorLabel(httpContext);
         var timestamp = EndpointUtilities.FormatTimestamp(now);
@@ -451,6 +457,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
     }
 
     private static async Task LogProductUpdateAttemptAsync(
+        IClock clock,
         IAuditLogger auditLogger,
         HttpContext httpContext,
         string target,          // SKU ou Id
@@ -458,7 +465,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
         string category,        // ex: "products.update.invalid"
         CancellationToken cancellationToken)
     {
-        var now = DateTimeOffset.UtcNow;
+        var now = clock.UtcNow;
         var userName = EndpointUtilities.GetAuthenticatedUserName(httpContext);
         var actor = EndpointUtilities.FormatActorLabel(httpContext);
         var timestamp = EndpointUtilities.FormatTimestamp(now);
