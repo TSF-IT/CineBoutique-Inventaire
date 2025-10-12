@@ -130,7 +130,7 @@ jobs:
 
       - name: Installer Playwright (navigateurs)
         working-directory: src/inventory-web
-        run: npx playwright install --with-deps
+        run: npx playwright install
 
       - name: Build web
         working-directory: src/inventory-web
