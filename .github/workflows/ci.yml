@@ -113,6 +113,9 @@ jobs:
 
   e2e-web:
     runs-on: [self-hosted, tsf, Linux, X64]
+    container:
+      image: mcr.microsoft.com/playwright:v1.49.1-jammy
+      options: --user root
     needs: build-and-test
     steps:
       - uses: actions/checkout@v4
@@ -130,10 +133,12 @@ jobs:
 
       - name: Installer les dépendances OS pour Playwright (Linux uniquement)
         if: runner.os == 'Linux'
+        env:
+          DEBIAN_FRONTEND: noninteractive
         working-directory: src/inventory-web
         run: |
-          sudo apt-get update
-          sudo npx playwright install-deps chromium
+          apt-get update
+          npx playwright install-deps chromium
 
       - name: Installer Playwright (navigateurs)
         working-directory: src/inventory-web
