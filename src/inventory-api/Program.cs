@@ -4,7 +4,9 @@ using System.Data;
 using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
+using CineBoutique.Inventory.Api.Infrastructure.Http;
 using CineBoutique.Inventory.Api.Infrastructure.Middleware;
+using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Hosting;
 using CineBoutique.Inventory.Api.Services;
 using FluentValidation;
@@ -144,6 +146,7 @@ builder.Services.AddScoped<IDbConnection>(sp =>
 
 // IAuditLogger (API) -> DbAuditLogger écrit déjà dans audit_logs
 builder.Services.AddScoped<IAuditLogger, DbAuditLogger>();
+builder.Services.AddSingleton<IClock, SystemClock>();
 
 // BRIDGE : remplace l'impl du Domain par le pont vers DbAuditLogger
 builder.Services.AddScoped<CineBoutique.Inventory.Domain.Auditing.IAuditLogger, DomainAuditBridgeLogger>();
@@ -385,7 +388,7 @@ if (useSerilog)
     app.UseSerilogRequestLogging();
 }
 
-app.UseMiddleware<LegacyOperatorGuardMiddleware>();
+app.UseMiddleware<LegacyOperatorNameWriteGuardMiddleware>();
 app.UseMiddleware<SoftOperatorMiddleware>();
 
 app.Use(async (ctx, next) =>

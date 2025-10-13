@@ -64,28 +64,56 @@ jobs:
       TEST_DB_CONN: Host=127.0.0.1;Port=5432;Database=inv_test;Username=postgres;Password=postgres
 
     steps:
+      - name: Pre-checkout clean (no sudo; use Docker if available)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -e
+          echo "Workspace: $GITHUB_WORKSPACE"
+          if command -v docker >/dev/null 2>&1; then
+            echo "Cleaning with Docker (root in container)…"
+            docker run --rm -v "$GITHUB_WORKSPACE":/ws alpine:3.20 sh -lc '
+              set -e
+              # Supprimer tout, y compris fichiers cachés (sauf . et ..)
+              rm -rf /ws/* /ws/.[!.]* /ws/..?* 2>/dev/null || true
+            '
+          else
+            echo "Docker non disponible; tentative en user-space…"
+            rm -rf "$GITHUB_WORKSPACE"/* "$GITHUB_WORKSPACE"/.[!.]* "$GITHUB_WORKSPACE"/..?* 2>/dev/null || true
+          fi
+          echo "Pre-checkout clean terminé."
+
       - uses: actions/checkout@v4
 
-      # Installer .NET dans un dossier user-writable + nuget cache local
-      - name: Prepare .NET install dir (user) + NuGet cache dir
-        run: |
-          echo "DOTNET_INSTALL_DIR=$HOME/.dotnet"     >> "$GITHUB_ENV"
-          echo "DOTNET_ROOT=$HOME/.dotnet"            >> "$GITHUB_ENV"
-          echo "NUGET_PACKAGES=$HOME/.nuget/packages" >> "$GITHUB_ENV"
-          mkdir -p "$HOME/.dotnet" "$HOME/.nuget/packages"
-
-      # IMPORTANT : pas de cache:true (nécessite packages.lock.json)
-      - name: Setup .NET (no cache)
-        uses: actions/setup-dotnet@v4
+      - name: Install .NET 8 SDK (user-space in $HOME/.dotnet)
+        shell: bash
         env:
-          DOTNET_INSTALL_DIR: ${{ env.DOTNET_INSTALL_DIR }}
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Verify dotnet
+          DOTNET_DIR: $HOME/.dotnet
+          DOTNET_CLI_TELEMETRY_OPTOUT: 1
+          DOTNET_MULTILEVEL_LOOKUP: 0
         run: |
-          echo "${DOTNET_INSTALL_DIR}" >> "$GITHUB_PATH"
-          echo "${DOTNET_INSTALL_DIR}/tools" >> "$GITHUB_PATH"
+          set -euo pipefail
+          if [ -d "$DOTNET_DIR" ]; then
+            rm -rf "$DOTNET_DIR/sdk/8.0."* "$DOTNET_DIR/shared/Microsoft.NETCore.App/8.0."* "$DOTNET_DIR/host" 2>/dev/null || true
+          fi
+          mkdir -p "$DOTNET_DIR"
+          echo "Installing .NET 8 SDK into $DOTNET_DIR"
+          curl -sSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh
+          bash dotnet-install.sh --channel 8.0 --install-dir "$DOTNET_DIR" --no-path
+          test -x "$DOTNET_DIR/dotnet" || (echo "dotnet binary missing in $DOTNET_DIR" && ls -la "$DOTNET_DIR" && exit 1)
+
+      - name: Export DOTNET_ROOT and PATH for this job
+        shell: bash
+        run: |
+          echo "DOTNET_ROOT=$HOME/.dotnet" >> $GITHUB_ENV
+          echo "$HOME/.dotnet" >> $GITHUB_PATH
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+
+      - name: Verify dotnet availability
+        shell: bash
+        run: |
+          ls -la "$HOME/.dotnet" || true
+          command -v dotnet || true
           dotnet --info
 
       - name: Restore
