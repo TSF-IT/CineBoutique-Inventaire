@@ -22,10 +22,17 @@ jobs:
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
 
     steps:
-      - name: Normalize workspace permissions (Linux, self-hosted)
+      - name: Force-clean workspace before checkout (Linux)
         if: runner.os == 'Linux'
+        shell: bash
         run: |
-          sudo chown -R "$USER:$USER" "$GITHUB_WORKSPACE" || true
+          # Choisir sudo si disponible
+          SUDO=""
+          if command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
+          # 1) Reprendre ownership du workspace (idempotent)
+          $SUDO chown -R "$USER:$USER" "$GITHUB_WORKSPACE" || true
+          # 2) Vider le workspace sans supprimer le dossier lui-même
+          find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec $SUDO rm -rf {} +
 
       - uses: actions/checkout@v4
 
@@ -123,10 +130,17 @@ jobs:
       options: --user root
     needs: build-and-test
     steps:
-      - name: Normalize workspace permissions (Linux, self-hosted)
+      - name: Force-clean workspace before checkout (Linux)
         if: runner.os == 'Linux'
+        shell: bash
         run: |
-          sudo chown -R "$USER:$USER" "$GITHUB_WORKSPACE" || true
+          # Choisir sudo si disponible
+          SUDO=""
+          if command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
+          # 1) Reprendre ownership du workspace (idempotent)
+          $SUDO chown -R "$USER:$USER" "$GITHUB_WORKSPACE" || true
+          # 2) Vider le workspace sans supprimer le dossier lui-même
+          find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec $SUDO rm -rf {} +
 
       - uses: actions/checkout@v4
 
@@ -169,8 +183,9 @@ jobs:
           name: playwright-artifacts
           path: src/inventory-web/playwright-report/**
 
-      - name: Normalize workspace ownership for host (container job)
+      - name: Normalize workspace ownership after container
         if: runner.os == 'Linux'
+        shell: bash
         run: |
           HOST_UID=$(stat -c "%u" "$GITHUB_WORKSPACE")
           HOST_GID=$(stat -c "%g" "$GITHUB_WORKSPACE")

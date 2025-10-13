@@ -64,10 +64,17 @@ jobs:
       TEST_DB_CONN: Host=127.0.0.1;Port=5432;Database=inv_test;Username=postgres;Password=postgres
 
     steps:
-      - name: Normalize workspace permissions (Linux, self-hosted)
+      - name: Force-clean workspace before checkout (Linux)
         if: runner.os == 'Linux'
+        shell: bash
         run: |
-          sudo chown -R "$USER:$USER" "$GITHUB_WORKSPACE" || true
+          # Choisir sudo si disponible
+          SUDO=""
+          if command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
+          # 1) Reprendre ownership du workspace (idempotent)
+          $SUDO chown -R "$USER:$USER" "$GITHUB_WORKSPACE" || true
+          # 2) Vider le workspace sans supprimer le dossier lui-même
+          find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec $SUDO rm -rf {} +
 
       - uses: actions/checkout@v4
 
