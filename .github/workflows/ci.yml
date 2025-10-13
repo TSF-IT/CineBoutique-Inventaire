@@ -303,6 +303,7 @@ jobs:
           docker run --rm \
             --network host \
             -e PLAYWRIGHT_BASE_URL="$PLAYWRIGHT_BASE_URL" \
+            -e CI=1 \
             -v "$PWD":/workspace \
             -w /workspace/src/inventory-web \
             mcr.microsoft.com/playwright:v1.49.1-jammy \

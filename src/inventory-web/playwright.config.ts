@@ -14,7 +14,9 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     baseURL,
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
+    video: 'retain-on-failure',
+    screenshot: 'only-on-failure',
     ignoreHTTPSErrors: true,
   },
   ...(useExternalTarget
