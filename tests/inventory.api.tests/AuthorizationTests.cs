@@ -32,7 +32,7 @@ public sealed class AuthorizationTests : IntegrationTestBase
             new CreateShopRequest { Name = "Boutique Auth" }
         ).ConfigureAwait(false);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [SkippableFact]
@@ -52,7 +52,7 @@ public sealed class AuthorizationTests : IntegrationTestBase
             new CreateShopRequest { Name = "Boutique Auth" }
         ).ConfigureAwait(false);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     [SkippableFact]
@@ -68,7 +68,7 @@ public sealed class AuthorizationTests : IntegrationTestBase
             new StartRunRequest(context.ShopId, context.OperatorId, 1)
         ).ConfigureAwait(false);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [SkippableFact]
@@ -87,7 +87,7 @@ public sealed class AuthorizationTests : IntegrationTestBase
             new StartRunRequest(context.ShopId, context.OperatorId, 1)
         ).ConfigureAwait(false);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 
     private async Task<(Guid ShopId, Guid LocationId, Guid OperatorId)> SeedInventoryAsync()
