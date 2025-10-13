@@ -1,76 +1,124 @@
+using System;
+using System.Collections.Generic;
 using System.Security.Claims;
+using System.Text;
 using System.Text.Encodings.Web;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
 
 namespace CineBoutique.Inventory.Api.Infrastructure.Auth;
 
 public sealed class TestAuthHandler : AuthenticationHandler<AuthenticationSchemeOptions>
 {
-    public const string Scheme = "Test";
+    private const string TestIssuer = "cineboutique-test";
+    private const string TestAudience = "cineboutique-web";
+    private const string TestSigningKey = "insecure-test-key-32bytes-minimum!!!!";
 
     public TestAuthHandler(
         IOptionsMonitor<AuthenticationSchemeOptions> options,
         ILoggerFactory logger,
         UrlEncoder encoder,
-        ISystemClock clock) : base(options, logger, encoder, clock)
-    {
-    }
+        ISystemClock clock) : base(options, logger, encoder, clock) { }
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
-        var auth = Request.Headers.Authorization.ToString();
-
-        if (string.IsNullOrWhiteSpace(auth) ||
-            !auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+        // 1) Bearer token ?
+        if (Request.Headers.TryGetValue("Authorization", out var authValues))
         {
-            // Pas de jeton => laissez le pipeline répondre 401
-            return Task.FromResult(AuthenticateResult.NoResult());
+            var auth = authValues.ToString();
+            if (auth.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            {
+                var token = auth.Substring("Bearer ".Length).Trim();
+
+                // a) Essai avec les constantes de test utilisées par TestTokenFactory
+                var principal = TryValidate(token, TestIssuer, TestAudience, TestSigningKey);
+                if (principal == null)
+                {
+                    // b) Repli : tenter avec la configuration CI si elle diffère
+                    var cfg = Context.RequestServices.GetService(typeof(IConfiguration)) as IConfiguration;
+                    var issuer = cfg?["Jwt:Issuer"] ?? cfg?["Authentication:Jwt:Issuer"] ?? TestIssuer;
+                    var audience = cfg?["Jwt:Audience"] ?? cfg?["Authentication:Jwt:Audience"] ?? TestAudience;
+                    var key = cfg?["Jwt:SigningKey"] ?? cfg?["Authentication:Jwt:SigningKey"] ?? TestSigningKey;
+
+                    principal = TryValidate(token, issuer!, audience!, key!);
+                }
+
+                if (principal != null)
+                {
+                    // S'assure d'avoir une AuthenticationType non vide
+                    var identity = principal.Identity as ClaimsIdentity;
+                    if (identity == null || string.IsNullOrEmpty(identity.AuthenticationType))
+                    {
+                        identity = new ClaimsIdentity(principal.Claims, Scheme.Name, ClaimTypes.Name, ClaimTypes.Role);
+                        principal = new ClaimsPrincipal(identity);
+                    }
+
+                    var ticket = new AuthenticationTicket(principal, Scheme.Name);
+                    return Task.FromResult(AuthenticateResult.Success(ticket));
+                }
+
+                // Authorization présent mais invalide -> échec
+                return Task.FromResult(AuthenticateResult.Fail("Invalid bearer token (test handler)."));
+            }
         }
 
-        var token = auth.Substring("Bearer ".Length).Trim();
+        // 2) Fallback en-têtes de test
+        var role = Request.Headers.TryGetValue("X-Test-Role", out var roleHeader) ? roleHeader.ToString() : null;
+        var userId = Request.Headers.TryGetValue("X-Test-UserId", out var uidHeader) ? uidHeader.ToString() : null;
 
-        // On tolère plusieurs formats:
-        //   "admin", "operator", "viewer"
-        //   "admin:GUID", "operator-GUID", "viewer GUID", etc.
-        var parts = token.Split(new[] { ':', '-', '|', ' ', '.' }, StringSplitOptions.RemoveEmptyEntries);
-        var head  = parts.FirstOrDefault()?.ToLowerInvariant();
-
-        var role = head switch
+        if (!string.IsNullOrWhiteSpace(role))
         {
-            "admin"    => "admin",
-            "operator" => "operator",
-            "viewer"   => "viewer",
-            _          => null
-        };
+            var claims = new List<Claim> { new Claim(ClaimTypes.Role, role) };
 
-        if (role is null)
-            return Task.FromResult(AuthenticateResult.Fail("Unknown test token"));
+            if (Guid.TryParse(userId, out var parsed))
+            {
+                claims.Add(new Claim(ClaimTypes.NameIdentifier, parsed.ToString()));
+                claims.Add(new Claim(ClaimTypes.Name, parsed.ToString()));
+            }
+            else
+            {
+                claims.Add(new Claim(ClaimTypes.Name, "test-user"));
+            }
 
-        // Récupère un userId s’il est fourni (dans le token, un header ou la query)
-        string? userId = parts.Skip(1).FirstOrDefault(p => Guid.TryParse(p, out _));
-        userId ??= Request.Headers["X-Test-UserId"].FirstOrDefault()
-                ?? Request.Headers["X-User-Id"].FirstOrDefault()
-                ?? Request.Query["userId"].FirstOrDefault()
-                ?? Guid.NewGuid().ToString(); // fallback
+            var identity = new ClaimsIdentity(claims, Scheme.Name);
+            var principal = new ClaimsPrincipal(identity);
+            var ticket = new AuthenticationTicket(principal, Scheme.Name);
+            return Task.FromResult(AuthenticateResult.Success(ticket));
+        }
 
-        var claims = new List<Claim>
-        {
-            new(ClaimTypes.NameIdentifier, userId),
-            new(ClaimTypes.Name, $"{role}-user"),
-            new(ClaimTypes.Role, role) // ⚠️ minuscules, cohérent avec tes policies
-        };
-
-        var identity  = new ClaimsIdentity(claims, Scheme);
-        var principal = new ClaimsPrincipal(identity);
-        var ticket    = new AuthenticationTicket(principal, Scheme);
-
-        return Task.FromResult(AuthenticateResult.Success(ticket));
+        // 3) Aucun signal d'auth -> pas d'auth tentée (laissera [Authorize] provoquer un challenge 401)
+        return Task.FromResult(AuthenticateResult.NoResult());
     }
 
-    protected override Task HandleChallengeAsync(AuthenticationProperties properties)
+    private static ClaimsPrincipal? TryValidate(string token, string issuer, string audience, string signingKey)
     {
-        Response.StatusCode = StatusCodes.Status401Unauthorized;
-        return Task.CompletedTask;
+        try
+        {
+            var handler = new JwtSecurityTokenHandler();
+            var parameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidIssuer = issuer,
+                ValidateAudience = true,
+                ValidAudience = audience,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(signingKey)),
+                ValidateLifetime = true,
+                ClockSkew = TimeSpan.FromMinutes(2),
+                RoleClaimType = ClaimTypes.Role
+            };
+
+            _ = handler.ValidateToken(token, parameters, out _);
+            return handler.ValidateToken(token, parameters, out _);
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

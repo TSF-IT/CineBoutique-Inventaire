@@ -36,8 +36,9 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Data;
-using Microsoft.AspNetCore.Authentication;
+// 🚩 AJOUTER CETTE USING POUR LE HANDLER DE TEST
 using CineBoutique.Inventory.Api.Infrastructure.Auth;
+using Microsoft.AspNetCore.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -95,6 +96,8 @@ builder.Services.AddTransient<InventoryDataSeeder>();
 
 builder.Services.AddHttpContextAccessor();
 
+// 🔐 AUTHENTIFICATION
+// On supporte l'ancien emplacement "Authentication:Jwt"
 var jwt = builder.Configuration.GetSection("Jwt");
 if (!jwt.Exists())
 {
@@ -105,26 +108,25 @@ if (!jwt.Exists())
     }
 }
 
+// 🚩 IMPORTANT : En "Testing", on N'ENREGISTRE PAS JwtBearer.
+// On installe un handler de test qui accepte les tokens de test et/ou les en-têtes X-Test-*.
+// En dehors de "Testing", on configure le vrai JwtBearer.
 if (builder.Environment.IsEnvironment("Testing"))
 {
-    // === AUTH DE TEST ===
-    // On mappe le handler de test sur *deux* schémas:
-    //  - "Bearer" (pour tous les [Authorize(AuthenticationSchemes = "Bearer")])
-    //  - "Test"   (au cas où)
     builder.Services
         .AddAuthentication(options =>
         {
-            // En Testing, tout passe par "Bearer" par défaut,
-            // pour rester compatible avec les attributs explicites.
-            options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme; // "Bearer"
-            options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;    // "Bearer"
+            options.DefaultAuthenticateScheme = "Test";
+            options.DefaultChallengeScheme = "Test";
+            options.DefaultScheme = "Test";
         })
-        .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(JwtBearerDefaults.AuthenticationScheme, _ => { }) // "Bearer"
-        .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.Scheme, _ => { });                 // "Test"
+    // on mappe notre handler de test sur *Bearer*
+    .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(JwtBearerDefaults.AuthenticationScheme, _ => { })
+    // et aussi sur "Test" (au cas où certains attributs l’utilisent)
+    .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("Test", _ => { });
 }
 else
 {
-    // === AUTH JWT REEL (dev/prod) ===
     var signingKey = new SymmetricSecurityKey(
         Encoding.UTF8.GetBytes(jwt["SigningKey"] ?? "insecure-test-key-32bytes-minimum!!!!")
     );
@@ -142,11 +144,14 @@ else
               ValidateIssuerSigningKey = true,
               IssuerSigningKey = signingKey,
               ValidateLifetime = true,
-              ClockSkew = TimeSpan.FromMinutes(2)
+              ClockSkew = TimeSpan.FromMinutes(2),
+              // S'assure que "role"/"roles" sont bien mappés
+              RoleClaimType = System.Security.Claims.ClaimTypes.Role
           };
       });
 }
 
+// Autorisation (inchangé)
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("RequireOperator", p => p.RequireRole("operator", "admin"));
@@ -259,7 +264,6 @@ builder.Services.AddCors(options =>
     {
         if (allowedOrigins.Length > 0)
         {
-            // Ajouter l’IP LAN si besoin (ex: http://192.168.1.42:5173)
             policyBuilder.WithOrigins(allowedOrigins).AllowCredentials();
         }
         else
@@ -311,8 +315,6 @@ builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<ProcessorOpti
 // --- App ---
 var app = builder.Build();
 
-app.Logger.LogInformation("[AUTH] Mode = {Mode}", app.Environment.IsEnvironment("Testing") ? "TestAuth (Bearer/Test)" : "JWT");
-
 // Migrations au démarrage (hors environnement de test)
 if (!app.Environment.IsEnvironment("Testing"))
 {
@@ -326,7 +328,7 @@ if (!app.Environment.IsEnvironment("Testing"))
     catch (Exception ex)
     {
         app.Logger.LogError(ex, "Failed to apply migrations");
-        throw; // en DEV tu peux décider de ne pas throw si tu veux juste voir l’API démarrer
+        throw;
     }
 }
 
@@ -358,7 +360,7 @@ var env = app.Environment;
 app.Logger.LogInformation("[API] Using ownerUserId for runs; legacy operatorName disabled for write.");
 
 app.Logger.LogInformation("ASPNETCORE_ENVIRONMENT = {Env}", env.EnvironmentName);
-var devLike = env.IsDevelopment() || env.IsEnvironment("CI") || 
+var devLike = env.IsDevelopment() || env.IsEnvironment("CI") ||
               string.Equals(env.EnvironmentName, "Docker", StringComparison.OrdinalIgnoreCase);
 
 if (devLike)
@@ -376,7 +378,7 @@ else
             {
                 Title = "Une erreur est survenue lors du traitement de votre requête.",
                 Status = StatusCodes.Status500InternalServerError,
-                Detail = null // on n’expose pas le détail hors dev-like
+                Detail = null
             };
 
             context.Response.StatusCode = problem.Status ?? StatusCodes.Status500InternalServerError;
@@ -493,7 +495,7 @@ app.Use(async (ctx, next) =>
     catch (Exception ex)
     {
         app.Logger.LogError(ex, "Unhandled exception for {Method} {Path}", ctx.Request?.Method, ctx.Request?.Path);
-        throw; // laisse l’exception remonter à DeveloperExceptionPage / ExceptionHandler
+        throw;
     }
 });
 
