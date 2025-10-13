@@ -111,18 +111,28 @@ var signingKey = new SymmetricSecurityKey(
 
 if (builder.Environment.IsEnvironment("Testing"))
 {
-    // Schéma d'auth simplifié pour les tests d'intégration
+    // === AUTH DE TEST ===
+    // On mappe le handler de test sur *deux* schémas:
+    //  - "Bearer" (pour tous les [Authorize(AuthenticationSchemes = "Bearer")])
+    //  - "Test"   (au cas où)
     builder.Services
         .AddAuthentication(options =>
         {
-            options.DefaultAuthenticateScheme = TestAuthHandler.Scheme;
-            options.DefaultChallengeScheme = TestAuthHandler.Scheme;
+            // En Testing, tout passe par "Bearer" par défaut,
+            // pour rester compatible avec les attributs explicites.
+            options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme; // "Bearer"
+            options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;    // "Bearer"
         })
-        .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.Scheme, _ => { });
+        .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(JwtBearerDefaults.AuthenticationScheme, _ => { }) // "Bearer"
+        .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.Scheme, _ => { });                 // "Test"
 }
 else
 {
-    // Schéma réel (JWT) pour dev/prod
+    // === AUTH JWT REEL (dev/prod) ===
+    var signingKey = new SymmetricSecurityKey(
+        Encoding.UTF8.GetBytes(jwt["SigningKey"] ?? "insecure-test-key-32bytes-minimum!!!!")
+    );
+
     builder.Services
       .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
       .AddJwtBearer(o =>
@@ -304,6 +314,8 @@ builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<ProcessorOpti
 
 // --- App ---
 var app = builder.Build();
+
+app.Logger.LogInformation("[AUTH] Mode = {Mode}", app.Environment.IsEnvironment("Testing") ? "TestAuth (Bearer/Test)" : "JWT");
 
 // Migrations au démarrage (hors environnement de test)
 if (!app.Environment.IsEnvironment("Testing"))
