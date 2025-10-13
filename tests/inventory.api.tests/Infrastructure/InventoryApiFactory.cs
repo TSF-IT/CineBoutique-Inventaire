@@ -13,10 +13,12 @@ namespace CineBoutique.Inventory.Api.Tests.Infrastructure;
 public sealed class InventoryApiFactory : WebApplicationFactory<Program>
 {
     private readonly string _connectionString;
+    private readonly bool _useTestAuditLogger;
 
-    public InventoryApiFactory(string connectionString)
+    public InventoryApiFactory(string connectionString, bool useTestAuditLogger = true)
     {
         _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
+        _useTestAuditLogger = useTestAuditLogger;
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -53,17 +55,20 @@ public sealed class InventoryApiFactory : WebApplicationFactory<Program>
             services.AddSingleton(_ => NpgsqlDataSource.Create(_connectionString));
             services.AddScoped(sp => sp.GetRequiredService<NpgsqlDataSource>().CreateConnection());
 
-            var auditDescriptors = services
-                .Where(descriptor => descriptor.ServiceType == typeof(IAuditLogger))
-                .ToList();
-
-            foreach (var descriptor in auditDescriptors)
+            if (_useTestAuditLogger)
             {
-                services.Remove(descriptor);
-            }
+                var auditDescriptors = services
+                    .Where(descriptor => descriptor.ServiceType == typeof(IAuditLogger))
+                    .ToList();
 
-            services.AddSingleton<TestAuditLogger>();
-            services.AddSingleton<IAuditLogger>(sp => sp.GetRequiredService<TestAuditLogger>());
+                foreach (var descriptor in auditDescriptors)
+                {
+                    services.Remove(descriptor);
+                }
+
+                services.AddSingleton<TestAuditLogger>();
+                services.AddSingleton<IAuditLogger>(sp => sp.GetRequiredService<TestAuditLogger>());
+            }
         });
     }
 

@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Infrastructure;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
+using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using Dapper;
 using FluentValidation;
@@ -1074,6 +1075,7 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc{ownerValue}{oper
             IValidator<CompleteRunRequest> validator,
             IDbConnection connection,
             IAuditLogger auditLogger,
+            IClock clock,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
@@ -1338,7 +1340,7 @@ LIMIT 1;";
                 }
             }
 
-            var now = DateTimeOffset.UtcNow;
+            var now = clock.UtcNow;
 
             Guid countingRunId;
             Guid inventorySessionId;
@@ -1748,6 +1750,7 @@ LIMIT 1;";
             IValidator<RestartRunRequest> validator,
             IDbConnection connection,
             IAuditLogger auditLogger,
+            IClock clock,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
@@ -1799,7 +1802,7 @@ WHERE ""LocationId"" = @LocationId
   AND ""CompletedAtUtc"" IS NULL
   AND ""CountType"" = @CountType;";
 
-            var now = DateTimeOffset.UtcNow;
+            var now = clock.UtcNow;
             var affected = await connection
                 .ExecuteAsync(new CommandDefinition(sql, new { LocationId = locationId, CountType = countType, NowUtc = now }, cancellationToken: cancellationToken))
                 .ConfigureAwait(false);
