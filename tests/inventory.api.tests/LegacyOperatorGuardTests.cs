@@ -25,6 +25,7 @@ public sealed class LegacyOperatorGuardTests : IntegrationTestBase
 
         var seeded = await SeedMinimalInventoryAsync().ConfigureAwait(false);
         var client = CreateClient();
+        client.SetBearerToken(TestTokenFactory.OperatorToken());
 
         var payload = new
         {

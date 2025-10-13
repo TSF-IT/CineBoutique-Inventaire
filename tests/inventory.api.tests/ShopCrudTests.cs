@@ -23,6 +23,7 @@ public sealed class ShopCrudTests : IntegrationTestBase
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
 
         var client = CreateClient();
+        client.SetBearerToken(TestTokenFactory.AdminToken());
 
         // Create
         var createResponse = await client.PostAsJsonAsync(
@@ -87,6 +88,7 @@ public sealed class ShopCrudTests : IntegrationTestBase
         }).ConfigureAwait(false);
 
         var client = CreateClient();
+        client.SetBearerToken(TestTokenFactory.AdminToken());
 
         var response = await client.GetAsync(
             client.CreateRelativeUri($"/api/shops/{Guid.NewGuid()}")
@@ -109,6 +111,7 @@ public sealed class ShopCrudTests : IntegrationTestBase
         }).ConfigureAwait(false);
 
         var client = CreateClient();
+        client.SetBearerToken(TestTokenFactory.AdminToken());
 
         var response = await client.PutAsJsonAsync(
             client.CreateRelativeUri("/api/shops"),
@@ -130,6 +133,7 @@ public sealed class ShopCrudTests : IntegrationTestBase
         }).ConfigureAwait(false);
 
         var client = CreateClient();
+        client.SetBearerToken(TestTokenFactory.AdminToken());
 
         using (var deleteRequest = new HttpRequestMessage(
                    HttpMethod.Delete,

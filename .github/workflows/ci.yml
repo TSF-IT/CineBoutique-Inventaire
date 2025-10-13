@@ -229,3 +229,103 @@ jobs:
           else
             echo "Docker non dispo; skip chown."
           fi
+
+  e2e-real:
+    runs-on: [self-hosted, tsf, Linux, X64]
+    needs: build-and-test
+    if: always()
+    continue-on-error: true
+    steps:
+      - name: Pre-checkout clean (no sudo; use Docker if available)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -e
+          echo "Workspace: $GITHUB_WORKSPACE"
+          if command -v docker >/dev/null 2>&1; then
+            echo "Cleaning with Docker (root in container)…"
+            docker run --rm -v "$GITHUB_WORKSPACE":/ws alpine:3.20 sh -lc '
+              set -e
+              rm -rf /ws/* /ws/.[!.]* /ws/..?* 2>/dev/null || true
+            '
+          else
+            echo "Docker non disponible; tentative en user-space…"
+            rm -rf "$GITHUB_WORKSPACE"/* "$GITHUB_WORKSPACE"/.[!.]* "$GITHUB_WORKSPACE"/..?* 2>/dev/null || true
+          fi
+          echo "Pre-checkout clean terminé."
+
+      - uses: actions/checkout@v4
+
+      - name: Démarrer la stack (API + web + Postgres)
+        env:
+          PUBLIC_HOST: localhost
+        run: |
+          set -euo pipefail
+          docker compose -f docker-compose.yml -f docker-compose.override.yml up -d --build
+
+      - name: Attendre la disponibilité de l'API
+        run: |
+          set -euo pipefail
+          endpoint="http://127.0.0.1:8080/api/healthz"
+          for attempt in {1..30}; do
+            if curl -fsS "$endpoint" > /dev/null; then
+              echo "API prête."
+              exit 0
+            fi
+            echo "Tentative $attempt/30: API indisponible, nouvel essai dans 5 s…"
+            sleep 5
+          done
+          echo "API indisponible après 30 tentatives." >&2
+          docker compose -f docker-compose.yml -f docker-compose.override.yml logs api || true
+          exit 1
+
+      - name: Attendre la disponibilité du front
+        run: |
+          set -euo pipefail
+          endpoint="https://127.0.0.1/healthz"
+          for attempt in {1..30}; do
+            if curl -kfsS "$endpoint" > /dev/null; then
+              echo "Front prêt."
+              exit 0
+            fi
+            echo "Tentative $attempt/30: front indisponible, nouvel essai dans 5 s…"
+            sleep 5
+          done
+          echo "Front indisponible après 30 tentatives." >&2
+          docker compose -f docker-compose.yml -f docker-compose.override.yml logs web || true
+          exit 1
+
+      - name: Tests Playwright (stack réelle)
+        env:
+          PLAYWRIGHT_BASE_URL: https://127.0.0.1
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --network host \
+            -e PLAYWRIGHT_BASE_URL="$PLAYWRIGHT_BASE_URL" \
+            -v "$PWD":/workspace \
+            -w /workspace/src/inventory-web \
+            mcr.microsoft.com/playwright:v1.49.1-jammy \
+            bash -lc "npm ci && npx playwright install chromium && npx playwright test tests/e2e/happy-path.spec.ts --reporter=list"
+
+      - name: Artefacts Playwright (échec)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-real-playwright-artifacts
+          path: |
+            src/inventory-web/playwright-report/**
+            src/inventory-web/test-results/**
+          if-no-files-found: ignore
+
+      - name: Logs docker (échec)
+        if: failure()
+        run: docker compose -f docker-compose.yml -f docker-compose.override.yml logs
+
+      - name: Arrêter la stack
+        if: always()
+        run: docker compose -f docker-compose.yml -f docker-compose.override.yml down -v || true
+
+      - name: Nettoyage node_modules
+        if: always()
+        run: rm -rf src/inventory-web/node_modules

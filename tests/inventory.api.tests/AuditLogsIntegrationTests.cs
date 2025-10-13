@@ -28,6 +28,7 @@ public sealed class AuditLogsIntegrationTests : IntegrationTestBase
 
         using var factory = new InventoryApiFactory(Fixture.ConnectionString, useTestAuditLogger: false);
         var client = factory.CreateClient();
+        client.SetBearerToken(TestTokenFactory.AdminToken());
 
         var response = await client.PostAsJsonAsync(
             client.CreateRelativeUri("/api/shops"),

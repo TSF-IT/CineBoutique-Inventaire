@@ -1,7 +1,4 @@
 // Modifications : simplification de Program.cs via des extensions et intégration du mapping conflits.
-using Microsoft.Extensions.Diagnostics.HealthChecks;
-using System.Data;
-using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Http;
@@ -17,10 +14,12 @@ using CineBoutique.Inventory.Infrastructure.Seeding;
 using FluentValidation.AspNetCore;
 using FluentMigrator.Runner;
 using FluentMigrator.Runner.Processors;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -30,9 +29,13 @@ using Serilog; // requis pour UseSerilog()
 using CineBoutique.Inventory.Api.Infrastructure.Health;
 using AppLog = CineBoutique.Inventory.Api.Hosting.Log;
 using Dapper;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
+using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -90,12 +93,74 @@ builder.Services.AddTransient<InventoryDataSeeder>();
 
 builder.Services.AddHttpContextAccessor();
 
+var jwt = builder.Configuration.GetSection("Jwt");
+if (!jwt.Exists())
+{
+    var legacyJwt = builder.Configuration.GetSection("Authentication:Jwt");
+    if (legacyJwt.Exists())
+    {
+        jwt = legacyJwt;
+    }
+}
+
+var signingKey = new SymmetricSecurityKey(
+    Encoding.UTF8.GetBytes(jwt["SigningKey"] ?? "insecure-test-key-32bytes-minimum!!!!")
+);
+
+builder.Services
+  .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+  .AddJwtBearer(o =>
+  {
+      o.TokenValidationParameters = new TokenValidationParameters
+      {
+          ValidateIssuer = true,
+          ValidIssuer = jwt["Issuer"] ?? "cineboutique-test",
+          ValidateAudience = true,
+          ValidAudience = jwt["Audience"] ?? "cineboutique-web",
+          ValidateIssuerSigningKey = true,
+          IssuerSigningKey = signingKey,
+          ValidateLifetime = true,
+          ClockSkew = TimeSpan.FromMinutes(2)
+      };
+  });
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("RequireOperator", p => p.RequireRole("operator", "admin"));
+    options.AddPolicy("RequireAdmin", p => p.RequireRole("admin"));
+});
+
 // --- Swagger ---
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "CinéBoutique Inventory API", Version = "v1" });
     c.SupportNonNullableReferenceTypes();
+
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "Entrer un jeton JWT valide au format Bearer {token}.",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
+    });
+
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
 
     var asmName = System.Reflection.Assembly.GetExecutingAssembly().GetName().Name;
     var xmlPath = System.IO.Path.Combine(AppContext.BaseDirectory, $"{asmName}.xml");
@@ -387,6 +452,9 @@ if (useSerilog)
 {
     app.UseSerilogRequestLogging();
 }
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.UseMiddleware<LegacyOperatorNameWriteGuardMiddleware>();
 app.UseMiddleware<SoftOperatorMiddleware>();

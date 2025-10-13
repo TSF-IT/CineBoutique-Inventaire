@@ -24,6 +24,7 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
+        client.SetBearerToken(TestTokenFactory.OperatorToken());
 
         var startResponse = await client.PostAsJsonAsync(
             client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
@@ -57,6 +58,7 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
+        client.SetBearerToken(TestTokenFactory.OperatorToken());
 
         var startResponse = await client.PostAsJsonAsync(
             client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
@@ -95,6 +97,7 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
+        client.SetBearerToken(TestTokenFactory.OperatorToken());
 
         var firstStart = await client.PostAsJsonAsync(
             client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
@@ -135,6 +138,7 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
+        client.SetBearerToken(TestTokenFactory.OperatorToken());
 
         var initialStart = await client.PostAsJsonAsync(
             client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
@@ -172,6 +176,7 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
+        client.SetBearerToken(TestTokenFactory.OperatorToken());
 
         var startResponse = await client.PostAsJsonAsync(
             client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
@@ -199,6 +204,7 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
+        client.SetBearerToken(TestTokenFactory.OperatorToken());
 
         var firstStart = await client.PostAsJsonAsync(
             client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
@@ -221,6 +227,7 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
+        client.SetBearerToken(TestTokenFactory.OperatorToken());
 
         var missingRunId = Guid.NewGuid();
         var completeResponse = await CompleteRunAsync(
@@ -249,6 +256,7 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
         }).ConfigureAwait(false);
 
         var client = CreateClient();
+        client.SetBearerToken(TestTokenFactory.OperatorToken());
         var unknownLocation = Guid.NewGuid();
 
         var startResponse = await client.PostAsJsonAsync(
