@@ -42,6 +42,9 @@ using Microsoft.AspNetCore.Authentication;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddAuthorization(); // safe par défaut
+builder.Services.AddTestingAuth(builder.Environment); 
+
 builder.Host.UseDefaultServiceProvider(options =>
 {
     options.ValidateOnBuild = false;
