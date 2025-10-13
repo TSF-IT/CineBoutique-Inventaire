@@ -64,17 +64,24 @@ jobs:
       TEST_DB_CONN: Host=127.0.0.1;Port=5432;Database=inv_test;Username=postgres;Password=postgres
 
     steps:
-      - name: Force-clean workspace before checkout (Linux)
+      - name: Pre-checkout clean (no sudo; use Docker if available)
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          # Choisir sudo si disponible
-          SUDO=""
-          if command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
-          # 1) Reprendre ownership du workspace (idempotent)
-          $SUDO chown -R "$USER:$USER" "$GITHUB_WORKSPACE" || true
-          # 2) Vider le workspace sans supprimer le dossier lui-même
-          find "$GITHUB_WORKSPACE" -mindepth 1 -maxdepth 1 -exec $SUDO rm -rf {} +
+          set -e
+          echo "Workspace: $GITHUB_WORKSPACE"
+          if command -v docker >/dev/null 2>&1; then
+            echo "Cleaning with Docker (root in container)…"
+            docker run --rm -v "$GITHUB_WORKSPACE":/ws alpine:3.20 sh -lc '
+              set -e
+              # Supprimer tout, y compris fichiers cachés (sauf . et ..)
+              rm -rf /ws/* /ws/.[!.]* /ws/..?* 2>/dev/null || true
+            '
+          else
+            echo "Docker non disponible; tentative en user-space…"
+            rm -rf "$GITHUB_WORKSPACE"/* "$GITHUB_WORKSPACE"/.[!.]* "$GITHUB_WORKSPACE"/..?* 2>/dev/null || true
+          fi
+          echo "Pre-checkout clean terminé."
 
       - uses: actions/checkout@v4
 
