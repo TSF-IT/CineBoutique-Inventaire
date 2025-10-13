@@ -105,10 +105,6 @@ if (!jwt.Exists())
     }
 }
 
-var signingKey = new SymmetricSecurityKey(
-    Encoding.UTF8.GetBytes(jwt["SigningKey"] ?? "insecure-test-key-32bytes-minimum!!!!")
-);
-
 if (builder.Environment.IsEnvironment("Testing"))
 {
     // === AUTH DE TEST ===
