@@ -43,29 +43,31 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - name: Setup .NET 8 (user-space, local toolcache)
-        uses: actions/setup-dotnet@v4
+      - name: Install .NET 8 SDK (user-space, no sudo)
+        shell: bash
         env:
-          DOTNET_INSTALL_DIR: ${{ runner.temp }}/.dotnet
-          RUNNER_TOOL_CACHE: ${{ runner.temp }}/_tool
-          AGENT_TOOLSDIRECTORY: ${{ runner.temp }}/_tool
-        with:
-          dotnet-version: |
-            8.0.x
-          cache: true
-          cache-dependency-path: |
-            **/Directory.Packages.props
-            **/*.csproj
+          DOTNET_DIR: ${{ runner.temp }}/.dotnet
+          DOTNET_CLI_TELEMETRY_OPTOUT: 1
+          DOTNET_MULTILEVEL_LOOKUP: 0
+        run: |
+          set -euo pipefail
+          mkdir -p "$DOTNET_DIR"
+          curl -sSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh
+          bash dotnet-install.sh --channel 8.0 --install-dir "$DOTNET_DIR" --no-path
+          "$DOTNET_DIR/dotnet" --info
 
-      - name: Export DOTNET_ROOT and PATH
+      - name: Export DOTNET_ROOT and extend PATH
         shell: bash
         run: |
-          echo "DOTNET_ROOT=${{ runner.temp }}/.dotnet" >> "$GITHUB_ENV"
-          echo "${{ runner.temp }}/.dotnet" >> "$GITHUB_PATH"
-          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+          echo "DOTNET_ROOT=${{ runner.temp }}/.dotnet" >> $GITHUB_ENV
+          echo "${{ runner.temp }}/.dotnet" >> $GITHUB_PATH
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
-      - name: dotnet --info
-        run: dotnet --info
+      - name: Verify dotnet on PATH
+        shell: bash
+        run: |
+          which dotnet || true
+          dotnet --info
 
       - name: Restore
         run: dotnet restore
