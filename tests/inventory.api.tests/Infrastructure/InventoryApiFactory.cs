@@ -1,5 +1,6 @@
 using System.Linq;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
+using CineBoutique.Inventory.Api.Tests.Helpers;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -36,7 +37,12 @@ public sealed class InventoryApiFactory : WebApplicationFactory<Program>
                 ["APPLY_MIGRATIONS"] = "false",
                 ["DISABLE_MIGRATIONS"] = "false",
                 ["RunMigrationsOnStart"] = "false",
-                ["AppSettings:SeedOnStartup"] = "false"
+                ["AppSettings:SeedOnStartup"] = "false",
+                ["Authentication:Jwt:Issuer"] = JwtTestTokenFactory.Issuer,
+                ["Authentication:Jwt:Audience"] = JwtTestTokenFactory.Audience,
+                ["Authentication:Jwt:SigningKey"] = JwtTestTokenFactory.SigningKey,
+                ["Authentication:Jwt:RequireHttpsMetadata"] = "false",
+                ["Authentication:Jwt:ClockSkewSeconds"] = "0"
             };
             configurationBuilder.AddInMemoryCollection(overrides!);
         });

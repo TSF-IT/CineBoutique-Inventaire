@@ -4,6 +4,7 @@ using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Services;
 using CineBoutique.Inventory.Api.Services.Exceptions;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -35,6 +36,7 @@ public sealed class ShopsController : ControllerBase
     [HttpPost]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<ActionResult<ShopDto>> CreateAsync([FromBody] CreateShopRequest request, CancellationToken cancellationToken)
     {
         try
@@ -58,6 +60,7 @@ public sealed class ShopsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<ActionResult<ShopDto>> UpdateAsync([FromBody] UpdateShopRequest request, CancellationToken cancellationToken)
     {
         try
@@ -85,6 +88,7 @@ public sealed class ShopsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
+    [Authorize(Policy = "RequireAdmin")]
     public async Task<IActionResult> DeleteAsync([FromBody] DeleteShopRequest request, CancellationToken cancellationToken)
     {
         try

@@ -13,6 +13,7 @@ using CineBoutique.Inventory.Api.Models;
 using Dapper;
 using FluentValidation;
 using FluentValidation.Results;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -1053,6 +1054,7 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc{ownerValue}{oper
                 StartedAtUtc = now
             });
         })
+        .RequireAuthorization("RequireOperator")
         .WithName("StartInventoryRun")
         .WithTags("Inventories")
         .Produces<StartInventoryRunResponse>(StatusCodes.Status200OK)
@@ -1521,6 +1523,7 @@ WHERE ""Id"" = @RunId;";
 
             return Results.Ok(response);
         })
+        .RequireAuthorization("RequireOperator")
         .WithName("CompleteInventoryRun")
         .WithTags("Inventories")
         .Produces<CompleteInventoryRunResponse>(StatusCodes.Status200OK)
@@ -1697,6 +1700,7 @@ LIMIT 1;";
 
             return await HandleReleaseAsync(locationId, request, connection, cancellationToken).ConfigureAwait(false);
         })
+        .RequireAuthorization("RequireOperator")
         .WithName("ReleaseInventoryRun")
         .WithTags("Inventories")
         .Produces(StatusCodes.Status204NoContent)
@@ -1728,6 +1732,7 @@ LIMIT 1;";
 
             return await HandleReleaseAsync(locationId, request, connection, cancellationToken).ConfigureAwait(false);
         })
+        .RequireAuthorization("RequireOperator")
         .WithName("AbortInventoryRun")
         .WithTags("Inventories")
         .Produces(StatusCodes.Status204NoContent)
@@ -1823,6 +1828,7 @@ WHERE ""LocationId"" = @LocationId
 
             return Results.NoContent();
         })
+        .RequireAuthorization("RequireOperator")
         .WithName("RestartInventoryForLocation")
         .WithTags("Inventories")
         .Produces(StatusCodes.Status204NoContent)

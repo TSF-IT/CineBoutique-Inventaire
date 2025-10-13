@@ -980,7 +980,8 @@
         "contentHash": "fdYxcRjQqTTacKId/2IECojlDSFvp7LP5N78+0z/xH7v/Tuw5ZAxu23Y6PTCRinqyu2ePx+Gn1098NC6jM6d+A=="
       },
       "System.IdentityModel.Tokens.Jwt": {
-        "type": "Transitive",
+        "type": "Direct",
+        "requested": "[6.35.0, )",
         "resolved": "6.35.0",
         "contentHash": "yxGIQd3BFK7F6S62/7RdZk3C/mfwyVxvh6ngd1VYMBmbJ1YZZA9+Ku6suylVtso0FjI0wbElpJ0d27CdsyLpBQ==",
         "dependencies": {

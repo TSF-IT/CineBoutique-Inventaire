@@ -1,6 +1,4 @@
 // Modifications : simplification de Program.cs via des extensions et intégration du mapping conflits.
-using Microsoft.Extensions.Diagnostics.HealthChecks;
-using System.Data;
 using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
@@ -17,10 +15,12 @@ using CineBoutique.Inventory.Infrastructure.Seeding;
 using FluentValidation.AspNetCore;
 using FluentMigrator.Runner;
 using FluentMigrator.Runner.Processors;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -30,9 +30,14 @@ using Serilog; // requis pour UseSerilog()
 using CineBoutique.Inventory.Api.Infrastructure.Health;
 using AppLog = CineBoutique.Inventory.Api.Hosting.Log;
 using Dapper;
+using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi.Models;
+using System.Security.Claims;
+using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -90,12 +95,99 @@ builder.Services.AddTransient<InventoryDataSeeder>();
 
 builder.Services.AddHttpContextAccessor();
 
+var jwtSection = builder.Configuration.GetSection("Authentication:Jwt");
+builder.Services.Configure<JwtOptions>(jwtSection);
+
+var jwtOptions = jwtSection.Get<JwtOptions>();
+if (jwtOptions is null)
+{
+    throw new InvalidOperationException("La configuration Authentication:Jwt est requise.");
+}
+
+if (string.IsNullOrWhiteSpace(jwtOptions.Issuer))
+{
+    throw new InvalidOperationException("Authentication:Jwt:Issuer doit être défini.");
+}
+
+if (string.IsNullOrWhiteSpace(jwtOptions.Audience))
+{
+    throw new InvalidOperationException("Authentication:Jwt:Audience doit être défini.");
+}
+
+if (string.IsNullOrWhiteSpace(jwtOptions.SigningKey) || jwtOptions.SigningKey.Length < 32)
+{
+    throw new InvalidOperationException("Authentication:Jwt:SigningKey doit contenir au moins 32 caractères.");
+}
+
+var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.SigningKey));
+var clockSkew = TimeSpan.FromSeconds(Math.Clamp(jwtOptions.ClockSkewSeconds, 0, 300));
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.RequireHttpsMetadata = jwtOptions.RequireHttpsMetadata;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwtOptions.Issuer,
+            ValidateAudience = true,
+            ValidAudience = jwtOptions.Audience,
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = signingKey,
+            ValidateLifetime = true,
+            ClockSkew = clockSkew,
+            NameClaimType = ClaimTypes.Name,
+            RoleClaimType = ClaimTypes.Role
+        };
+    });
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("RequireOperator", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.RequireRole("operator", "admin");
+    });
+
+    options.AddPolicy("RequireAdmin", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+        policy.RequireRole("admin");
+    });
+});
+
 // --- Swagger ---
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "CinéBoutique Inventory API", Version = "v1" });
     c.SupportNonNullableReferenceTypes();
+
+    c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Description = "Entrer un jeton JWT valide au format Bearer {token}.",
+        Name = "Authorization",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT"
+    });
+
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        {
+            new OpenApiSecurityScheme
+            {
+                Reference = new OpenApiReference
+                {
+                    Type = ReferenceType.SecurityScheme,
+                    Id = "Bearer"
+                }
+            },
+            Array.Empty<string>()
+        }
+    });
 
     var asmName = System.Reflection.Assembly.GetExecutingAssembly().GetName().Name;
     var xmlPath = System.IO.Path.Combine(AppContext.BaseDirectory, $"{asmName}.xml");
@@ -387,6 +479,9 @@ if (useSerilog)
 {
     app.UseSerilogRequestLogging();
 }
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.UseMiddleware<LegacyOperatorNameWriteGuardMiddleware>();
 app.UseMiddleware<SoftOperatorMiddleware>();

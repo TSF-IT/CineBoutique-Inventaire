@@ -31,6 +31,7 @@ public sealed class ShopUserCrudTests : IntegrationTestBase
         }).ConfigureAwait(false);
 
         var client = CreateClient();
+        client.SetBearerToken(JwtTestTokenFactory.CreateAdminToken());
 
         // --- Création
         var createResponse = await client.PostAsJsonAsync(
@@ -179,6 +180,7 @@ public sealed class ShopUserCrudTests : IntegrationTestBase
         }).ConfigureAwait(false);
 
         var client = CreateClient();
+        client.SetBearerToken(JwtTestTokenFactory.CreateAdminToken());
 
         var firstCreate = await client.PostAsJsonAsync(
             client.CreateRelativeUri($"/api/shops/{shopId}/users"),
@@ -214,6 +216,7 @@ public sealed class ShopUserCrudTests : IntegrationTestBase
         }).ConfigureAwait(false);
 
         var client = CreateClient();
+        client.SetBearerToken(JwtTestTokenFactory.CreateAdminToken());
 
         var response = await client.GetAsync(
             client.CreateRelativeUri($"/api/shops/{shopId}/users/{Guid.NewGuid()}")
@@ -236,6 +239,7 @@ public sealed class ShopUserCrudTests : IntegrationTestBase
         }).ConfigureAwait(false);
 
         var client = CreateClient();
+        client.SetBearerToken(JwtTestTokenFactory.CreateAdminToken());
 
         async Task<HttpResponseMessage> DisableAsync()
         {
