@@ -85,27 +85,17 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      # Installer .NET dans un dossier user-writable + nuget cache local
-      - name: Prepare .NET install dir (user) + NuGet cache dir
-        run: |
-          echo "DOTNET_INSTALL_DIR=$HOME/.dotnet"     >> "$GITHUB_ENV"
-          echo "DOTNET_ROOT=$HOME/.dotnet"            >> "$GITHUB_ENV"
-          echo "NUGET_PACKAGES=$HOME/.nuget/packages" >> "$GITHUB_ENV"
-          mkdir -p "$HOME/.dotnet" "$HOME/.nuget/packages"
-
-      # IMPORTANT : pas de cache:true (nécessite packages.lock.json)
-      - name: Setup .NET (no cache)
-        uses: actions/setup-dotnet@v4
-        env:
-          DOTNET_INSTALL_DIR: ${{ env.DOTNET_INSTALL_DIR }}
+      - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: |
+            8.0.x
+          cache: true
+          cache-dependency-path: |
+            **/Directory.Packages.props
+            **/*.csproj
 
-      - name: Verify dotnet
-        run: |
-          echo "${DOTNET_INSTALL_DIR}" >> "$GITHUB_PATH"
-          echo "${DOTNET_INSTALL_DIR}/tools" >> "$GITHUB_PATH"
-          dotnet --info
+      - name: dotnet --info
+        run: dotnet --info
 
       - name: Restore
         run: dotnet restore
