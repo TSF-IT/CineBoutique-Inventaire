@@ -1,5 +1,6 @@
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
+using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Services;
 using CineBoutique.Inventory.Api.Services.Exceptions;
@@ -14,11 +15,13 @@ public sealed class ShopUsersController : ControllerBase
 {
     private readonly IShopUserService _shopUserService;
     private readonly IAuditLogger _auditLogger;
+    private readonly IClock _clock;
 
-    public ShopUsersController(IShopUserService shopUserService, IAuditLogger auditLogger)
+    public ShopUsersController(IShopUserService shopUserService, IAuditLogger auditLogger, IClock clock)
     {
         _shopUserService = shopUserService ?? throw new ArgumentNullException(nameof(shopUserService));
         _auditLogger = auditLogger ?? throw new ArgumentNullException(nameof(auditLogger));
+        _clock = clock ?? throw new ArgumentNullException(nameof(clock));
     }
 
     [HttpGet]
@@ -132,7 +135,7 @@ public sealed class ShopUsersController : ControllerBase
     {
         var userName = EndpointUtilities.GetAuthenticatedUserName(HttpContext);
         var actor = EndpointUtilities.FormatActorLabel(HttpContext);
-        var timestamp = EndpointUtilities.FormatTimestamp(DateTimeOffset.UtcNow);
+        var timestamp = EndpointUtilities.FormatTimestamp(_clock.UtcNow);
         var message = $"{actor} {actionDescription} Boutique {shopId}. Le {timestamp} UTC.";
 
         await _auditLogger.LogAsync(message, userName, category, cancellationToken).ConfigureAwait(false);
