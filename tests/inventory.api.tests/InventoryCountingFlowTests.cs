@@ -40,7 +40,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
         }).ConfigureAwait(false);
 
         var client = CreateClient();
-        client.SetBearerToken(JwtTestTokenFactory.CreateOperatorToken());
+        client.SetBearerToken(TestTokenFactory.OperatorToken());
 
         // --- C1: START -> COMPLETE(+items)
         var startPrimary = await client.PostAsJsonAsync(

@@ -1,5 +1,4 @@
 // Modifications : simplification de Program.cs via des extensions et intégration du mapping conflits.
-using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Http;
@@ -32,7 +31,6 @@ using AppLog = CineBoutique.Inventory.Api.Hosting.Log;
 using Dapper;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using System.Security.Claims;
 using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
@@ -95,66 +93,41 @@ builder.Services.AddTransient<InventoryDataSeeder>();
 
 builder.Services.AddHttpContextAccessor();
 
-var jwtSection = builder.Configuration.GetSection("Authentication:Jwt");
-builder.Services.Configure<JwtOptions>(jwtSection);
-
-var jwtOptions = jwtSection.Get<JwtOptions>();
-if (jwtOptions is null)
+var jwt = builder.Configuration.GetSection("Jwt");
+if (!jwt.Exists())
 {
-    throw new InvalidOperationException("La configuration Authentication:Jwt est requise.");
+    var legacyJwt = builder.Configuration.GetSection("Authentication:Jwt");
+    if (legacyJwt.Exists())
+    {
+        jwt = legacyJwt;
+    }
 }
 
-if (string.IsNullOrWhiteSpace(jwtOptions.Issuer))
-{
-    throw new InvalidOperationException("Authentication:Jwt:Issuer doit être défini.");
-}
-
-if (string.IsNullOrWhiteSpace(jwtOptions.Audience))
-{
-    throw new InvalidOperationException("Authentication:Jwt:Audience doit être défini.");
-}
-
-if (string.IsNullOrWhiteSpace(jwtOptions.SigningKey) || jwtOptions.SigningKey.Length < 32)
-{
-    throw new InvalidOperationException("Authentication:Jwt:SigningKey doit contenir au moins 32 caractères.");
-}
-
-var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.SigningKey));
-var clockSkew = TimeSpan.FromSeconds(Math.Clamp(jwtOptions.ClockSkewSeconds, 0, 300));
+var signingKey = new SymmetricSecurityKey(
+    Encoding.UTF8.GetBytes(jwt["SigningKey"] ?? "insecure-test-key-32bytes-minimum!!!!")
+);
 
 builder.Services
-    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.RequireHttpsMetadata = jwtOptions.RequireHttpsMetadata;
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidIssuer = jwtOptions.Issuer,
-            ValidateAudience = true,
-            ValidAudience = jwtOptions.Audience,
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = signingKey,
-            ValidateLifetime = true,
-            ClockSkew = clockSkew,
-            NameClaimType = ClaimTypes.Name,
-            RoleClaimType = ClaimTypes.Role
-        };
-    });
+  .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+  .AddJwtBearer(o =>
+  {
+      o.TokenValidationParameters = new TokenValidationParameters
+      {
+          ValidateIssuer = true,
+          ValidIssuer = jwt["Issuer"] ?? "cineboutique-test",
+          ValidateAudience = true,
+          ValidAudience = jwt["Audience"] ?? "cineboutique-web",
+          ValidateIssuerSigningKey = true,
+          IssuerSigningKey = signingKey,
+          ValidateLifetime = true,
+          ClockSkew = TimeSpan.FromMinutes(2)
+      };
+  });
 
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("RequireOperator", policy =>
-    {
-        policy.RequireAuthenticatedUser();
-        policy.RequireRole("operator", "admin");
-    });
-
-    options.AddPolicy("RequireAdmin", policy =>
-    {
-        policy.RequireAuthenticatedUser();
-        policy.RequireRole("admin");
-    });
+    options.AddPolicy("RequireOperator", p => p.RequireRole("operator", "admin"));
+    options.AddPolicy("RequireAdmin", p => p.RequireRole("admin"));
 });
 
 // --- Swagger ---

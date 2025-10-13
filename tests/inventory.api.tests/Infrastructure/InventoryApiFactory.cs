@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Tests.Helpers;
@@ -38,11 +39,12 @@ public sealed class InventoryApiFactory : WebApplicationFactory<Program>
                 ["DISABLE_MIGRATIONS"] = "false",
                 ["RunMigrationsOnStart"] = "false",
                 ["AppSettings:SeedOnStartup"] = "false",
-                ["Authentication:Jwt:Issuer"] = JwtTestTokenFactory.Issuer,
-                ["Authentication:Jwt:Audience"] = JwtTestTokenFactory.Audience,
-                ["Authentication:Jwt:SigningKey"] = JwtTestTokenFactory.SigningKey,
-                ["Authentication:Jwt:RequireHttpsMetadata"] = "false",
-                ["Authentication:Jwt:ClockSkewSeconds"] = "0"
+                ["Jwt:Issuer"] = TestTokenFactory.Issuer,
+                ["Jwt:Audience"] = TestTokenFactory.Audience,
+                ["Jwt:SigningKey"] = TestTokenFactory.SigningKey,
+                ["Authentication:Jwt:Issuer"] = TestTokenFactory.Issuer,
+                ["Authentication:Jwt:Audience"] = TestTokenFactory.Audience,
+                ["Authentication:Jwt:SigningKey"] = TestTokenFactory.SigningKey
             };
             configurationBuilder.AddInMemoryCollection(overrides!);
         });

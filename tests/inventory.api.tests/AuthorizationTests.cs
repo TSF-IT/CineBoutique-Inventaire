@@ -1,5 +1,6 @@
 using System;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models;
@@ -42,7 +43,9 @@ public sealed class AuthorizationTests : IntegrationTestBase
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
 
         var client = CreateClient();
-        client.SetBearerToken(JwtTestTokenFactory.CreateOperatorToken());
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            TestTokenFactory.Create("operator"));
 
         var response = await client.PostAsJsonAsync(
             client.CreateRelativeUri("/api/shops"),
@@ -75,7 +78,9 @@ public sealed class AuthorizationTests : IntegrationTestBase
 
         var context = await SeedInventoryAsync().ConfigureAwait(false);
         var client = CreateClient();
-        client.SetBearerToken(JwtTestTokenFactory.CreateViewerToken());
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            TestTokenFactory.Create("viewer"));
 
         var response = await client.PostAsJsonAsync(
             client.CreateRelativeUri($"/api/inventories/{context.LocationId}/start"),
