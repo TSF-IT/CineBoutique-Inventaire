@@ -64,6 +64,11 @@ jobs:
       TEST_DB_CONN: Host=127.0.0.1;Port=5432;Database=inv_test;Username=postgres;Password=postgres
 
     steps:
+      - name: Normalize workspace permissions (Linux, self-hosted)
+        if: runner.os == 'Linux'
+        run: |
+          sudo chown -R "$USER:$USER" "$GITHUB_WORKSPACE" || true
+
       - uses: actions/checkout@v4
 
       # Installer .NET dans un dossier user-writable + nuget cache local
