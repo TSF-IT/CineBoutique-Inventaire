@@ -36,6 +36,8 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Data;
+using Microsoft.AspNetCore.Authentication;
+using CineBoutique.Inventory.Api.Infrastructure.Auth;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -107,22 +109,37 @@ var signingKey = new SymmetricSecurityKey(
     Encoding.UTF8.GetBytes(jwt["SigningKey"] ?? "insecure-test-key-32bytes-minimum!!!!")
 );
 
-builder.Services
-  .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-  .AddJwtBearer(o =>
-  {
-      o.TokenValidationParameters = new TokenValidationParameters
+if (builder.Environment.IsEnvironment("Testing"))
+{
+    // Schéma d'auth simplifié pour les tests d'intégration
+    builder.Services
+        .AddAuthentication(options =>
+        {
+            options.DefaultAuthenticateScheme = TestAuthHandler.Scheme;
+            options.DefaultChallengeScheme = TestAuthHandler.Scheme;
+        })
+        .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.Scheme, _ => { });
+}
+else
+{
+    // Schéma réel (JWT) pour dev/prod
+    builder.Services
+      .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+      .AddJwtBearer(o =>
       {
-          ValidateIssuer = true,
-          ValidIssuer = jwt["Issuer"] ?? "cineboutique-test",
-          ValidateAudience = true,
-          ValidAudience = jwt["Audience"] ?? "cineboutique-web",
-          ValidateIssuerSigningKey = true,
-          IssuerSigningKey = signingKey,
-          ValidateLifetime = true,
-          ClockSkew = TimeSpan.FromMinutes(2)
-      };
-  });
+          o.TokenValidationParameters = new TokenValidationParameters
+          {
+              ValidateIssuer = true,
+              ValidIssuer = jwt["Issuer"] ?? "cineboutique-test",
+              ValidateAudience = true,
+              ValidAudience = jwt["Audience"] ?? "cineboutique-web",
+              ValidateIssuerSigningKey = true,
+              IssuerSigningKey = signingKey,
+              ValidateLifetime = true,
+              ClockSkew = TimeSpan.FromMinutes(2)
+          };
+      });
+}
 
 builder.Services.AddAuthorization(options =>
 {
@@ -211,7 +228,7 @@ builder.Services.AddScoped<IDbConnection>(sp =>
 
 // IAuditLogger (API) -> DbAuditLogger écrit déjà dans audit_logs
 builder.Services.AddScoped<IAuditLogger, DbAuditLogger>();
-builder.Services.AddSingleton<IClock, SystemClock>();
+builder.Services.AddSingleton<IClock, CineBoutique.Inventory.Api.Infrastructure.Time.SystemClock>();
 
 // BRIDGE : remplace l'impl du Domain par le pont vers DbAuditLogger
 builder.Services.AddScoped<CineBoutique.Inventory.Domain.Auditing.IAuditLogger, DomainAuditBridgeLogger>();
