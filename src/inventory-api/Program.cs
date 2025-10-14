@@ -406,6 +406,8 @@ app.Use(async (ctx, next) =>
 
 app.MapHealthEndpoints();
 app.MapDiagnosticsEndpoints();
+app.MapGet("/ready", () => Results.Ok(new { status = "Ready" }));
+app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
 app.MapInventoryEndpoints();
 app.MapProductEndpoints();
 
