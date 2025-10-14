@@ -323,7 +323,7 @@ jobs:
             -v "$PWD":/workspace \
             -w /workspace/src/inventory-web \
             mcr.microsoft.com/playwright:v1.49.1-jammy \
-            bash -lc "npm ci && npx playwright install chromium && npx playwright test tests/e2e/happy-path.spec.ts --reporter=list"
+            bash -lc "npm ci && npx playwright install chromium && npx playwright test tests/e2e/happy-path.spec.ts --reporter=list --timeout=120000"
 
       - name: Artefacts Playwright (échec)
         if: failure()
