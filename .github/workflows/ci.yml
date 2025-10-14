@@ -158,7 +158,7 @@ jobs:
 
   e2e-web:
     runs-on: [self-hosted, tsf-dsi, Linux, X64]
-    if: github.event_name == 'pull_request' && !github.event.pull_request.draft
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
     container:
       image: mcr.microsoft.com/playwright:v1.49.1-jammy
       options: --user root
@@ -242,7 +242,7 @@ jobs:
   e2e-real:
     runs-on: [self-hosted, tsf-dsi, Linux, X64]
     needs: build-and-test
-    if: github.event_name == 'pull_request' && !github.event.pull_request.draft
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
     continue-on-error: true
     steps:
       - name: Pre-checkout clean (no sudo; use Docker if available)
