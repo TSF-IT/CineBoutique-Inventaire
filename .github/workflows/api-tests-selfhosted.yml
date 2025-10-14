@@ -1,8 +1,9 @@
 name: API Integration Tests (self-hosted)
 
 on:
-  push:
   pull_request:
+    branches: [ main ]
+    paths-ignore: ['**.md','docs/**','**/*.png','**/*.jpg','**/*.svg','**/*.gif']
   workflow_dispatch:
 
 concurrency:
