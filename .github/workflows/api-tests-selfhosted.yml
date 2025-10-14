@@ -15,7 +15,7 @@ defaults:
 
 jobs:
   tests:
-    runs-on: [self-hosted, tsf, Linux, X64]
+    runs-on: [self-hosted, tsf-dsi, Linux, X64]
     timeout-minutes: 40
 
     permissions:
