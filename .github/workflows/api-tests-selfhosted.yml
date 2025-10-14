@@ -28,7 +28,6 @@ jobs:
         env:
           POSTGRES_PASSWORD: postgres
           POSTGRES_DB: inv_test
-        # Port fixe -> pas d'expressions job.services[...] (VS Code était allergique)
         ports:
           - 5432:5432
         options: >-
@@ -38,21 +37,15 @@ jobs:
           --health-retries=30
 
     env:
-      # === Env .NET / ASP.NET détaillée ===
       DOTNET_ENVIRONMENT: Development
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_DETAILED_ERRORS: "true"
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
 
-      # (si tu utilises Serilog, ces clés activent la console + niveau debug)
       Serilog__MinimumLevel__Default: Debug
       Serilog__WriteTo__0__Name: Console
       Serilog__Enrich__FromLogContext: "true"
-      # Si ton app écrit aussi en fichier avec Serilog et que ton runner n'a pas les droits,
-      # tu peux désactiver en mettant DISABLE_SERILOG="true" et gérer uniquement la console.
-      # DISABLE_SERILOG: "true"
 
-      # === Logging Microsoft/EF Core verbeux (console) ===
       Logging__Console__FormatterName: simple
       Logging__Console__IncludeScopes: "true"
       Logging__LogLevel__Default: Debug
@@ -60,7 +53,6 @@ jobs:
       Logging__LogLevel__Microsoft.EntityFrameworkCore: Information
       Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command: Information
 
-      # === Connexion DB (service Postgres ci-dessus) ===
       TEST_DB_CONN: Host=127.0.0.1;Port=5432;Database=inv_test;Username=postgres;Password=postgres
 
     steps:
@@ -74,7 +66,6 @@ jobs:
             echo "Cleaning with Docker (root in container)…"
             docker run --rm -v "$GITHUB_WORKSPACE":/ws alpine:3.20 sh -lc '
               set -e
-              # Supprimer tout, y compris fichiers cachés (sauf . et ..)
               rm -rf /ws/* /ws/.[!.]* /ws/..?* 2>/dev/null || true
             '
           else
@@ -85,35 +76,16 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - name: Install .NET 8 SDK (user-space in $HOME/.dotnet)
-        shell: bash
-        env:
-          DOTNET_DIR: $HOME/.dotnet
-          DOTNET_CLI_TELEMETRY_OPTOUT: 1
-          DOTNET_MULTILEVEL_LOOKUP: 0
-        run: |
-          set -euo pipefail
-          if [ -d "$DOTNET_DIR" ]; then
-            rm -rf "$DOTNET_DIR/sdk/8.0."* "$DOTNET_DIR/shared/Microsoft.NETCore.App/8.0."* "$DOTNET_DIR/host" 2>/dev/null || true
-          fi
-          mkdir -p "$DOTNET_DIR"
-          echo "Installing .NET 8 SDK into $DOTNET_DIR"
-          curl -sSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh
-          bash dotnet-install.sh --channel 8.0 --install-dir "$DOTNET_DIR" --no-path
-          test -x "$DOTNET_DIR/dotnet" || (echo "dotnet binary missing in $DOTNET_DIR" && ls -la "$DOTNET_DIR" && exit 1)
-
-      - name: Export DOTNET_ROOT and PATH for this job
-        shell: bash
-        run: |
-          echo "DOTNET_ROOT=$HOME/.dotnet" >> $GITHUB_ENV
-          echo "$HOME/.dotnet" >> $GITHUB_PATH
-          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+      # ⬇️ Remplace l'installation manuelle par setup-dotnet
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+          cache: true
 
       - name: Verify dotnet availability
-        shell: bash
         run: |
-          ls -la "$HOME/.dotnet" || true
-          command -v dotnet || true
+          command -v dotnet
           dotnet --info
 
       - name: Restore
@@ -122,7 +94,6 @@ jobs:
       - name: Build
         run: dotnet build -c Release --no-restore
 
-      # Attente robuste : TCP + pg_isready
       - name: Wait for Postgres service
         run: |
           for i in {1..90}; do
@@ -132,7 +103,6 @@ jobs:
           docker run --rm --network host -e PGPASSWORD=postgres postgres:16-alpine \
             sh -lc 'for i in $(seq 1 60); do pg_isready -h 127.0.0.1 -p 5432 -U postgres && exit 0; echo "pg_isready... ($i/60)"; sleep 1; done; exit 1'
 
-      # Extensions Postgres usuelles (au cas où l'app/migrations en ont besoin)
       - name: Ensure Postgres extensions
         run: |
           docker run --rm --network host -e PGPASSWORD=postgres postgres:16-alpine \
@@ -142,7 +112,6 @@ jobs:
               -c 'CREATE EXTENSION IF NOT EXISTS citext;' \
               -c 'CREATE EXTENSION IF NOT EXISTS pg_trgm;'
 
-      # Tests API (capture de la console dans un fichier pour debug)
       - name: Test (API)
         env:
           TEST_DB_CONN: ${{ env.TEST_DB_CONN }}
@@ -156,7 +125,6 @@ jobs:
             --results-directory tests/inventory.api.tests/TestResults \
           2>&1 | tee tests/inventory.api.tests/TestResults/console.log
 
-      # Reporter + artefacts seulement s'il y a des TRX
       - name: Publish test report (TRX)
         if: ${{ always() && hashFiles('tests/inventory.api.tests/TestResults/**/*.trx') != '' }}
         uses: dorny/test-reporter@v1
