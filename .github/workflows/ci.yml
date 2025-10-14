@@ -314,10 +314,18 @@ jobs:
             --network host \
             -e PLAYWRIGHT_BASE_URL="$PLAYWRIGHT_BASE_URL" \
             -e CI=1 \
-            -v "$PWD":/workspace \
-            -w /workspace/src/inventory-web \
+            -v "$PWD":/workspace:ro \
+            -w / \
             mcr.microsoft.com/playwright:v1.49.1-jammy \
-            bash -lc "npm ci && npx playwright install chromium && npx playwright test tests/e2e/happy-path.spec.ts --reporter=list"
+            bash -lc '
+              set -euo pipefail
+              rm -rf /tmp/ws && mkdir -p /tmp/ws
+              cp -a /workspace/. /tmp/ws/
+              cd /tmp/ws/src/inventory-web
+              npm ci
+              npx playwright install chromium
+              npx playwright test tests/e2e/happy-path.spec.ts --reporter=list --timeout=120000
+            '
 
       - name: Artefacts Playwright (échec)
         if: failure()
@@ -337,6 +345,14 @@ jobs:
         if: always()
         run: docker compose -f docker-compose.e2e.yml down -v || true
 
-      - name: Nettoyage node_modules
+      - name: Nettoyage node_modules (root via Docker, silencieux)
         if: always()
-        run: rm -rf src/inventory-web/node_modules
+        shell: bash
+        run: |
+          if command -v docker >/dev/null 2>&1; then
+            docker run --rm -v "$GITHUB_WORKSPACE":/ws alpine:3.20 sh -lc '
+              rm -rf /ws/src/inventory-web/node_modules 2>/dev/null || true
+            '
+          else
+            rm -rf src/inventory-web/node_modules 2>/dev/null || true
+          fi
