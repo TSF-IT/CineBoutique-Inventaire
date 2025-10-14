@@ -62,7 +62,7 @@ jobs:
           DOTNET_INSTALL_DIR: ${{ env.DOTNET_INSTALL_DIR }}
         with:
           dotnet-version: '8.0.x'
-          cache: true
+          cache: false
 
       - name: Verify dotnet availability
         run: |
