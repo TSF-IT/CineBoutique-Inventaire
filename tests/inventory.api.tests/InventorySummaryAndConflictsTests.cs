@@ -19,7 +19,6 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
-        client.SetBearerToken(TestTokenFactory.OperatorToken());
 
         await RunCountAsync(client, seeded, seeded.PrimaryUserId, 1, 5m).ConfigureAwait(false);
         await RunCountAsync(client, seeded, seeded.SecondaryUserId, 2, 3m).ConfigureAwait(false);
@@ -43,7 +42,6 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
-        client.SetBearerToken(TestTokenFactory.OperatorToken());
 
         var firstRun = await RunCountAsync(client, seeded, seeded.PrimaryUserId, 1, 6m).ConfigureAwait(false);
         firstRun.Should().NotBeNull();
@@ -79,7 +77,6 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
-        client.SetBearerToken(TestTokenFactory.OperatorToken());
 
         var startResponse = await client.PostAsJsonAsync(
             client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),

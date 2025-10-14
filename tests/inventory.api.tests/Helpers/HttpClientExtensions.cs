@@ -1,6 +1,5 @@
 using System;
 using System.Net.Http;
-using System.Net.Http.Headers;
 
 namespace CineBoutique.Inventory.Api.Tests.Helpers
 {
@@ -22,17 +21,5 @@ namespace CineBoutique.Inventory.Api.Tests.Helpers
             return new Uri(client.BaseAddress, relativePath);
         }
 
-        public static void SetBearerToken(this HttpClient client, string? token)
-        {
-            ArgumentNullException.ThrowIfNull(client);
-
-            if (string.IsNullOrWhiteSpace(token))
-            {
-                client.DefaultRequestHeaders.Authorization = null;
-                return;
-            }
-
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
-        }
     }
 }

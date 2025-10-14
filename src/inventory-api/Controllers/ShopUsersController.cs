@@ -4,7 +4,6 @@ using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Services;
 using CineBoutique.Inventory.Api.Services.Exceptions;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -45,7 +44,6 @@ public sealed class ShopUsersController : ControllerBase
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    [Authorize(Policy = "RequireAdmin")]
     public async Task<ActionResult<ShopUserDto>> CreateAsync(Guid shopId, [FromBody] CreateShopUserRequest request, CancellationToken cancellationToken)
     {
         try
@@ -74,7 +72,6 @@ public sealed class ShopUsersController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
-    [Authorize(Policy = "RequireAdmin")]
     public async Task<ActionResult<ShopUserDto>> UpdateAsync(Guid shopId, [FromBody] UpdateShopUserRequest request, CancellationToken cancellationToken)
     {
         try
@@ -106,7 +103,6 @@ public sealed class ShopUsersController : ControllerBase
     [HttpDelete]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    [Authorize(Policy = "RequireAdmin")]
     public async Task<ActionResult<ShopUserDto>> DeleteAsync(Guid shopId, [FromBody] DeleteShopUserRequest request, CancellationToken cancellationToken)
     {
         try
