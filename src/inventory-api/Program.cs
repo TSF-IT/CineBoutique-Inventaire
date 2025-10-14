@@ -160,10 +160,8 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy(DefaultCorsPolicy, policyBuilder =>
     {
-        var origins = allowedOrigins.Length > 0 ? allowedOrigins : AppDefaults.DevOrigins;
-
         policyBuilder
-            .WithOrigins(origins)
+            .WithOrigins(allowedOrigins)
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials();
