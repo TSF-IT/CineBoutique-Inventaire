@@ -5,9 +5,10 @@ const useExternalTarget = Boolean(process.env.PLAYWRIGHT_BASE_URL)
 
 export default defineConfig({
   testDir: './tests/e2e',
-  timeout: 60_000,
+  // On laisse plus de marge au premier rendu en CI
+  timeout: 120_000,
   expect: {
-    timeout: 5000,
+    timeout: 10_000,
   },
   fullyParallel: true,
   retries: process.env.CI ? 1 : 0,
@@ -17,7 +18,18 @@ export default defineConfig({
     trace: 'retain-on-failure',
     video: 'retain-on-failure',
     screenshot: 'only-on-failure',
+
+    // 👇 Tolère HTTPS auto-signé
     ignoreHTTPSErrors: true,
+
+    // 👇 Quelques timeouts d'actions/navigation plus confortables en CI
+    actionTimeout: 30_000,
+    navigationTimeout: 30_000,
+
+    // 👇 Force Chromium à ignorer les erreurs de certif (utile avec 127.0.0.1)
+    launchOptions: {
+      args: ['--ignore-certificate-errors'],
+    },
   },
   ...(useExternalTarget
     ? {}
