@@ -341,6 +341,29 @@ jobs:
         if: failure()
         run: docker compose -f docker-compose.e2e.yml logs
 
+      - name: Archive API crash dumps (si présents)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-crash-dumps
+          path: _ci_dumps/**
+          if-no-files-found: ignore
+
+      - name: Archive API container logs (dernier run)
+        if: always()
+        run: |
+          mkdir -p ci-logs
+          docker logs inventory-api-e2e > ci-logs/inventory-api-e2e.log 2>&1 || true
+        shell: bash
+
+      - name: Upload API container logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-container-logs
+          path: ci-logs/**
+          if-no-files-found: ignore
+
       - name: Arrêter la stack
         if: always()
         run: docker compose -f docker-compose.e2e.yml down -v || true
