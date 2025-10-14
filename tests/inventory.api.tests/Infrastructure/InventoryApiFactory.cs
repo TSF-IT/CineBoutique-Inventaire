@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
@@ -36,7 +37,7 @@ public sealed class InventoryApiFactory : WebApplicationFactory<Program>
                 ["APPLY_MIGRATIONS"] = "false",
                 ["DISABLE_MIGRATIONS"] = "false",
                 ["RunMigrationsOnStart"] = "false",
-                ["AppSettings:SeedOnStartup"] = "false"
+                ["AppSettings:SeedOnStartup"] = "false",
             };
             configurationBuilder.AddInMemoryCollection(overrides!);
         });

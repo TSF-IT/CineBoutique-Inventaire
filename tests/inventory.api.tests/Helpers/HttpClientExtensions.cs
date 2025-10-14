@@ -20,5 +20,6 @@ namespace CineBoutique.Inventory.Api.Tests.Helpers
 
             return new Uri(client.BaseAddress, relativePath);
         }
+
     }
 }

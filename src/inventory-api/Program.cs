@@ -1,7 +1,4 @@
 // Modifications : simplification de Program.cs via des extensions et intégration du mapping conflits.
-using Microsoft.Extensions.Diagnostics.HealthChecks;
-using System.Data;
-using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Http;
@@ -21,6 +18,7 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -30,9 +28,11 @@ using Serilog; // requis pour UseSerilog()
 using CineBoutique.Inventory.Api.Infrastructure.Health;
 using AppLog = CineBoutique.Inventory.Api.Hosting.Log;
 using Dapper;
+using Microsoft.OpenApi.Models;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -155,34 +155,18 @@ builder.Services.AddScoped<IShopService, ShopService>();
 builder.Services.AddScoped<IShopUserService, ShopUserService>();
 
 // --- CORS ---
-const string PublicApiCorsPolicy = "PublicApi";
-const string DevCorsPolicy = "AllowDev";
+const string DefaultCorsPolicy = "PublicApi";
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy(DevCorsPolicy, policyBuilder =>
+    options.AddPolicy(DefaultCorsPolicy, policyBuilder =>
     {
-        policyBuilder
-            .WithOrigins(AppDefaults.DevOrigins)
-            .AllowAnyHeader()
-            .AllowAnyMethod();
-    });
-
-    options.AddPolicy(PublicApiCorsPolicy, policyBuilder =>
-    {
-        if (allowedOrigins.Length > 0)
-        {
-            // Ajouter l’IP LAN si besoin (ex: http://192.168.1.42:5173)
-            policyBuilder.WithOrigins(allowedOrigins).AllowCredentials();
-        }
-        else
-        {
-            policyBuilder.SetIsOriginAllowed(_ => true);
-        }
+        var origins = allowedOrigins.Length > 0 ? allowedOrigins : AppDefaults.DevOrigins;
 
         policyBuilder
-            .WithMethods(AppDefaults.CorsMethods)
+            .WithOrigins(origins)
             .AllowAnyHeader()
-            .SetPreflightMaxAge(TimeSpan.FromHours(1));
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
 });
 
@@ -302,6 +286,8 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
 });
 
+app.UseCors(DefaultCorsPolicy);
+
 app.UseStatusCodePages();
 
 app.Use(async (context, next) =>
@@ -364,15 +350,6 @@ if (seedOnStartup)
     await seeder.SeedAsync().ConfigureAwait(false);
 }
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseCors(DevCorsPolicy);
-}
-else
-{
-    app.UseCors(PublicApiCorsPolicy);
-}
-
 if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
 {
     app.UseSwagger();
@@ -406,6 +383,8 @@ app.Use(async (ctx, next) =>
 
 app.MapHealthEndpoints();
 app.MapDiagnosticsEndpoints();
+app.MapGet("/ready", () => Results.Ok(new { status = "Ready" }));
+app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
 app.MapInventoryEndpoints();
 app.MapProductEndpoints();
 
@@ -447,10 +426,5 @@ internal static class AppDefaults
     [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
-    ];
-
-    public static readonly string[] CorsMethods =
-    [
-        "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"
     ];
 }

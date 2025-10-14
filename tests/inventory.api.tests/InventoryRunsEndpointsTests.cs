@@ -24,7 +24,6 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
-
         var startResponse = await client.PostAsJsonAsync(
             client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
             new StartRunRequest(seeded.ShopId, seeded.PrimaryUserId, 1)
@@ -57,7 +56,6 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
-
         var startResponse = await client.PostAsJsonAsync(
             client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
             new StartRunRequest(seeded.ShopId, seeded.PrimaryUserId, 1)
@@ -95,7 +93,6 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
-
         var firstStart = await client.PostAsJsonAsync(
             client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
             new StartRunRequest(seeded.ShopId, seeded.PrimaryUserId, 1)
@@ -135,7 +132,6 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
-
         var initialStart = await client.PostAsJsonAsync(
             client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
             new StartRunRequest(seeded.ShopId, seeded.PrimaryUserId, 2)
@@ -172,7 +168,6 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
-
         var startResponse = await client.PostAsJsonAsync(
             client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
             new StartRunRequest(seeded.ShopId, seeded.PrimaryUserId, 1)
@@ -199,7 +194,6 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
-
         var firstStart = await client.PostAsJsonAsync(
             client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
             new StartRunRequest(seeded.ShopId, seeded.PrimaryUserId, 1)
@@ -221,7 +215,6 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
-
         var missingRunId = Guid.NewGuid();
         var completeResponse = await CompleteRunAsync(
             client,

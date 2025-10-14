@@ -35,6 +35,8 @@ public sealed class OpenApiContractTests : IntegrationTestBase
         diagnostic.Should().NotBeNull();
         diagnostic!.Errors.Should().BeEmpty("le document OpenAPI doit être valide");
 
+        document.Components.SecuritySchemes.Should().BeEmpty("l'API est désormais publique sans schéma d'authentification");
+
         var paths = document.Paths;
 
         paths.Should().ContainKey("/api/products");
