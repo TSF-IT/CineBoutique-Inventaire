@@ -21,6 +21,7 @@ services:
       context: .
       dockerfile: src/inventory-api/Dockerfile
     container_name: inventory-api-e2e
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     depends_on:
       db:
         condition: service_healthy

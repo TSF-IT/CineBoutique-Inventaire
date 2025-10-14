@@ -272,6 +272,12 @@ jobs:
           # world-writable so the API container (root) can create files and the runner can read them
           chmod 777 _ci_dumps || true
 
+      - name: Export host UID/GID for compose
+        if: always()
+        run: |
+          echo "HOST_UID=$(id -u)" >> "$GITHUB_ENV"
+          echo "HOST_GID=$(id -g)" >> "$GITHUB_ENV"
+
       - name: Démarrer la stack (API + web + Postgres)
         env:
           PUBLIC_HOST: localhost
