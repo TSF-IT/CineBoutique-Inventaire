@@ -14,7 +14,7 @@ defaults:
 
 jobs:
   build-and-test:
-    runs-on: [self-hosted, tsf, Linux, X64]
+    runs-on: [self-hosted, tsf-dsi, Linux, X64]
     permissions:
       contents: read
       checks: write
@@ -149,7 +149,7 @@ jobs:
             test-results/web/**
 
   e2e-web:
-    runs-on: [self-hosted, tsf, Linux, X64]
+    runs-on: [self-hosted, tsf-dsi, Linux, X64]
     container:
       image: mcr.microsoft.com/playwright:v1.49.1-jammy
       options: --user root
@@ -231,7 +231,7 @@ jobs:
           fi
 
   e2e-real:
-    runs-on: [self-hosted, tsf, Linux, X64]
+    runs-on: [self-hosted, tsf-dsi, Linux, X64]
     needs: build-and-test
     if: always()
     continue-on-error: true
@@ -261,12 +261,13 @@ jobs:
           PUBLIC_HOST: localhost
         run: |
           set -euo pipefail
-          docker compose -f docker-compose.yml -f docker-compose.override.yml up -d --build
+          docker compose -f docker-compose.e2e.yml build --no-cache
+          docker compose -f docker-compose.e2e.yml up -d --force-recreate
 
       - name: Attendre la disponibilité de l'API
         run: |
           set -euo pipefail
-          endpoint="http://127.0.0.1:8080/api/healthz"
+          endpoint="http://127.0.0.1:8080/health"
           for attempt in {1..30}; do
             if curl -fsS "$endpoint" > /dev/null; then
               echo "API prête."
@@ -276,7 +277,7 @@ jobs:
             sleep 5
           done
           echo "API indisponible après 30 tentatives." >&2
-          docker compose -f docker-compose.yml -f docker-compose.override.yml logs api || true
+          docker compose -f docker-compose.e2e.yml logs api || true
           exit 1
 
       - name: Attendre la disponibilité du front
@@ -292,7 +293,7 @@ jobs:
             sleep 5
           done
           echo "Front indisponible après 30 tentatives." >&2
-          docker compose -f docker-compose.yml -f docker-compose.override.yml logs web || true
+          docker compose -f docker-compose.e2e.yml logs web || true
           exit 1
 
       - name: Tests Playwright (stack réelle)
@@ -321,11 +322,11 @@ jobs:
 
       - name: Logs docker (échec)
         if: failure()
-        run: docker compose -f docker-compose.yml -f docker-compose.override.yml logs
+        run: docker compose -f docker-compose.e2e.yml logs
 
       - name: Arrêter la stack
         if: always()
-        run: docker compose -f docker-compose.yml -f docker-compose.override.yml down -v || true
+        run: docker compose -f docker-compose.e2e.yml down -v || true
 
       - name: Nettoyage node_modules
         if: always()
