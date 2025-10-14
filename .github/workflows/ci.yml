@@ -1,5 +1,25 @@
 name: ci
-on: [push, pull_request, workflow_dispatch]
+on:
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '**/*.png'
+      - '**/*.jpg'
+      - '**/*.svg'
+      - '**/*.gif'
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '**/*.png'
+      - '**/*.jpg'
+      - '**/*.svg'
+      - '**/*.gif'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -55,7 +75,6 @@ jobs:
           echo "$HOME/.dotnet" >> "$GITHUB_PATH"
           echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
-      # ⬇️ Remplace l'installation manuelle par setup-dotnet
       - name: Setup .NET 8 SDK
         uses: actions/setup-dotnet@v4
         env:
@@ -143,7 +162,9 @@ jobs:
             test-results/dotnet/**/*.trx
             test-results/web/**
 
+  # 👇 E2E uniquement sur PR non-draft
   e2e-web:
+    if: github.event_name == 'pull_request' && !github.event.pull_request.draft
     runs-on: [self-hosted, tsf-dsi, Linux, X64]
     container:
       image: mcr.microsoft.com/playwright:v1.49.1-jammy
@@ -225,9 +246,9 @@ jobs:
           fi
 
   e2e-real:
+    if: github.event_name == 'pull_request' && !github.event.pull_request.draft
     runs-on: [self-hosted, tsf-dsi, Linux, X64]
     needs: build-and-test
-    if: always()
     continue-on-error: true
     steps:
       - name: Pre-checkout clean (no sudo; use Docker if available)

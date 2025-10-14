@@ -1,8 +1,24 @@
 name: API Integration Tests (self-hosted)
 
 on:
-  push:
   pull_request:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '**/*.png'
+      - '**/*.jpg'
+      - '**/*.svg'
+      - '**/*.gif'
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '**/*.png'
+      - '**/*.jpg'
+      - '**/*.svg'
+      - '**/*.gif'
   workflow_dispatch:
 
 concurrency:
@@ -89,7 +105,6 @@ jobs:
           echo "$HOME/.dotnet" >> "$GITHUB_PATH"
           echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
-      # ⬇️ Remplace l'installation manuelle par setup-dotnet
       - name: Setup .NET 8 SDK
         uses: actions/setup-dotnet@v4
         env:
