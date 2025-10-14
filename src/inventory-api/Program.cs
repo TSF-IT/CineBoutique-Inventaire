@@ -348,6 +348,18 @@ if (seedOnStartup)
     await seeder.SeedAsync().ConfigureAwait(false);
 }
 
+var shouldRunE2ESeed = string.Equals(app.Environment.EnvironmentName, "Docker", StringComparison.OrdinalIgnoreCase) || seedOnStartup;
+
+var ct = CancellationToken.None;
+
+if (shouldRunE2ESeed)
+{
+    using var e2eScope = app.Services.CreateScope();
+    var e2eSeeder = e2eScope.ServiceProvider.GetRequiredService<InventoryE2ESeeder>();
+    await e2eSeeder.SeedAsync(ct).ConfigureAwait(false);
+    app.Logger.LogInformation("E2E seed completed.");
+}
+
 if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
 {
     app.UseSwagger();

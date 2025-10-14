@@ -35,6 +35,7 @@ public static class ServiceCollectionExtensions
             .AddLogging(lb => lb.AddFluentMigratorConsole());
 
         services.AddScoped<InventoryDataSeeder>();
+        services.AddTransient<InventoryE2ESeeder>();
         services.AddScoped<IAuditLogger, DapperAuditLogger>();
 
         return services;

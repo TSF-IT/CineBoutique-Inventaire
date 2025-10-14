@@ -25,14 +25,14 @@ services:
       db:
         condition: service_healthy
     environment:
-      ASPNETCORE_ENVIRONMENT: Docker
-      ASPNETCORE_DETAILEDERRORS: "true"
-      ConnectionStrings__Default: "Host=db;Port=5432;Database=inventory;Username=postgres;Password=postgres;Include Error Detail=true"
-      APPLY_MIGRATIONS: "true"
-      DISABLE_MIGRATIONS: "false"
-      AppSettings__SeedOnStartup: "true"
-      DISABLE_SERILOG: "false"
-      PUBLIC_HOST: ${PUBLIC_HOST:-localhost}
+      - ASPNETCORE_ENVIRONMENT=Docker
+      - ASPNETCORE_DETAILEDERRORS=true
+      - "ConnectionStrings__Default=Host=db;Port=5432;Database=inventory;Username=postgres;Password=postgres;Include Error Detail=true"
+      - APPLY_MIGRATIONS=true
+      - DISABLE_MIGRATIONS=false
+      - AppSettings__SeedOnStartup=true
+      - DISABLE_SERILOG=false
+      - "PUBLIC_HOST=${PUBLIC_HOST:-localhost}"
     ports:
       - "8080:8080"
 
