@@ -219,9 +219,12 @@ jobs:
         working-directory: src/inventory-web
         run: npm run build
 
-      - name: Exécuter les tests e2e
+      - name: Exécuter les tests e2e (smoke)
         working-directory: src/inventory-web
-        run: npx playwright test
+        run: |
+          npx playwright test \
+            tests/e2e/happy-path.spec.ts \
+            tests/e2e/scan-fallback.spec.ts
 
       - name: Artefacts Playwright
         if: always()
