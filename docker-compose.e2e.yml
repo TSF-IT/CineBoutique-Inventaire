@@ -33,8 +33,24 @@ services:
       - AppSettings__SeedOnStartup=true
       - DISABLE_SERILOG=false
       - "PUBLIC_HOST=${PUBLIC_HOST:-localhost}"
+      # (garde tes variables existantes)
+      - DOTNET_DbgEnableMiniDump=1
+      - DOTNET_DbgMiniDumpType=4           # mini dump with heap
+      - DOTNET_DbgMiniDumpName=/dumps/cineboutique-api-%e-%p.dmp
+      - COMPlus_ReadyToRun=0               # neutralise R2R : évite quelques crashs JIT/R2R en CI
+      - DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1  # évite dépendances ICU
     ports:
       - "8080:8080"
+    volumes:
+      - ./_ci_dumps:/dumps
+    ulimits:
+      core: -1
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: "on-failure:2"
 
   web:
     build:
