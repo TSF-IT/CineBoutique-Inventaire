@@ -82,9 +82,18 @@ jobs:
           echo "RUNNER_TEMP=$HOME/.cache/gha/_temp" >> "$GITHUB_ENV"
           mkdir -p "$HOME/.cache/gha/_tool" "$HOME/.cache/gha/_temp"
 
+      - name: Force user-space install dir for .NET
+        run: |
+          echo "DOTNET_INSTALL_DIR=$HOME/.dotnet" >> "$GITHUB_ENV"
+          echo "DOTNET_ROOT=$HOME/.dotnet" >> "$GITHUB_ENV"
+          echo "$HOME/.dotnet" >> "$GITHUB_PATH"
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
       # ⬇️ Remplace l'installation manuelle par setup-dotnet
       - name: Setup .NET 8 SDK
         uses: actions/setup-dotnet@v4
+        env:
+          DOTNET_INSTALL_DIR: ${{ env.DOTNET_INSTALL_DIR }}
         with:
           dotnet-version: '8.0.x'
           cache: true
