@@ -460,6 +460,15 @@ app.Lifetime.ApplicationStarted.Register(() =>
 
 await app.RunAsync().ConfigureAwait(false);
 
+internal static class AppDefaults
+{
+    public static readonly string[] DevOrigins =
+    [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ];
+}
+
 // ---- placez CE BLOC tout à la fin de Program.cs, APRES app.Run(); ----
 public partial class Program
 {
@@ -481,11 +490,4 @@ public partial class Program
     }
 }
 
-internal static class AppDefaults
-{
-    public static readonly string[] DevOrigins =
-    [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ];
-}
+public partial class Program { }
