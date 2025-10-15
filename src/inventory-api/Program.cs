@@ -33,10 +33,33 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Data;
+using System.Threading;
+using System.Threading.Tasks;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var readiness = new ReadinessState();
+// Readiness shared state
+public sealed class ReadinessState
+{
+    private volatile bool _ready;
+    private volatile string? _lastError;
+
+    public bool IsReady => _ready;
+    public string? LastError => _lastError;
+
+    public void MarkReady()
+    {
+        _lastError = null;
+        _ready = true;
+    }
+    public void MarkFailed(Exception ex)
+    {
+        _lastError = ex.Message;
+        _ready = false;
+    }
+}
+
+builder.Services.AddSingleton<ReadinessState>();
 
 builder.Host.UseDefaultServiceProvider(options =>
 {
@@ -208,12 +231,22 @@ builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<ProcessorOpti
 var app = builder.Build();
 
 var env = app.Environment;
+var readinessState = app.Services.GetRequiredService<ReadinessState>();
 
 app.Logger.LogInformation("[API] Using ownerUserId for runs; legacy operatorName disabled for write.");
 
 app.Logger.LogInformation("ASPNETCORE_ENVIRONMENT = {Env}", env.EnvironmentName);
-var devLike = env.IsDevelopment() || env.IsEnvironment("CI") || 
+var devLike = env.IsDevelopment() || env.IsEnvironment("CI") ||
               string.Equals(env.EnvironmentName, "Docker", StringComparison.OrdinalIgnoreCase);
+
+var applyMigrations = app.Configuration.GetValue<bool>("APPLY_MIGRATIONS");
+var disableMigrations = app.Configuration.GetValue<bool>("DISABLE_MIGRATIONS");
+AppLog.MigrationsFlags(app.Logger, applyMigrations, disableMigrations);
+
+var seedOnStartup = app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup");
+AppLog.SeedOnStartup(app.Logger, seedOnStartup);
+
+var shouldRunE2ESeed = string.Equals(env.EnvironmentName, "Docker", StringComparison.OrdinalIgnoreCase) || seedOnStartup;
 
 if (devLike)
 {
@@ -248,14 +281,19 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
 
 app.UseCors(DefaultCorsPolicy);
 
-// Liveness probe accessible immédiatement
+// Liveness: toujours 200 tant que le process répond
 app.MapGet("/health", () => Results.Ok("Healthy"));
 
-// Readiness probe : 503 tant que migrations/seed non terminés
-app.MapGet("/ready", () =>
+// Readiness partagé via DI : 200 uniquement quand migrations/seed terminés
+app.MapGet("/ready", (ReadinessState readiness) =>
     readiness.IsReady
         ? Results.Ok("Ready")
         : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
+
+app.MapGet("/ready/details", (ReadinessState readiness) =>
+    readiness.IsReady
+        ? Results.Ok(new { status = "ready" })
+        : Results.Json(new { status = "not-ready", error = readiness.LastError }, statusCode: StatusCodes.Status503ServiceUnavailable));
 
 app.UseStatusCodePages();
 
@@ -269,123 +307,6 @@ app.Use(async (context, next) =>
 
     await next().ConfigureAwait(false);
 });
-
-// Migrations au démarrage (hors environnement de test)
-if (!app.Environment.IsEnvironment("Testing"))
-{
-    using var scope = app.Services.CreateScope();
-    var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
-    try
-    {
-        runner.MigrateUp();
-        app.Logger.LogInformation("Database migrations applied.");
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "Failed to apply migrations");
-        throw; // en DEV tu peux décider de ne pas throw si tu veux juste voir l’API démarrer
-    }
-}
-
-// Seeding en dev
-if (app.Environment.IsDevelopment())
-{
-    using var scope = app.Services.CreateScope();
-    var seeder = scope.ServiceProvider.GetRequiredService<CineBoutique.Inventory.Infrastructure.Seeding.InventoryDataSeeder>();
-
-    const int max = 10;
-    for (var i = 1; i <= max; i++)
-    {
-        try
-        {
-            await seeder.SeedAsync();
-            app.Logger.LogInformation("Database seeded.");
-            break;
-        }
-        catch (Npgsql.NpgsqlException ex) when (i < max)
-        {
-            app.Logger.LogWarning(ex, "DB not ready yet (attempt {Attempt}/{Max}), retrying in 1s…", i, max);
-            await Task.Delay(1000);
-        }
-    }
-}
-
-// Flags migrations depuis config (conservés)
-var applyMigrations = app.Configuration.GetValue<bool>("APPLY_MIGRATIONS");
-var disableMigrations = app.Configuration.GetValue<bool>("DISABLE_MIGRATIONS");
-AppLog.MigrationsFlags(app.Logger, applyMigrations, disableMigrations);
-
-var seedOnStartup = app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup");
-AppLog.SeedOnStartup(app.Logger, seedOnStartup);
-
-var shouldRunE2ESeed = string.Equals(app.Environment.EnvironmentName, "Docker", StringComparison.OrdinalIgnoreCase) || seedOnStartup;
-
-if (!app.Environment.IsEnvironment("Testing"))
-{
-    if (applyMigrations && !disableMigrations)
-    {
-        const int maxAttempts = 10;
-        var attempt = 0;
-
-        while (true)
-        {
-            try
-            {
-                attempt++;
-                using var scope = app.Services.CreateScope();
-                var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
-                runner.MigrateUp();
-
-                var connectionDetails = new NpgsqlConnectionStringBuilder(connectionString);
-                AppLog.DbHostDb(app.Logger, $"{connectionDetails.Host}/{connectionDetails.Database}");
-
-                if (!shouldRunE2ESeed)
-                {
-                    readiness.MarkReady();
-                }
-
-                break;
-            }
-            catch (Exception ex) when (attempt < maxAttempts && ex is NpgsqlException or TimeoutException or InvalidOperationException)
-            {
-                AppLog.MigrationRetry(app.Logger, attempt, maxAttempts, ex);
-                await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
-            }
-        }
-    }
-    else if (applyMigrations)
-    {
-        AppLog.MigrationsSkipped(app.Logger);
-
-        if (!shouldRunE2ESeed)
-        {
-            readiness.MarkReady();
-        }
-    }
-}
-
-if (!shouldRunE2ESeed && !readiness.IsReady)
-{
-    readiness.MarkReady();
-}
-
-if (seedOnStartup)
-{
-    using var scope = app.Services.CreateScope();
-    var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
-    await seeder.SeedAsync().ConfigureAwait(false);
-}
-
-var ct = CancellationToken.None;
-
-if (shouldRunE2ESeed)
-{
-    using var e2eScope = app.Services.CreateScope();
-    var e2eSeeder = e2eScope.ServiceProvider.GetRequiredService<InventoryE2ESeeder>();
-    await e2eSeeder.SeedAsync(ct).ConfigureAwait(false);
-    app.Logger.LogInformation("E2E seed completed.");
-    readiness.MarkReady();
-}
 
 if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
 {
@@ -451,16 +372,116 @@ app.MapGet("/__debug/db", async (IDbConnection connection) =>
     }
 }).AllowAnonymous();
 
+var logger = app.Logger;
+
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            if (!env.IsEnvironment("Testing"))
+            {
+                using var scope = app.Services.CreateScope();
+                var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+
+                try
+                {
+                    runner.MigrateUp();
+                    logger.LogInformation("Database migrations applied.");
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to apply migrations");
+                    throw;
+                }
+            }
+
+            if (env.IsDevelopment())
+            {
+                using var scope = app.Services.CreateScope();
+                var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
+
+                const int max = 10;
+                for (var i = 1; i <= max; i++)
+                {
+                    try
+                    {
+                        await seeder.SeedAsync().ConfigureAwait(false);
+                        logger.LogInformation("Database seeded.");
+                        break;
+                    }
+                    catch (Npgsql.NpgsqlException ex) when (i < max)
+                    {
+                        logger.LogWarning(ex, "DB not ready yet (attempt {Attempt}/{Max}), retrying in 1s…", i, max);
+                        await Task.Delay(1000).ConfigureAwait(false);
+                    }
+                }
+            }
+
+            if (!env.IsEnvironment("Testing"))
+            {
+                if (applyMigrations && !disableMigrations)
+                {
+                    const int maxAttempts = 10;
+                    var attempt = 0;
+
+                    while (true)
+                    {
+                        try
+                        {
+                            attempt++;
+                            using var migrationScope = app.Services.CreateScope();
+                            var runner = migrationScope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+                            runner.MigrateUp();
+
+                            var connectionDetails = new NpgsqlConnectionStringBuilder(connectionString);
+                            AppLog.DbHostDb(logger, $"{connectionDetails.Host}/{connectionDetails.Database}");
+
+                            break;
+                        }
+                        catch (Exception ex) when (attempt < maxAttempts && ex is NpgsqlException or TimeoutException or InvalidOperationException)
+                        {
+                            AppLog.MigrationRetry(logger, attempt, maxAttempts, ex);
+                            await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+                        }
+                    }
+                }
+                else if (applyMigrations)
+                {
+                    AppLog.MigrationsSkipped(logger);
+                }
+            }
+
+            if (seedOnStartup)
+            {
+                using var scope = app.Services.CreateScope();
+                var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
+                await seeder.SeedAsync().ConfigureAwait(false);
+            }
+
+            if (shouldRunE2ESeed)
+            {
+                using var scope = app.Services.CreateScope();
+                var e2eSeeder = scope.ServiceProvider.GetRequiredService<InventoryE2ESeeder>();
+                await e2eSeeder.SeedAsync(CancellationToken.None).ConfigureAwait(false);
+                logger.LogInformation("E2E seed completed.");
+            }
+
+            readinessState.MarkReady();
+            logger.LogInformation("Startup tasks completed. API is Ready.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Startup tasks failed.");
+            readinessState.MarkFailed(ex);
+        }
+    });
+});
+
 await app.RunAsync().ConfigureAwait(false);
 
 public partial class Program { }
-
-internal sealed class ReadinessState
-{
-    private volatile bool _ready;
-    public bool IsReady => _ready;
-    public void MarkReady() => _ready = true;
-}
 
 internal static class AppDefaults
 {
