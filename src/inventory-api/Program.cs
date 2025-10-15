@@ -461,7 +461,7 @@ app.Lifetime.ApplicationStarted.Register(() =>
 await app.RunAsync().ConfigureAwait(false);
 
 // ---- placez CE BLOC tout à la fin de Program.cs, APRES app.Run(); ----
-partial class Program
+public partial class Program
 {
     public sealed class ReadinessState
     {
