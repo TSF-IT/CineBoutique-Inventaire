@@ -289,16 +289,16 @@ jobs:
       - name: Attendre la disponibilité de l'API
         run: |
           set -euo pipefail
-          endpoint="http://127.0.0.1:8080/health"
-          for attempt in {1..30}; do
+          endpoint="http://127.0.0.1:8080/ready"
+          for attempt in {1..90}; do
             if curl -fsS "$endpoint" > /dev/null; then
               echo "API prête."
               exit 0
             fi
-            echo "Tentative $attempt/30: API indisponible, nouvel essai dans 5 s…"
+            echo "Tentative $attempt/90: API non prête, nouvel essai dans 5 s…"
             sleep 5
           done
-          echo "API indisponible après 30 tentatives." >&2
+          echo "API indisponible après 90 tentatives." >&2
           docker compose -f docker-compose.e2e.yml logs api || true
           exit 1
 

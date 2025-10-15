@@ -39,24 +39,6 @@ internal static class HealthEndpoints
             });
         }).AllowAnonymous();
 
-        app.MapHealthChecks("/health", new HealthCheckOptions
-        {
-            Predicate = _ => false,
-            ResponseWriter = WriteHealthJson
-        }).AllowAnonymous();
-
-        app.MapHealthChecks("/ready", new HealthCheckOptions
-        {
-            Predicate = r => r.Tags.Contains("ready"),
-            ResultStatusCodes =
-            {
-                [HealthStatus.Healthy] = StatusCodes.Status200OK,
-                [HealthStatus.Degraded] = StatusCodes.Status503ServiceUnavailable,
-                [HealthStatus.Unhealthy] = StatusCodes.Status503ServiceUnavailable
-            },
-            ResponseWriter = WriteHealthJson
-        }).AllowAnonymous();
-
         app.MapHealthChecks("/healthz", new HealthCheckOptions
         {
             Predicate = _ => false,

@@ -36,6 +36,8 @@ using System.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var readiness = new ReadinessState();
+
 builder.Host.UseDefaultServiceProvider(options =>
 {
     options.ValidateOnBuild = false;
@@ -205,46 +207,6 @@ builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<ProcessorOpti
 // --- App ---
 var app = builder.Build();
 
-// Migrations au démarrage (hors environnement de test)
-if (!app.Environment.IsEnvironment("Testing"))
-{
-    using var scope = app.Services.CreateScope();
-    var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
-    try
-    {
-        runner.MigrateUp();
-        app.Logger.LogInformation("Database migrations applied.");
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "Failed to apply migrations");
-        throw; // en DEV tu peux décider de ne pas throw si tu veux juste voir l’API démarrer
-    }
-}
-
-// Seeding en dev
-if (app.Environment.IsDevelopment())
-{
-    using var scope = app.Services.CreateScope();
-    var seeder = scope.ServiceProvider.GetRequiredService<CineBoutique.Inventory.Infrastructure.Seeding.InventoryDataSeeder>();
-
-    const int max = 10;
-    for (var i = 1; i <= max; i++)
-    {
-        try
-        {
-            await seeder.SeedAsync();
-            app.Logger.LogInformation("Database seeded.");
-            break;
-        }
-        catch (Npgsql.NpgsqlException ex) when (i < max)
-        {
-            app.Logger.LogWarning(ex, "DB not ready yet (attempt {Attempt}/{Max}), retrying in 1s…", i, max);
-            await Task.Delay(1000);
-        }
-    }
-}
-
 var env = app.Environment;
 
 app.Logger.LogInformation("[API] Using ownerUserId for runs; legacy operatorName disabled for write.");
@@ -286,6 +248,15 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
 
 app.UseCors(DefaultCorsPolicy);
 
+// Liveness probe accessible immédiatement
+app.MapGet("/health", () => Results.Ok("Healthy"));
+
+// Readiness probe : 503 tant que migrations/seed non terminés
+app.MapGet("/ready", () =>
+    readiness.IsReady
+        ? Results.Ok("Ready")
+        : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
+
 app.UseStatusCodePages();
 
 app.Use(async (context, next) =>
@@ -299,10 +270,55 @@ app.Use(async (context, next) =>
     await next().ConfigureAwait(false);
 });
 
+// Migrations au démarrage (hors environnement de test)
+if (!app.Environment.IsEnvironment("Testing"))
+{
+    using var scope = app.Services.CreateScope();
+    var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+    try
+    {
+        runner.MigrateUp();
+        app.Logger.LogInformation("Database migrations applied.");
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "Failed to apply migrations");
+        throw; // en DEV tu peux décider de ne pas throw si tu veux juste voir l’API démarrer
+    }
+}
+
+// Seeding en dev
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var seeder = scope.ServiceProvider.GetRequiredService<CineBoutique.Inventory.Infrastructure.Seeding.InventoryDataSeeder>();
+
+    const int max = 10;
+    for (var i = 1; i <= max; i++)
+    {
+        try
+        {
+            await seeder.SeedAsync();
+            app.Logger.LogInformation("Database seeded.");
+            break;
+        }
+        catch (Npgsql.NpgsqlException ex) when (i < max)
+        {
+            app.Logger.LogWarning(ex, "DB not ready yet (attempt {Attempt}/{Max}), retrying in 1s…", i, max);
+            await Task.Delay(1000);
+        }
+    }
+}
+
 // Flags migrations depuis config (conservés)
 var applyMigrations = app.Configuration.GetValue<bool>("APPLY_MIGRATIONS");
 var disableMigrations = app.Configuration.GetValue<bool>("DISABLE_MIGRATIONS");
 AppLog.MigrationsFlags(app.Logger, applyMigrations, disableMigrations);
+
+var seedOnStartup = app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup");
+AppLog.SeedOnStartup(app.Logger, seedOnStartup);
+
+var shouldRunE2ESeed = string.Equals(app.Environment.EnvironmentName, "Docker", StringComparison.OrdinalIgnoreCase) || seedOnStartup;
 
 if (!app.Environment.IsEnvironment("Testing"))
 {
@@ -323,6 +339,11 @@ if (!app.Environment.IsEnvironment("Testing"))
                 var connectionDetails = new NpgsqlConnectionStringBuilder(connectionString);
                 AppLog.DbHostDb(app.Logger, $"{connectionDetails.Host}/{connectionDetails.Database}");
 
+                if (!shouldRunE2ESeed)
+                {
+                    readiness.MarkReady();
+                }
+
                 break;
             }
             catch (Exception ex) when (attempt < maxAttempts && ex is NpgsqlException or TimeoutException or InvalidOperationException)
@@ -335,11 +356,18 @@ if (!app.Environment.IsEnvironment("Testing"))
     else if (applyMigrations)
     {
         AppLog.MigrationsSkipped(app.Logger);
+
+        if (!shouldRunE2ESeed)
+        {
+            readiness.MarkReady();
+        }
     }
 }
 
-var seedOnStartup = app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup");
-AppLog.SeedOnStartup(app.Logger, seedOnStartup);
+if (!shouldRunE2ESeed && !readiness.IsReady)
+{
+    readiness.MarkReady();
+}
 
 if (seedOnStartup)
 {
@@ -347,8 +375,6 @@ if (seedOnStartup)
     var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
     await seeder.SeedAsync().ConfigureAwait(false);
 }
-
-var shouldRunE2ESeed = string.Equals(app.Environment.EnvironmentName, "Docker", StringComparison.OrdinalIgnoreCase) || seedOnStartup;
 
 var ct = CancellationToken.None;
 
@@ -358,6 +384,7 @@ if (shouldRunE2ESeed)
     var e2eSeeder = e2eScope.ServiceProvider.GetRequiredService<InventoryE2ESeeder>();
     await e2eSeeder.SeedAsync(ct).ConfigureAwait(false);
     app.Logger.LogInformation("E2E seed completed.");
+    readiness.MarkReady();
 }
 
 if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
@@ -393,8 +420,6 @@ app.Use(async (ctx, next) =>
 
 app.MapHealthEndpoints();
 app.MapDiagnosticsEndpoints();
-app.MapGet("/ready", () => Results.Ok(new { status = "Ready" }));
-app.MapGet("/health", () => Results.Ok(new { status = "Healthy" }));
 app.MapInventoryEndpoints();
 app.MapProductEndpoints();
 
@@ -429,6 +454,13 @@ app.MapGet("/__debug/db", async (IDbConnection connection) =>
 await app.RunAsync().ConfigureAwait(false);
 
 public partial class Program { }
+
+internal sealed class ReadinessState
+{
+    private volatile bool _ready;
+    public bool IsReady => _ready;
+    public void MarkReady() => _ready = true;
+}
 
 internal static class AppDefaults
 {
