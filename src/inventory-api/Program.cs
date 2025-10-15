@@ -38,27 +38,6 @@ using System.Threading.Tasks;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Readiness shared state
-public sealed class ReadinessState
-{
-    private volatile bool _ready;
-    private volatile string? _lastError;
-
-    public bool IsReady => _ready;
-    public string? LastError => _lastError;
-
-    public void MarkReady()
-    {
-        _lastError = null;
-        _ready = true;
-    }
-    public void MarkFailed(Exception ex)
-    {
-        _lastError = ex.Message;
-        _ready = false;
-    }
-}
-
 builder.Services.AddSingleton<ReadinessState>();
 
 builder.Host.UseDefaultServiceProvider(options =>
@@ -481,7 +460,26 @@ app.Lifetime.ApplicationStarted.Register(() =>
 
 await app.RunAsync().ConfigureAwait(false);
 
-public partial class Program { }
+// ---- placez CE BLOC tout à la fin de Program.cs, APRES app.Run(); ----
+partial class Program
+{
+    public sealed class ReadinessState
+    {
+        private volatile bool _ready;
+        private volatile string? _lastError;
+
+        public bool IsReady => _ready;
+        public string? LastError => _lastError;
+
+        public void MarkReady() => _ready = true;
+
+        public void MarkFailed(Exception ex)
+        {
+            _ready = false;
+            _lastError = ex.Message;
+        }
+    }
+}
 
 internal static class AppDefaults
 {
