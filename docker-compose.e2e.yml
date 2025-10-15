@@ -28,6 +28,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Docker
       - ASPNETCORE_URLS=http://0.0.0.0:${PORT:-8080}
+      - "ASPNETCORE_URLS=http://+:8080"
       - ASPNETCORE_DETAILEDERRORS=true
       - "ConnectionStrings__Default=Host=inventory-db-e2e;Port=5432;Database=inventory-e2e;Username=postgres;Password=postgres;Include Error Detail=true"
       - APPLY_MIGRATIONS=true
