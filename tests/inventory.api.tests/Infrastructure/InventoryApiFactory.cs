@@ -11,7 +11,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace CineBoutique.Inventory.Api.Tests.Infrastructure;
 
-public sealed class InventoryApiFactory : WebApplicationFactory<Program>
+internal sealed class InventoryApiFactory : Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<global::Program>
 {
     private readonly string _connectionString;
     private readonly bool _useTestAuditLogger;
