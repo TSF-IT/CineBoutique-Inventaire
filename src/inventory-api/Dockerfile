@@ -35,8 +35,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # Healthcheck intégré à l'image (évite de le redéfinir dans compose)
-HEALTHCHECK --interval=5s --timeout=2s --start-period=10s --retries=15 \
-  CMD curl -fsS http://localhost:8080/health >/dev/null || exit 1
+HEALTHCHECK --interval=3s --timeout=2s --retries=20 --start-period=10s CMD curl -fsS http://localhost:8080/health || exit 1
 
 COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "CineBoutique.Inventory.Api.dll"]

@@ -28,7 +28,7 @@ namespace CineBoutique.Inventory.Api.Infrastructure.Health
                 await using var conn = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
                 using var cmd = conn.CreateCommand();
                 cmd.CommandText = "SELECT 1";
-                _ = cmd.ExecuteScalar(); // sync ok ici (commande triviale)
+                await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
                 return HealthCheckResult.Healthy("DB reachable");
             }
             catch (Exception ex)

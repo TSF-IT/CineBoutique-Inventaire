@@ -1,7 +1,4 @@
 // Modifications : simplification de Program.cs via des extensions et intégration du mapping conflits.
-using Microsoft.Extensions.Diagnostics.HealthChecks;
-using System.Data;
-using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Http;
@@ -21,6 +18,7 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -30,11 +28,17 @@ using Serilog; // requis pour UseSerilog()
 using CineBoutique.Inventory.Api.Infrastructure.Health;
 using AppLog = CineBoutique.Inventory.Api.Hosting.Log;
 using Dapper;
+using Microsoft.OpenApi.Models;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Data;
+using System.Threading;
+using System.Threading.Tasks;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddSingleton<ReadinessState>();
 
 builder.Host.UseDefaultServiceProvider(options =>
 {
@@ -155,34 +159,16 @@ builder.Services.AddScoped<IShopService, ShopService>();
 builder.Services.AddScoped<IShopUserService, ShopUserService>();
 
 // --- CORS ---
-const string PublicApiCorsPolicy = "PublicApi";
-const string DevCorsPolicy = "AllowDev";
+const string DefaultCorsPolicy = "PublicApi";
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy(DevCorsPolicy, policyBuilder =>
+    options.AddPolicy(DefaultCorsPolicy, policyBuilder =>
     {
         policyBuilder
-            .WithOrigins(AppDefaults.DevOrigins)
+            .WithOrigins(allowedOrigins)
             .AllowAnyHeader()
-            .AllowAnyMethod();
-    });
-
-    options.AddPolicy(PublicApiCorsPolicy, policyBuilder =>
-    {
-        if (allowedOrigins.Length > 0)
-        {
-            // Ajouter l’IP LAN si besoin (ex: http://192.168.1.42:5173)
-            policyBuilder.WithOrigins(allowedOrigins).AllowCredentials();
-        }
-        else
-        {
-            policyBuilder.SetIsOriginAllowed(_ => true);
-        }
-
-        policyBuilder
-            .WithMethods(AppDefaults.CorsMethods)
-            .AllowAnyHeader()
-            .SetPreflightMaxAge(TimeSpan.FromHours(1));
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
 });
 
@@ -223,53 +209,23 @@ builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<ProcessorOpti
 // --- App ---
 var app = builder.Build();
 
-// Migrations au démarrage (hors environnement de test)
-if (!app.Environment.IsEnvironment("Testing"))
-{
-    using var scope = app.Services.CreateScope();
-    var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
-    try
-    {
-        runner.MigrateUp();
-        app.Logger.LogInformation("Database migrations applied.");
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogError(ex, "Failed to apply migrations");
-        throw; // en DEV tu peux décider de ne pas throw si tu veux juste voir l’API démarrer
-    }
-}
-
-// Seeding en dev
-if (app.Environment.IsDevelopment())
-{
-    using var scope = app.Services.CreateScope();
-    var seeder = scope.ServiceProvider.GetRequiredService<CineBoutique.Inventory.Infrastructure.Seeding.InventoryDataSeeder>();
-
-    const int max = 10;
-    for (var i = 1; i <= max; i++)
-    {
-        try
-        {
-            await seeder.SeedAsync();
-            app.Logger.LogInformation("Database seeded.");
-            break;
-        }
-        catch (Npgsql.NpgsqlException ex) when (i < max)
-        {
-            app.Logger.LogWarning(ex, "DB not ready yet (attempt {Attempt}/{Max}), retrying in 1s…", i, max);
-            await Task.Delay(1000);
-        }
-    }
-}
-
 var env = app.Environment;
+var readinessState = app.Services.GetRequiredService<ReadinessState>();
 
 app.Logger.LogInformation("[API] Using ownerUserId for runs; legacy operatorName disabled for write.");
 
 app.Logger.LogInformation("ASPNETCORE_ENVIRONMENT = {Env}", env.EnvironmentName);
-var devLike = env.IsDevelopment() || env.IsEnvironment("CI") || 
+var devLike = env.IsDevelopment() || env.IsEnvironment("CI") ||
               string.Equals(env.EnvironmentName, "Docker", StringComparison.OrdinalIgnoreCase);
+
+var applyMigrations = app.Configuration.GetValue<bool>("APPLY_MIGRATIONS");
+var disableMigrations = app.Configuration.GetValue<bool>("DISABLE_MIGRATIONS");
+AppLog.MigrationsFlags(app.Logger, applyMigrations, disableMigrations);
+
+var seedOnStartup = app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup");
+AppLog.SeedOnStartup(app.Logger, seedOnStartup);
+
+var shouldRunE2ESeed = string.Equals(env.EnvironmentName, "Docker", StringComparison.OrdinalIgnoreCase) || seedOnStartup;
 
 if (devLike)
 {
@@ -302,6 +258,22 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
 });
 
+app.UseCors(DefaultCorsPolicy);
+
+// Liveness: toujours 200 tant que le process répond
+app.MapGet("/health", () => Results.Ok("Healthy"));
+
+// Readiness partagé via DI : 200 uniquement quand migrations/seed terminés
+app.MapGet("/ready", (ReadinessState readiness) =>
+    readiness.IsReady
+        ? Results.Ok("Ready")
+        : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
+
+app.MapGet("/ready/details", (ReadinessState readiness) =>
+    readiness.IsReady
+        ? Results.Ok(new { status = "ready" })
+        : Results.Json(new { status = "not-ready", error = readiness.LastError }, statusCode: StatusCodes.Status503ServiceUnavailable));
+
 app.UseStatusCodePages();
 
 app.Use(async (context, next) =>
@@ -314,64 +286,6 @@ app.Use(async (context, next) =>
 
     await next().ConfigureAwait(false);
 });
-
-// Flags migrations depuis config (conservés)
-var applyMigrations = app.Configuration.GetValue<bool>("APPLY_MIGRATIONS");
-var disableMigrations = app.Configuration.GetValue<bool>("DISABLE_MIGRATIONS");
-AppLog.MigrationsFlags(app.Logger, applyMigrations, disableMigrations);
-
-if (!app.Environment.IsEnvironment("Testing"))
-{
-    if (applyMigrations && !disableMigrations)
-    {
-        const int maxAttempts = 10;
-        var attempt = 0;
-
-        while (true)
-        {
-            try
-            {
-                attempt++;
-                using var scope = app.Services.CreateScope();
-                var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
-                runner.MigrateUp();
-
-                var connectionDetails = new NpgsqlConnectionStringBuilder(connectionString);
-                AppLog.DbHostDb(app.Logger, $"{connectionDetails.Host}/{connectionDetails.Database}");
-
-                break;
-            }
-            catch (Exception ex) when (attempt < maxAttempts && ex is NpgsqlException or TimeoutException or InvalidOperationException)
-            {
-                AppLog.MigrationRetry(app.Logger, attempt, maxAttempts, ex);
-                await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
-            }
-        }
-    }
-    else if (applyMigrations)
-    {
-        AppLog.MigrationsSkipped(app.Logger);
-    }
-}
-
-var seedOnStartup = app.Configuration.GetValue<bool>("AppSettings:SeedOnStartup");
-AppLog.SeedOnStartup(app.Logger, seedOnStartup);
-
-if (seedOnStartup)
-{
-    using var scope = app.Services.CreateScope();
-    var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
-    await seeder.SeedAsync().ConfigureAwait(false);
-}
-
-if (app.Environment.IsDevelopment())
-{
-    app.UseCors(DevCorsPolicy);
-}
-else
-{
-    app.UseCors(PublicApiCorsPolicy);
-}
 
 if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
 {
@@ -437,9 +351,114 @@ app.MapGet("/__debug/db", async (IDbConnection connection) =>
     }
 }).AllowAnonymous();
 
-await app.RunAsync().ConfigureAwait(false);
+var logger = app.Logger;
 
-public partial class Program { }
+app.Lifetime.ApplicationStarted.Register(() =>
+{
+    _ = Task.Run(async () =>
+    {
+        try
+        {
+            if (!env.IsEnvironment("Testing"))
+            {
+                using var scope = app.Services.CreateScope();
+                var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+
+                try
+                {
+                    runner.MigrateUp();
+                    logger.LogInformation("Database migrations applied.");
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Failed to apply migrations");
+                    throw;
+                }
+            }
+
+            if (env.IsDevelopment())
+            {
+                using var scope = app.Services.CreateScope();
+                var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
+
+                const int max = 10;
+                for (var i = 1; i <= max; i++)
+                {
+                    try
+                    {
+                        await seeder.SeedAsync().ConfigureAwait(false);
+                        logger.LogInformation("Database seeded.");
+                        break;
+                    }
+                    catch (Npgsql.NpgsqlException ex) when (i < max)
+                    {
+                        logger.LogWarning(ex, "DB not ready yet (attempt {Attempt}/{Max}), retrying in 1s…", i, max);
+                        await Task.Delay(1000).ConfigureAwait(false);
+                    }
+                }
+            }
+
+            if (!env.IsEnvironment("Testing"))
+            {
+                if (applyMigrations && !disableMigrations)
+                {
+                    const int maxAttempts = 10;
+                    var attempt = 0;
+
+                    while (true)
+                    {
+                        try
+                        {
+                            attempt++;
+                            using var migrationScope = app.Services.CreateScope();
+                            var runner = migrationScope.ServiceProvider.GetRequiredService<IMigrationRunner>();
+                            runner.MigrateUp();
+
+                            var connectionDetails = new NpgsqlConnectionStringBuilder(connectionString);
+                            AppLog.DbHostDb(logger, $"{connectionDetails.Host}/{connectionDetails.Database}");
+
+                            break;
+                        }
+                        catch (Exception ex) when (attempt < maxAttempts && ex is NpgsqlException or TimeoutException or InvalidOperationException)
+                        {
+                            AppLog.MigrationRetry(logger, attempt, maxAttempts, ex);
+                            await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+                        }
+                    }
+                }
+                else if (applyMigrations)
+                {
+                    AppLog.MigrationsSkipped(logger);
+                }
+            }
+
+            if (seedOnStartup)
+            {
+                using var scope = app.Services.CreateScope();
+                var seeder = scope.ServiceProvider.GetRequiredService<InventoryDataSeeder>();
+                await seeder.SeedAsync().ConfigureAwait(false);
+            }
+
+            if (shouldRunE2ESeed)
+            {
+                using var scope = app.Services.CreateScope();
+                var e2eSeeder = scope.ServiceProvider.GetRequiredService<InventoryE2ESeeder>();
+                await e2eSeeder.SeedAsync(CancellationToken.None).ConfigureAwait(false);
+                logger.LogInformation("E2E seed completed.");
+            }
+
+            readinessState.MarkReady();
+            logger.LogInformation("Startup tasks completed. API is Ready.");
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Startup tasks failed.");
+            readinessState.MarkFailed(ex);
+        }
+    });
+});
+
+await app.RunAsync().ConfigureAwait(false);
 
 internal static class AppDefaults
 {
@@ -448,9 +467,27 @@ internal static class AppDefaults
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ];
-
-    public static readonly string[] CorsMethods =
-    [
-        "GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"
-    ];
 }
+
+// ---- placez CE BLOC tout à la fin de Program.cs, APRES app.Run(); ----
+public partial class Program
+{
+    public sealed class ReadinessState
+    {
+        private volatile bool _ready;
+        private volatile string? _lastError;
+
+        public bool IsReady => _ready;
+        public string? LastError => _lastError;
+
+        public void MarkReady() => _ready = true;
+
+        public void MarkFailed(Exception ex)
+        {
+            _ready = false;
+            _lastError = ex.Message;
+        }
+    }
+}
+
+public partial class Program { }

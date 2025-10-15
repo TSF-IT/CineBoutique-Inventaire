@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
@@ -10,7 +11,7 @@ using Microsoft.Extensions.Configuration;
 
 namespace CineBoutique.Inventory.Api.Tests.Infrastructure;
 
-public sealed class InventoryApiFactory : WebApplicationFactory<Program>
+internal sealed class InventoryApiFactory : Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<global::Program>
 {
     private readonly string _connectionString;
     private readonly bool _useTestAuditLogger;
@@ -36,7 +37,7 @@ public sealed class InventoryApiFactory : WebApplicationFactory<Program>
                 ["APPLY_MIGRATIONS"] = "false",
                 ["DISABLE_MIGRATIONS"] = "false",
                 ["RunMigrationsOnStart"] = "false",
-                ["AppSettings:SeedOnStartup"] = "false"
+                ["AppSettings:SeedOnStartup"] = "false",
             };
             configurationBuilder.AddInMemoryCollection(overrides!);
         });

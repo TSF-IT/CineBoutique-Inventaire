@@ -1,5 +1,13 @@
 name: ci
-on: [push, pull_request, workflow_dispatch]
+on:
+  pull_request:
+    branches: [ main ]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore: ['**.md','docs/**','**/*.png','**/*.jpg','**/*.svg','**/*.gif']
+  push:
+    branches: [ main ]
+    paths-ignore: ['**.md','docs/**','**/*.png','**/*.jpg','**/*.svg','**/*.gif']
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -14,7 +22,7 @@ defaults:
 
 jobs:
   build-and-test:
-    runs-on: [self-hosted, tsf, Linux, X64]
+    runs-on: [self-hosted, tsf-dsi, Linux, X64]
     permissions:
       contents: read
       checks: write
@@ -149,7 +157,8 @@ jobs:
             test-results/web/**
 
   e2e-web:
-    runs-on: [self-hosted, tsf, Linux, X64]
+    runs-on: [self-hosted, tsf-dsi, Linux, X64]
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
     container:
       image: mcr.microsoft.com/playwright:v1.49.1-jammy
       options: --user root
@@ -228,4 +237,172 @@ jobs:
             '
           else
             echo "Docker non dispo; skip chown."
+          fi
+
+  e2e-real:
+    runs-on: [self-hosted, tsf-dsi, Linux, X64]
+    needs: build-and-test
+    if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.draft }}
+    continue-on-error: true
+    steps:
+      - name: Pre-checkout clean (no sudo; use Docker if available)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -e
+          echo "Workspace: $GITHUB_WORKSPACE"
+          if command -v docker >/dev/null 2>&1; then
+            echo "Cleaning with Docker (root in container)…"
+            docker run --rm -v "$GITHUB_WORKSPACE":/ws alpine:3.20 sh -lc '
+              set -e
+              rm -rf /ws/* /ws/.[!.]* /ws/..?* 2>/dev/null || true
+            '
+          else
+            echo "Docker non disponible; tentative en user-space…"
+            rm -rf "$GITHUB_WORKSPACE"/* "$GITHUB_WORKSPACE"/.[!.]* "$GITHUB_WORKSPACE"/..?* 2>/dev/null || true
+          fi
+          echo "Pre-checkout clean terminé."
+
+      - uses: actions/checkout@v4
+
+      - name: Prepare dumps & logs dirs (before docker compose)
+        if: always()
+        run: |
+          mkdir -p _ci_dumps ci-logs
+          # world-writable so the API container (root) can create files and the runner can read them
+          chmod 777 _ci_dumps || true
+
+      - name: Export host UID/GID for compose
+        if: always()
+        run: |
+          echo "HOST_UID=$(id -u)" >> "$GITHUB_ENV"
+          echo "HOST_GID=$(id -g)" >> "$GITHUB_ENV"
+
+      - name: Démarrer la stack (API + web + Postgres)
+        env:
+          PUBLIC_HOST: localhost
+        run: |
+          set -euo pipefail
+          docker compose -f docker-compose.e2e.yml build --no-cache
+          docker compose -f docker-compose.e2e.yml up -d --force-recreate
+
+      - name: Attendre la disponibilité de l'API
+        run: |
+          set -euo pipefail
+          endpoint="http://127.0.0.1:8080/ready"
+          for attempt in {1..90}; do
+            if curl -fsS "$endpoint" > /dev/null; then
+              echo "API prête."
+              exit 0
+            fi
+            echo "Tentative $attempt/90: API non prête, nouvel essai dans 5 s…"
+            sleep 5
+          done
+          echo "API indisponible après 90 tentatives." >&2
+          docker compose -f docker-compose.e2e.yml logs api || true
+          exit 1
+
+      - name: Attendre la disponibilité du front
+        run: |
+          set -euo pipefail
+          endpoint="https://127.0.0.1/healthz"
+          for attempt in {1..30}; do
+            if curl -kfsS "$endpoint" > /dev/null; then
+              echo "Front prêt."
+              exit 0
+            fi
+            echo "Tentative $attempt/30: front indisponible, nouvel essai dans 5 s…"
+            sleep 5
+          done
+          echo "Front indisponible après 30 tentatives." >&2
+          docker compose -f docker-compose.e2e.yml logs web || true
+          exit 1
+
+      - name: Tests Playwright (stack réelle)
+        env:
+          PLAYWRIGHT_BASE_URL: https://127.0.0.1
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --network host \
+            -e PLAYWRIGHT_BASE_URL="$PLAYWRIGHT_BASE_URL" \
+            -e CI=1 \
+            -v "$PWD":/workspace:ro \
+            -w / \
+            mcr.microsoft.com/playwright:v1.49.1-jammy \
+            bash -lc '
+              set -euo pipefail
+              rm -rf /tmp/ws && mkdir -p /tmp/ws
+              cp -a /workspace/. /tmp/ws/
+              cd /tmp/ws/src/inventory-web
+              npm ci
+              npx playwright install chromium
+              npx playwright test tests/e2e/happy-path.spec.ts --reporter=list --timeout=120000
+            '
+
+      - name: Artefacts Playwright (échec)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-real-playwright-artifacts
+          path: |
+            src/inventory-web/playwright-report/**
+            src/inventory-web/test-results/**
+          if-no-files-found: ignore
+
+      - name: Logs docker (échec)
+        if: failure()
+        run: docker compose -f docker-compose.e2e.yml logs
+
+      - name: Archive API container logs (dernier run)
+        if: always()
+        run: |
+          mkdir -p ci-logs
+          docker logs inventory-api-e2e > ci-logs/inventory-api-e2e.log 2>&1 || true
+        shell: bash
+
+      - name: Upload API container logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-container-logs
+          path: ci-logs/**
+          if-no-files-found: ignore
+
+      - name: Arrêter la stack
+        if: always()
+        run: docker compose -f docker-compose.e2e.yml down -v || true
+
+      - name: Fix crash dump ownership & perms (after docker down)
+        if: always()
+        shell: bash
+        run: |
+          if [ -d "_ci_dumps" ]; then
+            HOST_UID=$(stat -c "%u" "$GITHUB_WORKSPACE")
+            HOST_GID=$(stat -c "%g" "$GITHUB_WORKSPACE")
+            docker run --rm \
+              -e HOST_UID -e HOST_GID \
+              -v "$GITHUB_WORKSPACE/_ci_dumps":/d alpine:3.20 \
+              sh -lc 'chown -R "${HOST_UID}:${HOST_GID}" /d 2>/dev/null || true; chmod -R a+rX /d 2>/dev/null || true'
+          fi
+
+      - name: Archive API crash dumps (si présents)
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-crash-dumps
+          path: _ci_dumps/**
+          if-no-files-found: ignore
+
+      - name: Nettoyage node_modules (root via Docker, silencieux)
+        if: always()
+        shell: bash
+        run: |
+          if command -v docker >/dev/null 2>&1; then
+            docker run --rm -v "$GITHUB_WORKSPACE":/ws alpine:3.20 sh -lc '
+              rm -rf /ws/src/inventory-web/node_modules 2>/dev/null || true
+            '
+          else
+            rm -rf src/inventory-web/node_modules 2>/dev/null || true
           fi
