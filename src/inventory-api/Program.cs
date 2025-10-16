@@ -4,6 +4,7 @@ using System.Data;
 using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
+using CineBoutique.Inventory.Api.Infrastructure.Authentication;
 using CineBoutique.Inventory.Api.Infrastructure.Http;
 using CineBoutique.Inventory.Api.Infrastructure.Middleware;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
@@ -18,6 +19,8 @@ using CineBoutique.Inventory.Infrastructure.Seeding;
 using FluentValidation.AspNetCore;
 using FluentMigrator.Runner;
 using FluentMigrator.Runner.Processors;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -91,6 +94,55 @@ builder.Services.AddTransient<InventoryDataSeeder>();
 
 builder.Services.AddHttpContextAccessor();
 
+builder.Services
+    .AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = AdminHeaderAuthenticationHandler.SchemeName;
+        options.DefaultChallengeScheme = AdminHeaderAuthenticationHandler.SchemeName;
+    })
+    .AddScheme<AuthenticationSchemeOptions, AdminHeaderAuthenticationHandler>(
+        AdminHeaderAuthenticationHandler.SchemeName,
+        options => { });
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("Admin", policy =>
+    {
+        policy.RequireAssertion(context =>
+        {
+            if (context.User?.Identity?.IsAuthenticated == true)
+            {
+                if (context.User.IsInRole("Admin"))
+                {
+                    return true;
+                }
+
+                if (context.User.HasClaim(claim =>
+                        string.Equals(claim.Type, "is_admin", StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(claim.Value, "true", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return true;
+                }
+            }
+
+            if (context.Resource is HttpContext httpContext &&
+                httpContext.Request.Headers.TryGetValue("X-Admin", out var headerValues))
+            {
+                foreach (var value in headerValues)
+                {
+                    if (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(value, "1", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        });
+    });
+});
+
 // --- Swagger ---
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -147,7 +199,7 @@ builder.Services.AddScoped<IDbConnection>(sp =>
 
 // IAuditLogger (API) -> DbAuditLogger écrit déjà dans audit_logs
 builder.Services.AddScoped<IAuditLogger, DbAuditLogger>();
-builder.Services.AddSingleton<IClock, SystemClock>();
+builder.Services.AddSingleton<IClock, CineBoutique.Inventory.Api.Infrastructure.Time.SystemClock>();
 
 // BRIDGE : remplace l'impl du Domain par le pont vers DbAuditLogger
 builder.Services.AddScoped<CineBoutique.Inventory.Domain.Auditing.IAuditLogger, DomainAuditBridgeLogger>();
@@ -155,6 +207,7 @@ builder.Services.AddScoped<CineBoutique.Inventory.Domain.Auditing.IAuditLogger, 
 builder.Services.AddScoped<IShopService, ShopService>();
 builder.Services.AddScoped<IShopUserService, ShopUserService>();
 builder.Services.AddScoped<IProductLookupService, ProductLookupService>();
+builder.Services.AddScoped<IProductImportService, ProductImportService>();
 
 // --- CORS ---
 const string PublicApiCorsPolicy = "PublicApi";
@@ -392,6 +445,9 @@ if (useSerilog)
 
 app.UseMiddleware<LegacyOperatorNameWriteGuardMiddleware>();
 app.UseMiddleware<SoftOperatorMiddleware>();
+
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.Use(async (ctx, next) =>
 {
