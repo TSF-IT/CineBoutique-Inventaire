@@ -159,6 +159,106 @@ La réponse contient l'identifiant du run clôturé ainsi que les agrégats util
 > responsable de chaque comptage en cours ou terminé. Le front se base exclusivement sur ces
 > propriétés pour déterminer les droits d'accès et pour afficher les libellés utilisateur.
 
+### Recherche produit étendue
+
+- `GET /api/products/{code}` applique une résolution hiérarchique :
+  1. correspondance stricte sur le SKU ;
+  2. correspondance stricte sur le code brut (EAN ou code interne) ;
+  3. recherche sur `CodeDigits` (extraction des chiffres).
+
+  En cas d'ambiguïté, l'API retourne un `409 Conflict` contenant l'ensemble des correspondances.
+
+```bash
+curl -s http://localhost:8080/api/products/3057065988108 | jq
+```
+
+```json
+{
+  "id": "d3d0c0af-bd27-4d68-8d2b-1989e2a59f8f",
+  "sku": "CB-0001",
+  "name": "Café grains 1kg",
+  "ean": "3057065988108"
+}
+```
+
+```bash
+curl -i http://localhost:8080/api/products/000123
+```
+
+```http
+HTTP/1.1 409 Conflict
+Content-Type: application/json; charset=utf-8
+
+{
+  "matches": [
+    { "sku": "CB-0001", "code": "3057065988108" },
+    { "sku": "CB-0002", "code": "000123" }
+  ]
+}
+```
+
+- `GET /api/products/search?code={value}&limit={n}` renvoie un tableau fusionné (sans doublon) des stratégies ci-dessus. Le paramètre `code` est obligatoire, `limit` est optionnel (défaut `20`, minimum `1`).
+
+```bash
+curl -s "http://localhost:8080/api/products/search?code=0001&limit=5" | jq
+```
+
+```json
+[
+  { "sku": "CB-0001", "code": "CB-0001", "name": "Café grains 1kg" },
+  { "sku": "CB-0101", "code": "0001", "name": "Bonbon réglisse" }
+]
+```
+
+### Import CSV du catalogue produits
+
+L'endpoint `POST /api/products/import` remplace l'intégralité du catalogue produit.
+
+- Format attendu : fichier CSV encodé en `latin-1` avec séparateur `;` et en-têtes `barcode_rfid;item;descr`.
+- Idempotence : l'import est ignoré (`204 No Content`) si le fichier a déjà été appliqué.
+- Paramètre `dryRun=true|false` (par défaut `false`) pour valider le fichier sans rien écrire ; la réponse contient `dryRun: true` et les compteurs calculés.
+- Verrouillage optimiste : une exécution en cours renvoie `423 Locked` avec `{ "reason": "import_in_progress" }`.
+- Taille maximale : 25 Mio. Un fichier plus volumineux renvoie `413 Payload Too Large`.
+
+```bash
+curl -X POST \
+     -H "Authorization: Bearer <token-admin>" \
+     -F "file=@./catalogue.csv;type=text/csv" \
+     http://localhost:8080/api/products/import | jq
+```
+
+```json
+{
+  "total": 1204,
+  "inserted": 1204,
+  "wouldInsert": 0,
+  "errorCount": 0,
+  "dryRun": false,
+  "skipped": false,
+  "errors": []
+}
+```
+
+```bash
+curl -s -X POST \
+     -H "Authorization: Bearer <token-admin>" \
+     -H "Content-Type: text/csv; charset=ISO-8859-1" \
+     "http://localhost:8080/api/products/import?dryRun=true" \
+     --data-binary @./catalogue.csv | jq
+```
+
+```json
+{
+  "total": 1204,
+  "inserted": 0,
+  "wouldInsert": 1204,
+  "errorCount": 0,
+  "dryRun": true,
+  "skipped": false,
+  "errors": []
+}
+```
+
 ## Configuration applicative
 
 - Chaîne de connexion PostgreSQL : `ConnectionStrings:Default` (surchargée dans Docker via variable d'environnement `ConnectionStrings__Default`).
