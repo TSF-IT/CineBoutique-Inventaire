@@ -199,7 +199,7 @@ builder.Services.AddScoped<IDbConnection>(sp =>
 
 // IAuditLogger (API) -> DbAuditLogger écrit déjà dans audit_logs
 builder.Services.AddScoped<IAuditLogger, DbAuditLogger>();
-builder.Services.AddSingleton<IClock, SystemClock>();
+builder.Services.AddSingleton<IClock, CineBoutique.Inventory.Api.Infrastructure.Time.SystemClock>();
 
 // BRIDGE : remplace l'impl du Domain par le pont vers DbAuditLogger
 builder.Services.AddScoped<CineBoutique.Inventory.Domain.Auditing.IAuditLogger, DomainAuditBridgeLogger>();
