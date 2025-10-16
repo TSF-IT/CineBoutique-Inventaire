@@ -43,7 +43,10 @@ public sealed class RelaxProductCodeAndAddCodeDigits : Migration
 
     public override void Down()
     {
-        Delete.Index(CodeDigitsIndexName).OnTable(TableName).IfExists();
+        if (Schema.Table(TableName).Index(CodeDigitsIndexName).Exists())
+        {
+            Delete.Index(CodeDigitsIndexName).OnTable(TableName);
+        }
 
         if (Schema.Table(TableName).Column(CodeDigitsColumn).Exists())
         {
