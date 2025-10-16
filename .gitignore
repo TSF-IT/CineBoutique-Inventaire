@@ -51,3 +51,5 @@ TestResults/
 .dotnet/
 .DS_Store
 Thumbs.db
+
+src/inventory-web/tests/e2e/certs/

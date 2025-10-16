@@ -204,6 +204,25 @@ jobs:
         working-directory: src/inventory-web
         run: npm run build
 
+      - name: Générer des certificats TLS éphémères pour l'e2e
+        working-directory: src/inventory-web
+        run: |
+          set -euo pipefail
+          CERT_DIR="tests/e2e/certs"
+          mkdir -p "$CERT_DIR"
+          # S'assurer qu'openssl est présent (les runners Ubuntu en disposent ;
+          # si image/container particulier : on l'installe)
+          if ! command -v openssl >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y openssl
+          fi
+          # Certificat auto-signé CN=localhost, valable 1 jour (éphémère)
+          openssl req -x509 -nodes -newkey rsa:2048 \
+            -keyout "$CERT_DIR/localhost-key.pem" \
+            -out    "$CERT_DIR/localhost.pem" \
+            -subj "/CN=localhost" -days 1
+          chmod 600 "$CERT_DIR/localhost-key.pem"
+
       - name: Exécuter les tests e2e
         working-directory: src/inventory-web
         run: npx playwright test
