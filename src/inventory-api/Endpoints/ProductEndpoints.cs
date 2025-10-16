@@ -14,6 +14,7 @@ using FluentValidation.Results;
 using Dapper;
 using Npgsql;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
 
@@ -23,6 +24,9 @@ internal static class ProductEndpoints
 {
     private const string LowerSkuConstraintName = "UX_Product_LowerSku";
     private const string EanNotNullConstraintName = "UX_Product_Ean_NotNull";
+    private sealed class ProductLookupLogger
+    {
+    }
 
     public static IEndpointRouteBuilder MapProductEndpoints(this IEndpointRouteBuilder app)
     {
@@ -722,6 +726,8 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             IAuditLogger auditLogger,
             IClock clock,
             HttpContext httpContext,
+            ILogger<ProductLookupLogger> logger,
+            IProductLookupMetrics lookupMetrics,
             CancellationToken cancellationToken) =>
         {
             var result = await lookupService.ResolveAsync(code, cancellationToken).ConfigureAwait(false);
@@ -750,6 +756,16 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     var matches = result.Matches
                         .Select(match => new ProductLookupConflictMatch(match.Sku, match.Code))
                         .ToArray();
+
+                    lookupMetrics.IncrementAmbiguity();
+                    logger.LogInformation(
+                        "ProductLookupAmbiguity {@Lookup}",
+                        new
+                        {
+                            Code = result.OriginalCode,
+                            Digits = result.Digits ?? string.Empty,
+                            MatchCount = matches.Length
+                        });
 
                     var conflictPayload = new ProductLookupConflictResponse(
                         Ambiguous: true,
