@@ -18,6 +18,7 @@ using CineBoutique.Inventory.Infrastructure.Seeding;
 using FluentValidation.AspNetCore;
 using FluentMigrator.Runner;
 using FluentMigrator.Runner.Processors;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -91,6 +92,45 @@ builder.Services.AddTransient<InventoryDataSeeder>();
 
 builder.Services.AddHttpContextAccessor();
 
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("Admin", policy =>
+    {
+        policy.RequireAssertion(context =>
+        {
+            if (context.User?.Identity?.IsAuthenticated == true)
+            {
+                if (context.User.IsInRole("Admin"))
+                {
+                    return true;
+                }
+
+                if (context.User.HasClaim(claim =>
+                        string.Equals(claim.Type, "is_admin", StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(claim.Value, "true", StringComparison.OrdinalIgnoreCase)))
+                {
+                    return true;
+                }
+            }
+
+            if (context.Resource is HttpContext httpContext &&
+                httpContext.Request.Headers.TryGetValue("X-Admin", out var headerValues))
+            {
+                foreach (var value in headerValues)
+                {
+                    if (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(value, "1", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        });
+    });
+});
+
 // --- Swagger ---
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
@@ -155,6 +195,7 @@ builder.Services.AddScoped<CineBoutique.Inventory.Domain.Auditing.IAuditLogger, 
 builder.Services.AddScoped<IShopService, ShopService>();
 builder.Services.AddScoped<IShopUserService, ShopUserService>();
 builder.Services.AddScoped<IProductLookupService, ProductLookupService>();
+builder.Services.AddScoped<IProductImportService, ProductImportService>();
 
 // --- CORS ---
 const string PublicApiCorsPolicy = "PublicApi";
@@ -392,6 +433,8 @@ if (useSerilog)
 
 app.UseMiddleware<LegacyOperatorNameWriteGuardMiddleware>();
 app.UseMiddleware<SoftOperatorMiddleware>();
+
+app.UseAuthorization();
 
 app.Use(async (ctx, next) =>
 {

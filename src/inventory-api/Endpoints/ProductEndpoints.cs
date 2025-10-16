@@ -1,6 +1,8 @@
 // Modifications : déplacement des endpoints produits depuis Program.cs avec mutualisation des helpers locaux.
 using System;
+using System.Collections.Generic;
 using System.Data;
+using System.IO;
 using System.Linq;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
@@ -9,6 +11,8 @@ using CineBoutique.Inventory.Infrastructure.Database;
 using CineBoutique.Inventory.Api.Services.Products;
 using Dapper;
 using Npgsql;
+using Microsoft.AspNetCore.Http;
+using Microsoft.OpenApi.Models;
 
 namespace CineBoutique.Inventory.Api.Endpoints;
 
@@ -24,6 +28,7 @@ internal static class ProductEndpoints
         MapCreateProductEndpoint(app);
         MapGetProductEndpoint(app);
         MapUpdateProductEndpoints(app);
+        MapImportProductsEndpoint(app);
 
         return app;
     }
@@ -358,6 +363,142 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
         });
     }
 
+    private static void MapImportProductsEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapPost("/api/products/import", async (
+                HttpContext httpContext,
+                IProductImportService importService,
+                CancellationToken cancellationToken) =>
+            {
+                if (httpContext is null)
+                {
+                    return Results.Problem(statusCode: StatusCodes.Status500InternalServerError);
+                }
+
+                var request = httpContext.Request;
+
+                static IResult BuildResponse(ProductImportResponse response) =>
+                    response.Errors.Count > 0 ? Results.BadRequest(response) : Results.Ok(response);
+
+                if (request.HasFormContentType)
+                {
+                    var form = await request.ReadFormAsync(cancellationToken).ConfigureAwait(false);
+                    var file = form.Files.GetFile("file");
+
+                    if (file is null || file.Length == 0)
+                    {
+                        return BuildResponse(ProductImportResponse.Failure(new[]
+                        {
+                            new ProductImportError(0, "MISSING_FILE")
+                        }));
+                    }
+
+                    await using var fileStream = file.OpenReadStream();
+                    var importResponse = await importService.ImportAsync(fileStream, cancellationToken).ConfigureAwait(false);
+                    return BuildResponse(importResponse);
+                }
+
+                if (IsCsvContentType(request.ContentType))
+                {
+                    var importResponse = await importService.ImportAsync(request.Body, cancellationToken).ConfigureAwait(false);
+                    return BuildResponse(importResponse);
+                }
+
+                return BuildResponse(ProductImportResponse.Failure(new[]
+                {
+                    new ProductImportError(0, "UNSUPPORTED_CONTENT_TYPE")
+                }));
+            })
+            .RequireAuthorization("Admin")
+            .WithName("ImportProducts")
+            .WithTags("Produits")
+            .Produces<ProductImportResponse>(StatusCodes.Status200OK)
+            .Produces<ProductImportResponse>(StatusCodes.Status400BadRequest)
+            .WithOpenApi(operation =>
+            {
+                operation.Summary = "Importe le catalogue produits depuis un fichier CSV.";
+                operation.Description = "Remplace l'intégralité de la table Product à partir d'un CSV ';' contenant les colonnes barcode_rfid;item;descr. Accessible uniquement aux administrateurs.";
+
+                operation.RequestBody ??= new OpenApiRequestBody();
+                operation.RequestBody.Required = true;
+                operation.RequestBody.Description = "Fichier CSV avec séparateur ';' et entête barcode_rfid;item;descr.";
+                operation.RequestBody.Content["multipart/form-data"] = new OpenApiMediaType
+                {
+                    Schema = new OpenApiSchema
+                    {
+                        Type = "object",
+                        Properties =
+                        {
+                            ["file"] = new OpenApiSchema
+                            {
+                                Type = "string",
+                                Format = "binary",
+                                Description = "Fichier CSV à importer"
+                            }
+                        },
+                        Required = new HashSet<string>(StringComparer.Ordinal) { "file" }
+                    }
+                };
+
+                operation.RequestBody.Content["text/csv"] = new OpenApiMediaType
+                {
+                    Schema = new OpenApiSchema
+                    {
+                        Type = "string",
+                        Format = "binary",
+                        Description = "Flux CSV brut"
+                    }
+                };
+
+                var successSchema = new OpenApiSchema
+                {
+                    Type = "object",
+                    Properties =
+                    {
+                        ["inserted"] = new OpenApiSchema { Type = "integer", Format = "int32" },
+                        ["errors"] = new OpenApiSchema
+                        {
+                            Type = "array",
+                            Items = new OpenApiSchema
+                            {
+                                Reference = new OpenApiReference
+                                {
+                                    Type = ReferenceType.Schema,
+                                    Id = nameof(ProductImportError)
+                                }
+                            }
+                        }
+                    }
+                };
+
+                operation.Responses[StatusCodes.Status200OK.ToString()] = new OpenApiResponse
+                {
+                    Description = "Import réussi.",
+                    Content =
+                    {
+                        ["application/json"] = new OpenApiMediaType
+                        {
+                            Schema = successSchema
+                        }
+                    }
+                };
+
+                operation.Responses[StatusCodes.Status400BadRequest.ToString()] = new OpenApiResponse
+                {
+                    Description = "Le fichier est invalide.",
+                    Content =
+                    {
+                        ["application/json"] = new OpenApiMediaType
+                        {
+                            Schema = successSchema
+                        }
+                    }
+                };
+
+                return operation;
+            });
+    }
+
     private static void MapGetProductEndpoint(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/products/{code}", async (
@@ -426,6 +567,18 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             op.Description = "Résout d'abord par SKU exact, puis par code brut (EAN/Code) et enfin par chiffres extraits. Retourne 409 en cas de collisions sur CodeDigits.";
             return op;
         });
+    }
+
+    private static bool IsCsvContentType(string? contentType)
+    {
+        if (string.IsNullOrWhiteSpace(contentType))
+        {
+            return false;
+        }
+
+        var separatorIndex = contentType.IndexOf(';');
+        var mediaType = separatorIndex >= 0 ? contentType[..separatorIndex] : contentType;
+        return string.Equals(mediaType.Trim(), "text/csv", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task LogProductCreationAttemptAsync(
