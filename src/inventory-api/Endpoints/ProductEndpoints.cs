@@ -53,6 +53,7 @@ internal static class ProductEndpoints
             var sanitizedSku = sku.Trim();
             var sanitizedName = request.Name?.Trim();
             var sanitizedEan = string.IsNullOrWhiteSpace(request.Ean) ? null : request.Ean.Trim();
+            var sanitizedCodeDigits = EndpointUtilities.BuildCodeDigits(sanitizedEan);
 
             if (string.IsNullOrWhiteSpace(sanitizedName))
             {
@@ -89,13 +90,13 @@ internal static class ProductEndpoints
             }
 
             const string updateSql = @"UPDATE ""Product""
-                                   SET ""Name"" = @Name, ""Ean"" = @Ean
+                                   SET ""Name"" = @Name, ""Ean"" = @Ean, ""CodeDigits"" = @CodeDigits
                                    WHERE ""Id"" = @Id
                                    RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             try
             {
                 var updated = await connection.QuerySingleAsync<ProductDto>(
-                    new CommandDefinition(updateSql, new { Id = existing.Id, Name = sanitizedName, Ean = sanitizedEan }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+                    new CommandDefinition(updateSql, new { Id = existing.Id, Name = sanitizedName, Ean = sanitizedEan, CodeDigits = sanitizedCodeDigits }, cancellationToken: cancellationToken)).ConfigureAwait(false);
 
                 return Results.Ok(updated);
             }
@@ -158,6 +159,7 @@ internal static class ProductEndpoints
 
             var sanitizedName = request.Name?.Trim();
             var sanitizedEan = string.IsNullOrWhiteSpace(request.Ean) ? null : request.Ean.Trim();
+            var sanitizedCodeDigits = EndpointUtilities.BuildCodeDigits(sanitizedEan);
 
             if (string.IsNullOrWhiteSpace(sanitizedName))
             {
@@ -192,13 +194,13 @@ internal static class ProductEndpoints
             }
 
             const string updateSql = @"UPDATE ""Product""
-                                   SET ""Name"" = @Name, ""Ean"" = @Ean
+                                   SET ""Name"" = @Name, ""Ean"" = @Ean, ""CodeDigits"" = @CodeDigits
                                    WHERE ""Id"" = @Id
                                    RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             try
             {
                 var updated = await connection.QuerySingleAsync<ProductDto>(
-                    new CommandDefinition(updateSql, new { Id = id, Name = sanitizedName, Ean = sanitizedEan }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+                    new CommandDefinition(updateSql, new { Id = id, Name = sanitizedName, Ean = sanitizedEan, CodeDigits = sanitizedCodeDigits }, cancellationToken: cancellationToken)).ConfigureAwait(false);
 
                 return Results.Ok(updated);
             }
@@ -256,6 +258,7 @@ internal static class ProductEndpoints
             var sanitizedSku = request.Sku?.Trim();
             var sanitizedName = request.Name?.Trim();
             var sanitizedEan = string.IsNullOrWhiteSpace(request.Ean) ? null : request.Ean.Trim();
+            var sanitizedCodeDigits = EndpointUtilities.BuildCodeDigits(sanitizedEan);
 
             if (string.IsNullOrWhiteSpace(sanitizedSku))
             {
@@ -289,8 +292,8 @@ internal static class ProductEndpoints
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-            const string insertSql = @"INSERT INTO ""Product"" (""Id"", ""Sku"", ""Name"", ""Ean"", ""CreatedAtUtc"")
-VALUES (@Id, @Sku, @Name, @Ean, @CreatedAtUtc)
+            const string insertSql = @"INSERT INTO ""Product"" (""Id"", ""Sku"", ""Name"", ""Ean"", ""CodeDigits"", ""CreatedAtUtc"")
+VALUES (@Id, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc)
 ON CONFLICT (LOWER(""Sku"")) DO NOTHING
 RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
@@ -306,6 +309,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                             Sku = sanitizedSku,
                             Name = sanitizedName,
                             Ean = sanitizedEan,
+                            CodeDigits = sanitizedCodeDigits,
                             CreatedAtUtc = now
                         },
                         cancellationToken: cancellationToken)).ConfigureAwait(false);

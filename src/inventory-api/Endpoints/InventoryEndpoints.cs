@@ -1435,7 +1435,7 @@ WHERE ""Id"" = @RunId;";
 
             var requestedEans = aggregatedItems.Select(item => item.Ean).Distinct(StringComparer.Ordinal).ToArray();
 
-            const string selectProductsSql = "SELECT \"Id\", \"Ean\" FROM \"Product\" WHERE \"Ean\" = ANY(@Eans::text[]);";
+            const string selectProductsSql = "SELECT \"Id\", \"Ean\", \"CodeDigits\" FROM \"Product\" WHERE \"Ean\" = ANY(@Eans::text[]);";
             var existingProducts = (await connection
                     .QueryAsync<ProductLookupRow>(
                         new CommandDefinition(selectProductsSql, new { Eans = requestedEans }, transaction, cancellationToken: cancellationToken))
@@ -1443,7 +1443,7 @@ WHERE ""Id"" = @RunId;";
                 .ToDictionary(row => row.Ean, row => row.Id, StringComparer.Ordinal);
 
             const string insertProductSql =
-                "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"Ean\", \"CreatedAtUtc\") VALUES (@Id, @Sku, @Name, @Ean, @CreatedAtUtc);";
+                "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"Ean\", \"CodeDigits\", \"CreatedAtUtc\") VALUES (@Id, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc);";
 
             const string insertLineSql =
                 "INSERT INTO \"CountLine\" (\"Id\", \"CountingRunId\", \"ProductId\", \"Quantity\", \"CountedAtUtc\") VALUES (@Id, @RunId, @ProductId, @Quantity, @CountedAtUtc);";
@@ -1466,6 +1466,7 @@ WHERE ""Id"" = @RunId;";
                                     Sku = sku,
                                     Name = name,
                                     Ean = item.Ean,
+                                    CodeDigits = EndpointUtilities.BuildCodeDigits(item.Ean),
                                     CreatedAtUtc = now
                                 },
                                 transaction,

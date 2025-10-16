@@ -101,6 +101,17 @@ WHERE LOWER(table_name) = LOWER(@TableName)
         return runId;
     }
 
+    public static string? BuildCodeDigits(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            return null;
+        }
+
+        var digits = new string(code.Where(char.IsDigit).ToArray());
+        return digits.Length == 0 ? null : digits;
+    }
+
     public static IResult ValidationProblem(ValidationResult validationResult)
     {
         ArgumentNullException.ThrowIfNull(validationResult);
