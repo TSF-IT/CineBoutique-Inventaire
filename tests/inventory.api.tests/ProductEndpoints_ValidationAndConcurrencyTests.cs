@@ -274,7 +274,7 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
     }
 
     [SkippableFact]
-    public async Task UpdateProduct_DuplicateEan_ReturnsConflict()
+    public async Task UpdateProduct_DuplicateEan_AllowsDuplication()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
 
@@ -295,15 +295,21 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
         ).ConfigureAwait(false);
         await secondCreate.ShouldBeAsync(HttpStatusCode.Created, "le second produit doit être créé").ConfigureAwait(false);
 
-        Fixture.ClearAuditLogs();
-        var conflictResponse = await client.PutAsJsonAsync(
+        var updateResponse = await client.PutAsJsonAsync(
             client.CreateRelativeUri("/api/products/SKU-CONFLICT-2"),
             new CreateProductRequest { Sku = "SKU-CONFLICT-2", Name = "Produit B", Ean = ean1 }
         ).ConfigureAwait(false);
 
-        await conflictResponse.ShouldBeAsync(HttpStatusCode.Conflict, "la mise à jour vers un EAN existant doit être refusée").ConfigureAwait(false);
-        var conflictLogs = Fixture.DrainAuditLogs();
-        conflictLogs.Should().ContainSingle("le conflit de mise à jour doit être auditée")
-            .Which.Category.Should().Be("products.update.conflict");
+        await updateResponse.ShouldBeAsync(HttpStatusCode.OK, "la mise à jour vers un EAN existant doit désormais réussir").ConfigureAwait(false);
+        var updatedProduct = await updateResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
+        updatedProduct.Should().NotBeNull();
+        updatedProduct!.Sku.Should().Be("SKU-CONFLICT-2");
+        updatedProduct.Ean.Should().Be(ean1);
+
+        var fetchResponse = await client.GetAsync(client.CreateRelativeUri("/api/products/SKU-CONFLICT-2")).ConfigureAwait(false);
+        await fetchResponse.ShouldBeAsync(HttpStatusCode.OK, "le produit mis à jour doit être récupérable").ConfigureAwait(false);
+        var fetchedProduct = await fetchResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
+        fetchedProduct.Should().NotBeNull();
+        fetchedProduct!.Ean.Should().Be(ean1);
     }
 }
