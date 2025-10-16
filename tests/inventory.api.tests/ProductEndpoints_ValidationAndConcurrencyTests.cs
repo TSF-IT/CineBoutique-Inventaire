@@ -176,6 +176,31 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
     }
 
     [SkippableFact]
+    public async Task CreateProduct_SameEanInParallel_AllowsAllSuccess()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+        var client = CreateClient();
+
+        const string ean = "1122334455667";
+        var tasks = Enumerable
+            .Range(0, 5)
+            .Select(index => client.PostAsJsonAsync(
+                client.CreateRelativeUri("/api/products"),
+                new CreateProductRequest { Sku = $"SKU-PARALLEL-{index}", Name = $"Produit {index}", Ean = ean }
+            ))
+            .ToArray();
+
+        var responses = await Task.WhenAll(tasks).ConfigureAwait(false);
+        responses.Should().HaveCount(5, "les cinq créations doivent retourner une réponse");
+        responses.Should().OnlyContain(
+            r => r.StatusCode == HttpStatusCode.Created,
+            "le même EAN peut être partagé entre plusieurs produits"
+        );
+    }
+
+    [SkippableFact]
     public async Task CreateProduct_SameSkuInParallel_AllowsSingleSuccess()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
@@ -183,40 +208,21 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
         var client = CreateClient();
 
-        const string sku = "SKU-CONCURRENT";
+        const string sku = "SKU-PARALLEL";
         var tasks = Enumerable
             .Range(0, 5)
             .Select(index => client.PostAsJsonAsync(
                 client.CreateRelativeUri("/api/products"),
-                new CreateProductRequest { Sku = sku, Name = $"Produit {index}", Ean = index switch { 0 => "32145670", _ => null } }
+                new CreateProductRequest { Sku = sku, Name = $"Produit {index}", Ean = $"9900{index:0000}" }
             ))
             .ToArray();
 
         var responses = await Task.WhenAll(tasks).ConfigureAwait(false);
         responses.Count(r => r.StatusCode == HttpStatusCode.Created).Should().Be(1, "une seule création doit réussir");
         responses.Count(r => r.StatusCode == HttpStatusCode.Conflict).Should().Be(4, "les autres créations doivent échouer en conflit");
-    }
 
-    [SkippableFact]
-    public async Task CreateProduct_SameEanInParallel_AllowsSingleSuccess()
-    {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
-
-        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
-        var client = CreateClient();
-
-        const string sharedEan = "99001122";
-        var tasks = Enumerable
-            .Range(0, 5)
-            .Select(index => client.PostAsJsonAsync(
-                client.CreateRelativeUri("/api/products"),
-                new CreateProductRequest { Sku = $"SKU-EAN-CONC-{index}", Name = $"Produit {index}", Ean = sharedEan }
-            ))
-            .ToArray();
-
-        var responses = await Task.WhenAll(tasks).ConfigureAwait(false);
-        responses.Count(r => r.StatusCode == HttpStatusCode.Created).Should().Be(1, "une seule création doit réussir");
-        responses.Count(r => r.StatusCode == HttpStatusCode.Conflict).Should().Be(4, "les autres créations doivent échouer en conflit");
+        var fetchResponse = await client.GetAsync(client.CreateRelativeUri($"/api/products/{sku}")).ConfigureAwait(false);
+        await fetchResponse.ShouldBeAsync(HttpStatusCode.OK, "le produit créé doit être récupérable").ConfigureAwait(false);
     }
 
     [SkippableFact]
@@ -274,7 +280,7 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
     }
 
     [SkippableFact]
-    public async Task UpdateProduct_DuplicateEan_ReturnsConflict()
+    public async Task UpdateProduct_DuplicateEan_AllowsDuplication()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
 
@@ -295,15 +301,21 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
         ).ConfigureAwait(false);
         await secondCreate.ShouldBeAsync(HttpStatusCode.Created, "le second produit doit être créé").ConfigureAwait(false);
 
-        Fixture.ClearAuditLogs();
-        var conflictResponse = await client.PutAsJsonAsync(
+        var updateResponse = await client.PutAsJsonAsync(
             client.CreateRelativeUri("/api/products/SKU-CONFLICT-2"),
             new CreateProductRequest { Sku = "SKU-CONFLICT-2", Name = "Produit B", Ean = ean1 }
         ).ConfigureAwait(false);
 
-        await conflictResponse.ShouldBeAsync(HttpStatusCode.Conflict, "la mise à jour vers un EAN existant doit être refusée").ConfigureAwait(false);
-        var conflictLogs = Fixture.DrainAuditLogs();
-        conflictLogs.Should().ContainSingle("le conflit de mise à jour doit être auditée")
-            .Which.Category.Should().Be("products.update.conflict");
+        await updateResponse.ShouldBeAsync(HttpStatusCode.OK, "la mise à jour vers un EAN existant doit désormais réussir").ConfigureAwait(false);
+        var updatedProduct = await updateResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
+        updatedProduct.Should().NotBeNull();
+        updatedProduct!.Sku.Should().Be("SKU-CONFLICT-2");
+        updatedProduct.Ean.Should().Be(ean1);
+
+        var fetchResponse = await client.GetAsync(client.CreateRelativeUri("/api/products/SKU-CONFLICT-2")).ConfigureAwait(false);
+        await fetchResponse.ShouldBeAsync(HttpStatusCode.OK, "le produit mis à jour doit être récupérable").ConfigureAwait(false);
+        var fetchedProduct = await fetchResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
+        fetchedProduct.Should().NotBeNull();
+        fetchedProduct!.Ean.Should().Be(ean1);
     }
 }
