@@ -34,7 +34,12 @@ public sealed class ProductLookupRepository : IProductLookupRepository
 
         var (projection, _) = await GetRawCodeProjectionAsync(connection, cancellationToken).ConfigureAwait(false);
 
-        var sql = $@"SELECT \"Id\", \"Sku\", \"Name\", \"Ean\", {projection} AS \"Code\", \"CodeDigits\" FROM \"Product\" WHERE \"Sku\" = @Sku LIMIT 1;";
+        var sql = $"""
+SELECT "Id", "Sku", "Name", "Ean", {projection} AS "Code", "CodeDigits"
+FROM "Product"
+WHERE "Sku" = @Sku
+LIMIT 1;
+""";
 
         return await connection.QuerySingleOrDefaultAsync<ProductLookupItem>(
             new CommandDefinition(sql, new { Sku = sku }, cancellationToken: cancellationToken)).ConfigureAwait(false);
@@ -56,7 +61,10 @@ public sealed class ProductLookupRepository : IProductLookupRepository
             ? "WHERE \"Ean\" = @Code OR \"Code\" = @Code"
             : "WHERE \"Ean\" = @Code";
 
-        var sql = $@"SELECT \"Id\", \"Sku\", \"Name\", \"Ean\", {projection} AS \"Code\", \"CodeDigits\" FROM \"Product\" {whereClause};";
+        var sql = $"""
+SELECT "Id", "Sku", "Name", "Ean", {projection} AS "Code", "CodeDigits"
+FROM "Product" {whereClause};
+""";
 
         var rows = await connection.QueryAsync<ProductLookupItem>(
             new CommandDefinition(sql, new { Code = rawCode }, cancellationToken: cancellationToken)).ConfigureAwait(false);
@@ -77,7 +85,10 @@ public sealed class ProductLookupRepository : IProductLookupRepository
         var (projection, _) = await GetRawCodeProjectionAsync(connection, cancellationToken).ConfigureAwait(false);
 
         const string whereClause = "WHERE \"CodeDigits\" = @Digits";
-        var sql = $@"SELECT \"Id\", \"Sku\", \"Name\", \"Ean\", {projection} AS \"Code\", \"CodeDigits\" FROM \"Product\" {whereClause};";
+        var sql = $"""
+SELECT "Id", "Sku", "Name", "Ean", {projection} AS "Code", "CodeDigits"
+FROM "Product" {whereClause};
+""";
 
         var rows = await connection.QueryAsync<ProductLookupItem>(
             new CommandDefinition(sql, new { Digits = digits }, cancellationToken: cancellationToken)).ConfigureAwait(false);
