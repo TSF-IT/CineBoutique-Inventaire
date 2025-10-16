@@ -51,3 +51,8 @@ TestResults/
 .dotnet/
 .DS_Store
 Thumbs.db
+
+# E2E localhost TLS (generated)\src/inventory-web/tests/e2e/certs/
+*.pem
+*.key
+
