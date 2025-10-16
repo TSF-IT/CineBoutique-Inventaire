@@ -158,7 +158,7 @@ public sealed class ProductImportService : IProductImportService
 
     private async Task TruncateProductsAsync(NpgsqlTransaction transaction, CancellationToken cancellationToken)
     {
-        const string truncateSql = "TRUNCATE TABLE \"Product\" RESTART IDENTITY;";
+        const string truncateSql = "TRUNCATE TABLE \"Product\" RESTART IDENTITY CASCADE;";
         await _connection.ExecuteAsync(
                 new CommandDefinition(truncateSql, transaction: transaction, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
