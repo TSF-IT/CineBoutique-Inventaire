@@ -139,11 +139,12 @@ public sealed class ProductImportService : IProductImportService
         var now = _clock.UtcNow;
         foreach (var row in rows)
         {
+            var ean = NormalizeEan(row.Code);
             var parameters = new
             {
                 row.Sku,
                 row.Name,
-                Ean = row.Code,
+                Ean = ean,
                 row.CodeDigits,
                 CreatedAtUtc = now
             };
@@ -154,6 +155,22 @@ public sealed class ProductImportService : IProductImportService
         }
 
         return rows.Count;
+    }
+
+    private string? NormalizeEan(string? code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            return null;
+        }
+
+        if (code.Length <= 13)
+        {
+            return code;
+        }
+
+        _logger.LogDebug("Code importé trop long ({Length} > 13), colonne EAN laissée vide.", code.Length);
+        return null;
     }
 
     private async Task TruncateProductsAsync(NpgsqlTransaction transaction, CancellationToken cancellationToken)

@@ -4,6 +4,7 @@ using System.Data;
 using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
+using CineBoutique.Inventory.Api.Infrastructure.Authentication;
 using CineBoutique.Inventory.Api.Infrastructure.Http;
 using CineBoutique.Inventory.Api.Infrastructure.Middleware;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
@@ -18,6 +19,7 @@ using CineBoutique.Inventory.Infrastructure.Seeding;
 using FluentValidation.AspNetCore;
 using FluentMigrator.Runner;
 using FluentMigrator.Runner.Processors;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
@@ -91,6 +93,16 @@ builder.Services.AddInventoryInfrastructure(builder.Configuration);
 builder.Services.AddTransient<InventoryDataSeeder>();
 
 builder.Services.AddHttpContextAccessor();
+
+builder.Services
+    .AddAuthentication(options =>
+    {
+        options.DefaultAuthenticateScheme = AdminHeaderAuthenticationHandler.SchemeName;
+        options.DefaultChallengeScheme = AdminHeaderAuthenticationHandler.SchemeName;
+    })
+    .AddScheme<AuthenticationSchemeOptions, AdminHeaderAuthenticationHandler>(
+        AdminHeaderAuthenticationHandler.SchemeName,
+        options => { });
 
 builder.Services.AddAuthorization(options =>
 {
@@ -434,6 +446,7 @@ if (useSerilog)
 app.UseMiddleware<LegacyOperatorNameWriteGuardMiddleware>();
 app.UseMiddleware<SoftOperatorMiddleware>();
 
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.Use(async (ctx, next) =>
