@@ -176,6 +176,31 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
     }
 
     [SkippableFact]
+    public async Task CreateProduct_SameEanInParallel_AllowsAllSuccess()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+        var client = CreateClient();
+
+        const string ean = "1122334455667";
+        var tasks = Enumerable
+            .Range(0, 5)
+            .Select(index => client.PostAsJsonAsync(
+                client.CreateRelativeUri("/api/products"),
+                new CreateProductRequest { Sku = $"SKU-PARALLEL-{index}", Name = $"Produit {index}", Ean = ean }
+            ))
+            .ToArray();
+
+        var responses = await Task.WhenAll(tasks).ConfigureAwait(false);
+        responses.Should().HaveCount(5, "les cinq créations doivent retourner une réponse");
+        responses.Should().OnlyContain(
+            r => r.StatusCode == HttpStatusCode.Created,
+            "le même EAN peut être partagé entre plusieurs produits"
+        );
+    }
+
+    [SkippableFact]
     public async Task CreateProduct_SameSkuInParallel_AllowsSingleSuccess()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
