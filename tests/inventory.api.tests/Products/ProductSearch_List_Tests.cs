@@ -48,10 +48,11 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
-        await InsertProductAsync("SRCH-RAW-SPC", "Code brut avec espaces", "33906 56", "3390656").ConfigureAwait(false);
+        const string rawCodeWithSpaces = "33906 56";
+        await InsertProductAsync("SRCH-RAW-SPC", "Code brut avec espaces", rawCodeWithSpaces, "3390656").ConfigureAwait(false);
 
         var client = CreateClient();
-        var response = await client.GetAsync(client.CreateRelativeUri($"/api/products/search?code={Uri.EscapeDataString("33906 56")}"))
+        var response = await client.GetAsync(client.CreateRelativeUri($"/api/products/search?code={Uri.EscapeDataString(rawCodeWithSpaces)}"))
             .ConfigureAwait(false);
         await response.ShouldBeAsync(HttpStatusCode.OK, "la recherche doit réussir").ConfigureAwait(false);
 
