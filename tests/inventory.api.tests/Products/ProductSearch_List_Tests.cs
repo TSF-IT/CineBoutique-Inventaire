@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http.Json;
@@ -49,7 +50,8 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
         const string rawCodeWithSpaces = "33906 56";
-        await InsertProductAsync("SRCH-RAW-SPC", "Code brut avec espaces", rawCodeWithSpaces, "3390656").ConfigureAwait(false);
+        await InsertProductAsync("SRCH-RAW-SPC", "Code brut avec espaces", rawCodeWithSpaces, "3390656", rawCodeWithSpaces)
+            .ConfigureAwait(false);
 
         var client = CreateClient();
         var response = await client.GetAsync(
@@ -70,7 +72,8 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
         const string rawCodeWithSuffix = "3557191310038X";
         const string digitsOnly = "3557191310038";
-        await InsertProductAsync("SRCH-DGT-001", "Code suffixé", rawCodeWithSuffix, digitsOnly).ConfigureAwait(false);
+        await InsertProductAsync("SRCH-DGT-001", "Code suffixé", digitsOnly, digitsOnly, rawCodeWithSuffix)
+            .ConfigureAwait(false);
 
         var client = CreateClient();
         var response = await client.GetAsync(client.CreateRelativeUri($"/api/products/search?code={digitsOnly}"))
@@ -89,9 +92,12 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
         await InsertProductAsync("5905954595389", "Priorité SKU", "1111111111111", "1111111111111").ConfigureAwait(false);
-        await InsertProductAsync("AMB-RAW-001", "Correspondance brute", "5905954595389", "5905954595389").ConfigureAwait(false);
-        await InsertProductAsync("AMB-DGT-001", "Ambigu digits A", "5905954595389 ", "5905954595389").ConfigureAwait(false);
-        await InsertProductAsync("AMB-DGT-002", "Ambigu digits B", "SKU-5905954595389", "5905954595389").ConfigureAwait(false);
+        await InsertProductAsync("AMB-RAW-001", "Correspondance brute", "5905954595389", "5905954595389", "5905954595389")
+            .ConfigureAwait(false);
+        await InsertProductAsync("AMB-DGT-001", "Ambigu digits A", "5905954595389", "5905954595389", "5905954595389 ")
+            .ConfigureAwait(false);
+        await InsertProductAsync("AMB-DGT-002", "Ambigu digits B", "5905954595389", "5905954595389", "SKU-5905954595389")
+            .ConfigureAwait(false);
 
         var client = CreateClient();
         var response = await client.GetAsync(client.CreateRelativeUri("/api/products/search?code=5905954595389"))
@@ -127,13 +133,41 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
         items[0].Sku.Should().Be("LIM-SKU-001", "le SKU exact est conservé lors du troncature");
     }
 
-    private async Task InsertProductAsync(string sku, string name, string? ean, string? codeDigits)
+    private static bool? _supportsRawCodeColumn;
+
+    private async Task InsertProductAsync(string sku, string name, string? ean, string? codeDigits, string? rawCode = null)
     {
         var id = Guid.NewGuid();
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
 
-        const string sql = @"INSERT INTO ""Product"" (""Id"", ""Sku"", ""Name"", ""Ean"", ""CodeDigits"", ""CreatedAtUtc"")
-VALUES (@Id, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc);";
+        var columns = new List<string>
+        {
+            "\"Id\"",
+            "\"Sku\"",
+            "\"Name\"",
+            "\"Ean\"",
+            "\"CodeDigits\"",
+            "\"CreatedAtUtc\""
+        };
+
+        var values = new List<string>
+        {
+            "@Id",
+            "@Sku",
+            "@Name",
+            "@Ean",
+            "@CodeDigits",
+            "@CreatedAtUtc"
+        };
+
+        var supportsRawCode = await SupportsRawCodeColumnAsync(connection).ConfigureAwait(false);
+        if (supportsRawCode)
+        {
+            columns.Insert(4, "\"Code\"");
+            values.Insert(4, "@Code");
+        }
+
+        var sql = $"INSERT INTO \"Product\" ({string.Join(", ", columns)}) VALUES ({string.Join(", ", values)});";
 
         await using var command = new NpgsqlCommand(sql, connection)
         {
@@ -148,6 +182,39 @@ VALUES (@Id, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc);";
             }
         };
 
+        if (supportsRawCode)
+        {
+            command.Parameters.AddWithValue("Code", (object?)rawCode ?? DBNull.Value);
+        }
+
         await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+    }
+
+    private static async Task<bool> SupportsRawCodeColumnAsync(NpgsqlConnection connection)
+    {
+        if (_supportsRawCodeColumn.HasValue)
+        {
+            return _supportsRawCodeColumn.Value;
+        }
+
+        const string sql = @"SELECT EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE LOWER(table_name) = LOWER(@Table)
+      AND LOWER(column_name) = LOWER(@Column)
+);";
+
+        await using var command = new NpgsqlCommand(sql, connection)
+        {
+            Parameters =
+            {
+                new("Table", "Product"),
+                new("Column", "Code")
+            }
+        };
+
+        var hasColumn = (bool)await command.ExecuteScalarAsync().ConfigureAwait(false);
+        _supportsRawCodeColumn = hasColumn;
+        return hasColumn;
     }
 }
