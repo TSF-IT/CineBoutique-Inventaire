@@ -85,7 +85,7 @@ public sealed class ProductImportService : IProductImportService
                 {
                     await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
                     _logger.LogInformation("Import produits ignoré : fichier identique au dernier import réussi.");
-                    return new ProductImportResult(ProductImportResponse.Skipped(), ProductImportResultType.Skipped);
+                    return new ProductImportResult(ProductImportResponse.SkippedResult(), ProductImportResultType.Skipped);
                 }
             }
 
@@ -157,7 +157,7 @@ public sealed class ProductImportService : IProductImportService
                 _metrics.ObserveDuration(stopwatch.Elapsed, true);
 
                 return new ProductImportResult(
-                    ProductImportResponse.DryRun(totalLines, wouldInsert),
+                    ProductImportResponse.DryRunResult(totalLines, wouldInsert),
                     ProductImportResultType.DryRun);
             }
 
