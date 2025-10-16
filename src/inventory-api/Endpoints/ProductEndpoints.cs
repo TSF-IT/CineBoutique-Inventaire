@@ -4,6 +4,7 @@ using System.Data;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
+using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
 using Npgsql;
 
@@ -53,7 +54,7 @@ internal static class ProductEndpoints
             var sanitizedSku = sku.Trim();
             var sanitizedName = request.Name?.Trim();
             var sanitizedEan = string.IsNullOrWhiteSpace(request.Ean) ? null : request.Ean.Trim();
-            var sanitizedCodeDigits = EndpointUtilities.BuildCodeDigits(sanitizedEan);
+            var sanitizedCodeDigits = CodeDigitsSanitizer.Build(sanitizedEan);
 
             if (string.IsNullOrWhiteSpace(sanitizedName))
             {
@@ -159,7 +160,7 @@ internal static class ProductEndpoints
 
             var sanitizedName = request.Name?.Trim();
             var sanitizedEan = string.IsNullOrWhiteSpace(request.Ean) ? null : request.Ean.Trim();
-            var sanitizedCodeDigits = EndpointUtilities.BuildCodeDigits(sanitizedEan);
+            var sanitizedCodeDigits = CodeDigitsSanitizer.Build(sanitizedEan);
 
             if (string.IsNullOrWhiteSpace(sanitizedName))
             {
@@ -258,7 +259,7 @@ internal static class ProductEndpoints
             var sanitizedSku = request.Sku?.Trim();
             var sanitizedName = request.Name?.Trim();
             var sanitizedEan = string.IsNullOrWhiteSpace(request.Ean) ? null : request.Ean.Trim();
-            var sanitizedCodeDigits = EndpointUtilities.BuildCodeDigits(sanitizedEan);
+            var sanitizedCodeDigits = CodeDigitsSanitizer.Build(sanitizedEan);
 
             if (string.IsNullOrWhiteSpace(sanitizedSku))
             {

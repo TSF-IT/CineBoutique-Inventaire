@@ -10,6 +10,7 @@ using CineBoutique.Inventory.Api.Infrastructure;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
+using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
 using FluentValidation;
 using FluentValidation.Results;
@@ -1466,7 +1467,7 @@ WHERE ""Id"" = @RunId;";
                                     Sku = sku,
                                     Name = name,
                                     Ean = item.Ean,
-                                    CodeDigits = EndpointUtilities.BuildCodeDigits(item.Ean),
+                                    CodeDigits = CodeDigitsSanitizer.Build(item.Ean),
                                     CreatedAtUtc = now
                                 },
                                 transaction,
