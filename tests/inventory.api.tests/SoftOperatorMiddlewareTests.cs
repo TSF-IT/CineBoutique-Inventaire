@@ -30,12 +30,24 @@ public sealed class SoftOperatorMiddlewareTests : IntegrationTestBase
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
         var client = CreateClient();
 
-        var response = await client.GetAsync(client.CreateRelativeUri("/api/health")).ConfigureAwait(false);
-        await response.ShouldBeAsync(HttpStatusCode.OK, "les requêtes GET ne sont pas filtrées");
+        var res = await client.GetAsync(client.CreateRelativeUri("/api/health")).ConfigureAwait(false);
+        await res.ShouldBeAsync(HttpStatusCode.OK, "endpoint de lecture non filtré par le guard (GET mappé sur /api/health)");
 
         using var headRequest = new HttpRequestMessage(HttpMethod.Head, client.CreateRelativeUri("/api/health"));
         var headResponse = await client.SendAsync(headRequest).ConfigureAwait(false);
         await headResponse.ShouldBeAsync(HttpStatusCode.OK, "les requêtes HEAD ne sont pas filtrées");
+    }
+
+    [SkippableFact]
+    public async Task Head_Health_IsNotMapped_Returns405_FromRouting()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+        var client = CreateClient();
+
+        var res = await client.SendAsync(new HttpRequestMessage(HttpMethod.Head, client.CreateRelativeUri("/api/health"))).ConfigureAwait(false);
+        await res.ShouldBeAsync(HttpStatusCode.MethodNotAllowed, "HEAD n'est pas mappé sur /api/health (comportement de routing, pas du guard)");
     }
 
     [SkippableFact]
