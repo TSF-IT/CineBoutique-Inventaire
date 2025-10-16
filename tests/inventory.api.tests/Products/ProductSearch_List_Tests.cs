@@ -132,7 +132,7 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
         var id = Guid.NewGuid();
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
 
-        const string sql = @"INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"Ean\", \"CodeDigits\", \"CreatedAtUtc\")
+        const string sql = @"INSERT INTO ""Product"" (""Id"", ""Sku"", ""Name"", ""Ean"", ""CodeDigits"", ""CreatedAtUtc"")
 VALUES (@Id, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc);";
 
         await using var command = new NpgsqlCommand(sql, connection)
