@@ -46,6 +46,9 @@ public sealed class OpenApiContractTests : IntegrationTestBase
         AssertOperation(productByCodePath, OperationType.Post, "UpdateProductBySkuPost", "200", "400", "404", "409");
         AssertOperation(productByCodePath, OperationType.Put, "UpdateProductBySku", "200", "400", "404", "409");
 
+        paths.Should().ContainKey("/api/products/search");
+        AssertOperation(paths["/api/products/search"], OperationType.Get, "SearchProducts", "200", "400");
+
         paths.Should().ContainKey("/api/products/by-id/{id}");
         AssertOperation(paths["/api/products/by-id/{id}"], OperationType.Post, "UpdateProductByIdPost", "200", "400", "404", "409");
         AssertOperation(paths["/api/products/by-id/{id}"], OperationType.Put, "UpdateProductById", "200", "400", "404", "409");
@@ -72,6 +75,15 @@ public sealed class OpenApiContractTests : IntegrationTestBase
         var eanSchema = productSchema.Properties["ean"];
         eanSchema.Type.Should().Be("string");
         eanSchema.Nullable.Should().BeTrue();
+
+        document.Components.Schemas.Should().ContainKey("ProductSearchItemDto");
+        var searchSchema = document.Components.Schemas["ProductSearchItemDto"];
+        searchSchema.Type.Should().Be("object");
+        searchSchema.Required.Should().BeEquivalentTo(new[] { "sku", "name" });
+        searchSchema.Properties.Should().ContainKeys("sku", "code", "name");
+        searchSchema.Properties["sku"].Nullable.Should().BeFalse();
+        searchSchema.Properties["code"].Nullable.Should().BeTrue();
+        searchSchema.Properties["name"].Nullable.Should().BeFalse();
     }
 
     private static void AssertOperation(OpenApiPathItem pathItem, OperationType operationType, string expectedOperationId, params string[] expectedStatusCodes)
