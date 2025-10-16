@@ -427,7 +427,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     return BuildFailure("INVALID_DRY_RUN");
                 }
 
-                await using Stream? ownedStream = null;
+                Stream? ownedStream = null;
                 Stream streamToImport = request.Body;
 
                 try
@@ -447,7 +447,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                             return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
                         }
 
-                        ownedStream = file.OpenReadStream(maxCsvSizeBytes + 1);
+                        ownedStream = file.OpenReadStream();
                         streamToImport = ownedStream;
                     }
                     else if (!IsCsvContentType(request.ContentType))
@@ -487,6 +487,13 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 catch (ProductImportPayloadTooLargeException)
                 {
                     return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+                }
+                finally
+                {
+                    if (ownedStream is not null)
+                    {
+                        await ownedStream.DisposeAsync().ConfigureAwait(false);
+                    }
                 }
             })
             .RequireAuthorization("Admin")

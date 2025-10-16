@@ -95,7 +95,7 @@ public sealed class ProductImportService : IProductImportService
             await InsertHistoryStartedAsync(historyId, startedAt, command.Username, bufferedCsv.Sha256, transaction, cancellationToken)
                 .ConfigureAwait(false);
 
-            await transaction.CreateSavepointAsync("before_import", cancellationToken).ConfigureAwait(false);
+            transaction.Save("before_import");
 
             var stopwatch = Stopwatch.StartNew();
             _metrics.IncrementStarted();
@@ -191,7 +191,7 @@ public sealed class ProductImportService : IProductImportService
             }
             catch
             {
-                await transaction.RollbackAsync("before_import", cancellationToken).ConfigureAwait(false);
+                transaction.Rollback("before_import");
 
                 await CompleteHistoryAsync(
                         historyId,
