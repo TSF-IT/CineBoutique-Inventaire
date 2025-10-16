@@ -46,7 +46,7 @@ jobs:
       - name: Install .NET 8 SDK (user-space in $HOME/.dotnet)
         shell: bash
         env:
-          DOTNET_DIR: $HOME/.dotnet
+          DOTNET_DIR: ${{ env.HOME }}/.dotnet
           DOTNET_CLI_TELEMETRY_OPTOUT: 1
           DOTNET_MULTILEVEL_LOOKUP: 0
         run: |
@@ -63,7 +63,7 @@ jobs:
       - name: Export DOTNET_ROOT and PATH for this job
         shell: bash
         run: |
-          echo "DOTNET_ROOT=$HOME/.dotnet" >> $GITHUB_ENV
+          echo "DOTNET_ROOT=${{ env.HOME }}/.dotnet" >> $GITHUB_ENV
           echo "$HOME/.dotnet" >> $GITHUB_PATH
           echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
@@ -107,7 +107,7 @@ jobs:
 
           mkdir -p "$report_root/coverage-report"
 
-          reportgenerator \
+          dotnet tool run reportgenerator \
             "-reports:$coverage_glob" \
             "-targetdir:$report_root/coverage-report" \
             "-reporttypes:HtmlInline;Cobertura"
