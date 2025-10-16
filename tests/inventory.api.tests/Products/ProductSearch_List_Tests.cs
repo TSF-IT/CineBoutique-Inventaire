@@ -52,7 +52,8 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
         await InsertProductAsync("SRCH-RAW-SPC", "Code brut avec espaces", rawCodeWithSpaces, "3390656").ConfigureAwait(false);
 
         var client = CreateClient();
-        var response = await client.GetAsync(client.CreateRelativeUri($"/api/products/search?code={Uri.EscapeDataString(rawCodeWithSpaces)}"))
+        var response = await client.GetAsync(
+                client.CreateRelativeUri($"/api/products/search?code={Uri.EscapeDataString(rawCodeWithSpaces)}"))
             .ConfigureAwait(false);
         await response.ShouldBeAsync(HttpStatusCode.OK, "la recherche doit réussir").ConfigureAwait(false);
 
