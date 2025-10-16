@@ -1,9 +1,12 @@
 // Modifications : déplacement des endpoints produits depuis Program.cs avec mutualisation des helpers locaux.
 using System;
 using System.Data;
+using System.Linq;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
+using CineBoutique.Inventory.Infrastructure.Database;
+using CineBoutique.Inventory.Api.Services.Products;
 using Dapper;
 using Npgsql;
 
@@ -30,7 +33,7 @@ internal static class ProductEndpoints
         // --- MAJ par SKU ---
 
         var updateBySku = async (
-            string sku,
+            string code,
             CreateProductRequest request,
             IDbConnection connection,
             IAuditLogger auditLogger,
@@ -38,6 +41,7 @@ internal static class ProductEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
+            var sku = code;
             if (string.IsNullOrWhiteSpace(sku))
             {
                 await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, "(SKU vide)", "sans sku", "products.update.invalid", cancellationToken).ConfigureAwait(false);
@@ -53,7 +57,7 @@ internal static class ProductEndpoints
             var sanitizedSku = sku.Trim();
             var sanitizedName = request.Name?.Trim();
             var sanitizedEan = string.IsNullOrWhiteSpace(request.Ean) ? null : request.Ean.Trim();
-            var sanitizedCodeDigits = EndpointUtilities.BuildCodeDigits(sanitizedEan);
+            var sanitizedCodeDigits = CodeDigitsSanitizer.Build(sanitizedEan);
 
             if (string.IsNullOrWhiteSpace(sanitizedName))
             {
@@ -118,7 +122,7 @@ internal static class ProductEndpoints
             }
         };
 
-        app.MapPost("/api/products/{sku}", updateBySku)
+        app.MapPost("/api/products/{code}", updateBySku)
            .WithName("UpdateProductBySkuPost")
            .WithTags("Produits")
            .Produces<ProductDto>(StatusCodes.Status200OK)
@@ -132,7 +136,7 @@ internal static class ProductEndpoints
                return op;
            });
 
-        app.MapPut("/api/products/{sku}", updateBySku)
+        app.MapPut("/api/products/{code}", updateBySku)
            .WithName("UpdateProductBySku")
            .WithTags("Produits")
            .Produces<ProductDto>(StatusCodes.Status200OK)
@@ -159,7 +163,7 @@ internal static class ProductEndpoints
 
             var sanitizedName = request.Name?.Trim();
             var sanitizedEan = string.IsNullOrWhiteSpace(request.Ean) ? null : request.Ean.Trim();
-            var sanitizedCodeDigits = EndpointUtilities.BuildCodeDigits(sanitizedEan);
+            var sanitizedCodeDigits = CodeDigitsSanitizer.Build(sanitizedEan);
 
             if (string.IsNullOrWhiteSpace(sanitizedName))
             {
@@ -258,7 +262,7 @@ internal static class ProductEndpoints
             var sanitizedSku = request.Sku?.Trim();
             var sanitizedName = request.Name?.Trim();
             var sanitizedEan = string.IsNullOrWhiteSpace(request.Ean) ? null : request.Ean.Trim();
-            var sanitizedCodeDigits = EndpointUtilities.BuildCodeDigits(sanitizedEan);
+            var sanitizedCodeDigits = CodeDigitsSanitizer.Build(sanitizedEan);
 
             if (string.IsNullOrWhiteSpace(sanitizedSku))
             {
@@ -356,90 +360,70 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
     private static void MapGetProductEndpoint(IEndpointRouteBuilder app)
     {
-        app.MapGet("/api/products/{sku}", async (
-            string sku,
-            IDbConnection connection,
+        app.MapGet("/api/products/{code}", async (
+            string code,
+            IProductLookupService lookupService,
             IAuditLogger auditLogger,
             IClock clock,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            if (string.IsNullOrWhiteSpace(sku))
-            {
-                var nowInvalid = clock.UtcNow;
-                var invalidUser = EndpointUtilities.GetAuthenticatedUserName(httpContext);
-                var invalidActor = EndpointUtilities.FormatActorLabel(httpContext);
-                var invalidTimestamp = EndpointUtilities.FormatTimestamp(nowInvalid);
-                var invalidMessage = $"{invalidActor} a tenté de scanner un code produit vide le {invalidTimestamp} UTC.";
-                await auditLogger.LogAsync(invalidMessage, invalidUser, "products.scan.invalid", cancellationToken).ConfigureAwait(false);
-                return Results.BadRequest(new { message = "Le code produit est requis." });
-            }
-
-            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
-
-            var sanitizedCode = sku.Trim();
-            var candidateEans = BuildCandidateEanCodes(sanitizedCode);
-
-            ProductDto? product = null;
-            if (candidateEans.Length > 0)
-            {
-                var dynamicParameters = new DynamicParameters();
-                var parameterNames = new string[candidateEans.Length];
-
-                for (var index = 0; index < candidateEans.Length; index++)
-                {
-                    var parameterName = $"Code{index}";
-                    parameterNames[index] = parameterName;
-                    dynamicParameters.Add(parameterName, candidateEans[index]);
-                }
-
-                var conditions = string.Join(" OR ", parameterNames.Select(name => $"\"Ean\" = @{name}"));
-                var sql = $"SELECT \"Id\", \"Sku\", \"Name\", \"Ean\" FROM \"Product\" WHERE {conditions} LIMIT 1";
-
-                product = await connection
-                    .QuerySingleOrDefaultAsync<ProductDto>(
-                        new CommandDefinition(sql, dynamicParameters, cancellationToken: cancellationToken))
-                    .ConfigureAwait(false);
-            }
-
-            if (product is null)
-            {
-                product = await connection.QuerySingleOrDefaultAsync<ProductDto>(
-                    new CommandDefinition(
-                        "SELECT \"Id\", \"Sku\", \"Name\", \"Ean\" FROM \"Product\" WHERE LOWER(\"Sku\") = LOWER(@Code) LIMIT 1",
-                        new { Code = sanitizedCode },
-                        cancellationToken: cancellationToken)).ConfigureAwait(false);
-            }
+            var result = await lookupService.ResolveAsync(code, cancellationToken).ConfigureAwait(false);
 
             var now = clock.UtcNow;
             var userName = EndpointUtilities.GetAuthenticatedUserName(httpContext);
             var actor = EndpointUtilities.FormatActorLabel(httpContext);
             var timestamp = EndpointUtilities.FormatTimestamp(now);
+            var displayCode = string.IsNullOrWhiteSpace(result.NormalizedCode) ? "(vide)" : result.NormalizedCode;
 
-            if (product is not null)
+            switch (result.Status)
             {
-                var productLabel = product.Name;
-                var skuLabel = string.IsNullOrWhiteSpace(product.Sku) ? "non renseigné" : product.Sku;
-                var eanLabel = string.IsNullOrWhiteSpace(product.Ean) ? "non renseigné" : product.Ean;
-                var successMessage = $"{actor} a scanné le code {sanitizedCode} et a identifié le produit \"{productLabel}\" (SKU {skuLabel}, EAN {eanLabel}) le {timestamp} UTC.";
-                await auditLogger.LogAsync(successMessage, userName, "products.scan.success", cancellationToken).ConfigureAwait(false);
-                return Results.Ok(product);
+                case ProductLookupStatus.Success:
+                {
+                    var product = result.Product!;
+                    var productLabel = product.Name;
+                    var skuLabel = string.IsNullOrWhiteSpace(product.Sku) ? "non renseigné" : product.Sku;
+                    var eanLabel = string.IsNullOrWhiteSpace(product.Ean) ? "non renseigné" : product.Ean;
+                    var successMessage = $"{actor} a scanné le code {displayCode} et a identifié le produit \"{productLabel}\" (SKU {skuLabel}, EAN {eanLabel}) le {timestamp} UTC.";
+                    await auditLogger.LogAsync(successMessage, userName, "products.scan.success", cancellationToken).ConfigureAwait(false);
+                    return Results.Ok(product);
+                }
+
+                case ProductLookupStatus.Conflict:
+                {
+                    var matches = result.Matches
+                        .Select(match => new ProductLookupConflictMatch(match.Sku, match.Code))
+                        .ToArray();
+
+                    var conflictPayload = new ProductLookupConflictResponse(
+                        Ambiguous: true,
+                        Code: result.OriginalCode,
+                        Digits: result.Digits ?? string.Empty,
+                        Matches: matches);
+
+                    var digitsLabel = string.IsNullOrEmpty(result.Digits) ? "(n/a)" : result.Digits;
+                    var conflictMessage = $"{actor} a scanné le code {displayCode} mais plusieurs produits partagent les chiffres {digitsLabel} le {timestamp} UTC.";
+                    await auditLogger.LogAsync(conflictMessage, userName, "products.scan.conflict", cancellationToken).ConfigureAwait(false);
+                    return Results.Json(conflictPayload, statusCode: StatusCodes.Status409Conflict);
+                }
+
+                default:
+                {
+                    var notFoundMessage = $"{actor} a scanné le code {displayCode} sans correspondance produit le {timestamp} UTC.";
+                    await auditLogger.LogAsync(notFoundMessage, userName, "products.scan.not_found", cancellationToken).ConfigureAwait(false);
+                    return Results.NotFound();
+                }
             }
-
-            var notFoundMessage = $"{actor} a scanné le code {sanitizedCode} sans correspondance produit le {timestamp} UTC.";
-            await auditLogger.LogAsync(notFoundMessage, userName, "products.scan.not_found", cancellationToken).ConfigureAwait(false);
-
-            return Results.NotFound();
         })
         .WithName("GetProductByCode")
         .WithTags("Produits")
         .Produces<ProductDto>(StatusCodes.Status200OK)
-        .Produces(StatusCodes.Status400BadRequest)
+        .Produces<ProductLookupConflictResponse>(StatusCodes.Status409Conflict)
         .Produces(StatusCodes.Status404NotFound)
         .WithOpenApi(op =>
         {
-            op.Summary = "Recherche un produit par code scanné.";
-            op.Description = "Retourne un produit à partir de son SKU ou d'un code EAN scanné.";
+            op.Summary = "Recherche un produit par code scanné (SKU, code brut, chiffres).";
+            op.Description = "Résout d'abord par SKU exact, puis par code brut (EAN/Code) et enfin par chiffres extraits. Retourne 409 en cas de collisions sur CodeDigits.";
             return op;
         });
     }
@@ -477,58 +461,4 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
         await auditLogger.LogAsync(message, userName, category, cancellationToken).ConfigureAwait(false);
     }
 
-    private static string[] BuildCandidateEanCodes(string code)
-    {
-        if (string.IsNullOrWhiteSpace(code))
-        {
-            return Array.Empty<string>();
-        }
-
-        var trimmed = code.Trim();
-        var candidates = new HashSet<string>(StringComparer.Ordinal);
-
-        void AddCandidate(string value)
-        {
-            if (!string.IsNullOrWhiteSpace(value))
-            {
-                candidates.Add(value);
-            }
-        }
-
-        AddCandidate(trimmed);
-
-        var normalized = trimmed.TrimStart('0');
-        if (normalized.Length == 0 && trimmed.Length > 0)
-        {
-            normalized = "0";
-        }
-
-        if (normalized.Length > 0)
-        {
-            AddCandidate(normalized);
-
-            var targetLength = Math.Max(normalized.Length, trimmed.Length);
-            for (var length = normalized.Length + 1; length <= targetLength; length++)
-            {
-                AddCandidate(normalized.PadLeft(length, '0'));
-            }
-        }
-
-        if (trimmed.Length is > 8 and < 13)
-        {
-            AddCandidate(trimmed.PadLeft(13, '0'));
-        }
-
-        if (trimmed.Length < 8)
-        {
-            AddCandidate(trimmed.PadLeft(8, '0'));
-        }
-
-        if (trimmed.Length < 13)
-        {
-            AddCandidate(trimmed.PadLeft(13, '0'));
-        }
-
-        return candidates.ToArray();
-    }
 }

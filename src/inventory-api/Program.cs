@@ -9,6 +9,7 @@ using CineBoutique.Inventory.Api.Infrastructure.Middleware;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Hosting;
 using CineBoutique.Inventory.Api.Services;
+using CineBoutique.Inventory.Api.Services.Products;
 using FluentValidation;
 using CineBoutique.Inventory.Infrastructure.Database;
 using CineBoutique.Inventory.Infrastructure.DependencyInjection;
@@ -153,6 +154,7 @@ builder.Services.AddScoped<CineBoutique.Inventory.Domain.Auditing.IAuditLogger, 
 
 builder.Services.AddScoped<IShopService, ShopService>();
 builder.Services.AddScoped<IShopUserService, ShopUserService>();
+builder.Services.AddScoped<IProductLookupService, ProductLookupService>();
 
 // --- CORS ---
 const string PublicApiCorsPolicy = "PublicApi";

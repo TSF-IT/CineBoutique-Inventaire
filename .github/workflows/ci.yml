@@ -59,8 +59,11 @@ jobs:
 
           mkdir -p "$DOTNET_DIR"
           echo "Installing .NET 8 SDK into $DOTNET_DIR"
-          curl -sSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh
-          bash dotnet-install.sh --channel 8.0 --install-dir "$DOTNET_DIR" --no-path
+          install_script="dotnet-install.sh"
+          rm -f "$install_script"
+          curl -fSLo "$install_script" --retry 5 --retry-delay 5 --retry-all-errors https://dot.net/v1/dotnet-install.sh
+          chmod +x "$install_script"
+          bash "$install_script" --channel 8.0 --install-dir "$DOTNET_DIR" --no-path
           test -x "$DOTNET_DIR/dotnet" || (echo "dotnet binary missing in $DOTNET_DIR" && ls -la "$DOTNET_DIR" && exit 1)
 
           # Rendre disponibles pour TOUTES les étapes suivantes

@@ -34,9 +34,13 @@ install_local_sdk() {
 
   if [[ ! -f "$DOTNET_INSTALL_SCRIPT" ]]; then
     log "Téléchargement du script d'installation du SDK .NET…"
-    curl -sSL https://dot.net/v1/dotnet-install.sh -o "$DOTNET_INSTALL_SCRIPT"
-    chmod +x "$DOTNET_INSTALL_SCRIPT"
+  else
+    log "Mise à jour du script d'installation du SDK .NET…"
+    rm -f "$DOTNET_INSTALL_SCRIPT"
   fi
+
+  curl -fSLo "$DOTNET_INSTALL_SCRIPT" --retry 5 --retry-delay 5 --retry-all-errors https://dot.net/v1/dotnet-install.sh
+  chmod +x "$DOTNET_INSTALL_SCRIPT"
 
   log "Installation du SDK .NET $SDK_VERSION dans $DOTNET_ROOT…"
   if ! "$DOTNET_INSTALL_SCRIPT" --version "$SDK_VERSION" --install-dir "$DOTNET_ROOT" --no-path; then
