@@ -4,14 +4,17 @@ using System.Collections.Generic;
 using System.Data;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
-using CineBoutique.Inventory.Infrastructure.Database;
 using CineBoutique.Inventory.Api.Services.Products;
+using CineBoutique.Inventory.Infrastructure.Database;
+using FluentValidation.Results;
 using Dapper;
 using Npgsql;
 using Microsoft.AspNetCore.Http;
+using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
 
 namespace CineBoutique.Inventory.Api.Endpoints;
@@ -26,6 +29,7 @@ internal static class ProductEndpoints
         ArgumentNullException.ThrowIfNull(app);
 
         MapCreateProductEndpoint(app);
+        MapSearchProductsEndpoint(app);
         MapGetProductEndpoint(app);
         MapUpdateProductEndpoints(app);
         MapImportProductsEndpoint(app);
@@ -497,6 +501,80 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
                 return operation;
             });
+    }
+
+    private static void MapSearchProductsEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapGet("/api/products/search", async (
+            string? code,
+            int? limit,
+            IProductSearchService searchService,
+            CancellationToken cancellationToken) =>
+        {
+            var sanitizedCode = code?.Trim();
+            if (string.IsNullOrWhiteSpace(sanitizedCode))
+            {
+                var validation = new ValidationResult(new[]
+                {
+                    new ValidationFailure("code", "Le paramètre 'code' est obligatoire.")
+                });
+
+                return EndpointUtilities.ValidationProblem(validation);
+            }
+
+            var effectiveLimit = limit.GetValueOrDefault(20);
+            if (effectiveLimit <= 0)
+            {
+                var validation = new ValidationResult(new[]
+                {
+                    new ValidationFailure("limit", "Le paramètre 'limit' doit être strictement positif.")
+                });
+
+                return EndpointUtilities.ValidationProblem(validation);
+            }
+
+            var items = await searchService
+                .SearchAsync(sanitizedCode, effectiveLimit, cancellationToken)
+                .ConfigureAwait(false);
+
+            var response = items
+                .Select(item => new ProductSearchItemDto(item.Sku, item.Code, item.Name))
+                .ToArray();
+
+            return Results.Ok(response);
+        })
+        .WithName("SearchProducts")
+        .WithTags("Produits")
+        .Produces<IReadOnlyList<ProductSearchItemDto>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .WithOpenApi(operation =>
+        {
+            operation.Summary = "Recherche un ensemble de produits à partir d'un code scanné.";
+            operation.Description = "Applique successivement trois stratégies : correspondance exacte sur le SKU, correspondance exacte sur le code brut (EAN/Code) puis comparaison sur CodeDigits lorsque le code contient des chiffres. Les résultats sont fusionnés sans doublon et limités par le paramètre 'limit'.";
+
+            if (operation.Parameters is { Count: > 0 })
+            {
+                foreach (var parameter in operation.Parameters)
+                {
+                    if (string.Equals(parameter.Name, "code", StringComparison.OrdinalIgnoreCase))
+                    {
+                        parameter.Description = "Code recherché (SKU exact, EAN ou code brut).";
+                        parameter.Required = true;
+                    }
+                    else if (string.Equals(parameter.Name, "limit", StringComparison.OrdinalIgnoreCase))
+                    {
+                        parameter.Description = "Nombre maximum de résultats (défaut : 20).";
+                        if (parameter.Schema is not null)
+                        {
+                            parameter.Schema.Minimum = 1;
+                            parameter.Schema.Default = new OpenApiInteger(20);
+                        }
+                    }
+                }
+            }
+
+            return operation;
+        });
     }
 
     private static void MapGetProductEndpoint(IEndpointRouteBuilder app)
