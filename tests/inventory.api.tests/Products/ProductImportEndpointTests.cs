@@ -42,7 +42,7 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
                   "\"ABC-987654\";\"SKU-200\";\"Steelbook limité\"\n";
 
         using var content = new StringContent(csv, Encoding.Latin1, "text/csv");
-        var response = await client.PostAsync(client.CreateRelativeUri("/api/products/import"), content).ConfigureAwait(false);
+        var response = await client.PostAsync("/api/products/import", content).ConfigureAwait(false);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
@@ -86,7 +86,7 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
                   "\"CODE-2\";\"SKU-900\";\"Produit B\"\n";
 
         using var content = new StringContent(csv, Encoding.UTF8, "text/csv");
-        var response = await client.PostAsync(client.CreateRelativeUri("/api/products/import"), content).ConfigureAwait(false);
+        var response = await client.PostAsync("/api/products/import", content).ConfigureAwait(false);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
