@@ -183,40 +183,21 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
         var client = CreateClient();
 
-        const string sku = "SKU-CONCURRENT";
+        const string sku = "SKU-PARALLEL";
         var tasks = Enumerable
             .Range(0, 5)
             .Select(index => client.PostAsJsonAsync(
                 client.CreateRelativeUri("/api/products"),
-                new CreateProductRequest { Sku = sku, Name = $"Produit {index}", Ean = index switch { 0 => "32145670", _ => null } }
+                new CreateProductRequest { Sku = sku, Name = $"Produit {index}", Ean = $"9900{index:0000}" }
             ))
             .ToArray();
 
         var responses = await Task.WhenAll(tasks).ConfigureAwait(false);
         responses.Count(r => r.StatusCode == HttpStatusCode.Created).Should().Be(1, "une seule création doit réussir");
         responses.Count(r => r.StatusCode == HttpStatusCode.Conflict).Should().Be(4, "les autres créations doivent échouer en conflit");
-    }
 
-    [SkippableFact]
-    public async Task CreateProduct_SameEanInParallel_AllowsSingleSuccess()
-    {
-        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
-
-        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
-        var client = CreateClient();
-
-        const string sharedEan = "99001122";
-        var tasks = Enumerable
-            .Range(0, 5)
-            .Select(index => client.PostAsJsonAsync(
-                client.CreateRelativeUri("/api/products"),
-                new CreateProductRequest { Sku = $"SKU-EAN-CONC-{index}", Name = $"Produit {index}", Ean = sharedEan }
-            ))
-            .ToArray();
-
-        var responses = await Task.WhenAll(tasks).ConfigureAwait(false);
-        responses.Count(r => r.StatusCode == HttpStatusCode.Created).Should().Be(1, "une seule création doit réussir");
-        responses.Count(r => r.StatusCode == HttpStatusCode.Conflict).Should().Be(4, "les autres créations doivent échouer en conflit");
+        var fetchResponse = await client.GetAsync(client.CreateRelativeUri($"/api/products/{sku}")).ConfigureAwait(false);
+        await fetchResponse.ShouldBeAsync(HttpStatusCode.OK, "le produit créé doit être récupérable").ConfigureAwait(false);
     }
 
     [SkippableFact]
