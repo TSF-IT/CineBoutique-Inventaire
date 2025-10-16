@@ -45,27 +45,28 @@ jobs:
 
       - name: Install .NET 8 SDK (user-space in $HOME/.dotnet)
         shell: bash
-        env:
-          DOTNET_DIR: $HOME/.dotnet
-          DOTNET_CLI_TELEMETRY_OPTOUT: 1
-          DOTNET_MULTILEVEL_LOOKUP: 0
         run: |
           set -euo pipefail
+          DOTNET_DIR="$HOME/.dotnet"
+          export DOTNET_ROOT="$DOTNET_DIR"
+
+          # Nettoyage éventuel d'une précédente install user-space
           if [ -d "$DOTNET_DIR" ]; then
-            rm -rf "$DOTNET_DIR/sdk/8.0."* "$DOTNET_DIR/shared/Microsoft.NETCore.App/8.0."* "$DOTNET_DIR/host" 2>/dev/null || true
+            rm -rf "$DOTNET_DIR/sdk/8.0."* \
+                  "$DOTNET_DIR/shared/Microsoft.NETCore.App/8.0."* \
+                  "$DOTNET_DIR/host" 2>/dev/null || true
           fi
+
           mkdir -p "$DOTNET_DIR"
           echo "Installing .NET 8 SDK into $DOTNET_DIR"
           curl -sSL https://dot.net/v1/dotnet-install.sh -o dotnet-install.sh
           bash dotnet-install.sh --channel 8.0 --install-dir "$DOTNET_DIR" --no-path
           test -x "$DOTNET_DIR/dotnet" || (echo "dotnet binary missing in $DOTNET_DIR" && ls -la "$DOTNET_DIR" && exit 1)
 
-      - name: Export DOTNET_ROOT and PATH for this job
-        shell: bash
-        run: |
-          echo "DOTNET_ROOT=$HOME/.dotnet" >> $GITHUB_ENV
-          echo "$HOME/.dotnet" >> $GITHUB_PATH
-          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+          # Rendre disponibles pour TOUTES les étapes suivantes
+          echo "DOTNET_ROOT=$DOTNET_DIR" >> "$GITHUB_ENV"
+          echo "$DOTNET_DIR" >> "$GITHUB_PATH"
+          echo "$DOTNET_DIR/tools" >> "$GITHUB_PATH"
 
       - name: Verify dotnet availability
         shell: bash
@@ -96,18 +97,17 @@ jobs:
         run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
 
       - name: Générer la couverture .NET
+        shell: bash
         run: |
+          set -euo pipefail
           report_root="test-results/dotnet"
           coverage_glob="$report_root/**/coverage.cobertura.xml"
-
           if ! compgen -G "$coverage_glob" > /dev/null; then
             echo "Aucun fichier de couverture Cobertura trouvé dans $report_root" >&2
             exit 1
           fi
-
           mkdir -p "$report_root/coverage-report"
-
-          reportgenerator \
+          dotnet tool run reportgenerator \
             "-reports:$coverage_glob" \
             "-targetdir:$report_root/coverage-report" \
             "-reporttypes:HtmlInline;Cobertura"
