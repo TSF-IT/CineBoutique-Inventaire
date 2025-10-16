@@ -107,7 +107,7 @@ jobs:
             exit 1
           fi
           mkdir -p "$report_root/coverage-report"
-          dotnet tool run reportgenerator \
+          reportgenerator \
             "-reports:$coverage_glob" \
             "-targetdir:$report_root/coverage-report" \
             "-reporttypes:HtmlInline;Cobertura"
