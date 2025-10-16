@@ -33,7 +33,7 @@ internal static class ProductEndpoints
         // --- MAJ par SKU ---
 
         var updateBySku = async (
-            string sku,
+            string code,
             CreateProductRequest request,
             IDbConnection connection,
             IAuditLogger auditLogger,
@@ -41,6 +41,7 @@ internal static class ProductEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
+            var sku = code;
             if (string.IsNullOrWhiteSpace(sku))
             {
                 await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, "(SKU vide)", "sans sku", "products.update.invalid", cancellationToken).ConfigureAwait(false);
@@ -121,7 +122,7 @@ internal static class ProductEndpoints
             }
         };
 
-        app.MapPost("/api/products/{sku}", updateBySku)
+        app.MapPost("/api/products/{code}", updateBySku)
            .WithName("UpdateProductBySkuPost")
            .WithTags("Produits")
            .Produces<ProductDto>(StatusCodes.Status200OK)
@@ -135,7 +136,7 @@ internal static class ProductEndpoints
                return op;
            });
 
-        app.MapPut("/api/products/{sku}", updateBySku)
+        app.MapPut("/api/products/{code}", updateBySku)
            .WithName("UpdateProductBySku")
            .WithTags("Produits")
            .Produces<ProductDto>(StatusCodes.Status200OK)
