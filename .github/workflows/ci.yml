@@ -14,7 +14,7 @@ defaults:
 
 jobs:
   build-and-test:
-    runs-on: [self-hosted, tsf, Linux, X64]
+    runs-on: [self-hosted, tsf-dsi, Linux, X64]
     permissions:
       contents: read
       checks: write
@@ -149,7 +149,7 @@ jobs:
             test-results/web/**
 
   e2e-web:
-    runs-on: [self-hosted, tsf, Linux, X64]
+    runs-on: [self-hosted, tsf-dsi, Linux, X64]
     container:
       image: mcr.microsoft.com/playwright:v1.49.1-jammy
       options: --user root
