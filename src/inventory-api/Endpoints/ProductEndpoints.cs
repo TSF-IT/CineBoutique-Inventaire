@@ -714,6 +714,45 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 }
             }
 
+            operation.Responses ??= new OpenApiResponses();
+            operation.Responses[StatusCodes.Status200OK.ToString()] = new OpenApiResponse
+            {
+                Description = "Liste des produits correspondant au code recherché.",
+                Content =
+                {
+                    ["application/json"] = new OpenApiMediaType
+                    {
+                        Schema = new OpenApiSchema
+                        {
+                            Type = "array",
+                            Items = new OpenApiSchema
+                            {
+                                Reference = new OpenApiReference
+                                {
+                                    Type = ReferenceType.Schema,
+                                    Id = nameof(ProductSearchItemDto)
+                                }
+                            }
+                        },
+                        Example = new OpenApiArray
+                        {
+                            new OpenApiObject
+                            {
+                                ["sku"] = new OpenApiString("CB-0001"),
+                                ["code"] = new OpenApiString("CB-0001"),
+                                ["name"] = new OpenApiString("Café grains 1kg")
+                            },
+                            new OpenApiObject
+                            {
+                                ["sku"] = new OpenApiString("CB-0101"),
+                                ["code"] = new OpenApiString("0001"),
+                                ["name"] = new OpenApiString("Bonbon réglisse")
+                            }
+                        }
+                    }
+                }
+            };
+
             return operation;
         });
     }
