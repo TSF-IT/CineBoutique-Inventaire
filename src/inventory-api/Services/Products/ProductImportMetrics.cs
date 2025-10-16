@@ -4,8 +4,11 @@ using System.Diagnostics.Metrics;
 
 namespace CineBoutique.Inventory.Api.Services.Products;
 
-public sealed class ProductImportMetrics : IProductImportMetrics
+public sealed class ProductImportMetrics : IProductImportMetrics, IDisposable
 {
+    internal const string MeterName = "cineboutique.inventory.products";
+
+    private readonly Meter _meter;
     private readonly Counter<long>? _startedCounter;
     private readonly Counter<long>? _succeededCounter;
     private readonly Counter<long>? _failedCounter;
@@ -15,11 +18,11 @@ public sealed class ProductImportMetrics : IProductImportMetrics
     {
         ArgumentNullException.ThrowIfNull(meterFactory);
 
-        var meter = meterFactory.Create("cineboutique.inventory.products");
-        _startedCounter = meter.CreateCounter<long>("import_started");
-        _succeededCounter = meter.CreateCounter<long>("import_succeeded");
-        _failedCounter = meter.CreateCounter<long>("import_failed");
-        _durationHistogram = meter.CreateHistogram<double>("import_duration_ms", unit: "ms");
+        _meter = meterFactory.Create(MeterName);
+        _startedCounter = _meter.CreateCounter<long>("import_started");
+        _succeededCounter = _meter.CreateCounter<long>("import_succeeded");
+        _failedCounter = _meter.CreateCounter<long>("import_failed");
+        _durationHistogram = _meter.CreateHistogram<double>("import_duration_ms", unit: "ms");
     }
 
     public void IncrementStarted()
@@ -61,5 +64,10 @@ public sealed class ProductImportMetrics : IProductImportMetrics
             : Array.Empty<KeyValuePair<string, object?>>();
 
         _durationHistogram.Record(duration.TotalMilliseconds, tags);
+    }
+
+    public void Dispose()
+    {
+        _meter.Dispose();
     }
 }

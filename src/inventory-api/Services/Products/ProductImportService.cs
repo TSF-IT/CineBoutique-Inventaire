@@ -28,6 +28,7 @@ public sealed class ProductImportService : IProductImportService
     private const string StatusSucceeded = "Succeeded";
     private const string StatusFailed = "Failed";
     private const string StatusDryRun = "DryRun";
+    private const string StatusSkipped = "Skipped";
 
     private static readonly Regex DigitsOnlyRegex = new("[^0-9]", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Encoding StrictUtf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
@@ -84,6 +85,14 @@ public sealed class ProductImportService : IProductImportService
                     string.Equals(lastSucceededHash, bufferedCsv.Sha256, StringComparison.Ordinal))
                 {
                     await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                    LogImportEvent(
+                        "ImportCompleted",
+                        StatusSkipped,
+                        command.Username,
+                        bufferedCsv.Sha256,
+                        total: 0,
+                        inserted: 0,
+                        duration: TimeSpan.Zero);
                     _logger.LogInformation("Import produits ignoré : fichier identique au dernier import réussi.");
                     return new ProductImportResult(ProductImportResponse.SkippedResult(), ProductImportResultType.Skipped);
                 }
@@ -115,6 +124,15 @@ public sealed class ProductImportService : IProductImportService
             var errorCount = parseOutcome.Errors.Count;
             var wouldInsert = parseOutcome.Rows.Count;
 
+            LogImportEvent(
+                "ImportStarted",
+                StatusStarted,
+                command.Username,
+                bufferedCsv.Sha256,
+                totalLines,
+                inserted: 0,
+                duration: TimeSpan.Zero);
+
             if (errorCount > 0)
             {
                 await CompleteHistoryAsync(
@@ -132,6 +150,15 @@ public sealed class ProductImportService : IProductImportService
 
                 _metrics.IncrementFailed();
                 _metrics.ObserveDuration(stopwatch.Elapsed, command.DryRun);
+
+                LogImportEvent(
+                    "ImportCompleted",
+                    StatusFailed,
+                    command.Username,
+                    bufferedCsv.Sha256,
+                    totalLines,
+                    inserted: 0,
+                    stopwatch.Elapsed);
 
                 return new ProductImportResult(
                     ProductImportResponse.Failure(totalLines, parseOutcome.Errors, wouldInsert),
@@ -155,6 +182,15 @@ public sealed class ProductImportService : IProductImportService
 
                 _metrics.IncrementSucceeded(true);
                 _metrics.ObserveDuration(stopwatch.Elapsed, true);
+
+                LogImportEvent(
+                    "ImportCompleted",
+                    StatusDryRun,
+                    command.Username,
+                    bufferedCsv.Sha256,
+                    totalLines,
+                    inserted: 0,
+                    stopwatch.Elapsed);
 
                 return new ProductImportResult(
                     ProductImportResponse.DryRunResult(totalLines, wouldInsert),
@@ -183,6 +219,15 @@ public sealed class ProductImportService : IProductImportService
                 _metrics.IncrementSucceeded(false);
                 _metrics.ObserveDuration(stopwatch.Elapsed, false);
 
+                LogImportEvent(
+                    "ImportCompleted",
+                    StatusSucceeded,
+                    command.Username,
+                    bufferedCsv.Sha256,
+                    totalLines,
+                    inserted,
+                    stopwatch.Elapsed);
+
                 _logger.LogInformation("Import produits terminé : {Inserted} lignes insérées.", inserted);
 
                 return new ProductImportResult(
@@ -209,6 +254,15 @@ public sealed class ProductImportService : IProductImportService
                 _metrics.IncrementFailed();
                 _metrics.ObserveDuration(stopwatch.Elapsed, command.DryRun);
 
+                LogImportEvent(
+                    "ImportCompleted",
+                    StatusFailed,
+                    command.Username,
+                    bufferedCsv.Sha256,
+                    totalLines,
+                    inserted: 0,
+                    stopwatch.Elapsed);
+
                 throw;
             }
         }
@@ -219,6 +273,28 @@ public sealed class ProductImportService : IProductImportService
                 await ReleaseAdvisoryLockAsync(cancellationToken).ConfigureAwait(false);
             }
         }
+    }
+
+    private void LogImportEvent(
+        string eventName,
+        string status,
+        string? username,
+        string fileSha256,
+        int total,
+        int inserted,
+        TimeSpan duration)
+    {
+        var payload = new
+        {
+            Username = username,
+            FileSha256 = fileSha256,
+            Total = total,
+            Inserted = inserted,
+            DurationMs = (long)Math.Round(duration.TotalMilliseconds, MidpointRounding.AwayFromZero),
+            Status = status
+        };
+
+        _logger.LogInformation("{Event} {@Import}", eventName, payload);
     }
 
     private async Task<BufferedCsv> BufferStreamAsync(Stream source, CancellationToken cancellationToken)

@@ -38,6 +38,8 @@ using Dapper;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -209,10 +211,22 @@ builder.Services.AddScoped<IShopService, ShopService>();
 builder.Services.AddScoped<IShopUserService, ShopUserService>();
 builder.Services.AddScoped<IProductLookupService, ProductLookupService>();
 builder.Services.AddScoped<IProductSearchService, ProductSearchService>();
+builder.Services.AddOpenTelemetry()
+    .ConfigureResource(resource => resource.AddService("cineboutique.inventory.api"))
+    .WithMetrics(metrics =>
+    {
+        metrics.AddMeter(ProductImportMetrics.MeterName, ProductLookupMetrics.MeterName);
+        metrics.AddPrometheusExporter();
+    });
 builder.Services.AddSingleton<IProductImportMetrics>(sp =>
 {
     var meterFactory = sp.GetService<IMeterFactory>();
     return meterFactory is null ? new NullProductImportMetrics() : new ProductImportMetrics(meterFactory);
+});
+builder.Services.AddSingleton<IProductLookupMetrics>(sp =>
+{
+    var meterFactory = sp.GetService<IMeterFactory>();
+    return meterFactory is null ? new NullProductLookupMetrics() : new ProductLookupMetrics(meterFactory);
 });
 builder.Services.AddScoped<IProductImportService, ProductImportService>();
 
@@ -455,6 +469,16 @@ app.UseMiddleware<SoftOperatorMiddleware>();
 
 app.UseAuthentication();
 app.UseAuthorization();
+
+var metricsEndpoint = app.MapPrometheusScrapingEndpoint("/metrics");
+if (devLike)
+{
+    metricsEndpoint.AllowAnonymous();
+}
+else
+{
+    metricsEndpoint.RequireAuthorization("Admin");
+}
 
 app.Use(async (ctx, next) =>
 {
