@@ -78,18 +78,21 @@ public sealed class ProductLookup_ExtendedTests : IntegrationTestBase
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
-        await InsertProductAsync("LKP-DGT-001", "Code suffixé alpha", "3557191310038S", "3557191310038").ConfigureAwait(false);
+        // L'EAN est limité à 13 caractères en base : on simule un suffixe alpha en remplaçant le dernier chiffre.
+        const string rawCodeWithSuffix = "355719131003S"; // 12 chiffres + suffixe alpha
+        const string digitsOnly = "355719131003";
+        await InsertProductAsync("LKP-DGT-001", "Code suffixé alpha", rawCodeWithSuffix, digitsOnly).ConfigureAwait(false);
 
         var client = CreateClient();
         var getResponse = await client.GetAsync(
-            client.CreateRelativeUri("/api/products/3557191310038")).ConfigureAwait(false);
+            client.CreateRelativeUri($"/api/products/{digitsOnly}")).ConfigureAwait(false);
         await getResponse.ShouldBeAsync(HttpStatusCode.OK, "les chiffres extraits doivent permettre de retrouver le produit").ConfigureAwait(false);
 
         var product = await getResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
         product.Should().NotBeNull();
         product!.Sku.Should().Be("LKP-DGT-001");
         product.Name.Should().Be("Code suffixé alpha");
-        product.Ean.Should().Be("3557191310038S");
+        product.Ean.Should().Be(rawCodeWithSuffix);
     }
 
     [SkippableFact]
