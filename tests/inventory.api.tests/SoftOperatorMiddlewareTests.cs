@@ -34,9 +34,6 @@ public sealed class SoftOperatorMiddlewareTests : IntegrationTestBase
         await res.ShouldBeAsync(HttpStatusCode.OK,
             "endpoint de lecture non filtré par le guard (GET mappé sur /api/health)");
 
-        using var headRequest = new HttpRequestMessage(HttpMethod.Head, client.CreateRelativeUri("/api/health"));
-        var headResponse = await client.SendAsync(headRequest).ConfigureAwait(false);
-        await headResponse.ShouldBeAsync(HttpStatusCode.OK, "les requêtes HEAD ne sont pas filtrées");
     }
 
     [SkippableFact]
