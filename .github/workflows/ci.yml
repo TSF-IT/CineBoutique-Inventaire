@@ -14,7 +14,7 @@ defaults:
 
 jobs:
   build-and-test:
-    runs-on: [self-hosted, tsf, Linux, X64]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       checks: write
@@ -149,7 +149,7 @@ jobs:
             test-results/web/**
 
   e2e-web:
-    runs-on: [self-hosted, tsf, Linux, X64]
+    runs-on: ubuntu-latest
     container:
       image: mcr.microsoft.com/playwright:v1.49.1-jammy
       options: --user root
