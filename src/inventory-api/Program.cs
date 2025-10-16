@@ -1,6 +1,7 @@
 // Modifications : simplification de Program.cs via des extensions et intégration du mapping conflits.
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System.Data;
+using System.Diagnostics.Metrics;
 using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
@@ -208,6 +209,11 @@ builder.Services.AddScoped<IShopService, ShopService>();
 builder.Services.AddScoped<IShopUserService, ShopUserService>();
 builder.Services.AddScoped<IProductLookupService, ProductLookupService>();
 builder.Services.AddScoped<IProductSearchService, ProductSearchService>();
+builder.Services.AddSingleton<IProductImportMetrics>(sp =>
+{
+    var meterFactory = sp.GetService<IMeterFactory>();
+    return meterFactory is null ? new NullProductImportMetrics() : new ProductImportMetrics(meterFactory);
+});
 builder.Services.AddScoped<IProductImportService, ProductImportService>();
 
 // --- CORS ---

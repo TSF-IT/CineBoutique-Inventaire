@@ -380,44 +380,123 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 }
 
                 var request = httpContext.Request;
+                const long maxCsvSizeBytes = 25L * 1024L * 1024L;
 
-                static IResult BuildResponse(ProductImportResponse response) =>
-                    response.Errors.Count > 0 ? Results.BadRequest(response) : Results.Ok(response);
-
-                if (request.HasFormContentType)
+                if (request.ContentLength is { } contentLength && contentLength > maxCsvSizeBytes)
                 {
-                    var form = await request.ReadFormAsync(cancellationToken).ConfigureAwait(false);
-                    var file = form.Files.GetFile("file");
+                    return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+                }
 
-                    if (file is null || file.Length == 0)
+                static bool TryParseDryRun(HttpRequest req, out bool dryRun, out bool isInvalid)
+                {
+                    dryRun = false;
+                    isInvalid = false;
+
+                    if (!req.Query.TryGetValue("dryRun", out var values) || values.Count == 0)
                     {
-                        return BuildResponse(ProductImportResponse.Failure(new[]
-                        {
-                            new ProductImportError(0, "MISSING_FILE")
-                        }));
+                        return true;
                     }
 
-                    await using var fileStream = file.OpenReadStream();
-                    var importResponse = await importService.ImportAsync(fileStream, cancellationToken).ConfigureAwait(false);
-                    return BuildResponse(importResponse);
+                    var raw = values[^1];
+                    if (string.Equals(raw, "1", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase))
+                    {
+                        dryRun = true;
+                        return true;
+                    }
+
+                    if (string.Equals(raw, "0", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(raw, "false", StringComparison.OrdinalIgnoreCase))
+                    {
+                        dryRun = false;
+                        return true;
+                    }
+
+                    isInvalid = true;
+                    return false;
                 }
 
-                if (IsCsvContentType(request.ContentType))
+                static IResult BuildFailure(string reason) =>
+                    Results.BadRequest(ProductImportResponse.Failure(0, new[]
+                    {
+                        new ProductImportError(0, reason)
+                    }));
+
+                if (!TryParseDryRun(request, out var dryRun, out var invalidDryRun) || invalidDryRun)
                 {
-                    var importResponse = await importService.ImportAsync(request.Body, cancellationToken).ConfigureAwait(false);
-                    return BuildResponse(importResponse);
+                    return BuildFailure("INVALID_DRY_RUN");
                 }
 
-                return BuildResponse(ProductImportResponse.Failure(new[]
+                await using Stream? ownedStream = null;
+                Stream streamToImport = request.Body;
+
+                try
                 {
-                    new ProductImportError(0, "UNSUPPORTED_CONTENT_TYPE")
-                }));
+                    if (request.HasFormContentType)
+                    {
+                        var form = await request.ReadFormAsync(cancellationToken).ConfigureAwait(false);
+                        var file = form.Files.GetFile("file");
+
+                        if (file is null || file.Length == 0)
+                        {
+                            return BuildFailure("MISSING_FILE");
+                        }
+
+                        if (file.Length > maxCsvSizeBytes)
+                        {
+                            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+                        }
+
+                        ownedStream = file.OpenReadStream(maxCsvSizeBytes + 1);
+                        streamToImport = ownedStream;
+                    }
+                    else if (!IsCsvContentType(request.ContentType))
+                    {
+                        return BuildFailure("UNSUPPORTED_CONTENT_TYPE");
+                    }
+                }
+                catch (IOException)
+                {
+                    return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+                }
+                catch (InvalidDataException)
+                {
+                    return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+                }
+
+                var username = EndpointUtilities.GetAuthenticatedUserName(httpContext);
+
+                try
+                {
+                    var command = new ProductImportCommand(streamToImport, dryRun, username);
+                    var result = await importService.ImportAsync(command, cancellationToken).ConfigureAwait(false);
+
+                    return result.ResultType switch
+                    {
+                        ProductImportResultType.ValidationFailed => Results.BadRequest(result.Response),
+                        ProductImportResultType.Skipped => Results.Json(
+                            result.Response,
+                            statusCode: StatusCodes.Status204NoContent),
+                        _ => Results.Ok(result.Response)
+                    };
+                }
+                catch (ProductImportInProgressException)
+                {
+                    return Results.Json(new { reason = "import_in_progress" }, statusCode: StatusCodes.Status423Locked);
+                }
+                catch (ProductImportPayloadTooLargeException)
+                {
+                    return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+                }
             })
             .RequireAuthorization("Admin")
             .WithName("ImportProducts")
             .WithTags("Produits")
             .Produces<ProductImportResponse>(StatusCodes.Status200OK)
             .Produces<ProductImportResponse>(StatusCodes.Status400BadRequest)
+            .Produces<ProductImportResponse>(StatusCodes.Status204NoContent)
+            .Produces(StatusCodes.Status413PayloadTooLarge)
+            .Produces(StatusCodes.Status423Locked)
             .WithOpenApi(operation =>
             {
                 operation.Summary = "Importe le catalogue produits depuis un fichier CSV.";
@@ -459,7 +538,12 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     Type = "object",
                     Properties =
                     {
+                        ["total"] = new OpenApiSchema { Type = "integer", Format = "int32" },
                         ["inserted"] = new OpenApiSchema { Type = "integer", Format = "int32" },
+                        ["wouldInsert"] = new OpenApiSchema { Type = "integer", Format = "int32" },
+                        ["errorCount"] = new OpenApiSchema { Type = "integer", Format = "int32" },
+                        ["dryRun"] = new OpenApiSchema { Type = "boolean" },
+                        ["skipped"] = new OpenApiSchema { Type = "boolean" },
                         ["errors"] = new OpenApiSchema
                         {
                             Type = "array",
@@ -487,6 +571,18 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     }
                 };
 
+                operation.Responses[StatusCodes.Status204NoContent.ToString()] = new OpenApiResponse
+                {
+                    Description = "Import ignoré (déjà appliqué).",
+                    Content =
+                    {
+                        ["application/json"] = new OpenApiMediaType
+                        {
+                            Schema = successSchema
+                        }
+                    }
+                };
+
                 operation.Responses[StatusCodes.Status400BadRequest.ToString()] = new OpenApiResponse
                 {
                     Description = "Le fichier est invalide.",
@@ -498,6 +594,40 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                         }
                     }
                 };
+
+                operation.Responses[StatusCodes.Status413PayloadTooLarge.ToString()] = new OpenApiResponse
+                {
+                    Description = "Le fichier dépasse la taille maximale autorisée."
+                };
+
+                operation.Responses[StatusCodes.Status423Locked.ToString()] = new OpenApiResponse
+                {
+                    Description = "Un import est déjà en cours.",
+                    Content =
+                    {
+                        ["application/json"] = new OpenApiMediaType
+                        {
+                            Schema = new OpenApiSchema
+                            {
+                                Type = "object",
+                                Properties =
+                                {
+                                    ["reason"] = new OpenApiSchema { Type = "string" }
+                                }
+                            }
+                        }
+                    }
+                };
+
+                operation.Parameters ??= new List<OpenApiParameter>();
+                operation.Parameters.Add(new OpenApiParameter
+                {
+                    Name = "dryRun",
+                    In = ParameterLocation.Query,
+                    Required = false,
+                    Description = "Lorsque true, valide le fichier sans appliquer les modifications.",
+                    Schema = new OpenApiSchema { Type = "boolean" }
+                });
 
                 return operation;
             });

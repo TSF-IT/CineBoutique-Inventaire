@@ -47,7 +47,12 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
         payload.Should().NotBeNull();
-        payload!.Inserted.Should().Be(2);
+        payload!.Total.Should().Be(2);
+        payload.Inserted.Should().Be(2);
+        payload.WouldInsert.Should().Be(2);
+        payload.ErrorCount.Should().Be(0);
+        payload.DryRun.Should().BeFalse();
+        payload.Skipped.Should().BeFalse();
         payload.Errors.Should().BeEmpty();
 
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
@@ -91,7 +96,13 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
         payload.Should().NotBeNull();
-        payload!.Errors.Should().Contain(error => error.Reason == "DUP_SKU_IN_FILE");
+        payload!.Total.Should().Be(2);
+        payload.Inserted.Should().Be(0);
+        payload.WouldInsert.Should().Be(1);
+        payload.ErrorCount.Should().BeGreaterThan(0);
+        payload.DryRun.Should().BeFalse();
+        payload.Skipped.Should().BeFalse();
+        payload.Errors.Should().Contain(error => error.Reason == "DUP_SKU_IN_FILE");
 
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
         await using var command = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\" WHERE \"Sku\" = 'LEGACY';", connection);
