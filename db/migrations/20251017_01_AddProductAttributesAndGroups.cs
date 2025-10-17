@@ -126,24 +126,33 @@ public sealed class AddProductAttributesAndGroups : Migration
 
     private void EnsureProductGroupCodeConstraint()
     {
-        if (Schema.Table(ProductGroupTable).Column(ProductGroupCodeColumn).Exists())
+        if (!Schema.Table(ProductGroupTable).Exists())
         {
-            Execute.Sql($"ALTER TABLE \"{ProductGroupTable}\" DROP CONSTRAINT IF EXISTS \"{LegacyProductGroupCodeUniqueConstraintName}\";");
-            Execute.Sql($"DROP INDEX IF EXISTS {LegacyProductGroupCodeUniqueIndexName};");
-            Execute.Sql($"""
+            return;
+        }
+
+        Execute.Sql($"ALTER TABLE \"{ProductGroupTable}\" DROP CONSTRAINT IF EXISTS \"{LegacyProductGroupCodeUniqueConstraintName}\";");
+        Execute.Sql($"DROP INDEX IF EXISTS {LegacyProductGroupCodeUniqueIndexName};");
+        Execute.Sql($"""
 DO $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint 
-    WHERE conname = 'uq_productgroup_code'
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'ProductGroup'
+      AND column_name = 'Code'
   ) THEN
-    ALTER TABLE "ProductGroup"
-    ADD CONSTRAINT uq_productgroup_code UNIQUE ("Code");
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_constraint WHERE conname = 'uq_productgroup_code'
+    ) THEN
+      ALTER TABLE "ProductGroup"
+      ADD CONSTRAINT uq_productgroup_code UNIQUE ("Code");
+    END IF;
   END IF;
 END $$;
 """);
-            Execute.Sql($"DROP INDEX IF EXISTS {LegacyProductGroupCodeNotNullIndexName};");
-        }
+        Execute.Sql($"DROP INDEX IF EXISTS {LegacyProductGroupCodeNotNullIndexName};");
     }
 
     private void EnsureProductGroupColumn()

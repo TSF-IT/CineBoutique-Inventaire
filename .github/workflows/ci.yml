@@ -53,6 +53,8 @@ jobs:
 
       - run: dotnet --info
 
+      - run: dotnet tool restore
+
       - name: Restore
         run: dotnet restore
 
@@ -68,12 +70,6 @@ jobs:
             --results-directory "test-results/dotnet" \
             --collect:"XPlat Code Coverage"
 
-      - name: Installer ReportGenerator
-        run: dotnet tool install -g dotnet-reportgenerator-globaltool
-
-      - name: Ajouter .dotnet/tools au PATH
-        run: echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
-
       - name: Générer la couverture .NET
         shell: bash
         run: |
@@ -85,7 +81,7 @@ jobs:
             exit 1
           fi
           mkdir -p "$report_root/coverage-report"
-          reportgenerator \
+          dotnet tool run reportgenerator \
             "-reports:$coverage_glob" \
             "-targetdir:$report_root/coverage-report" \
             "-reporttypes:HtmlInline;Cobertura"
