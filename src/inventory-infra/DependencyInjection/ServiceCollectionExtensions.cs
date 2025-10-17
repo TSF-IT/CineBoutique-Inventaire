@@ -38,6 +38,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<InventoryDataSeeder>();
         services.AddScoped<IAuditLogger, DapperAuditLogger>();
         services.AddScoped<IProductLookupRepository, ProductLookupRepository>();
+        services.AddScoped<IProductGroupRepository, ProductGroupRepository>();
+        services.AddScoped<IProductSuggestionRepository, ProductSuggestionRepository>();
 
         return services;
     }
