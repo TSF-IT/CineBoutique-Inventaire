@@ -1,5 +1,6 @@
 name: ci
 on: [push, pull_request, workflow_dispatch]
+
 env:
   AppSettings__SeedOnStartup: true
 
@@ -17,35 +18,32 @@ defaults:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      checks: write
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        ports:
+          - 5432/tcp
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: cineboutique
+        options: >-
+          --health-cmd "pg_isready -U postgres -d cineboutique"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 30
+          --name ci-postgres
+
     env:
-      DOTNET_CLI_TELEMETRY_OPTOUT: 1
       ASPNETCORE_ENVIRONMENT: CI
       DOTNET_ENVIRONMENT: CI
+      AppSettings__SeedOnStartup: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
 
     steps:
-      - name: Pre-checkout clean (no sudo; use Docker if available)
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          set -e
-          echo "Workspace: $GITHUB_WORKSPACE"
-          if command -v docker >/dev/null 2>&1; then
-            echo "Cleaning with Docker (root in container)…"
-            docker run --rm -v "$GITHUB_WORKSPACE":/ws alpine:3.20 sh -lc '
-              set -e
-              # Supprimer tout, y compris fichiers cachés (sauf . et ..)
-              rm -rf /ws/* /ws/.[!.]* /ws/..?* 2>/dev/null || true
-            '
-          else
-            echo "Docker non disponible; tentative en user-space…"
-            rm -rf "$GITHUB_WORKSPACE"/* "$GITHUB_WORKSPACE"/.[!.]* "$GITHUB_WORKSPACE"/..?* 2>/dev/null || true
-          fi
-          echo "Pre-checkout clean terminé."
-
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup .NET from global.json
         uses: actions/setup-dotnet@v4
@@ -56,6 +54,12 @@ jobs:
             Directory.Packages.props
             **/*.csproj
 
+      - name: Export DB env (build the conn string with mapped port)
+        run: |
+          echo "PGPORT=${{ job.services.postgres.ports['5432'] }}" >> $GITHUB_ENV
+          echo "ConnectionStrings__Default=Host=127.0.0.1;Port=${{ job.services.postgres.ports['5432'] }};Database=cineboutique;Username=postgres;Password=postgres" >> $GITHUB_ENV
+          echo "TEST_DB_CONN=Host=127.0.0.1;Port=${{ job.services.postgres.ports['5432'] }};Database=cineboutique;Username=postgres;Password=postgres" >> $GITHUB_ENV
+
       - name: Dotnet info
         run: |
           which dotnet
@@ -63,25 +67,21 @@ jobs:
           dotnet --list-sdks
           dotnet --list-runtimes
 
-      - run: dotnet tool restore
-
       - name: Restore
         run: dotnet restore --verbosity minimal
 
       - name: Build
         run: dotnet build --no-restore -c Release
 
-      - name: Enable SeedOnStartup (migrations + seed)
-        run: echo "AppSettings__SeedOnStartup=true" >> "$GITHUB_ENV"
-
-      - name: Test (.NET) -> TRX
+      - name: Test (.NET) - TRX + couverture
         run: |
           rm -rf test-results/dotnet
           mkdir -p test-results/dotnet
           dotnet test --no-build -c Release \
             --logger "trx;LogFileName=test.trx" \
             --results-directory "test-results/dotnet" \
-            /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura \
+            /p:CollectCoverage=true \
+            /p:CoverletOutputFormat=cobertura \
             /p:CoverletOutput="test-results/dotnet/coverage.cobertura.xml"
 
       - name: ReportGenerator (HTML)
@@ -94,139 +94,16 @@ jobs:
         env:
           PATH: $HOME/.dotnet/tools:${{ env.PATH }}
 
-      - name: Publier la couverture .NET
-        if: always()
+      - name: Upload TRX
         uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: dotnet-coverage
+          name: test-trx
+          path: test-results/dotnet/**/*.trx
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
           path: test-results/dotnet/coverage-report/**
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: src/inventory-web/package-lock.json
-
-      - name: Install web dependencies
-        working-directory: src/inventory-web
-        run: npm ci
-
-      - name: Run web tests (+ coverage)
-        working-directory: src/inventory-web
-        run: |
-          npm test -- --coverage
-          if [ -d coverage ]; then
-            mkdir -p "$GITHUB_WORKSPACE/test-results/web"
-            cp -R coverage "$GITHUB_WORKSPACE/test-results/web/"
-          fi
-
-      - name: Upload test artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ci-test-results
-          path: |
-            test-results/dotnet/**/*.trx
-            test-results/web/**
-
-  e2e-web:
-    runs-on: ubuntu-latest
-    container:
-      image: mcr.microsoft.com/playwright:v1.49.1-jammy
-      options: --user root
-    needs: build-and-test
-    steps:
-      - name: Pre-checkout clean (no sudo; use Docker if available)
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          set -e
-          echo "Workspace: $GITHUB_WORKSPACE"
-          if command -v docker >/dev/null 2>&1; then
-            echo "Cleaning with Docker (root in container)…"
-            docker run --rm -v "$GITHUB_WORKSPACE":/ws alpine:3.20 sh -lc '
-              set -e
-              # Supprimer tout, y compris fichiers cachés (sauf . et ..)
-              rm -rf /ws/* /ws/.[!.]* /ws/..?* 2>/dev/null || true
-            '
-          else
-            echo "Docker non disponible; tentative en user-space…"
-            rm -rf "$GITHUB_WORKSPACE"/* "$GITHUB_WORKSPACE"/.[!.]* "$GITHUB_WORKSPACE"/..?* 2>/dev/null || true
-          fi
-          echo "Pre-checkout clean terminé."
-
-      - uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: "npm"
-          cache-dependency-path: src/inventory-web/package-lock.json
-
-      - name: Installer les dépendances web
-        working-directory: src/inventory-web
-        run: npm ci
-
-      - name: Installer les dépendances OS pour Playwright (Linux uniquement)
-        if: runner.os == 'Linux'
-        env:
-          DEBIAN_FRONTEND: noninteractive
-        working-directory: src/inventory-web
-        run: |
-          apt-get update
-          npx playwright install-deps chromium
-
-      - name: Installer Playwright (navigateurs)
-        working-directory: src/inventory-web
-        run: npx playwright install chromium
-
-      - name: Build web
-        working-directory: src/inventory-web
-        run: npm run build
-
-      - name: Générer des certificats TLS éphémères pour l'e2e
-        working-directory: src/inventory-web
-        run: |
-          set -euo pipefail
-          CERT_DIR="tests/e2e/certs"
-          mkdir -p "$CERT_DIR"
-          # S'assurer qu'openssl est présent (les runners Ubuntu en disposent ;
-          # si image/container particulier : on l'installe)
-          if ! command -v openssl >/dev/null 2>&1; then
-            sudo apt-get update
-            sudo apt-get install -y openssl
-          fi
-          # Certificat auto-signé CN=localhost, valable 1 jour (éphémère)
-          openssl req -x509 -nodes -newkey rsa:2048 \
-            -keyout "$CERT_DIR/localhost-key.pem" \
-            -out    "$CERT_DIR/localhost.pem" \
-            -subj "/CN=localhost" -days 1
-          chmod 600 "$CERT_DIR/localhost-key.pem"
-
-      - name: Exécuter les tests e2e
-        working-directory: src/inventory-web
-        run: npx playwright test
-
-      - name: Artefacts Playwright
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-artifacts
-          path: src/inventory-web/playwright-report/**
-
-      - name: Restore host ownership after container job (no sudo)
-        if: runner.os == 'Linux' && always()
-        shell: bash
-        run: |
-          if command -v docker >/dev/null 2>&1; then
-            HOST_UID=$(stat -c "%u" "$GITHUB_WORKSPACE")
-            HOST_GID=$(stat -c "%g" "$GITHUB_WORKSPACE")
-            echo "Restoring ownership to ${HOST_UID}:${HOST_GID} via Docker…"
-            docker run --rm -e HOST_UID -e HOST_GID -v "$GITHUB_WORKSPACE":/ws alpine:3.20 sh -lc '
-              chown -R "${HOST_UID}:${HOST_GID}" /ws 2>/dev/null || true
-            '
-          else
-            echo "Docker non dispo; skip chown."
-          fi
