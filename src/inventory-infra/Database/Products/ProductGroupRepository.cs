@@ -18,7 +18,7 @@ public sealed class ProductGroupRepository : IProductGroupRepository
     private static readonly string UpsertSql = $"""
 INSERT INTO "ProductGroup" ("Code", "Label", "ParentId")
 VALUES (@Code, @Label, @ParentId)
-ON CONFLICT ("Code") WHERE "Code" IS NOT NULL
+ON CONFLICT ON CONSTRAINT "{ProductGroupCodeUniqueConstraint}"
 DO UPDATE SET "Label" = EXCLUDED."Label"
 RETURNING "Id";
 """;
