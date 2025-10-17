@@ -1,3 +1,7 @@
+# Garantit que les migrations/seed s'exécutent pendant les tests
+export AppSettings__SeedOnStartup=true
+echo "[run_tests] AppSettings__SeedOnStartup=$AppSettings__SeedOnStartup"
+
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
