@@ -64,35 +64,30 @@ jobs:
       - run: dotnet tool restore
 
       - name: Restore
-        run: dotnet restore
+        run: dotnet restore --verbosity minimal
 
       - name: Build
-        run: dotnet build -c Release --no-restore
+        run: dotnet build --no-restore -c Release
 
-      - name: Test (.NET) -> TRX
+      - name: Test (.NET) - TRX + couverture
         run: |
           rm -rf test-results/dotnet
           mkdir -p test-results/dotnet
-          dotnet test -c Release --no-build \
-            --logger "trx;LogFileName=tests.trx" \
+          dotnet test --no-build -c Release \
+            --logger "trx;LogFileName=test.trx" \
             --results-directory "test-results/dotnet" \
-            --collect:"XPlat Code Coverage"
+            /p:CollectCoverage=true /p:CoverletOutputFormat=cobertura \
+            /p:CoverletOutput="test-results/dotnet/coverage.cobertura.xml"
 
-      - name: Générer la couverture .NET
-        shell: bash
+      - name: ReportGenerator (HTML)
         run: |
-          set -euo pipefail
-          report_root="test-results/dotnet"
-          coverage_glob="$report_root/**/coverage.cobertura.xml"
-          if ! compgen -G "$coverage_glob" > /dev/null; then
-            echo "Aucun fichier de couverture Cobertura trouvé dans $report_root" >&2
-            exit 1
-          fi
-          mkdir -p "$report_root/coverage-report"
-          dotnet tool run reportgenerator \
-            "-reports:$coverage_glob" \
-            "-targetdir:$report_root/coverage-report" \
-            "-reporttypes:HtmlInline;Cobertura"
+          dotnet tool update -g dotnet-reportgenerator-globaltool
+          reportgenerator \
+            -reports:test-results/dotnet/coverage.cobertura.xml \
+            -targetdir:test-results/dotnet/coverage-report \
+            -reporttypes:HtmlInline;Cobertura
+        env:
+          PATH: $HOME/.dotnet/tools:${{ env.PATH }}
 
       - name: Publier la couverture .NET
         if: always()
