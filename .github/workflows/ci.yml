@@ -51,6 +51,11 @@ jobs:
           global-json-file: global.json
           cache: true
 
+      - run: |
+          which dotnet
+          dotnet --list-sdks
+          dotnet --list-runtimes
+
       - run: dotnet --info
 
       - run: dotnet tool restore
