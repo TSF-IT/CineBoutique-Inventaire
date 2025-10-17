@@ -21,4 +21,9 @@
     <PackageReference Include="FluentMigrator.Runner.Postgres" />
     <PackageReference Include="Npgsql" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="../../db/migrations/20251017_01_AddProductAttributesAndGroups.cs"
+             Link="Migrations/20251017_01_AddProductAttributesAndGroups.cs" />
+  </ItemGroup>
 </Project>
