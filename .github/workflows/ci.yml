@@ -54,12 +54,12 @@ jobs:
             Directory.Packages.props
             **/*.csproj
 
-      - run: |
+      - name: Dotnet info
+        run: |
           which dotnet
+          dotnet --info
           dotnet --list-sdks
           dotnet --list-runtimes
-
-      - run: dotnet --info
 
       - run: dotnet tool restore
 
