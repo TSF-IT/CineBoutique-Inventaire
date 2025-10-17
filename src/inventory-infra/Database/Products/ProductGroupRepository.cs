@@ -13,10 +13,12 @@ namespace CineBoutique.Inventory.Infrastructure.Database.Products;
 public sealed class ProductGroupRepository : IProductGroupRepository
 {
     private const string SelectGroupCodeSql = "SELECT \"Code\" FROM \"ProductGroup\" WHERE \"Id\" = @Id;";
-    private const string UpsertSql = """
+    private const string ProductGroupCodeUniqueIndexName = "ux_productgroup_code";
+
+    private static readonly string UpsertSql = $"""
 INSERT INTO "ProductGroup" ("Code", "Label", "ParentId")
 VALUES (@Code, @Label, @ParentId)
-ON CONFLICT ("Code")
+ON CONFLICT ON CONSTRAINT "{ProductGroupCodeUniqueIndexName}"
 DO UPDATE SET "Label" = EXCLUDED."Label"
 RETURNING "Id";
 """;
