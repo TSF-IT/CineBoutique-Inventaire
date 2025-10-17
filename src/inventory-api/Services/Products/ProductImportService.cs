@@ -530,7 +530,7 @@ public sealed class ProductImportService : IProductImportService
         const string sql = """
 INSERT INTO "Product" ("Sku", "Name", "Ean", "GroupId", "Attributes", "CodeDigits", "CreatedAtUtc")
 VALUES (@Sku, @Name, @Ean, @GroupId, CAST(@Attributes AS jsonb), @CodeDigits, @CreatedAtUtc)
-ON CONFLICT ("Sku")
+ON CONFLICT ((LOWER("Sku")))
 DO UPDATE SET
     "Name" = EXCLUDED."Name",
     "Ean" = EXCLUDED."Ean",
@@ -596,9 +596,13 @@ RETURNING (xmax = 0) AS inserted;
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        const string sql = "SELECT \"Sku\" FROM \"Product\" WHERE \"Sku\" = ANY(@Skus);";
+        var lowerSkus = distinctSkus
+            .Select(static sku => sku.ToLowerInvariant())
+            .ToArray();
+
+        const string sql = "SELECT \"Sku\" FROM \"Product\" WHERE LOWER(\"Sku\") = ANY(@LowerSkus);";
         var existingSkus = await _connection.QueryAsync<string>(
-                new CommandDefinition(sql, new { Skus = distinctSkus }, transaction: transaction, cancellationToken: cancellationToken))
+                new CommandDefinition(sql, new { LowerSkus = lowerSkus }, transaction: transaction, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
         var existingSet = new HashSet<string>(existingSkus, StringComparer.OrdinalIgnoreCase);
