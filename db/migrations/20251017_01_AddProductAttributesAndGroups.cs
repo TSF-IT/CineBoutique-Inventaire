@@ -17,6 +17,7 @@ public sealed class AddProductAttributesAndGroups : Migration
     private const string ProductGroupParentIndexName = "ix_productgroup_parent";
     private const string ProductGroupLabelTrgmIndexName = "ix_productgroup_label_trgm";
     private const string ProductGroupCodeUniqueIndexName = "ux_productgroup_code";
+    private const string ProductGroupCodeUniqueConstraintName = "uq_productgroup_code_notnull";
     private const string ProductGroupForeignKeyName = "fk_product_productgroup_groupid";
     private const string ProductGroupCodeColumn = "Code";
     private const string ProductGroupLabelColumn = "Label";
@@ -125,8 +126,23 @@ public sealed class AddProductAttributesAndGroups : Migration
     {
         if (Schema.Table(ProductGroupTable).Column(ProductGroupCodeColumn).Exists())
         {
+            Execute.Sql($"ALTER TABLE \"{ProductGroupTable}\" DROP CONSTRAINT IF EXISTS \"{ProductGroupCodeUniqueConstraintName}\";");
             Execute.Sql($"DROP INDEX IF EXISTS {ProductGroupCodeUniqueIndexName};");
             Execute.Sql($"CREATE UNIQUE INDEX IF NOT EXISTS {ProductGroupCodeUniqueIndexName} ON \"{ProductGroupTable}\" (\"{ProductGroupCodeColumn}\") WHERE \"{ProductGroupCodeColumn}\" IS NOT NULL;");
+            Execute.Sql($"""
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = '{ProductGroupCodeUniqueConstraintName}'
+    ) THEN
+        ALTER TABLE "{ProductGroupTable}"
+            ADD CONSTRAINT "{ProductGroupCodeUniqueConstraintName}"
+            UNIQUE USING INDEX "{ProductGroupCodeUniqueIndexName}";
+    END IF;
+END $$;
+""");
         }
     }
 
@@ -172,6 +188,7 @@ public sealed class AddProductAttributesAndGroups : Migration
         Execute.Sql($"DROP INDEX IF EXISTS {CodeDigitsIndexName};");
         Execute.Sql($"DROP INDEX IF EXISTS {AttributesGinIndexName};");
         Execute.Sql($"DROP INDEX IF EXISTS {ProductGroupParentIndexName};");
+        Execute.Sql($"ALTER TABLE \"{ProductGroupTable}\" DROP CONSTRAINT IF EXISTS \"{ProductGroupCodeUniqueConstraintName}\";");
         Execute.Sql($"DROP INDEX IF EXISTS {ProductGroupCodeUniqueIndexName};");
         Execute.Sql($"DROP INDEX IF EXISTS {ProductGroupLabelTrgmIndexName};");
         DropImmutableUnaccentFunction();
