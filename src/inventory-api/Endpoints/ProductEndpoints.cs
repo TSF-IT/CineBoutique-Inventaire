@@ -1,6 +1,7 @@
 // Modifications : déplacement des endpoints produits depuis Program.cs avec mutualisation des helpers locaux.
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Data;
 using System.IO;
 using System.Linq;
@@ -34,6 +35,7 @@ internal static class ProductEndpoints
 
         MapCreateProductEndpoint(app);
         MapSearchProductsEndpoint(app);
+        MapSuggestProductsEndpoint(app);
         MapGetProductEndpoint(app);
         MapUpdateProductEndpoints(app);
         MapImportProductsEndpoint(app);
@@ -421,10 +423,14 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 }
 
                 static IResult BuildFailure(string reason) =>
-                    Results.BadRequest(ProductImportResponse.Failure(0, new[]
-                    {
-                        new ProductImportError(0, reason)
-                    }));
+                    Results.BadRequest(ProductImportResponse.Failure(
+                        0,
+                        new[]
+                        {
+                            new ProductImportError(0, reason)
+                        },
+                        ImmutableArray<string>.Empty,
+                        ImmutableArray<ProductImportGroupProposal>.Empty));
 
                 if (!TryParseDryRun(request, out var dryRun, out var invalidDryRun) || invalidDryRun)
                 {
@@ -511,11 +517,11 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             .WithOpenApi(operation =>
             {
                 operation.Summary = "Importe le catalogue produits depuis un fichier CSV.";
-                operation.Description = "Remplace l'intégralité de la table Product à partir d'un CSV ';' contenant les colonnes barcode_rfid;item;descr. Accessible uniquement aux administrateurs.";
+                operation.Description = "Remplace l'intégralité de la table Product à partir d'un CSV encodé en ISO-8859-1 (Latin-1) utilisant ';' comme séparateur, contenant au minimum les colonnes barcode_rfid;item;descr. Accessible uniquement aux administrateurs.";
 
                 operation.RequestBody ??= new OpenApiRequestBody();
                 operation.RequestBody.Required = true;
-                operation.RequestBody.Description = "Fichier CSV avec séparateur ';' et entête barcode_rfid;item;descr.";
+                operation.RequestBody.Description = "Fichier CSV encodé en ISO-8859-1 (Latin-1) avec séparateur ';' et entête barcode_rfid;item;descr.";
                 operation.RequestBody.Content["multipart/form-data"] = new OpenApiMediaType
                 {
                     Schema = new OpenApiSchema
@@ -551,10 +557,29 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     {
                         ["total"] = new OpenApiSchema { Type = "integer", Format = "int32" },
                         ["inserted"] = new OpenApiSchema { Type = "integer", Format = "int32" },
+                        ["updated"] = new OpenApiSchema { Type = "integer", Format = "int32" },
                         ["wouldInsert"] = new OpenApiSchema { Type = "integer", Format = "int32" },
                         ["errorCount"] = new OpenApiSchema { Type = "integer", Format = "int32" },
                         ["dryRun"] = new OpenApiSchema { Type = "boolean" },
                         ["skipped"] = new OpenApiSchema { Type = "boolean" },
+                        ["proposedGroups"] = new OpenApiSchema
+                        {
+                            Type = "array",
+                            Items = new OpenApiSchema
+                            {
+                                Type = "object",
+                                Properties =
+                                {
+                                    ["groupe"] = new OpenApiSchema { Type = "string" },
+                                    ["sousGroupe"] = new OpenApiSchema { Type = "string" }
+                                }
+                            }
+                        },
+                        ["unknownColumns"] = new OpenApiSchema
+                        {
+                            Type = "array",
+                            Items = new OpenApiSchema { Type = "string" }
+                        },
                         ["errors"] = new OpenApiSchema
                         {
                             Type = "array",
@@ -566,6 +591,32 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                                     Id = nameof(ProductImportError)
                                 }
                             }
+                        }
+                    }
+                };
+
+                successSchema.Example = new OpenApiObject
+                {
+                    ["total"] = new OpenApiInteger(1204),
+                    ["inserted"] = new OpenApiInteger(1204),
+                    ["updated"] = new OpenApiInteger(0),
+                    ["wouldInsert"] = new OpenApiInteger(0),
+                    ["errorCount"] = new OpenApiInteger(0),
+                    ["dryRun"] = new OpenApiBoolean(false),
+                    ["skipped"] = new OpenApiBoolean(false),
+                    ["errors"] = new OpenApiArray(),
+                    ["unknownColumns"] = new OpenApiArray
+                    {
+                        new OpenApiString("couleurSecondaire"),
+                        new OpenApiString("tva"),
+                        new OpenApiString("marque")
+                    },
+                    ["proposedGroups"] = new OpenApiArray
+                    {
+                        new OpenApiObject
+                        {
+                            ["groupe"] = new OpenApiString("Café"),
+                            ["sousGroupe"] = new OpenApiString("Grains 1kg")
                         }
                     }
                 };
@@ -644,6 +695,138 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             });
     }
 
+    private static void MapSuggestProductsEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapGet("/api/products/suggest", async (
+            string? q,
+            int? limit,
+            IProductSuggestionService suggestionService,
+            CancellationToken cancellationToken) =>
+        {
+            var sanitizedQuery = q?.Trim();
+            if (string.IsNullOrWhiteSpace(sanitizedQuery))
+            {
+                var validation = new ValidationResult(new[]
+                {
+                    new ValidationFailure("q", "Le paramètre 'q' est obligatoire.")
+                });
+
+                return EndpointUtilities.ValidationProblem(validation);
+            }
+
+            var effectiveLimit = limit ?? 8;
+            if (effectiveLimit < 1 || effectiveLimit > 50)
+            {
+                var validation = new ValidationResult(new[]
+                {
+                    new ValidationFailure("limit", "Le paramètre 'limit' doit être compris entre 1 et 50.")
+                });
+
+                return EndpointUtilities.ValidationProblem(validation);
+            }
+
+            var items = await suggestionService
+                .SuggestAsync(sanitizedQuery, effectiveLimit, cancellationToken)
+                .ConfigureAwait(false);
+
+            var response = items
+                .Select(item => new ProductSuggestionDto(item.Sku, item.Ean, item.Name, item.Group, item.SubGroup))
+                .ToArray();
+
+            return Results.Ok(response);
+        })
+        .WithName("SuggestProducts")
+        .WithTags("Produits")
+        .Produces<IReadOnlyList<ProductSuggestionDto>>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .WithOpenApi(operation =>
+        {
+            operation.Summary = "Propose des produits à partir d'une saisie partielle.";
+            operation.Description = "Combine une recherche préfixe sur le SKU et le code barre avec une similarité trigram sur le nom du produit et les libellés de groupe pour proposer des suggestions rapides.";
+
+            operation.Parameters ??= new List<OpenApiParameter>();
+
+            var queryParameter = operation.Parameters.FirstOrDefault(parameter => string.Equals(parameter.Name, "q", StringComparison.OrdinalIgnoreCase));
+            if (queryParameter is null)
+            {
+                queryParameter = new OpenApiParameter
+                {
+                    Name = "q",
+                    In = ParameterLocation.Query,
+                    Required = true
+                };
+                operation.Parameters.Add(queryParameter);
+            }
+
+            queryParameter.Description = "Texte recherché (SKU, EAN/code barre, nom ou groupe).";
+            queryParameter.Required = true;
+
+            var limitParameter = operation.Parameters.FirstOrDefault(parameter => string.Equals(parameter.Name, "limit", StringComparison.OrdinalIgnoreCase));
+            if (limitParameter is null)
+            {
+                limitParameter = new OpenApiParameter
+                {
+                    Name = "limit",
+                    In = ParameterLocation.Query,
+                    Required = false,
+                    Schema = new OpenApiSchema { Type = "integer" }
+                };
+                operation.Parameters.Add(limitParameter);
+            }
+
+            limitParameter.Description = "Nombre maximum de suggestions (défaut : 8, min 1, max 50).";
+            limitParameter.Schema ??= new OpenApiSchema { Type = "integer" };
+            limitParameter.Schema.Minimum = 1;
+            limitParameter.Schema.Maximum = 50;
+            limitParameter.Schema.Default = new OpenApiInteger(8);
+
+            operation.Responses ??= new OpenApiResponses();
+            operation.Responses[StatusCodes.Status200OK.ToString()] = new OpenApiResponse
+            {
+                Description = "Liste ordonnée de suggestions de produits.",
+                Content =
+                {
+                    ["application/json"] = new OpenApiMediaType
+                    {
+                        Schema = new OpenApiSchema
+                        {
+                            Type = "array",
+                            Items = new OpenApiSchema
+                            {
+                                Reference = new OpenApiReference
+                                {
+                                    Type = ReferenceType.Schema,
+                                    Id = nameof(ProductSuggestionDto)
+                                }
+                            }
+                        },
+                        Example = new OpenApiArray
+                        {
+                            new OpenApiObject
+                            {
+                                ["sku"] = new OpenApiString("CB-0001"),
+                                ["ean"] = new OpenApiString("0001234567890"),
+                                ["name"] = new OpenApiString("Café grains 1kg"),
+                                ["group"] = new OpenApiString("Cafés"),
+                                ["subGroup"] = new OpenApiString("Grains 1kg")
+                            },
+                            new OpenApiObject
+                            {
+                                ["sku"] = new OpenApiString("CAF-0102"),
+                                ["ean"] = new OpenApiString("9876543210000"),
+                                ["name"] = new OpenApiString("Machine expresso café"),
+                                ["group"] = new OpenApiString("Machines"),
+                                ["subGroup"] = new OpenApiString("Expressos")
+                            }
+                        }
+                    }
+                }
+            };
+
+            return operation;
+        });
+    }
+
     private static void MapSearchProductsEndpoint(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/products/search", async (
@@ -664,11 +847,11 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             }
 
             var effectiveLimit = limit.GetValueOrDefault(20);
-            if (effectiveLimit <= 0)
+            if (effectiveLimit < 1 || effectiveLimit > 50)
             {
                 var validation = new ValidationResult(new[]
                 {
-                    new ValidationFailure("limit", "Le paramètre 'limit' doit être strictement positif.")
+                    new ValidationFailure("limit", "Le paramètre 'limit' doit être compris entre 1 et 50.")
                 });
 
                 return EndpointUtilities.ValidationProblem(validation);
@@ -691,7 +874,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
         .WithOpenApi(operation =>
         {
             operation.Summary = "Recherche un ensemble de produits à partir d'un code scanné.";
-            operation.Description = "Applique successivement trois stratégies : correspondance exacte sur le SKU, correspondance exacte sur le code brut (EAN/Code) puis comparaison sur CodeDigits lorsque le code contient des chiffres. Les résultats sont fusionnés sans doublon et limités par le paramètre 'limit'.";
+            operation.Description = "La recherche combine une requête SQL unique mêlant préfixes sur le SKU/EAN et similarité trigram sur le nom et les groupes. Les résultats sont dédupliqués par SKU et limités par le paramètre 'limit'.";
 
             if (operation.Parameters is { Count: > 0 })
             {
@@ -704,10 +887,11 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     }
                     else if (string.Equals(parameter.Name, "limit", StringComparison.OrdinalIgnoreCase))
                     {
-                        parameter.Description = "Nombre maximum de résultats (défaut : 20).";
+                        parameter.Description = "Nombre maximum de résultats (défaut : 20, maximum : 50).";
                         if (parameter.Schema is not null)
                         {
                             parameter.Schema.Minimum = 1;
+                            parameter.Schema.Maximum = 50;
                             parameter.Schema.Default = new OpenApiInteger(20);
                         }
                     }

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Services.Products;
@@ -13,52 +12,36 @@ namespace CineBoutique.Inventory.Api.Tests;
 public sealed class ProductSearchServiceTests
 {
     [Fact]
-    public async Task SearchAsync_AggregatesStrategiesWithoutDuplicates()
+    public async Task SearchAsync_MapsRepositoryResultsInOrder()
     {
         var service = CreateService(out var repository);
-        var skuId = Guid.NewGuid();
-        var rawId = Guid.NewGuid();
-        var digitsId = Guid.NewGuid();
-
-        repository.SkuItem = new ProductLookupItem(skuId, "SKU-0001", "Edition Limitée", "1234567890123", null, "1234567890123");
-        repository.RawCodeItems = new[]
+        repository.SearchResults = new[]
         {
-            new ProductLookupItem(skuId, "SKU-0001", "Edition Limitée", "1234567890123", "1234567890123", "1234567890123"),
-            new ProductLookupItem(rawId, "SKU-RAW", "Pack Collector", "ABC-001", "RAW-001", "001")
-        };
-        repository.CodeDigitsItems = new[]
-        {
-            new ProductLookupItem(rawId, "SKU-RAW", "Pack Collector", "ABC-001", "RAW-001", "001"),
-            new ProductLookupItem(digitsId, "SKU-DIG", "Affiche Vintage", null, null, "987654")
+            new ProductLookupItem(Guid.NewGuid(), "SKU-001", "Produit 001", "EAN-001", "RAW-001", null),
+            new ProductLookupItem(Guid.NewGuid(), "SKU-002", "Produit 002", null, null, "445566"),
         };
 
-        var results = await service.SearchAsync("SKU-0001 987654", 10, CancellationToken.None).ConfigureAwait(false);
+        var results = await service.SearchAsync(" SKU-001 ", 10, CancellationToken.None).ConfigureAwait(false);
 
-        results.Should().HaveCount(3);
-        results[0].Sku.Should().Be("SKU-0001");
-        results[1].Sku.Should().Be("SKU-RAW");
-        results[2].Sku.Should().Be("SKU-DIG");
+        results.Should().HaveCount(2);
+        results[0].Sku.Should().Be("SKU-001");
+        results[0].Code.Should().Be("RAW-001", "le code brut prime sur l'EAN");
+        results[1].Sku.Should().Be("SKU-002");
+        results[1].Code.Should().Be("445566", "les chiffres sont utilisés en dernier recours");
+        repository.LastQuery.Should().Be("SKU-001", "le code doit être normalisé avant la recherche");
+        repository.LastLimit.Should().Be(10);
     }
 
     [Fact]
-    public async Task SearchAsync_AppliesLimitAcrossStrategies()
+    public async Task SearchAsync_LimitAboveMaximum_IsClamped()
     {
         var service = CreateService(out var repository);
-        repository.RawCodeItems = new[]
-        {
-            new ProductLookupItem(Guid.NewGuid(), "SKU-100", "Edition 1", "100", null, "100"),
-            new ProductLookupItem(Guid.NewGuid(), "SKU-200", "Edition 2", "200", null, "200"),
-            new ProductLookupItem(Guid.NewGuid(), "SKU-300", "Edition 3", "300", null, "300")
-        };
-        repository.CodeDigitsItems = new[]
-        {
-            new ProductLookupItem(Guid.NewGuid(), "SKU-400", "Edition 4", null, null, "400")
-        };
+        repository.SearchResults = Array.Empty<ProductLookupItem>();
 
-        var results = await service.SearchAsync("EAN-100", 2, CancellationToken.None).ConfigureAwait(false);
+        var results = await service.SearchAsync("code", 500, CancellationToken.None).ConfigureAwait(false);
 
-        results.Should().HaveCount(2);
-        results.Select(item => item.Sku).Should().Equal("SKU-100", "SKU-200");
+        results.Should().BeEmpty();
+        repository.LastLimit.Should().Be(50, "la limite SQL doit être bornée");
     }
 
     [Fact]
@@ -87,17 +70,24 @@ public sealed class ProductSearchServiceTests
 
     private sealed class FakeProductLookupRepository : IProductLookupRepository
     {
-        public ProductLookupItem? SkuItem { get; set; }
-        public IReadOnlyList<ProductLookupItem> RawCodeItems { get; set; } = Array.Empty<ProductLookupItem>();
-        public IReadOnlyList<ProductLookupItem> CodeDigitsItems { get; set; } = Array.Empty<ProductLookupItem>();
+        public IReadOnlyList<ProductLookupItem> SearchResults { get; set; } = Array.Empty<ProductLookupItem>();
+        public string? LastQuery { get; private set; }
+        public int? LastLimit { get; private set; }
 
         public Task<ProductLookupItem?> FindBySkuAsync(string sku, CancellationToken cancellationToken)
-            => Task.FromResult(SkuItem);
+            => Task.FromResult<ProductLookupItem?>(null);
 
         public Task<IReadOnlyList<ProductLookupItem>> FindByRawCodeAsync(string rawCode, CancellationToken cancellationToken)
-            => Task.FromResult(RawCodeItems);
+            => Task.FromResult<IReadOnlyList<ProductLookupItem>>(Array.Empty<ProductLookupItem>());
 
         public Task<IReadOnlyList<ProductLookupItem>> FindByCodeDigitsAsync(string digits, CancellationToken cancellationToken)
-            => Task.FromResult(CodeDigitsItems);
+            => Task.FromResult<IReadOnlyList<ProductLookupItem>>(Array.Empty<ProductLookupItem>());
+
+        public Task<IReadOnlyList<ProductLookupItem>> SearchProductsAsync(string code, int limit, CancellationToken cancellationToken)
+        {
+            LastQuery = code;
+            LastLimit = limit;
+            return Task.FromResult(SearchResults);
+        }
     }
 }

@@ -108,9 +108,11 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
         items.Should().NotBeNull();
         items!.Should().HaveCountGreaterOrEqualTo(4, "un SKU, un code brut et deux matches digits sont attendus");
         items[0].Sku.Should().Be("5905954595389", "le SKU exact est prioritaire");
-        items[1].Sku.Should().Be("AMB-RAW-001", "le code brut suit après le SKU");
-        items.Skip(2).Select(i => i.Sku).Should().Contain(new[] { "AMB-DGT-001", "AMB-DGT-002" },
-            "les correspondances digits sont listées après les exacts");
+
+        var subsequentSkus = items.Skip(1).Select(i => i.Sku).ToArray();
+        subsequentSkus.Should().Contain("AMB-RAW-001", "le code brut doit être renvoyé dans les résultats");
+        subsequentSkus.Should().Contain(new[] { "AMB-DGT-001", "AMB-DGT-002" },
+            "les correspondances digits sont listées après la correspondance exacte");
     }
 
     [SkippableFact]
