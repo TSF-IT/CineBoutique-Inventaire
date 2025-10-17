@@ -14,9 +14,6 @@ public sealed class ProductLookupRepository : IProductLookupRepository
 {
     private readonly IDbConnectionFactory _connectionFactory;
 
-    private string? _rawCodeProjection;
-    private bool? _supportsRawCodeColumn;
-
     public ProductLookupRepository(IDbConnectionFactory connectionFactory)
     {
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
@@ -32,7 +29,9 @@ public sealed class ProductLookupRepository : IProductLookupRepository
         using var connection = _connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-        var (projection, _) = await GetRawCodeProjectionAsync(connection, cancellationToken).ConfigureAwait(false);
+        var (projection, _) = await ProductRawCodeMetadata
+            .GetRawCodeProjectionAsync(connection, cancellationToken)
+            .ConfigureAwait(false);
 
         var sql = $"""
 SELECT "Id", "Sku", "Name", "Ean", {projection} AS "Code", "CodeDigits"
@@ -55,7 +54,9 @@ LIMIT 1;
         using var connection = _connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-        var (projection, hasRawCodeColumn) = await GetRawCodeProjectionAsync(connection, cancellationToken).ConfigureAwait(false);
+        var (projection, hasRawCodeColumn) = await ProductRawCodeMetadata
+            .GetRawCodeProjectionAsync(connection, cancellationToken)
+            .ConfigureAwait(false);
 
         var whereClause = hasRawCodeColumn
             ? "WHERE \"Ean\" = @Code OR \"Code\" = @Code"
@@ -82,7 +83,9 @@ FROM "Product" {whereClause};
         using var connection = _connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-        var (projection, _) = await GetRawCodeProjectionAsync(connection, cancellationToken).ConfigureAwait(false);
+        var (projection, _) = await ProductRawCodeMetadata
+            .GetRawCodeProjectionAsync(connection, cancellationToken)
+            .ConfigureAwait(false);
 
         const string whereClause = "WHERE \"CodeDigits\" = @Digits";
         var sql = $"""
@@ -94,29 +97,6 @@ FROM "Product" {whereClause};
             new CommandDefinition(sql, new { Digits = digits }, cancellationToken: cancellationToken)).ConfigureAwait(false);
 
         return rows.ToArray();
-    }
-
-    private async Task<(string Projection, bool HasRawCodeColumn)> GetRawCodeProjectionAsync(IDbConnection connection, CancellationToken cancellationToken)
-    {
-        if (!string.IsNullOrEmpty(_rawCodeProjection) && _supportsRawCodeColumn.HasValue)
-        {
-            return (_rawCodeProjection!, _supportsRawCodeColumn!.Value);
-        }
-
-        const string sql = @"SELECT EXISTS (
-    SELECT 1
-    FROM information_schema.columns
-    WHERE LOWER(table_name) = LOWER(@Table)
-      AND LOWER(column_name) = LOWER(@Column)
-);";
-
-        var hasColumn = await connection.ExecuteScalarAsync<bool>(
-            new CommandDefinition(sql, new { Table = "Product", Column = "Code" }, cancellationToken: cancellationToken)).ConfigureAwait(false);
-
-        _supportsRawCodeColumn = hasColumn;
-        _rawCodeProjection = hasColumn ? "\"Code\"" : "NULL::text";
-
-        return (_rawCodeProjection!, hasColumn);
     }
 
     private static async Task EnsureConnectionOpenAsync(IDbConnection connection, CancellationToken cancellationToken)

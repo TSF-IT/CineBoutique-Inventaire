@@ -211,6 +211,7 @@ builder.Services.AddScoped<IShopService, ShopService>();
 builder.Services.AddScoped<IShopUserService, ShopUserService>();
 builder.Services.AddScoped<IProductLookupService, ProductLookupService>();
 builder.Services.AddScoped<IProductSearchService, ProductSearchService>();
+builder.Services.AddScoped<IProductSuggestionService, ProductSuggestionService>();
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource.AddService("cineboutique.inventory.api"))
     .WithMetrics(metrics =>
