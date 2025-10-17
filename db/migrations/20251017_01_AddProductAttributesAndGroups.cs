@@ -26,6 +26,7 @@ public sealed class AddProductAttributesAndGroups : Migration
     private const string ProductSkuColumn = "Sku";
     private const string ProductEanColumn = "Ean";
     private const string ProductNameColumn = "Name";
+    private const string ImmutableUnaccentFunctionName = "immutable_unaccent";
 
     public override void Up()
     {
@@ -48,6 +49,7 @@ public sealed class AddProductAttributesAndGroups : Migration
     {
         Execute.Sql("CREATE EXTENSION IF NOT EXISTS pg_trgm;");
         Execute.Sql("CREATE EXTENSION IF NOT EXISTS unaccent;");
+        EnsureImmutableUnaccentFunction();
     }
 
     private void EnsureProductAttributesColumn()
@@ -99,7 +101,7 @@ public sealed class AddProductAttributesAndGroups : Migration
 
         if (Schema.Table(ProductGroupTable).Column(ProductGroupLabelColumn).Exists())
         {
-            Execute.Sql($"CREATE INDEX IF NOT EXISTS {ProductGroupLabelTrgmIndexName} ON \"{ProductGroupTable}\" USING GIN ((unaccent(LOWER(\"{ProductGroupLabelColumn}\"))) gin_trgm_ops);");
+            Execute.Sql($"CREATE INDEX IF NOT EXISTS {ProductGroupLabelTrgmIndexName} ON \"{ProductGroupTable}\" USING GIN ({ImmutableUnaccentFunctionName}(LOWER(\"{ProductGroupLabelColumn}\")) gin_trgm_ops);");
         }
 
         if (Schema.Table(ProductGroupTable).Exists())
@@ -152,9 +154,9 @@ public sealed class AddProductAttributesAndGroups : Migration
 
     private void CreateSearchIndexes()
     {
-        Execute.Sql($"CREATE INDEX IF NOT EXISTS {SkuTrgmIndexName} ON \"{ProductTable}\" USING GIN ((LOWER(\"{ProductSkuColumn}\")) gin_trgm_ops);");
-        Execute.Sql($"CREATE INDEX IF NOT EXISTS {EanTrgmIndexName} ON \"{ProductTable}\" USING GIN ((LOWER(\"{ProductEanColumn}\")) gin_trgm_ops);");
-        Execute.Sql($"CREATE INDEX IF NOT EXISTS {NameTrgmIndexName} ON \"{ProductTable}\" USING GIN ((unaccent(LOWER(\"{ProductNameColumn}\"))) gin_trgm_ops);");
+        Execute.Sql($"CREATE INDEX IF NOT EXISTS {SkuTrgmIndexName} ON \"{ProductTable}\" USING GIN (LOWER(\"{ProductSkuColumn}\") gin_trgm_ops);");
+        Execute.Sql($"CREATE INDEX IF NOT EXISTS {EanTrgmIndexName} ON \"{ProductTable}\" USING GIN (LOWER(\"{ProductEanColumn}\") gin_trgm_ops);");
+        Execute.Sql($"CREATE INDEX IF NOT EXISTS {NameTrgmIndexName} ON \"{ProductTable}\" USING GIN ({ImmutableUnaccentFunctionName}(LOWER(\"{ProductNameColumn}\")) gin_trgm_ops);");
 
         if (Schema.Table(ProductTable).Column(ProductCodeDigitsColumn).Exists())
         {
@@ -172,6 +174,7 @@ public sealed class AddProductAttributesAndGroups : Migration
         Execute.Sql($"DROP INDEX IF EXISTS {ProductGroupParentIndexName};");
         Execute.Sql($"DROP INDEX IF EXISTS {ProductGroupCodeUniqueIndexName};");
         Execute.Sql($"DROP INDEX IF EXISTS {ProductGroupLabelTrgmIndexName};");
+        DropImmutableUnaccentFunction();
     }
 
     private void DropProductGroupColumn()
@@ -206,5 +209,22 @@ public sealed class AddProductAttributesAndGroups : Migration
 
             Delete.Table(ProductGroupTable);
         }
+    }
+
+    private void EnsureImmutableUnaccentFunction()
+    {
+        Execute.Sql($@"CREATE OR REPLACE FUNCTION {ImmutableUnaccentFunctionName}(text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+STRICT
+AS $$
+SELECT unaccent('public.unaccent', $1);
+$$;");
+    }
+
+    private void DropImmutableUnaccentFunction()
+    {
+        Execute.Sql($"DROP FUNCTION IF EXISTS {ImmutableUnaccentFunctionName}(text);");
     }
 }
