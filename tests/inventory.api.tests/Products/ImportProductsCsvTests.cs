@@ -221,6 +221,97 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task ImportProductsCsv_DryRun_WithAdditionalColumns_ReportsUnknownColumns()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
+
+        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add("X-Admin", "true");
+
+        var csvLines = new[]
+        {
+            "sku;name;ean;groupe;sous_groupe;couleurSecondaire",
+            "LAT-DRY;Café crème doux;1111111111111;Boissons;Cafés doux;Caramel"
+        };
+
+        using var content = CreateCsvContent(csvLines);
+        var response = await client.PostAsync("/api/products/import?dryRun=true", content).ConfigureAwait(false);
+        await response.ShouldBeAsync(HttpStatusCode.OK, "le dryRun doit réussir").ConfigureAwait(false);
+
+        var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
+        payload.Should().NotBeNull();
+        payload!.DryRun.Should().BeTrue();
+        payload.Total.Should().Be(1);
+        payload.Inserted.Should().Be(0);
+        payload.Updated.Should().Be(0);
+        payload.WouldInsert.Should().Be(1);
+        payload.UnknownColumns.Should().ContainSingle(column => string.Equals(column, "couleurSecondaire", StringComparison.OrdinalIgnoreCase));
+        payload.ProposedGroups.Should().ContainSingle(group => group.Groupe == "Boissons" && group.SousGroupe == "Cafés doux");
+
+        await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
+        await using var command = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\";", connection);
+        var count = (long)await command.ExecuteScalarAsync().ConfigureAwait(false);
+        count.Should().Be(0, "un dryRun ne doit produire aucune écriture");
+    }
+
+    [SkippableFact]
+    public async Task ImportProductsCsv_WithAdditionalColumns_PersistsAttributesAndGroups()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
+
+        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add("X-Admin", "true");
+
+        var csvLines = new[]
+        {
+            "sku;name;ean;groupe;sous_groupe;couleurSecondaire",
+            "LAT-REAL;Café crème doux;2222222222222;Boissons;Cafés doux;Caramel"
+        };
+
+        using var content = CreateCsvContent(csvLines);
+        var response = await client.PostAsync("/api/products/import", content).ConfigureAwait(false);
+        await response.ShouldBeAsync(HttpStatusCode.OK, "l'import doit réussir").ConfigureAwait(false);
+
+        var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
+        payload.Should().NotBeNull();
+        payload!.DryRun.Should().BeFalse();
+        payload.Total.Should().Be(1);
+        payload.Inserted.Should().Be(1);
+        payload.Updated.Should().Be(0);
+        payload.WouldInsert.Should().Be(0);
+        payload.UnknownColumns.Should().ContainSingle(column => string.Equals(column, "couleurSecondaire", StringComparison.OrdinalIgnoreCase));
+        payload.ProposedGroups.Should().ContainSingle(group => group.Groupe == "Boissons" && group.SousGroupe == "Cafés doux");
+
+        await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
+        const string sql = @"SELECT
+    p.""Attributes""->>'couleurSecondaire' AS couleur,
+    p.""GroupId"",
+    pg.""Label"" AS ""SubGroupLabel""
+FROM ""Product"" p
+LEFT JOIN ""ProductGroup"" pg ON pg.""Id"" = p.""GroupId""
+WHERE p.""Sku"" = @sku;";
+
+        await using var command = new NpgsqlCommand(sql, connection)
+        {
+            Parameters = { new("sku", "LAT-REAL") }
+        };
+
+        await using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
+        var hasRow = await reader.ReadAsync().ConfigureAwait(false);
+        hasRow.Should().BeTrue("le produit importé doit être présent en base");
+
+        reader.IsDBNull(0).Should().BeFalse("l'attribut JSON doit être renseigné");
+        reader.GetString(0).Should().Be("Caramel");
+        reader.IsDBNull(1).Should().BeFalse("le groupe doit être renseigné");
+        reader.IsDBNull(2).Should().BeFalse("le sous-groupe doit être résolu");
+        reader.GetString(2).Should().Be("Cafés doux");
+    }
+
+    [SkippableFact]
     public async Task ImportProductsCsv_ReimportSameFile_ReturnsSkipped()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
