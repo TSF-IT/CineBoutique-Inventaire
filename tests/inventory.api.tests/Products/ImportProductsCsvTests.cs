@@ -269,7 +269,7 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         var csvLines = new[]
         {
             "sku;name;ean;groupe;sous_groupe;couleurSecondaire",
-            "LAT-REAL;Café crème doux;2222222222222;Boissons;Cafés doux;Caramel"
+            "LAT-REAL;Café crème doux;2222222222222;Café;Grains 1kg;Caramel"
         };
 
         using var content = CreateCsvContent(csvLines);
@@ -284,7 +284,7 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         payload.Updated.Should().Be(0);
         payload.WouldInsert.Should().Be(0);
         payload.UnknownColumns.Should().ContainSingle(column => string.Equals(column, "couleurSecondaire", StringComparison.OrdinalIgnoreCase));
-        payload.ProposedGroups.Should().ContainSingle(group => group.Groupe == "Boissons" && group.SousGroupe == "Cafés doux");
+        payload.ProposedGroups.Should().ContainSingle(group => group.Groupe == "Café" && group.SousGroupe == "Grains 1kg");
 
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
         const string sql = @"SELECT
@@ -308,7 +308,7 @@ WHERE p.""Sku"" = @sku;";
         reader.GetString(0).Should().Be("Caramel");
         reader.IsDBNull(1).Should().BeFalse("le groupe doit être renseigné");
         reader.IsDBNull(2).Should().BeFalse("le sous-groupe doit être résolu");
-        reader.GetString(2).Should().Be("Cafés doux");
+        reader.GetString(2).Should().Be("Grains 1kg");
     }
 
     [SkippableFact]

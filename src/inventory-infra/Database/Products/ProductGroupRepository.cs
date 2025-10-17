@@ -7,12 +7,16 @@ using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
+using Npgsql;
 
 namespace CineBoutique.Inventory.Infrastructure.Database.Products;
 
 public sealed class ProductGroupRepository : IProductGroupRepository
 {
     private const string SelectGroupCodeSql = "SELECT \"Code\" FROM \"ProductGroup\" WHERE \"Id\" = @Id;";
+    private const string SelectGroupIdByCodeSql = "SELECT \"Id\" FROM \"ProductGroup\" WHERE \"Code\" IS NOT DISTINCT FROM @Code LIMIT 1;";
+    private const string UpdateGroupSql = "UPDATE \"ProductGroup\" SET \"Label\" = @Label, \"ParentId\" = @ParentId WHERE \"Id\" = @Id;";
+    private const string InsertGroupSql = "INSERT INTO \"ProductGroup\" (\"Code\", \"Label\", \"ParentId\") VALUES (@Code, @Label, @ParentId) RETURNING \"Id\";";
     private const string ProductGroupCodeUniqueConstraint = "uq_productgroup_code";
 
     private static readonly string UpsertSql = $"""
@@ -100,17 +104,83 @@ RETURNING "Id";
         }
     }
 
-    private static Task<long> UpsertAsyncCore(IDbConnection connection, string label, string? code, long? parentId, CancellationToken cancellationToken)
+    private static async Task<long> UpsertAsyncCore(IDbConnection connection, string label, string? code, long? parentId, CancellationToken cancellationToken)
     {
+        var normalizedCode = string.IsNullOrEmpty(code) ? null : code;
+
         var parameters = new
         {
-            Code = string.IsNullOrEmpty(code) ? null : code,
+            Code = normalizedCode,
             Label = label,
             ParentId = parentId
         };
 
-        return connection.ExecuteScalarAsync<long>(
-            new CommandDefinition(UpsertSql, parameters, cancellationToken: cancellationToken));
+        try
+        {
+            return await connection.ExecuteScalarAsync<long>(
+                    new CommandDefinition(UpsertSql, parameters, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+        }
+        catch (PostgresException ex) when (string.Equals(ex.SqlState, "42P10", StringComparison.Ordinal))
+        {
+            return await UpsertWithManualConflictResolutionAsync(connection, label, normalizedCode, parentId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    private static async Task<long> UpsertWithManualConflictResolutionAsync(
+        IDbConnection connection,
+        string label,
+        string? normalizedCode,
+        long? parentId,
+        CancellationToken cancellationToken)
+    {
+        var existingId = await connection.ExecuteScalarAsync<long?>(
+            new CommandDefinition(
+                SelectGroupIdByCodeSql,
+                new { Code = normalizedCode },
+                cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+        if (existingId.HasValue)
+        {
+            await connection.ExecuteAsync(
+                new CommandDefinition(
+                    UpdateGroupSql,
+                    new { Label = label, ParentId = parentId, Id = existingId.Value },
+                    cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            return existingId.Value;
+        }
+
+        try
+        {
+            return await connection.ExecuteScalarAsync<long>(
+                new CommandDefinition(
+                    InsertGroupSql,
+                    new { Code = normalizedCode, Label = label, ParentId = parentId },
+                    cancellationToken: cancellationToken)).ConfigureAwait(false);
+        }
+        catch (PostgresException ex) when (string.Equals(ex.SqlState, PostgresErrorCodes.UniqueViolation, StringComparison.Ordinal))
+        {
+            var resolvedId = await connection.ExecuteScalarAsync<long?>(
+                new CommandDefinition(
+                    SelectGroupIdByCodeSql,
+                    new { Code = normalizedCode },
+                    cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            if (!resolvedId.HasValue)
+            {
+                throw;
+            }
+
+            await connection.ExecuteAsync(
+                new CommandDefinition(
+                    UpdateGroupSql,
+                    new { Label = label, ParentId = parentId, Id = resolvedId.Value },
+                    cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            return resolvedId.Value;
+        }
     }
 
     private static string? NormalizeLabel(string? value)
