@@ -157,4 +157,69 @@ public sealed class TestDataSeeder
         }
         return id;
     }
+
+    public async Task<long> CreateProductGroupAsync(string label, long? parentId = null, string? code = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(label);
+
+        const string sql =
+            "INSERT INTO \"ProductGroup\" (\"Label\", \"ParentId\", \"Code\") VALUES (@label, @parentId, @code) RETURNING \"Id\";";
+
+        var connection = _dataSource.CreateConnection();
+        await connection.OpenAsync().ConfigureAwait(false);
+        try
+        {
+            using var command = new NpgsqlCommand(sql, connection)
+            {
+                Parameters =
+                {
+                    new("label", label),
+                    new("parentId", parentId.HasValue ? parentId.Value : DBNull.Value),
+                    new("code", code is null ? DBNull.Value : code)
+                }
+            };
+
+            var result = await command.ExecuteScalarAsync().ConfigureAwait(false);
+            return Convert.ToInt64(result);
+        }
+        finally
+        {
+            await connection.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    public async Task AssignProductToGroupAsync(string sku, long groupId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(sku);
+        if (groupId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(groupId));
+        }
+
+        const string sql = "UPDATE \"Product\" SET \"GroupId\" = @groupId WHERE \"Sku\" = @sku;";
+
+        var connection = _dataSource.CreateConnection();
+        await connection.OpenAsync().ConfigureAwait(false);
+        try
+        {
+            using var command = new NpgsqlCommand(sql, connection)
+            {
+                Parameters =
+                {
+                    new("groupId", groupId),
+                    new("sku", sku)
+                }
+            };
+
+            var affected = await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+            if (affected == 0)
+            {
+                throw new InvalidOperationException($"Aucun produit avec le SKU '{sku}' n'a été mis à jour.");
+            }
+        }
+        finally
+        {
+            await connection.DisposeAsync().ConfigureAwait(false);
+        }
+    }
 }
