@@ -126,6 +126,8 @@ public sealed class ProductImportService : IProductImportService
                 }
             }
 
+            var hasSuccessfulImport = await HasSuccessfulImportAsync(transaction, cancellationToken).ConfigureAwait(false);
+
             var historyId = Guid.NewGuid();
             var startedAt = _clock.UtcNow;
 
@@ -236,6 +238,11 @@ public sealed class ProductImportService : IProductImportService
 
             try
             {
+                if (!command.DryRun && !hasSuccessfulImport && parseOutcome.Rows.Count > 0)
+                {
+                    await DeleteExistingProductsAsync(transaction, cancellationToken).ConfigureAwait(false);
+                }
+
                 var upsertStats = await UpsertRowsAsync(parseOutcome.Rows, transaction, cancellationToken).ConfigureAwait(false);
 
                 await CompleteHistoryAsync(
@@ -478,6 +485,28 @@ public sealed class ProductImportService : IProductImportService
             .ConfigureAwait(false);
     }
 
+    private async Task<bool> HasSuccessfulImportAsync(NpgsqlTransaction transaction, CancellationToken cancellationToken)
+    {
+        const string sql =
+            "SELECT EXISTS (" +
+            "SELECT 1 FROM \"ProductImportHistory\" " +
+            "WHERE \"Status\" = @StatusSucceeded" +
+            ");";
+
+        return await _connection.ExecuteScalarAsync<bool>(
+                new CommandDefinition(sql, new { StatusSucceeded }, transaction: transaction, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+    }
+
+    private async Task DeleteExistingProductsAsync(NpgsqlTransaction transaction, CancellationToken cancellationToken)
+    {
+        const string sql = "DELETE FROM \"Product\";";
+
+        await _connection.ExecuteAsync(
+                new CommandDefinition(sql, transaction: transaction, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+    }
+
     private async Task CompleteHistoryAsync(
         Guid historyId,
         string status,
@@ -548,7 +577,7 @@ RETURNING (xmax = 0) AS inserted;
         foreach (var row in rows)
         {
             var normalizedEan = NormalizeEan(row.Ean);
-            var codeDigits = BuildCodeDigits(normalizedEan);
+            var codeDigits = BuildCodeDigits(row.Ean ?? normalizedEan);
             var attributesJson = SerializeAttributes(row.Attributes);
             var groupId = await ResolveGroupIdAsync(row.Group, row.SubGroup, groupCache, cancellationToken)
                 .ConfigureAwait(false);
