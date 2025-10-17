@@ -41,7 +41,8 @@ public sealed class ProductSuggestionRepository : IProductSuggestionRepository
 WITH normalized AS (
     SELECT
         @Query::text AS q,
-        immutable_unaccent(LOWER(@Query::text)) AS q_unaccent
+        immutable_unaccent(LOWER(@Query::text)) AS q_unaccent,
+        set_limit(0.1) AS trigram_threshold
 ),
 candidates AS (
     SELECT
