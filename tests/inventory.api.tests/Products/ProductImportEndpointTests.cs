@@ -49,11 +49,14 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
         payload.Should().NotBeNull();
         payload!.Total.Should().Be(2);
         payload.Inserted.Should().Be(2);
-        payload.WouldInsert.Should().Be(2);
+        payload.Updated.Should().Be(0);
+        payload.WouldInsert.Should().Be(0);
         payload.ErrorCount.Should().Be(0);
         payload.DryRun.Should().BeFalse();
         payload.Skipped.Should().BeFalse();
         payload.Errors.Should().BeEmpty();
+        payload.UnknownColumns.Should().BeEmpty();
+        payload.ProposedGroups.Should().BeEmpty();
 
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
         await using var command = new NpgsqlCommand("SELECT \"Sku\", \"Name\", \"Ean\", \"CodeDigits\" FROM \"Product\" ORDER BY \"Sku\";", connection);
@@ -98,11 +101,14 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
         payload.Should().NotBeNull();
         payload!.Total.Should().Be(2);
         payload.Inserted.Should().Be(0);
-        payload.WouldInsert.Should().Be(1);
+        payload.Updated.Should().Be(0);
+        payload.WouldInsert.Should().Be(0);
         payload.ErrorCount.Should().BeGreaterThan(0);
         payload.DryRun.Should().BeFalse();
         payload.Skipped.Should().BeFalse();
         payload.Errors.Should().Contain(error => error.Reason == "DUP_SKU_IN_FILE");
+        payload.UnknownColumns.Should().BeEmpty();
+        payload.ProposedGroups.Should().BeEmpty();
 
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
         await using var command = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\" WHERE \"Sku\" = 'LEGACY';", connection);
