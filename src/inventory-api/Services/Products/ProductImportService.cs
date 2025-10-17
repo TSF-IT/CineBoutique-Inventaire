@@ -18,6 +18,7 @@ using Npgsql;
 using System.Linq;
 using System.Text.Json;
 using CineBoutique.Inventory.Infrastructure.Database.Products;
+using NpgsqlTypes;
 
 namespace CineBoutique.Inventory.Api.Services.Products;
 
@@ -557,9 +558,19 @@ public sealed class ProductImportService : IProductImportService
             return UpsertStatistics.Empty;
         }
 
+        var now = _clock.UtcNow;
+        var created = 0;
+        var updated = 0;
+        var groupCache = new Dictionary<GroupKey, long?>(GroupKeyComparer.Instance);
+
+        if (transaction.Connection is not NpgsqlConnection npgsqlConnection)
+        {
+            throw new InvalidOperationException("Une connexion Npgsql est requise pour l'UPSERT produit.");
+        }
+
         const string sql = """
 INSERT INTO "Product" ("Sku", "Name", "Ean", "GroupId", "Attributes", "CodeDigits", "CreatedAtUtc")
-VALUES (@Sku, @Name, @Ean, @GroupId, CAST(@Attributes AS jsonb), @CodeDigits, @CreatedAtUtc)
+VALUES (@sku, @name, @ean, @gid, @attrs, @digits, @created)
 ON CONFLICT ((LOWER("Sku")))
 DO UPDATE SET
     "Name" = EXCLUDED."Name",
@@ -570,33 +581,43 @@ DO UPDATE SET
 RETURNING (xmax = 0) AS inserted;
 """;
 
-        var now = _clock.UtcNow;
-        var created = 0;
-        var updated = 0;
-        var groupCache = new Dictionary<GroupKey, long?>(GroupKeyComparer.Instance);
+        await using var command = new NpgsqlCommand(sql, npgsqlConnection, transaction);
+
+        var skuParameter = command.Parameters.Add("sku", NpgsqlDbType.Text);
+        var nameParameter = command.Parameters.Add("name", NpgsqlDbType.Text);
+        var eanParameter = command.Parameters.Add("ean", NpgsqlDbType.Text);
+        var groupParameter = command.Parameters.Add("gid", NpgsqlDbType.Bigint);
+        var attributesParameter = command.Parameters.Add("attrs", NpgsqlDbType.Jsonb);
+        var digitsParameter = command.Parameters.Add("digits", NpgsqlDbType.Text);
+        var createdParameter = command.Parameters.Add("created", NpgsqlDbType.TimestampTz);
+
+        skuParameter.Value = string.Empty;
+        nameParameter.Value = string.Empty;
+        eanParameter.Value = DBNull.Value;
+        groupParameter.Value = DBNull.Value;
+        attributesParameter.Value = "{}";
+        digitsParameter.Value = DBNull.Value;
+        createdParameter.Value = now;
+
+        await command.PrepareAsync(cancellationToken).ConfigureAwait(false);
 
         foreach (var row in rows)
         {
             var normalizedEan = NormalizeEan(row.Ean);
             var codeDigits = BuildCodeDigits(row.Ean ?? normalizedEan);
-            var attributesJson = SerializeAttributes(row.Attributes);
+            var attributesJson = SerializeAttributes(row.Attributes, row.SubGroup);
             var groupId = await ResolveGroupIdAsync(row.Group, row.SubGroup, groupCache, cancellationToken)
                 .ConfigureAwait(false);
 
-            var parameters = new
-            {
-                row.Sku,
-                row.Name,
-                Ean = normalizedEan,
-                GroupId = groupId,
-                Attributes = attributesJson,
-                CodeDigits = codeDigits,
-                CreatedAtUtc = now
-            };
+            skuParameter.Value = row.Sku;
+            nameParameter.Value = row.Name;
+            eanParameter.Value = normalizedEan ?? (object)DBNull.Value;
+            groupParameter.Value = groupId ?? (object)DBNull.Value;
+            attributesParameter.Value = attributesJson;
+            digitsParameter.Value = codeDigits ?? (object)DBNull.Value;
+            createdParameter.Value = now;
 
-            var inserted = await _connection.ExecuteScalarAsync<bool>(
-                    new CommandDefinition(sql, parameters, transaction: transaction, cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
+            var inserted = (bool)await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
 
             if (inserted)
             {
@@ -682,14 +703,24 @@ RETURNING (xmax = 0) AS inserted;
         return digits.Length == 0 ? null : digits;
     }
 
-    private static string SerializeAttributes(IReadOnlyDictionary<string, string> attributes)
+    private static string SerializeAttributes(IReadOnlyDictionary<string, string> attributes, string? subGroup)
     {
-        if (attributes.Count == 0)
+        if (attributes.Count == 0 && string.IsNullOrEmpty(subGroup))
         {
             return "{}";
         }
 
-        return JsonSerializer.Serialize(attributes, JsonSerializerOptions);
+        if (string.IsNullOrEmpty(subGroup))
+        {
+            return JsonSerializer.Serialize(attributes, JsonSerializerOptions);
+        }
+
+        var payload = new Dictionary<string, string>(attributes, StringComparer.OrdinalIgnoreCase)
+        {
+            ["originalSousGroupe"] = subGroup
+        };
+
+        return JsonSerializer.Serialize(payload, JsonSerializerOptions);
     }
 
     private async Task<long?> ResolveGroupIdAsync(
