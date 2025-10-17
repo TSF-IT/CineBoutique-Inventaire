@@ -29,6 +29,8 @@ public sealed class ProductSuggestionRepository : IProductSuggestionRepository
         using var connection = _connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
+        var sanitizedLimit = Math.Clamp(limit, 1, 50);
+
         var supportsRawCode = await ProductRawCodeMetadata
             .SupportsRawCodeColumnAsync(connection, cancellationToken)
             .ConfigureAwait(false);
@@ -36,17 +38,10 @@ public sealed class ProductSuggestionRepository : IProductSuggestionRepository
         var rawCodeClause = BuildRawCodeClause(supportsRawCode);
 
         var sql = $"""
-WITH input AS (
-    SELECT @Query::text AS q,
-           LEAST(GREATEST(@Limit, 1), 50) AS limit
-),
-normalized AS (
+WITH normalized AS (
     SELECT
-        q,
-        limit,
-        LOWER(q) AS q_lower,
-        immutable_unaccent(LOWER(q)) AS q_unaccent
-    FROM input
+        @Query::text AS q,
+        immutable_unaccent(LOWER(@Query::text)) AS q_unaccent
 ),
 candidates AS (
     SELECT
@@ -128,7 +123,7 @@ FROM ranked r
 CROSS JOIN normalized n
 WHERE rn = 1
 ORDER BY r.score DESC, r."Name" ASC
-LIMIT n.limit;
+LIMIT @Limit;
 """;
 
         var rows = await connection.QueryAsync<ProductSuggestionItem>(
@@ -137,7 +132,7 @@ LIMIT n.limit;
                 new
                 {
                     Query = query,
-                    Limit = limit
+                    Limit = sanitizedLimit
                 },
                 cancellationToken: cancellationToken)).ConfigureAwait(false);
 
