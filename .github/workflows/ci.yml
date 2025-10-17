@@ -20,6 +20,8 @@ jobs:
       checks: write
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      ASPNETCORE_ENVIRONMENT: CI
+      DOTNET_ENVIRONMENT: CI
 
     steps:
       - name: Pre-checkout clean (no sudo; use Docker if available)
