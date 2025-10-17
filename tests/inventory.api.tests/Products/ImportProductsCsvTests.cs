@@ -52,12 +52,13 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
         payload.Should().NotBeNull();
         payload!.Total.Should().Be(5);
-        payload.Inserted.Should().Be(5);
-        payload.WouldInsert.Should().Be(5);
+        payload.Created.Should().Be(5);
+        payload.Updated.Should().Be(0);
         payload.ErrorCount.Should().Be(0);
         payload.DryRun.Should().BeFalse();
         payload.Skipped.Should().BeFalse();
         payload.Errors.Should().BeEmpty();
+        payload.UnknownColumns.Should().BeEmpty();
 
         var skuResponse = await client.GetAsync("/api/products/A-GOBBIO16").ConfigureAwait(false);
         await skuResponse.ShouldBeAsync(HttpStatusCode.OK, "le SKU issu de l'import doit exister").ConfigureAwait(false);
@@ -79,7 +80,7 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
     }
 
     [SkippableFact]
-    public async Task ImportProductsCsv_Reimport_TruncatesPreviousRows()
+    public async Task ImportProductsCsv_Reimport_AddsNewRowsWithoutRemovingExisting()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
@@ -103,23 +104,24 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
 
         using var reimportContent = CreateCsvContent(reimportLines);
         var reimportResponse = await client.PostAsync("/api/products/import", reimportContent).ConfigureAwait(false);
-        await reimportResponse.ShouldBeAsync(HttpStatusCode.OK, "la réimportation doit remplacer les produits").ConfigureAwait(false);
+        await reimportResponse.ShouldBeAsync(HttpStatusCode.OK, "la réimportation doit insérer les nouveautés sans supprimer l'existant").ConfigureAwait(false);
 
         var reimportPayload = await reimportResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
         reimportPayload.Should().NotBeNull();
         reimportPayload!.Total.Should().Be(2);
-        reimportPayload.Inserted.Should().Be(2);
-        reimportPayload.WouldInsert.Should().Be(2);
+        reimportPayload.Created.Should().Be(2);
+        reimportPayload.Updated.Should().Be(0);
         reimportPayload.ErrorCount.Should().Be(0);
         reimportPayload.DryRun.Should().BeFalse();
         reimportPayload.Skipped.Should().BeFalse();
         reimportPayload.Errors.Should().BeEmpty();
-
-        var missingResponse = await client.GetAsync("/api/products/A-KF63030").ConfigureAwait(false);
-        await missingResponse.ShouldBeAsync(HttpStatusCode.NotFound, "la table doit avoir été tronquée").ConfigureAwait(false);
+        reimportPayload.UnknownColumns.Should().BeEmpty();
 
         var existingResponse = await client.GetAsync("/api/products/A-NEW1").ConfigureAwait(false);
         await existingResponse.ShouldBeAsync(HttpStatusCode.OK, "les nouveaux produits doivent être accessibles").ConfigureAwait(false);
+
+        var legacyResponse = await client.GetAsync("/api/products/A-KF63030").ConfigureAwait(false);
+        await legacyResponse.ShouldBeAsync(HttpStatusCode.OK, "les anciens produits doivent être conservés").ConfigureAwait(false);
     }
 
     [SkippableFact]
@@ -149,11 +151,12 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         var payload = await authorizedResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
         payload.Should().NotBeNull();
         payload!.Total.Should().Be(1);
-        payload.Inserted.Should().Be(1);
-        payload.WouldInsert.Should().Be(1);
+        payload.Created.Should().Be(1);
+        payload.Updated.Should().Be(0);
         payload.ErrorCount.Should().Be(0);
         payload.DryRun.Should().BeFalse();
         payload.Skipped.Should().BeFalse();
+        payload.UnknownColumns.Should().BeEmpty();
     }
 
     [SkippableFact]
@@ -175,10 +178,11 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
             dryRunPayload.Should().NotBeNull();
             dryRunPayload!.DryRun.Should().BeTrue();
             dryRunPayload.Total.Should().Be(5);
-            dryRunPayload.Inserted.Should().Be(0);
-            dryRunPayload.WouldInsert.Should().Be(5);
+            dryRunPayload.Created.Should().Be(5);
+            dryRunPayload.Updated.Should().Be(0);
             dryRunPayload.Skipped.Should().BeFalse();
             dryRunPayload.ErrorCount.Should().Be(0);
+            dryRunPayload.UnknownColumns.Should().BeEmpty();
         }
 
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
@@ -195,7 +199,9 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
             actualPayload.Should().NotBeNull();
             actualPayload!.DryRun.Should().BeFalse();
             actualPayload.Skipped.Should().BeFalse();
-            actualPayload.Inserted.Should().Be(5);
+            actualPayload.Created.Should().Be(5);
+            actualPayload.Updated.Should().Be(0);
+            actualPayload.UnknownColumns.Should().BeEmpty();
         }
 
         await using var finalConnection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
@@ -229,7 +235,9 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
             duplicatePayload.Should().NotBeNull();
             duplicatePayload!.Skipped.Should().BeTrue();
             duplicatePayload.DryRun.Should().BeFalse();
-            duplicatePayload.Inserted.Should().Be(0);
+            duplicatePayload.Created.Should().Be(0);
+            duplicatePayload.Updated.Should().Be(0);
+            duplicatePayload.UnknownColumns.Should().BeEmpty();
         }
 
         await using var verifyConnection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
@@ -273,6 +281,7 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
         payload.Should().NotBeNull();
         payload!.Errors.Should().Contain(error => error.Reason == "INVALID_DRY_RUN");
+        payload.UnknownColumns.Should().BeEmpty();
     }
 
     private static StringContent CreateCsvContent(string[] lines)

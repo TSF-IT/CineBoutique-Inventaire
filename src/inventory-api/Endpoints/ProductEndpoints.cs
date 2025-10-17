@@ -424,7 +424,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     Results.BadRequest(ProductImportResponse.Failure(0, new[]
                     {
                         new ProductImportError(0, reason)
-                    }));
+                    }, Array.Empty<string>()));
 
                 if (!TryParseDryRun(request, out var dryRun, out var invalidDryRun) || invalidDryRun)
                 {
@@ -550,11 +550,16 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     Properties =
                     {
                         ["total"] = new OpenApiSchema { Type = "integer", Format = "int32" },
-                        ["inserted"] = new OpenApiSchema { Type = "integer", Format = "int32" },
-                        ["wouldInsert"] = new OpenApiSchema { Type = "integer", Format = "int32" },
+                        ["created"] = new OpenApiSchema { Type = "integer", Format = "int32" },
+                        ["updated"] = new OpenApiSchema { Type = "integer", Format = "int32" },
                         ["errorCount"] = new OpenApiSchema { Type = "integer", Format = "int32" },
                         ["dryRun"] = new OpenApiSchema { Type = "boolean" },
                         ["skipped"] = new OpenApiSchema { Type = "boolean" },
+                        ["unknownColumns"] = new OpenApiSchema
+                        {
+                            Type = "array",
+                            Items = new OpenApiSchema { Type = "string" }
+                        },
                         ["errors"] = new OpenApiSchema
                         {
                             Type = "array",
