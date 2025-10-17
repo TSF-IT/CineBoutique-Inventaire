@@ -53,11 +53,14 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         payload.Should().NotBeNull();
         payload!.Total.Should().Be(5);
         payload.Inserted.Should().Be(5);
-        payload.WouldInsert.Should().Be(5);
+        payload.Updated.Should().Be(0);
+        payload.WouldInsert.Should().Be(0);
         payload.ErrorCount.Should().Be(0);
         payload.DryRun.Should().BeFalse();
         payload.Skipped.Should().BeFalse();
         payload.Errors.Should().BeEmpty();
+        payload.UnknownColumns.Should().BeEmpty();
+        payload.ProposedGroups.Should().BeEmpty();
 
         var skuResponse = await client.GetAsync("/api/products/A-GOBBIO16").ConfigureAwait(false);
         await skuResponse.ShouldBeAsync(HttpStatusCode.OK, "le SKU issu de l'import doit exister").ConfigureAwait(false);
@@ -79,7 +82,7 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
     }
 
     [SkippableFact]
-    public async Task ImportProductsCsv_Reimport_TruncatesPreviousRows()
+    public async Task ImportProductsCsv_Reimport_AddsNewRowsWithoutRemovingExisting()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
@@ -103,23 +106,26 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
 
         using var reimportContent = CreateCsvContent(reimportLines);
         var reimportResponse = await client.PostAsync("/api/products/import", reimportContent).ConfigureAwait(false);
-        await reimportResponse.ShouldBeAsync(HttpStatusCode.OK, "la réimportation doit remplacer les produits").ConfigureAwait(false);
+        await reimportResponse.ShouldBeAsync(HttpStatusCode.OK, "la réimportation doit insérer les nouveautés sans supprimer l'existant").ConfigureAwait(false);
 
         var reimportPayload = await reimportResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
         reimportPayload.Should().NotBeNull();
         reimportPayload!.Total.Should().Be(2);
         reimportPayload.Inserted.Should().Be(2);
-        reimportPayload.WouldInsert.Should().Be(2);
+        reimportPayload.Updated.Should().Be(0);
+        reimportPayload.WouldInsert.Should().Be(0);
         reimportPayload.ErrorCount.Should().Be(0);
         reimportPayload.DryRun.Should().BeFalse();
         reimportPayload.Skipped.Should().BeFalse();
         reimportPayload.Errors.Should().BeEmpty();
-
-        var missingResponse = await client.GetAsync("/api/products/A-KF63030").ConfigureAwait(false);
-        await missingResponse.ShouldBeAsync(HttpStatusCode.NotFound, "la table doit avoir été tronquée").ConfigureAwait(false);
+        reimportPayload.UnknownColumns.Should().BeEmpty();
+        reimportPayload.ProposedGroups.Should().BeEmpty();
 
         var existingResponse = await client.GetAsync("/api/products/A-NEW1").ConfigureAwait(false);
         await existingResponse.ShouldBeAsync(HttpStatusCode.OK, "les nouveaux produits doivent être accessibles").ConfigureAwait(false);
+
+        var legacyResponse = await client.GetAsync("/api/products/A-KF63030").ConfigureAwait(false);
+        await legacyResponse.ShouldBeAsync(HttpStatusCode.OK, "les anciens produits doivent être conservés").ConfigureAwait(false);
     }
 
     [SkippableFact]
@@ -150,10 +156,13 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         payload.Should().NotBeNull();
         payload!.Total.Should().Be(1);
         payload.Inserted.Should().Be(1);
-        payload.WouldInsert.Should().Be(1);
+        payload.Updated.Should().Be(0);
+        payload.WouldInsert.Should().Be(0);
         payload.ErrorCount.Should().Be(0);
         payload.DryRun.Should().BeFalse();
         payload.Skipped.Should().BeFalse();
+        payload.UnknownColumns.Should().BeEmpty();
+        payload.ProposedGroups.Should().BeEmpty();
     }
 
     [SkippableFact]
@@ -176,9 +185,12 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
             dryRunPayload!.DryRun.Should().BeTrue();
             dryRunPayload.Total.Should().Be(5);
             dryRunPayload.Inserted.Should().Be(0);
+            dryRunPayload.Updated.Should().Be(0);
             dryRunPayload.WouldInsert.Should().Be(5);
             dryRunPayload.Skipped.Should().BeFalse();
             dryRunPayload.ErrorCount.Should().Be(0);
+            dryRunPayload.UnknownColumns.Should().BeEmpty();
+            dryRunPayload.ProposedGroups.Should().BeEmpty();
         }
 
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
@@ -196,12 +208,107 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
             actualPayload!.DryRun.Should().BeFalse();
             actualPayload.Skipped.Should().BeFalse();
             actualPayload.Inserted.Should().Be(5);
+            actualPayload.Updated.Should().Be(0);
+            actualPayload.WouldInsert.Should().Be(0);
+            actualPayload.UnknownColumns.Should().BeEmpty();
+            actualPayload.ProposedGroups.Should().BeEmpty();
         }
 
         await using var finalConnection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
         await using var finalCommand = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\";", finalConnection);
         var finalDryRunCount = (long)await finalCommand.ExecuteScalarAsync().ConfigureAwait(false);
         finalDryRunCount.Should().Be(5, "l'import réel doit insérer les lignes attendues");
+    }
+
+    [SkippableFact]
+    public async Task ImportProductsCsv_DryRun_WithAdditionalColumns_ReportsUnknownColumns()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
+
+        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add("X-Admin", "true");
+
+        var csvLines = new[]
+        {
+            "sku;name;ean;groupe;sous_groupe;couleurSecondaire",
+            "LAT-DRY;Café crème doux;1111111111111;Boissons;Cafés doux;Caramel"
+        };
+
+        using var content = CreateCsvContent(csvLines);
+        var response = await client.PostAsync("/api/products/import?dryRun=true", content).ConfigureAwait(false);
+        await response.ShouldBeAsync(HttpStatusCode.OK, "le dryRun doit réussir").ConfigureAwait(false);
+
+        var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
+        payload.Should().NotBeNull();
+        payload!.DryRun.Should().BeTrue();
+        payload.Total.Should().Be(1);
+        payload.Inserted.Should().Be(0);
+        payload.Updated.Should().Be(0);
+        payload.WouldInsert.Should().Be(1);
+        payload.UnknownColumns.Should().ContainSingle(column => string.Equals(column, "couleurSecondaire", StringComparison.OrdinalIgnoreCase));
+        payload.ProposedGroups.Should().ContainSingle(group => group.Groupe == "Boissons" && group.SousGroupe == "Cafés doux");
+
+        await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
+        await using var command = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\";", connection);
+        var count = (long)await command.ExecuteScalarAsync().ConfigureAwait(false);
+        count.Should().Be(0, "un dryRun ne doit produire aucune écriture");
+    }
+
+    [SkippableFact]
+    public async Task ImportProductsCsv_WithAdditionalColumns_PersistsAttributesAndGroups()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
+
+        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add("X-Admin", "true");
+
+        var csvLines = new[]
+        {
+            "sku;name;ean;groupe;sous_groupe;couleurSecondaire",
+            "LAT-REAL;Café crème doux;2222222222222;Café;Grains 1kg;Caramel"
+        };
+
+        using var content = CreateCsvContent(csvLines);
+        var response = await client.PostAsync("/api/products/import", content).ConfigureAwait(false);
+        await response.ShouldBeAsync(HttpStatusCode.OK, "l'import doit réussir").ConfigureAwait(false);
+
+        var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
+        payload.Should().NotBeNull();
+        payload!.DryRun.Should().BeFalse();
+        payload.Total.Should().Be(1);
+        payload.Inserted.Should().Be(1);
+        payload.Updated.Should().Be(0);
+        payload.WouldInsert.Should().Be(0);
+        payload.UnknownColumns.Should().ContainSingle(column => string.Equals(column, "couleurSecondaire", StringComparison.OrdinalIgnoreCase));
+        payload.ProposedGroups.Should().ContainSingle(group => group.Groupe == "Café" && group.SousGroupe == "Grains 1kg");
+
+        await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
+        const string sql = @"SELECT
+    p.""Attributes""->>'couleurSecondaire' AS couleur,
+    p.""GroupId"",
+    pg.""Label"" AS ""SubGroupLabel""
+FROM ""Product"" p
+LEFT JOIN ""ProductGroup"" pg ON pg.""Id"" = p.""GroupId""
+WHERE p.""Sku"" = @sku;";
+
+        await using var command = new NpgsqlCommand(sql, connection)
+        {
+            Parameters = { new("sku", "LAT-REAL") }
+        };
+
+        await using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
+        var hasRow = await reader.ReadAsync().ConfigureAwait(false);
+        hasRow.Should().BeTrue("le produit importé doit être présent en base");
+
+        reader.IsDBNull(0).Should().BeFalse("l'attribut JSON doit être renseigné");
+        reader.GetString(0).Should().Be("Caramel");
+        reader.IsDBNull(1).Should().BeFalse("le groupe doit être renseigné");
+        reader.IsDBNull(2).Should().BeFalse("le sous-groupe doit être résolu");
+        reader.GetString(2).Should().Be("Grains 1kg");
     }
 
     [SkippableFact]
@@ -230,6 +337,10 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
             duplicatePayload!.Skipped.Should().BeTrue();
             duplicatePayload.DryRun.Should().BeFalse();
             duplicatePayload.Inserted.Should().Be(0);
+            duplicatePayload.Updated.Should().Be(0);
+            duplicatePayload.WouldInsert.Should().Be(0);
+            duplicatePayload.UnknownColumns.Should().BeEmpty();
+            duplicatePayload.ProposedGroups.Should().BeEmpty();
         }
 
         await using var verifyConnection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
@@ -273,6 +384,7 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
         payload.Should().NotBeNull();
         payload!.Errors.Should().Contain(error => error.Reason == "INVALID_DRY_RUN");
+        payload.UnknownColumns.Should().BeEmpty();
     }
 
     private static StringContent CreateCsvContent(string[] lines)
