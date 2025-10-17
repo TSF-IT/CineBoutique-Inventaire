@@ -50,6 +50,9 @@ jobs:
         with:
           global-json-file: global.json
           cache: true
+          cache-dependency-path: |
+            Directory.Packages.props
+            **/*.csproj
 
       - run: |
           which dotnet
