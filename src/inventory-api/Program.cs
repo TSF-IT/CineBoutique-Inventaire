@@ -211,6 +211,7 @@ builder.Services.AddScoped<IShopService, ShopService>();
 builder.Services.AddScoped<IShopUserService, ShopUserService>();
 builder.Services.AddScoped<IProductLookupService, ProductLookupService>();
 builder.Services.AddScoped<IProductSearchService, ProductSearchService>();
+builder.Services.AddScoped<IProductSuggestionService, ProductSuggestionService>();
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource.AddService("cineboutique.inventory.api"))
     .WithMetrics(metrics =>
@@ -299,20 +300,24 @@ builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<ProcessorOpti
 // --- App ---
 var app = builder.Build();
 
-// Migrations au démarrage (hors environnement de test)
-if (!app.Environment.IsEnvironment("Testing"))
+var applyAutomaticMigrations = app.Environment.IsDevelopment()
+    || app.Environment.IsEnvironment("CI")
+    || app.Environment.IsEnvironment("Test")
+    || app.Environment.IsEnvironment("Testing");
+
+if (applyAutomaticMigrations)
 {
     using var scope = app.Services.CreateScope();
     var runner = scope.ServiceProvider.GetRequiredService<IMigrationRunner>();
     try
     {
         runner.MigrateUp();
-        app.Logger.LogInformation("Database migrations applied.");
+        app.Logger.LogInformation("Migrations automatiques appliquées pour l'environnement {Environment}.", app.Environment.EnvironmentName);
     }
     catch (Exception ex)
     {
-        app.Logger.LogError(ex, "Failed to apply migrations");
-        throw; // en DEV tu peux décider de ne pas throw si tu veux juste voir l’API démarrer
+        app.Logger.LogError(ex, "Échec de l'application automatique des migrations");
+        throw;
     }
 }
 
@@ -396,7 +401,7 @@ var applyMigrations = app.Configuration.GetValue<bool>("APPLY_MIGRATIONS");
 var disableMigrations = app.Configuration.GetValue<bool>("DISABLE_MIGRATIONS");
 AppLog.MigrationsFlags(app.Logger, applyMigrations, disableMigrations);
 
-if (!app.Environment.IsEnvironment("Testing"))
+if (!applyAutomaticMigrations && !app.Environment.IsEnvironment("Testing"))
 {
     if (applyMigrations && !disableMigrations)
     {

@@ -5,21 +5,77 @@ namespace CineBoutique.Inventory.Api.Models;
 public sealed record ProductImportResponse(
     int Total,
     int Inserted,
+    int Updated,
     int WouldInsert,
     int ErrorCount,
     bool DryRun,
     bool Skipped,
-    IReadOnlyList<ProductImportError> Errors)
+    IReadOnlyList<ProductImportError> Errors,
+    IReadOnlyCollection<string> UnknownColumns,
+    IReadOnlyCollection<ProductImportGroupProposal> ProposedGroups)
 {
-    public static ProductImportResponse Success(int total, int inserted) =>
-        new(total, inserted, inserted, 0, DryRun: false, Skipped: false, ImmutableArray<ProductImportError>.Empty);
+    public static ProductImportResponse Success(
+        int total,
+        int inserted,
+        int updated,
+        IReadOnlyCollection<string> unknownColumns,
+        IReadOnlyCollection<ProductImportGroupProposal> proposedGroups) =>
+        new(
+            total,
+            inserted,
+            updated,
+            WouldInsert: 0,
+            ErrorCount: 0,
+            DryRun: false,
+            Skipped: false,
+            ImmutableArray<ProductImportError>.Empty,
+            unknownColumns,
+            proposedGroups);
 
-    public static ProductImportResponse DryRunResult(int total, int wouldInsert) =>
-        new(total, Inserted: 0, wouldInsert, 0, DryRun: true, Skipped: false, ImmutableArray<ProductImportError>.Empty);
+    public static ProductImportResponse DryRunResult(
+        int total,
+        int wouldInsert,
+        IReadOnlyCollection<string> unknownColumns,
+        IReadOnlyCollection<ProductImportGroupProposal> proposedGroups) =>
+        new(
+            total,
+            Inserted: 0,
+            Updated: 0,
+            WouldInsert: wouldInsert,
+            ErrorCount: 0,
+            DryRun: true,
+            Skipped: false,
+            ImmutableArray<ProductImportError>.Empty,
+            unknownColumns,
+            proposedGroups);
 
-    public static ProductImportResponse Failure(int total, IReadOnlyList<ProductImportError> errors, int wouldInsert = 0) =>
-        new(total, Inserted: 0, wouldInsert, errors.Count, DryRun: false, Skipped: false, errors);
+    public static ProductImportResponse Failure(
+        int total,
+        IReadOnlyList<ProductImportError> errors,
+        IReadOnlyCollection<string> unknownColumns,
+        IReadOnlyCollection<ProductImportGroupProposal> proposedGroups) =>
+        new(
+            total,
+            Inserted: 0,
+            Updated: 0,
+            WouldInsert: 0,
+            errors.Count,
+            DryRun: false,
+            Skipped: false,
+            errors,
+            unknownColumns,
+            proposedGroups);
 
     public static ProductImportResponse SkippedResult() =>
-        new(0, 0, 0, 0, DryRun: false, Skipped: true, ImmutableArray<ProductImportError>.Empty);
+        new(
+            0,
+            0,
+            0,
+            0,
+            0,
+            DryRun: false,
+            Skipped: true,
+            ImmutableArray<ProductImportError>.Empty,
+            ImmutableArray<string>.Empty,
+            ImmutableArray<ProductImportGroupProposal>.Empty);
 }
