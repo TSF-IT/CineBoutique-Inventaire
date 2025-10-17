@@ -52,13 +52,15 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
         payload.Should().NotBeNull();
         payload!.Total.Should().Be(5);
-        payload.Created.Should().Be(5);
+        payload.Inserted.Should().Be(5);
         payload.Updated.Should().Be(0);
+        payload.WouldInsert.Should().Be(0);
         payload.ErrorCount.Should().Be(0);
         payload.DryRun.Should().BeFalse();
         payload.Skipped.Should().BeFalse();
         payload.Errors.Should().BeEmpty();
         payload.UnknownColumns.Should().BeEmpty();
+        payload.ProposedGroups.Should().BeEmpty();
 
         var skuResponse = await client.GetAsync("/api/products/A-GOBBIO16").ConfigureAwait(false);
         await skuResponse.ShouldBeAsync(HttpStatusCode.OK, "le SKU issu de l'import doit exister").ConfigureAwait(false);
@@ -109,13 +111,15 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         var reimportPayload = await reimportResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
         reimportPayload.Should().NotBeNull();
         reimportPayload!.Total.Should().Be(2);
-        reimportPayload.Created.Should().Be(2);
+        reimportPayload.Inserted.Should().Be(2);
         reimportPayload.Updated.Should().Be(0);
+        reimportPayload.WouldInsert.Should().Be(0);
         reimportPayload.ErrorCount.Should().Be(0);
         reimportPayload.DryRun.Should().BeFalse();
         reimportPayload.Skipped.Should().BeFalse();
         reimportPayload.Errors.Should().BeEmpty();
         reimportPayload.UnknownColumns.Should().BeEmpty();
+        reimportPayload.ProposedGroups.Should().BeEmpty();
 
         var existingResponse = await client.GetAsync("/api/products/A-NEW1").ConfigureAwait(false);
         await existingResponse.ShouldBeAsync(HttpStatusCode.OK, "les nouveaux produits doivent être accessibles").ConfigureAwait(false);
@@ -151,12 +155,14 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         var payload = await authorizedResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
         payload.Should().NotBeNull();
         payload!.Total.Should().Be(1);
-        payload.Created.Should().Be(1);
+        payload.Inserted.Should().Be(1);
         payload.Updated.Should().Be(0);
+        payload.WouldInsert.Should().Be(0);
         payload.ErrorCount.Should().Be(0);
         payload.DryRun.Should().BeFalse();
         payload.Skipped.Should().BeFalse();
         payload.UnknownColumns.Should().BeEmpty();
+        payload.ProposedGroups.Should().BeEmpty();
     }
 
     [SkippableFact]
@@ -178,11 +184,13 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
             dryRunPayload.Should().NotBeNull();
             dryRunPayload!.DryRun.Should().BeTrue();
             dryRunPayload.Total.Should().Be(5);
-            dryRunPayload.Created.Should().Be(5);
+            dryRunPayload.Inserted.Should().Be(0);
             dryRunPayload.Updated.Should().Be(0);
+            dryRunPayload.WouldInsert.Should().Be(5);
             dryRunPayload.Skipped.Should().BeFalse();
             dryRunPayload.ErrorCount.Should().Be(0);
             dryRunPayload.UnknownColumns.Should().BeEmpty();
+            dryRunPayload.ProposedGroups.Should().BeEmpty();
         }
 
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
@@ -199,9 +207,11 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
             actualPayload.Should().NotBeNull();
             actualPayload!.DryRun.Should().BeFalse();
             actualPayload.Skipped.Should().BeFalse();
-            actualPayload.Created.Should().Be(5);
+            actualPayload.Inserted.Should().Be(5);
             actualPayload.Updated.Should().Be(0);
+            actualPayload.WouldInsert.Should().Be(0);
             actualPayload.UnknownColumns.Should().BeEmpty();
+            actualPayload.ProposedGroups.Should().BeEmpty();
         }
 
         await using var finalConnection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
@@ -235,9 +245,11 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
             duplicatePayload.Should().NotBeNull();
             duplicatePayload!.Skipped.Should().BeTrue();
             duplicatePayload.DryRun.Should().BeFalse();
-            duplicatePayload.Created.Should().Be(0);
+            duplicatePayload.Inserted.Should().Be(0);
             duplicatePayload.Updated.Should().Be(0);
+            duplicatePayload.WouldInsert.Should().Be(0);
             duplicatePayload.UnknownColumns.Should().BeEmpty();
+            duplicatePayload.ProposedGroups.Should().BeEmpty();
         }
 
         await using var verifyConnection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);

@@ -1,6 +1,7 @@
 // Modifications : déplacement des endpoints produits depuis Program.cs avec mutualisation des helpers locaux.
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Data;
 using System.IO;
 using System.Linq;
@@ -421,10 +422,14 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 }
 
                 static IResult BuildFailure(string reason) =>
-                    Results.BadRequest(ProductImportResponse.Failure(0, new[]
-                    {
-                        new ProductImportError(0, reason)
-                    }, Array.Empty<string>()));
+                    Results.BadRequest(ProductImportResponse.Failure(
+                        0,
+                        new[]
+                        {
+                            new ProductImportError(0, reason)
+                        },
+                        ImmutableArray<string>.Empty,
+                        ImmutableArray<ProductImportGroupProposal>.Empty));
 
                 if (!TryParseDryRun(request, out var dryRun, out var invalidDryRun) || invalidDryRun)
                 {
@@ -511,11 +516,11 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             .WithOpenApi(operation =>
             {
                 operation.Summary = "Importe le catalogue produits depuis un fichier CSV.";
-                operation.Description = "Remplace l'intégralité de la table Product à partir d'un CSV ';' contenant les colonnes barcode_rfid;item;descr. Accessible uniquement aux administrateurs.";
+                operation.Description = "Remplace l'intégralité de la table Product à partir d'un CSV encodé en ISO-8859-1 (Latin-1) utilisant ';' comme séparateur, contenant au minimum les colonnes barcode_rfid;item;descr. Accessible uniquement aux administrateurs.";
 
                 operation.RequestBody ??= new OpenApiRequestBody();
                 operation.RequestBody.Required = true;
-                operation.RequestBody.Description = "Fichier CSV avec séparateur ';' et entête barcode_rfid;item;descr.";
+                operation.RequestBody.Description = "Fichier CSV encodé en ISO-8859-1 (Latin-1) avec séparateur ';' et entête barcode_rfid;item;descr.";
                 operation.RequestBody.Content["multipart/form-data"] = new OpenApiMediaType
                 {
                     Schema = new OpenApiSchema
@@ -550,11 +555,25 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     Properties =
                     {
                         ["total"] = new OpenApiSchema { Type = "integer", Format = "int32" },
-                        ["created"] = new OpenApiSchema { Type = "integer", Format = "int32" },
+                        ["inserted"] = new OpenApiSchema { Type = "integer", Format = "int32" },
                         ["updated"] = new OpenApiSchema { Type = "integer", Format = "int32" },
+                        ["wouldInsert"] = new OpenApiSchema { Type = "integer", Format = "int32" },
                         ["errorCount"] = new OpenApiSchema { Type = "integer", Format = "int32" },
                         ["dryRun"] = new OpenApiSchema { Type = "boolean" },
                         ["skipped"] = new OpenApiSchema { Type = "boolean" },
+                        ["proposedGroups"] = new OpenApiSchema
+                        {
+                            Type = "array",
+                            Items = new OpenApiSchema
+                            {
+                                Type = "object",
+                                Properties =
+                                {
+                                    ["groupe"] = new OpenApiSchema { Type = "string" },
+                                    ["sousGroupe"] = new OpenApiSchema { Type = "string" }
+                                }
+                            }
+                        },
                         ["unknownColumns"] = new OpenApiSchema
                         {
                             Type = "array",
@@ -571,6 +590,32 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                                     Id = nameof(ProductImportError)
                                 }
                             }
+                        }
+                    }
+                };
+
+                successSchema.Example = new OpenApiObject
+                {
+                    ["total"] = new OpenApiInteger(1204),
+                    ["inserted"] = new OpenApiInteger(1204),
+                    ["updated"] = new OpenApiInteger(0),
+                    ["wouldInsert"] = new OpenApiInteger(0),
+                    ["errorCount"] = new OpenApiInteger(0),
+                    ["dryRun"] = new OpenApiBoolean(false),
+                    ["skipped"] = new OpenApiBoolean(false),
+                    ["errors"] = new OpenApiArray(),
+                    ["unknownColumns"] = new OpenApiArray
+                    {
+                        new OpenApiString("couleurSecondaire"),
+                        new OpenApiString("tva"),
+                        new OpenApiString("marque")
+                    },
+                    ["proposedGroups"] = new OpenApiArray
+                    {
+                        new OpenApiObject
+                        {
+                            ["groupe"] = new OpenApiString("Café"),
+                            ["sousGroupe"] = new OpenApiString("Grains 1kg")
                         }
                     }
                 };

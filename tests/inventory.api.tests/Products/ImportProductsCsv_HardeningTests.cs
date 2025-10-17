@@ -90,9 +90,11 @@ public sealed class ImportProductsCsv_HardeningTests : IntegrationTestBase
         payload.Should().NotBeNull();
         payload!.Skipped.Should().BeTrue();
         payload.DryRun.Should().BeFalse();
-        payload.Created.Should().Be(0);
+        payload.Inserted.Should().Be(0);
         payload.Updated.Should().Be(0);
+        payload.WouldInsert.Should().Be(0);
         payload.UnknownColumns.Should().BeEmpty();
+        payload.ProposedGroups.Should().BeEmpty();
     }
 
     [SkippableFact]
@@ -112,10 +114,12 @@ public sealed class ImportProductsCsv_HardeningTests : IntegrationTestBase
         var payload = await dryRunResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
         payload.Should().NotBeNull();
         payload!.DryRun.Should().BeTrue();
-        payload.Created.Should().Be(2);
+        payload.Inserted.Should().Be(0);
         payload.Updated.Should().Be(0);
+        payload.WouldInsert.Should().Be(2);
         payload.Skipped.Should().BeFalse();
         payload.UnknownColumns.Should().BeEmpty();
+        payload.ProposedGroups.Should().BeEmpty();
 
         var randomSku = $"SKU-{Guid.NewGuid():N}";
         var getResponse = await client.GetAsync($"/api/products/{randomSku}").ConfigureAwait(false);

@@ -35,6 +35,7 @@ public sealed class ProductImportService : IProductImportService
     private static readonly Encoding StrictUtf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
     private static readonly JsonSerializerOptions JsonSerializerOptions = new(JsonSerializerDefaults.Web);
     private static readonly ImmutableArray<string> EmptyUnknownColumns = ImmutableArray<string>.Empty;
+    private static readonly ImmutableArray<ProductImportGroupProposal> EmptyProposedGroups = ImmutableArray<ProductImportGroupProposal>.Empty;
 
     private static readonly Dictionary<string, string> HeaderSynonyms = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -195,7 +196,7 @@ public sealed class ProductImportService : IProductImportService
                     unknownColumns);
 
                 return new ProductImportResult(
-                    ProductImportResponse.Failure(totalLines, parseOutcome.Errors, unknownColumns),
+                    ProductImportResponse.Failure(totalLines, parseOutcome.Errors, unknownColumns, parseOutcome.ProposedGroups),
                     ProductImportResultType.ValidationFailed);
             }
 
@@ -232,7 +233,7 @@ public sealed class ProductImportService : IProductImportService
                     unknownColumns);
 
                 return new ProductImportResult(
-                    ProductImportResponse.DryRunResult(totalLines, preview.Created, preview.Updated, unknownColumns),
+                    ProductImportResponse.DryRunResult(totalLines, preview.Created, unknownColumns, parseOutcome.ProposedGroups),
                     ProductImportResultType.DryRun);
             }
 
@@ -278,7 +279,7 @@ public sealed class ProductImportService : IProductImportService
                     upsertStats.Updated);
 
                 return new ProductImportResult(
-                    ProductImportResponse.Success(totalLines, upsertStats.Created, upsertStats.Updated, unknownColumns),
+                    ProductImportResponse.Success(totalLines, upsertStats.Created, upsertStats.Updated, unknownColumns, parseOutcome.ProposedGroups),
                     ProductImportResultType.Succeeded);
             }
             catch
@@ -723,6 +724,8 @@ RETURNING (xmax = 0) AS inserted;
         var seenSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var unknownColumns = new List<string>();
         var unknownColumnsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var proposedGroups = new List<ProductImportGroupProposal>();
+        var proposedGroupsSet = new HashSet<GroupKey>(GroupKeyComparer.Instance);
 
         var lineNumber = 0;
         var totalLines = 0;
@@ -841,12 +844,24 @@ RETURNING (xmax = 0) AS inserted;
 
             name = string.IsNullOrWhiteSpace(name) ? sku : name;
 
+            var normalizedGroup = NormalizeOptional(group);
+            var normalizedSubGroup = NormalizeOptional(subGroup);
+
+            if (normalizedGroup is not null || normalizedSubGroup is not null)
+            {
+                var key = new GroupKey(normalizedGroup, normalizedSubGroup);
+                if (proposedGroupsSet.Add(key))
+                {
+                    proposedGroups.Add(new ProductImportGroupProposal(normalizedGroup, normalizedSubGroup));
+                }
+            }
+
             rows.Add(new ProductCsvRow(
                 sku,
                 name!,
                 ean,
-                NormalizeOptional(group),
-                NormalizeOptional(subGroup),
+                normalizedGroup,
+                normalizedSubGroup,
                 attributes));
         }
 
@@ -859,7 +874,11 @@ RETURNING (xmax = 0) AS inserted;
             ? EmptyUnknownColumns
             : unknownColumns.ToImmutableArray();
 
-        return new ProductCsvParseOutcome(rows, errors, totalLines, unknownColumnsImmutable);
+        var proposedGroupsImmutable = proposedGroups.Count == 0
+            ? EmptyProposedGroups
+            : proposedGroups.ToImmutableArray();
+
+        return new ProductCsvParseOutcome(rows, errors, totalLines, unknownColumnsImmutable, proposedGroupsImmutable);
     }
 
     private static List<string> ParseFields(string line)
@@ -924,7 +943,8 @@ RETURNING (xmax = 0) AS inserted;
         IReadOnlyList<ProductCsvRow> Rows,
         IReadOnlyList<ProductImportError> Errors,
         int TotalLines,
-        ImmutableArray<string> UnknownColumns)
+        ImmutableArray<string> UnknownColumns,
+        ImmutableArray<ProductImportGroupProposal> ProposedGroups)
     {
         public static ProductCsvParseOutcome CreateEmptyFile()
         {
@@ -932,7 +952,8 @@ RETURNING (xmax = 0) AS inserted;
                 Array.Empty<ProductCsvRow>(),
                 new[] { new ProductImportError(0, "EMPTY_FILE") },
                 0,
-                EmptyUnknownColumns);
+                EmptyUnknownColumns,
+                EmptyProposedGroups);
         }
     }
 
