@@ -847,11 +847,11 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             }
 
             var effectiveLimit = limit.GetValueOrDefault(20);
-            if (effectiveLimit <= 0)
+            if (effectiveLimit < 1 || effectiveLimit > 50)
             {
                 var validation = new ValidationResult(new[]
                 {
-                    new ValidationFailure("limit", "Le paramètre 'limit' doit être strictement positif.")
+                    new ValidationFailure("limit", "Le paramètre 'limit' doit être compris entre 1 et 50.")
                 });
 
                 return EndpointUtilities.ValidationProblem(validation);
@@ -874,7 +874,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
         .WithOpenApi(operation =>
         {
             operation.Summary = "Recherche un ensemble de produits à partir d'un code scanné.";
-            operation.Description = "Applique successivement trois stratégies : correspondance exacte sur le SKU, correspondance exacte sur le code brut (EAN/Code) puis comparaison sur CodeDigits lorsque le code contient des chiffres. Les résultats sont fusionnés sans doublon et limités par le paramètre 'limit'.";
+            operation.Description = "La recherche combine une requête SQL unique mêlant préfixes sur le SKU/EAN et similarité trigram sur le nom et les groupes. Les résultats sont dédupliqués par SKU et limités par le paramètre 'limit'.";
 
             if (operation.Parameters is { Count: > 0 })
             {
@@ -887,10 +887,11 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     }
                     else if (string.Equals(parameter.Name, "limit", StringComparison.OrdinalIgnoreCase))
                     {
-                        parameter.Description = "Nombre maximum de résultats (défaut : 20).";
+                        parameter.Description = "Nombre maximum de résultats (défaut : 20, maximum : 50).";
                         if (parameter.Schema is not null)
                         {
                             parameter.Schema.Minimum = 1;
+                            parameter.Schema.Maximum = 50;
                             parameter.Schema.Default = new OpenApiInteger(20);
                         }
                     }

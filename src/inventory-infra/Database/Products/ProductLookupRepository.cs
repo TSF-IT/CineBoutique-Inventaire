@@ -99,6 +99,141 @@ FROM "Product" {whereClause};
         return rows.ToArray();
     }
 
+    public async Task<IReadOnlyList<ProductLookupItem>> SearchProductsAsync(string code, int limit, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+        {
+            return Array.Empty<ProductLookupItem>();
+        }
+
+        if (limit <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(limit));
+        }
+
+        var normalizedCode = code.Trim();
+        if (normalizedCode.Length == 0)
+        {
+            return Array.Empty<ProductLookupItem>();
+        }
+
+        var effectiveLimit = Math.Clamp(limit, 1, 50);
+
+        using var connection = _connectionFactory.CreateConnection();
+        await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+        var (projection, _) = await ProductRawCodeMetadata
+            .GetRawCodeProjectionAsync(connection, cancellationToken)
+            .ConfigureAwait(false);
+
+        var sql = $"""
+WITH input AS (
+    SELECT
+        LOWER(@Code) AS lowered_code,
+        immutable_unaccent(LOWER(@Code)) AS unaccent_code
+),
+candidate AS (
+    SELECT
+        p."Id",
+        p."Sku",
+        p."Name",
+        p."Ean",
+        {projection} AS "Code",
+        p."CodeDigits",
+        1 AS match_priority,
+        1.0 AS score
+    FROM "Product" AS p
+    CROSS JOIN input AS i
+    WHERE LOWER(p."Sku") LIKE i.lowered_code || '%'
+
+    UNION ALL
+
+    SELECT
+        p."Id",
+        p."Sku",
+        p."Name",
+        p."Ean",
+        {projection} AS "Code",
+        p."CodeDigits",
+        2 AS match_priority,
+        1.0 AS score
+    FROM "Product" AS p
+    CROSS JOIN input AS i
+    WHERE LOWER(p."Ean") LIKE i.lowered_code || '%'
+
+    UNION ALL
+
+    SELECT
+        p."Id",
+        p."Sku",
+        p."Name",
+        p."Ean",
+        {projection} AS "Code",
+        p."CodeDigits",
+        3 AS match_priority,
+        similarity(immutable_unaccent(LOWER(p."Name")), i.unaccent_code) * 0.6 AS score
+    FROM "Product" AS p
+    CROSS JOIN input AS i
+    WHERE similarity(immutable_unaccent(LOWER(p."Name")), i.unaccent_code) > 0.2
+
+    UNION ALL
+
+    SELECT
+        p."Id",
+        p."Sku",
+        p."Name",
+        p."Ean",
+        {projection} AS "Code",
+        p."CodeDigits",
+        4 AS match_priority,
+        similarity(immutable_unaccent(LOWER(pg."Label")), i.unaccent_code) * 0.4 AS score
+    FROM "Product" AS p
+    JOIN "ProductGroup" AS pg ON pg."Id" = p."GroupId"
+    CROSS JOIN input AS i
+    WHERE pg."Label" IS NOT NULL
+      AND similarity(immutable_unaccent(LOWER(pg."Label")), i.unaccent_code) > 0.2
+),
+ranked AS (
+    SELECT DISTINCT ON (candidate."Sku")
+        candidate."Id",
+        candidate."Sku",
+        candidate."Name",
+        candidate."Ean",
+        candidate."Code",
+        candidate."CodeDigits",
+        candidate.match_priority,
+        candidate.score
+    FROM candidate
+    ORDER BY candidate."Sku", candidate.match_priority, candidate.score DESC, candidate."Name"
+)
+SELECT
+    ranked."Id",
+    ranked."Sku",
+    ranked."Name",
+    ranked."Ean",
+    ranked."Code",
+    ranked."CodeDigits",
+    ranked.match_priority AS "MatchPriority",
+    ranked.score AS "Score"
+FROM ranked
+ORDER BY ranked.match_priority, ranked.score DESC, ranked."Name"
+LIMIT @Limit;
+""";
+
+        var command = new CommandDefinition(
+            sql,
+            new { Code = normalizedCode, Limit = effectiveLimit },
+            cancellationToken: cancellationToken);
+
+        var rows = await connection
+            .QueryAsync<ProductSearchQueryRow>(command)
+            .ConfigureAwait(false);
+
+        return rows
+            .Select(row => new ProductLookupItem(row.Id, row.Sku, row.Name, row.Ean, row.Code, row.CodeDigits))
+            .ToArray();
+    }
+
     private static async Task EnsureConnectionOpenAsync(IDbConnection connection, CancellationToken cancellationToken)
     {
         if (connection is null)
