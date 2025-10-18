@@ -18,8 +18,16 @@ public class ProductSuggestTests : IClassFixture<TestApiFactory>
     {
       // Arrange: insère 2 produits et un sousGroupe
       var gid = await conn.ExecuteScalarAsync<long?>(@"
-        INSERT INTO ""ProductGroup"" (""Code"",""Label"") VALUES ('cafe','Café')
-        ON CONFLICT ON CONSTRAINT uq_productgroup_code DO UPDATE SET ""Label""=EXCLUDED.""Label"" RETURNING ""Id"";");
+WITH upsert AS (
+  UPDATE ""ProductGroup""
+  SET ""Label"" = @label
+  WHERE ""Code"" = @code
+  RETURNING ""Id""
+)
+INSERT INTO ""ProductGroup"" (""Code"",""Label"")
+SELECT @code, @label
+WHERE NOT EXISTS (SELECT 1 FROM upsert)
+RETURNING ""Id"";", new { code = "cafe", label = "Café" });
       await conn.ExecuteAsync(@"
         INSERT INTO ""Product"" (""Sku"",""Name"",""Ean"",""GroupId"") VALUES
         ('CB-0001','Café Grains 1kg','321000000001',@gid),
