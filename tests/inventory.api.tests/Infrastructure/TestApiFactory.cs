@@ -64,6 +64,9 @@ public sealed class TestApiFactory : IAsyncLifetime, IAsyncDisposable
     ArgumentNullException.ThrowIfNull(plan);
     Skip.If(!IsAvailable, _skipReason ?? "Backend d'intégration indisponible.");
 
+    // Assure que l'host est démarré → migrations/seed exécutés (via AppSettings__SeedOnStartup=true)
+    _ = await Client.GetAsync("/health");
+
     await _inventory.DbResetAsync().ConfigureAwait(false);
 
     var connection = await _inventory.OpenConnectionAsync().ConfigureAwait(false);
