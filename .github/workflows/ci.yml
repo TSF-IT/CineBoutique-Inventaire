@@ -82,22 +82,20 @@ jobs:
             --results-directory "test-results/dotnet" \
             --collect:"XPlat Code Coverage;Format=cobertura"
 
-      - name: Install ReportGenerator (global tool)
-        run: dotnet tool install --global dotnet-reportgenerator-globaltool
-
-      - name: Add dotnet tools to PATH
-        run: echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
-
       - name: ReportGenerator (HTML)
         run: |
+          # Installer l'outil et l'ajouter au PATH
           dotnet tool install --global dotnet-reportgenerator-globaltool
           echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
-          # Debug: montre bien où sont les fichiers
+
+          # Debug : montre les fichiers réellement présents
           find test-results/dotnet -type f -name "coverage.cobertura.xml" -print
+
+          # IMPORTANT : le ';' doit être QUOTÉ pour ne pas être interprété par bash
           reportgenerator \
             -reports:'test-results/dotnet/**/coverage.cobertura.xml' \
-            -targetdir:test-results/dotnet/coverage-report \
-            -reporttypes:HtmlInline;Cobertura
+            -targetdir:'test-results/dotnet/coverage-report' \
+            -reporttypes:'HtmlInline;Cobertura'
 
       - name: Upload TRX
         uses: actions/upload-artifact@v4
