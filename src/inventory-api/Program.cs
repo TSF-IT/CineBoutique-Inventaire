@@ -43,6 +43,11 @@ using OpenTelemetry.Resources;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.ConfigureHttpJsonOptions(static o =>
+{
+    o.SerializerOptions.Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
+});
+
 builder.Host.UseDefaultServiceProvider(options =>
 {
     options.ValidateOnBuild = false;
@@ -349,7 +354,7 @@ var env = app.Environment;
 app.Logger.LogInformation("[API] Using ownerUserId for runs; legacy operatorName disabled for write.");
 
 app.Logger.LogInformation("ASPNETCORE_ENVIRONMENT = {Env}", env.EnvironmentName);
-var devLike = env.IsDevelopment() || env.IsEnvironment("CI") || 
+var devLike = env.IsDevelopment() || env.IsEnvironment("CI") ||
               string.Equals(env.EnvironmentName, "Docker", StringComparison.OrdinalIgnoreCase);
 
 if (devLike)
