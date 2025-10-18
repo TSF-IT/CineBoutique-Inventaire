@@ -158,13 +158,12 @@ WITH upsert AS (
   UPDATE ""Product""
   SET ""Name"" = @name,
       ""Ean""  = @ean,
-      ""GroupId"" = @gid,
-      ""UpdatedAtUtc"" = NOW() AT TIME ZONE 'UTC'
+      ""GroupId"" = @gid
   WHERE ""Sku"" = @sku
   RETURNING ""Sku""
 )
-INSERT INTO ""Product"" (""Sku"",""Name"",""Ean"",""GroupId"",""CreatedAtUtc"",""UpdatedAtUtc"")
-SELECT @sku, @name, @ean, @gid, NOW() AT TIME ZONE 'UTC', NOW() AT TIME ZONE 'UTC'
+INSERT INTO ""Product"" (""Sku"",""Name"",""Ean"",""GroupId"")
+SELECT @sku, @name, @ean, @gid
 WHERE NOT EXISTS (SELECT 1 FROM upsert);";
 
   public async System.Threading.Tasks.Task<long> UpsertGroupAsync(
