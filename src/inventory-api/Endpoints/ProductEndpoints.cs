@@ -723,28 +723,27 @@ WITH cand AS (
     p.""Name"",
     COALESCE(pgp.""Label"", pg.""Label"") AS ""Group"",
     CASE WHEN pgp.""Id"" IS NULL THEN NULL ELSE pg.""Label"" END AS ""SubGroup"",
-    GREATEST(
-      CASE WHEN LOWER(p.""Sku"") LIKE LOWER(@q) || '%' THEN 1.00 ELSE 0 END,
-      CASE WHEN LOWER(p.""Ean"") LIKE LOWER(@q) || '%' THEN 0.95 ELSE 0 END,
-      -- nom produit (approx, unaccent)
-      similarity(immutable_unaccent(LOWER(p.""Name"")), immutable_unaccent(LOWER(@q))) * 0.65,
-      -- libellé de sous-groupe (approx + préfixe)
-      COALESCE(similarity(immutable_unaccent(LOWER(pg.""Label"")),  immutable_unaccent(LOWER(@q))) * 0.45, 0)
-      + COALESCE(CASE WHEN immutable_unaccent(LOWER(pg.""Label"")) LIKE immutable_unaccent(LOWER(@q)) || '%' THEN 0.30 ELSE 0 END, 0),
-      -- libellé de groupe parent (approx + préfixe)
-      COALESCE(similarity(immutable_unaccent(LOWER(pgp.""Label"")), immutable_unaccent(LOWER(@q))) * 0.35, 0)
-      + COALESCE(CASE WHEN immutable_unaccent(LOWER(pgp.""Label"")) LIKE immutable_unaccent(LOWER(@q)) || '%' THEN 0.20 ELSE 0 END, 0)
-    ) AS score
+    /* Flags de tri déterministes */
+    CASE WHEN LOWER(p.""Sku"") LIKE LOWER(@q) || '%' THEN 1 ELSE 0 END AS sku_pref,
+    CASE WHEN LOWER(p.""Ean"") LIKE LOWER(@q) || '%' THEN 1 ELSE 0 END AS ean_pref,
+    similarity(immutable_unaccent(LOWER(p.""Name"")), immutable_unaccent(LOWER(@q))) AS name_sim,
+    CASE 
+      WHEN pg.""Id"" IS NOT NULL 
+        AND immutable_unaccent(LOWER(pg.""Label"")) LIKE immutable_unaccent(LOWER(@q)) || '%' 
+      THEN 1 ELSE 0 END AS sub_pref,
+    CASE 
+      WHEN pgp.""Id"" IS NOT NULL 
+        AND immutable_unaccent(LOWER(pgp.""Label"")) LIKE immutable_unaccent(LOWER(@q)) || '%' 
+      THEN 1 ELSE 0 END AS grp_pref,
+    COALESCE(similarity(immutable_unaccent(LOWER(pg.""Label"")),  immutable_unaccent(LOWER(@q))), 0) AS sub_sim,
+    COALESCE(similarity(immutable_unaccent(LOWER(pgp.""Label"")), immutable_unaccent(LOWER(@q))), 0) AS grp_sim
   FROM ""Product"" p
   LEFT JOIN ""ProductGroup"" pg  ON pg.""Id""  = p.""GroupId""
   LEFT JOIN ""ProductGroup"" pgp ON pgp.""Id"" = pg.""ParentId""
   WHERE
-    -- préfixe SKU/EAN
     LOWER(p.""Sku"") LIKE LOWER(@q) || '%'
     OR LOWER(p.""Ean"") LIKE LOWER(@q) || '%'
-    -- nom produit (approx)
     OR similarity(immutable_unaccent(LOWER(p.""Name"")), immutable_unaccent(LOWER(@q))) > 0.20
-    -- sous-groupe / groupe parent (approx + préfixe)
     OR (pg.""Id""  IS NOT NULL AND (
           similarity(immutable_unaccent(LOWER(pg.""Label"")),  immutable_unaccent(LOWER(@q))) > 0.20
        OR immutable_unaccent(LOWER(pg.""Label""))  LIKE immutable_unaccent(LOWER(@q)) || '%'
@@ -755,14 +754,26 @@ WITH cand AS (
     ))
 )
 , best_per_sku AS (
+  /* On choisit la meilleure ligne par SKU selon les mêmes priorités */
   SELECT DISTINCT ON (c.""Sku"") c.*
   FROM cand c
-  WHERE c.score > 0
-  ORDER BY c.""Sku"", c.score DESC
+  ORDER BY 
+    c.""Sku"",
+    c.sku_pref DESC,
+    c.ean_pref DESC,
+    c.name_sim DESC,
+    GREATEST(c.sub_pref, c.grp_pref) DESC,
+    GREATEST(c.sub_sim,  c.grp_sim)  DESC
 )
 SELECT ""Sku"",""Ean"",""Name"",""Group"",""SubGroup""
 FROM best_per_sku
-ORDER BY score DESC, ""Sku""
+ORDER BY
+  sku_pref DESC,
+  ean_pref DESC,
+  name_sim DESC,
+  GREATEST(sub_pref, grp_pref) DESC,
+  GREATEST(sub_sim,  grp_sim)  DESC,
+  ""Sku""
 LIMIT @top;";
 
             var suggestions = await connection.QueryAsync<ProductSuggestionDto>(sql, new { q, top }).ConfigureAwait(false);
