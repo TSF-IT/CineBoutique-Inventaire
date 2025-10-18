@@ -1,7 +1,9 @@
 using System.Net;
+using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using Dapper;
 using Xunit;
 
+[Collection("db")]
 public class ProductSuggestTests : IClassFixture<TestApiFactory>
 {
   private readonly TestApiFactory _f;
