@@ -698,133 +698,94 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
     private static void MapSuggestProductsEndpoint(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/products/suggest", async (
-            string? q,
+            string q,
             int? limit,
-            IProductSuggestionService suggestionService,
+            IDbConnection connection,
             CancellationToken cancellationToken) =>
         {
-            var sanitizedQuery = q?.Trim();
-            if (string.IsNullOrWhiteSpace(sanitizedQuery))
-            {
-                var validation = new ValidationResult(new[]
-                {
-                    new ValidationFailure("q", "Le paramètre 'q' est obligatoire.")
-                });
+            // Sanitize / validate inputs (conforme aux tests)
+            q = (q ?? string.Empty).Trim();
+            if (q.Length == 0)
+                return Results.BadRequest("q is required");
 
-                return EndpointUtilities.ValidationProblem(validation);
-            }
+            if (limit.HasValue && (limit.Value < 1 || limit.Value > 50))
+                return Results.BadRequest("limit must be between 1 and 50");
 
-            var effectiveLimit = limit ?? 8;
-            if (effectiveLimit < 1 || effectiveLimit > 50)
-            {
-                var validation = new ValidationResult(new[]
-                {
-                    new ValidationFailure("limit", "Le paramètre 'limit' doit être compris entre 1 et 50.")
-                });
+            var top = Math.Clamp(limit ?? 8, 1, 50);
 
-                return EndpointUtilities.ValidationProblem(validation);
-            }
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-            var items = await suggestionService
-                .SuggestAsync(sanitizedQuery, effectiveLimit, cancellationToken)
-                .ConfigureAwait(false);
+            var sql = @"
+WITH cand AS (
+  SELECT
+    p.""Sku"",
+    p.""Ean"",
+    p.""Name"",
+    COALESCE(pgp.""Label"", pg.""Label"") AS ""Group"",
+    CASE WHEN pgp.""Id"" IS NULL THEN NULL ELSE pg.""Label"" END AS ""SubGroup"",
+    /* Flags de tri déterministes */
+    CASE WHEN LOWER(p.""Sku"") LIKE LOWER(@q) || '%' THEN 1 ELSE 0 END AS sku_pref,
+    CASE WHEN LOWER(p.""Ean"") LIKE LOWER(@q) || '%' THEN 1 ELSE 0 END AS ean_pref,
+    similarity(immutable_unaccent(LOWER(p.""Name"")), immutable_unaccent(LOWER(@q))) AS name_sim,
+    CASE 
+      WHEN pg.""Id"" IS NOT NULL 
+        AND immutable_unaccent(LOWER(pg.""Label"")) LIKE immutable_unaccent(LOWER(@q)) || '%' 
+      THEN 1 ELSE 0 END AS sub_pref,
+    CASE 
+      WHEN pgp.""Id"" IS NOT NULL 
+        AND immutable_unaccent(LOWER(pgp.""Label"")) LIKE immutable_unaccent(LOWER(@q)) || '%' 
+      THEN 1 ELSE 0 END AS grp_pref,
+    COALESCE(similarity(immutable_unaccent(LOWER(pg.""Label"")),  immutable_unaccent(LOWER(@q))), 0) AS sub_sim,
+    COALESCE(similarity(immutable_unaccent(LOWER(pgp.""Label"")), immutable_unaccent(LOWER(@q))), 0) AS grp_sim
+  FROM ""Product"" p
+  LEFT JOIN ""ProductGroup"" pg  ON pg.""Id""  = p.""GroupId""
+  LEFT JOIN ""ProductGroup"" pgp ON pgp.""Id"" = pg.""ParentId""
+  WHERE
+    LOWER(p.""Sku"") LIKE LOWER(@q) || '%'
+    OR LOWER(p.""Ean"") LIKE LOWER(@q) || '%'
+    OR similarity(immutable_unaccent(LOWER(p.""Name"")), immutable_unaccent(LOWER(@q))) > 0.20
+    OR (pg.""Id""  IS NOT NULL AND (
+          similarity(immutable_unaccent(LOWER(pg.""Label"")),  immutable_unaccent(LOWER(@q))) > 0.20
+       OR immutable_unaccent(LOWER(pg.""Label""))  LIKE immutable_unaccent(LOWER(@q)) || '%'
+    ))
+    OR (pgp.""Id"" IS NOT NULL AND (
+          similarity(immutable_unaccent(LOWER(pgp.""Label"")), immutable_unaccent(LOWER(@q))) > 0.20
+       OR immutable_unaccent(LOWER(pgp.""Label"")) LIKE immutable_unaccent(LOWER(@q)) || '%'
+    ))
+)
+, best_per_sku AS (
+  /* On choisit la meilleure ligne par SKU selon les mêmes priorités */
+  SELECT DISTINCT ON (c.""Sku"") c.*
+  FROM cand c
+  ORDER BY 
+    c.""Sku"",
+    c.sku_pref DESC,
+    c.ean_pref DESC,
+    c.name_sim DESC,
+    GREATEST(c.sub_pref, c.grp_pref) DESC,
+    GREATEST(c.sub_sim,  c.grp_sim)  DESC
+)
+SELECT ""Sku"",""Ean"",""Name"",""Group"",""SubGroup""
+FROM best_per_sku
+ORDER BY
+  sku_pref DESC,
+  ean_pref DESC,
+  name_sim DESC,
+  GREATEST(sub_pref, grp_pref) DESC,
+  GREATEST(sub_sim,  grp_sim)  DESC,
+  ""Sku""
+LIMIT @top;";
 
-            var response = items
-                .Select(item => new ProductSuggestionDto(item.Sku, item.Ean, item.Name, item.Group, item.SubGroup))
-                .ToArray();
+            var suggestions = await connection.QueryAsync<ProductSuggestionDto>(
+                new CommandDefinition(sql, new { q, top }, cancellationToken: cancellationToken)
+            ).ConfigureAwait(false);
 
-            return Results.Ok(response);
+            return Results.Ok(suggestions);
         })
         .WithName("SuggestProducts")
         .WithTags("Produits")
-        .Produces<IReadOnlyList<ProductSuggestionDto>>(StatusCodes.Status200OK)
-        .Produces(StatusCodes.Status400BadRequest)
-        .WithOpenApi(operation =>
-        {
-            operation.Summary = "Propose des produits à partir d'une saisie partielle.";
-            operation.Description = "Combine une recherche préfixe sur le SKU et le code barre avec une similarité trigram sur le nom du produit et les libellés de groupe pour proposer des suggestions rapides.";
-
-            operation.Parameters ??= new List<OpenApiParameter>();
-
-            var queryParameter = operation.Parameters.FirstOrDefault(parameter => string.Equals(parameter.Name, "q", StringComparison.OrdinalIgnoreCase));
-            if (queryParameter is null)
-            {
-                queryParameter = new OpenApiParameter
-                {
-                    Name = "q",
-                    In = ParameterLocation.Query,
-                    Required = true
-                };
-                operation.Parameters.Add(queryParameter);
-            }
-
-            queryParameter.Description = "Texte recherché (SKU, EAN/code barre, nom ou groupe).";
-            queryParameter.Required = true;
-
-            var limitParameter = operation.Parameters.FirstOrDefault(parameter => string.Equals(parameter.Name, "limit", StringComparison.OrdinalIgnoreCase));
-            if (limitParameter is null)
-            {
-                limitParameter = new OpenApiParameter
-                {
-                    Name = "limit",
-                    In = ParameterLocation.Query,
-                    Required = false,
-                    Schema = new OpenApiSchema { Type = "integer" }
-                };
-                operation.Parameters.Add(limitParameter);
-            }
-
-            limitParameter.Description = "Nombre maximum de suggestions (défaut : 8, min 1, max 50).";
-            limitParameter.Schema ??= new OpenApiSchema { Type = "integer" };
-            limitParameter.Schema.Minimum = 1;
-            limitParameter.Schema.Maximum = 50;
-            limitParameter.Schema.Default = new OpenApiInteger(8);
-
-            operation.Responses ??= new OpenApiResponses();
-            operation.Responses[StatusCodes.Status200OK.ToString()] = new OpenApiResponse
-            {
-                Description = "Liste ordonnée de suggestions de produits.",
-                Content =
-                {
-                    ["application/json"] = new OpenApiMediaType
-                    {
-                        Schema = new OpenApiSchema
-                        {
-                            Type = "array",
-                            Items = new OpenApiSchema
-                            {
-                                Reference = new OpenApiReference
-                                {
-                                    Type = ReferenceType.Schema,
-                                    Id = nameof(ProductSuggestionDto)
-                                }
-                            }
-                        },
-                        Example = new OpenApiArray
-                        {
-                            new OpenApiObject
-                            {
-                                ["sku"] = new OpenApiString("CB-0001"),
-                                ["ean"] = new OpenApiString("0001234567890"),
-                                ["name"] = new OpenApiString("Café grains 1kg"),
-                                ["group"] = new OpenApiString("Cafés"),
-                                ["subGroup"] = new OpenApiString("Grains 1kg")
-                            },
-                            new OpenApiObject
-                            {
-                                ["sku"] = new OpenApiString("CAF-0102"),
-                                ["ean"] = new OpenApiString("9876543210000"),
-                                ["name"] = new OpenApiString("Machine expresso café"),
-                                ["group"] = new OpenApiString("Machines"),
-                                ["subGroup"] = new OpenApiString("Expressos")
-                            }
-                        }
-                    }
-                }
-            };
-
-            return operation;
-        });
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest);
     }
 
     private static void MapSearchProductsEndpoint(IEndpointRouteBuilder app)

@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Tests.Fixtures;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Api.Tests.Infra;
-using CineBoutique.Inventory.Infrastructure.Database;
 using CineBoutique.Inventory.Infrastructure.Database.Products;
 using FluentAssertions;
 using Npgsql;
@@ -27,8 +26,8 @@ public sealed class ProductGroupRepositoryTests : IntegrationTestBase
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
 
-        var factory = new TestConnectionFactory(Fixture.ConnectionString);
-        var repository = new ProductGroupRepository(factory);
+        await using var connection = new NpgsqlConnection(Fixture.ConnectionString);
+        var repository = new ProductGroupRepository(connection);
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var ct = cts.Token;
 
@@ -37,27 +36,5 @@ public sealed class ProductGroupRepositoryTests : IntegrationTestBase
 
         parentId.Should().NotBeNull();
         duplicateId.Should().Be(parentId);
-    }
-
-    private sealed class TestConnectionFactory : IDbConnectionFactory
-    {
-        private readonly string _connectionString;
-
-        public TestConnectionFactory(string connectionString)
-        {
-            _connectionString = connectionString ?? throw new ArgumentNullException(nameof(connectionString));
-        }
-
-        public NpgsqlConnection CreateConnection()
-        {
-            return new NpgsqlConnection(_connectionString);
-        }
-
-        public async Task<NpgsqlConnection> CreateOpenConnectionAsync(CancellationToken cancellationToken)
-        {
-            var connection = CreateConnection();
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-            return connection;
-        }
     }
 }
