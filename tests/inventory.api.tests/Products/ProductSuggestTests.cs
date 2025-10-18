@@ -19,7 +19,7 @@ public class ProductSuggestTests : IClassFixture<TestApiFactory>
       // Arrange: insère 2 produits et un sousGroupe
       var gid = await conn.ExecuteScalarAsync<long?>(@"
         INSERT INTO ""ProductGroup"" (""Code"",""Label"") VALUES ('cafe','Café')
-        ON CONFLICT (""Code"") DO UPDATE SET ""Label""=EXCLUDED.""Label"" RETURNING ""Id"";");
+        ON CONFLICT ON CONSTRAINT uq_productgroup_code DO UPDATE SET ""Label""=EXCLUDED.""Label"" RETURNING ""Id"";");
       await conn.ExecuteAsync(@"
         INSERT INTO ""Product"" (""Sku"",""Name"",""Ean"",""GroupId"") VALUES
         ('CB-0001','Café Grains 1kg','321000000001',@gid),
