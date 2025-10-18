@@ -70,6 +70,20 @@ public sealed class TestApiFactory : IAsyncLifetime, IAsyncDisposable
     await _inventory.DbResetAsync().ConfigureAwait(false);
 
     var connection = await _inventory.OpenConnectionAsync().ConfigureAwait(false);
+
+    // Garantit la contrainte UNIQUE("Code") utilisée par nos UPSERTs dans les Arrange de tests.
+    const string __ensureProductGroupUnique = @"
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'uq_productgroup_code'
+  ) THEN
+    ALTER TABLE ""ProductGroup""
+    ADD CONSTRAINT uq_productgroup_code UNIQUE (""Code"");
+  END IF;
+END $$;";
+
+    await global::Dapper.SqlMapper.ExecuteAsync(connection, __ensureProductGroupUnique).ConfigureAwait(false);
     try
     {
       await plan(connection).ConfigureAwait(false);
