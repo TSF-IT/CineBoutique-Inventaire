@@ -703,10 +703,13 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             NpgsqlDataSource dataSource,
             CancellationToken cancellationToken) =>
         {
-            if (string.IsNullOrWhiteSpace(q))
-            {
+            // Sanitize / validate inputs (conforme aux tests)
+            q = (q ?? string.Empty).Trim();
+            if (q.Length == 0)
                 return Results.BadRequest("q is required");
-            }
+
+            if (limit.HasValue && (limit.Value < 1 || limit.Value > 50))
+                return Results.BadRequest("limit must be between 1 and 50");
 
             var top = Math.Clamp(limit ?? 8, 1, 50);
 
