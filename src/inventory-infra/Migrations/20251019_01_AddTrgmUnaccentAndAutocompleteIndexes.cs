@@ -24,10 +24,14 @@ AS $$ SELECT unaccent('unaccent', $1) $$;");
   ON ""Product"" USING GIN (LOWER(""Ean"") gin_trgm_ops);");
 
         Execute.Sql(@"CREATE INDEX IF NOT EXISTS ix_product_name_trgm
-  ON ""Product"" USING GIN (immutable_unaccent(LOWER(""Name"")) gin_trgm_ops);");
+  ON ""Product"" USING GIN (immutable_unaccent(
+    LOWER(""Name"")
+  ) gin_trgm_ops);");
 
         Execute.Sql(@"CREATE INDEX IF NOT EXISTS ix_productgroup_label_trgm
-  ON ""ProductGroup"" USING GIN (immutable_unaccent(LOWER(""Label"")) gin_trgm_ops);");
+  ON ""ProductGroup"" USING GIN (immutable_unaccent(
+    LOWER(""Label"")
+  ) gin_trgm_ops);");
     }
 
     public override void Down()
