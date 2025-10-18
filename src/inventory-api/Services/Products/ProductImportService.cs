@@ -44,6 +44,7 @@ public sealed class ProductImportService : IProductImportService
         ["item"] = KnownColumns.Sku,
         ["code"] = KnownColumns.Sku,
         ["ean"] = KnownColumns.Ean,
+        ["ean13"] = KnownColumns.Ean,
         ["barcode"] = KnownColumns.Ean,
         ["barcode_rfid"] = KnownColumns.Ean,
         ["name"] = KnownColumns.Name,
@@ -56,6 +57,15 @@ public sealed class ProductImportService : IProductImportService
         ["subgroup"] = KnownColumns.SubGroup,
         ["sousgroupe"] = KnownColumns.SubGroup,
         ["sousGroupe"] = KnownColumns.SubGroup
+    };
+
+    private static readonly HashSet<string> KnownColumnNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        KnownColumns.Sku,
+        KnownColumns.Ean,
+        KnownColumns.Name,
+        KnownColumns.Group,
+        KnownColumns.SubGroup
     };
 
     private readonly IDbConnection _connection;
@@ -576,7 +586,7 @@ DO UPDATE SET
     "Name" = EXCLUDED."Name",
     "Ean" = EXCLUDED."Ean",
     "GroupId" = EXCLUDED."GroupId",
-    "Attributes" = "Product"."Attributes" || EXCLUDED."Attributes",
+    "Attributes" = COALESCE("Product"."Attributes", '{}'::jsonb) || EXCLUDED."Attributes",
     "CodeDigits" = EXCLUDED."CodeDigits"
 RETURNING (xmax = 0) AS inserted;
 """;
@@ -816,20 +826,21 @@ RETURNING (xmax = 0) AS inserted;
             string? name = null;
             string? group = null;
             string? subGroup = null;
-            var attributes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var rowDict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
             for (var i = 0; i < headers.Count; i++)
             {
                 var header = headers[i];
                 var value = fields[i].Trim();
+                var key = header.Target ?? header.Original;
+
+                if (!string.IsNullOrEmpty(key))
+                {
+                    rowDict[key] = value;
+                }
 
                 if (header.Target is null)
                 {
-                    if (!string.IsNullOrEmpty(value))
-                    {
-                        attributes[header.Original] = value;
-                    }
-
                     continue;
                 }
 
@@ -859,6 +870,17 @@ RETURNING (xmax = 0) AS inserted;
                         subGroup = NormalizeOptional(value);
                         break;
                 }
+            }
+
+            var attributes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kvp in rowDict)
+            {
+                if (KnownColumnNames.Contains(kvp.Key) || string.IsNullOrEmpty(kvp.Value))
+                {
+                    continue;
+                }
+
+                attributes[kvp.Key] = kvp.Value;
             }
 
             if (string.IsNullOrWhiteSpace(sku))
