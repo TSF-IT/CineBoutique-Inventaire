@@ -7,6 +7,7 @@ using FluentMigrator.Runner;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 
 namespace CineBoutique.Inventory.Infrastructure.DependencyInjection;
 
@@ -25,6 +26,7 @@ public static class ServiceCollectionExtensions
 
         services.AddSingleton(new DatabaseOptions(connectionString));
         services.AddSingleton<IDbConnectionFactory, NpgsqlConnectionFactory>();
+        services.AddScoped<NpgsqlConnection>(_ => new NpgsqlConnection(connectionString));
 
         services
             .AddFluentMigratorCore()

@@ -43,6 +43,7 @@ public sealed class AddProductAttributesAndGroups : Migration
     public override void Down()
     {
         DropSearchIndexes();
+        Execute.Sql(@"ALTER TABLE ""ProductGroup"" DROP CONSTRAINT IF EXISTS uq_productgroup_code;");
         DropProductGroupColumn();
         DropProductAttributesColumn();
         DropProductGroupTable();
@@ -89,6 +90,20 @@ public sealed class AddProductAttributesAndGroups : Migration
                 .AsInt64()
                 .Nullable();
         }
+
+        // Contrainte unique idempotente sur "Code"
+        Execute.Sql(@"
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'uq_productgroup_code'
+  ) THEN
+    ALTER TABLE ""ProductGroup""
+    ADD CONSTRAINT uq_productgroup_code UNIQUE (""Code"");
+  END IF;
+END $$;");
 
         EnsureProductGroupCodeConstraint();
 
