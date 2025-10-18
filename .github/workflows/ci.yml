@@ -80,9 +80,7 @@ jobs:
           dotnet test --no-build -c Release \
             --logger "trx;LogFileName=test.trx" \
             --results-directory "test-results/dotnet" \
-            /p:CollectCoverage=true \
-            /p:CoverletOutputFormat=cobertura \
-            /p:CoverletOutput="test-results/dotnet/coverage.cobertura.xml"
+            --collect:"XPlat Code Coverage;Format=cobertura"
 
       - name: Install ReportGenerator (global tool)
         run: dotnet tool install --global dotnet-reportgenerator-globaltool
@@ -92,8 +90,12 @@ jobs:
 
       - name: ReportGenerator (HTML)
         run: |
+          dotnet tool install --global dotnet-reportgenerator-globaltool
+          echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+          # (optionnel) aide debug : lister les fichiers trouvés
+          find . -type f -name "coverage.cobertura.xml" -print || true
           reportgenerator \
-            -reports:test-results/dotnet/coverage.cobertura.xml \
+            -reports:'**/TestResults/**/coverage.cobertura.xml' \
             -targetdir:test-results/dotnet/coverage-report \
             -reporttypes:HtmlInline;Cobertura
 
