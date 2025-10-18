@@ -44,6 +44,7 @@ public sealed class ProductImportService : IProductImportService
         ["item"] = KnownColumns.Sku,
         ["code"] = KnownColumns.Sku,
         ["ean"] = KnownColumns.Ean,
+        ["ean13"] = KnownColumns.Ean,
         ["barcode"] = KnownColumns.Ean,
         ["barcode_rfid"] = KnownColumns.Ean,
         ["name"] = KnownColumns.Name,
@@ -56,6 +57,15 @@ public sealed class ProductImportService : IProductImportService
         ["subgroup"] = KnownColumns.SubGroup,
         ["sousgroupe"] = KnownColumns.SubGroup,
         ["sousGroupe"] = KnownColumns.SubGroup
+    };
+
+    private static readonly HashSet<string> KnownColumnNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        KnownColumns.Sku,
+        KnownColumns.Ean,
+        KnownColumns.Name,
+        KnownColumns.Group,
+        KnownColumns.SubGroup
     };
 
     private readonly IDbConnection _connection;
@@ -576,7 +586,7 @@ DO UPDATE SET
     "Name" = EXCLUDED."Name",
     "Ean" = EXCLUDED."Ean",
     "GroupId" = EXCLUDED."GroupId",
-    "Attributes" = "Product"."Attributes" || EXCLUDED."Attributes",
+    "Attributes" = COALESCE("Product"."Attributes", '{}'::jsonb) || EXCLUDED."Attributes",
     "CodeDigits" = EXCLUDED."CodeDigits"
 RETURNING (xmax = 0) AS inserted;
 """;
@@ -603,14 +613,30 @@ RETURNING (xmax = 0) AS inserted;
 
         foreach (var row in rows)
         {
-            var normalizedEan = NormalizeEan(row.Ean);
-            var codeDigits = BuildCodeDigits(row.Ean ?? normalizedEan);
-            var attributesJson = SerializeAttributes(row.Attributes, row.SubGroup);
-            var groupId = await ResolveGroupIdAsync(row.Group, row.SubGroup, groupCache, cancellationToken)
+            var sku = (row.Sku ?? string.Empty).Trim();
+            var ean = string.IsNullOrWhiteSpace(row.Ean) ? null : row.Ean.Trim();
+            var name = (row.Name ?? string.Empty).Trim();
+            var group = NormalizeOptional(row.Group);
+            var subGroup = NormalizeOptional(row.SubGroup);
+
+            if (string.IsNullOrEmpty(sku))
+            {
+                continue;
+            }
+
+            if (string.IsNullOrEmpty(name))
+            {
+                name = sku;
+            }
+
+            var normalizedEan = NormalizeEan(ean);
+            var codeDigits = BuildCodeDigits(ean ?? normalizedEan);
+            var attributesJson = SerializeAttributes(row.Attributes, subGroup);
+            var groupId = await ResolveGroupIdAsync(group, subGroup, groupCache, cancellationToken)
                 .ConfigureAwait(false);
 
-            skuParameter.Value = row.Sku;
-            nameParameter.Value = row.Name;
+            skuParameter.Value = sku;
+            nameParameter.Value = name;
             eanParameter.Value = normalizedEan ?? (object)DBNull.Value;
             groupParameter.Value = groupId ?? (object)DBNull.Value;
             attributesParameter.Value = attributesJson;
@@ -753,8 +779,7 @@ RETURNING (xmax = 0) AS inserted;
         var rows = new List<ProductCsvRow>();
         var errors = new List<ProductImportError>();
         var seenSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var unknownColumns = new List<string>();
-        var unknownColumnsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var attributeColumns = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
         var proposedGroups = new List<ProductImportGroupProposal>();
         var proposedGroupsSet = new HashSet<GroupKey>(GroupKeyComparer.Instance);
 
@@ -779,7 +804,7 @@ RETURNING (xmax = 0) AS inserted;
                 }
 
                 var headerFields = ParseFields(line);
-                headers = BuildHeaders(headerFields, unknownColumns, unknownColumnsSet);
+                headers = BuildHeaders(headerFields);
 
                 if (!headers.Any(header => string.Equals(header.Target, KnownColumns.Sku, StringComparison.Ordinal)))
                 {
@@ -816,20 +841,21 @@ RETURNING (xmax = 0) AS inserted;
             string? name = null;
             string? group = null;
             string? subGroup = null;
-            var attributes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var rowDict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
             for (var i = 0; i < headers.Count; i++)
             {
                 var header = headers[i];
                 var value = fields[i].Trim();
+                var key = header.Target ?? header.Original;
+
+                if (!string.IsNullOrEmpty(key))
+                {
+                    rowDict[key] = value;
+                }
 
                 if (header.Target is null)
                 {
-                    if (!string.IsNullOrEmpty(value))
-                    {
-                        attributes[header.Original] = value;
-                    }
-
                     continue;
                 }
 
@@ -859,6 +885,22 @@ RETURNING (xmax = 0) AS inserted;
                         subGroup = NormalizeOptional(value);
                         break;
                 }
+            }
+
+            var attributes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kvp in rowDict)
+            {
+                if (KnownColumnNames.Contains(kvp.Key) || string.IsNullOrEmpty(kvp.Value))
+                {
+                    continue;
+                }
+
+                attributes[kvp.Key] = kvp.Value;
+            }
+
+            foreach (var attributeKey in attributes.Keys)
+            {
+                attributeColumns.Add(attributeKey);
             }
 
             if (string.IsNullOrWhiteSpace(sku))
@@ -901,9 +943,9 @@ RETURNING (xmax = 0) AS inserted;
             errors.Add(new ProductImportError(0, "MISSING_HEADER"));
         }
 
-        var unknownColumnsImmutable = unknownColumns.Count == 0
+        var unknownColumnsImmutable = attributeColumns.Count == 0
             ? EmptyUnknownColumns
-            : unknownColumns.ToImmutableArray();
+            : ImmutableArray.CreateRange(attributeColumns);
 
         var proposedGroupsImmutable = proposedGroups.Count == 0
             ? EmptyProposedGroups
@@ -988,10 +1030,7 @@ RETURNING (xmax = 0) AS inserted;
         }
     }
 
-    private static List<HeaderDefinition> BuildHeaders(
-        IReadOnlyList<string> headerFields,
-        List<string> unknownColumns,
-        HashSet<string> unknownColumnsSet)
+    private static List<HeaderDefinition> BuildHeaders(IReadOnlyList<string> headerFields)
     {
         var headers = new List<HeaderDefinition>(headerFields.Count);
         var assignedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1004,11 +1043,6 @@ RETURNING (xmax = 0) AS inserted;
             if (normalized is not null && !assignedTargets.Add(normalized))
             {
                 normalized = null;
-            }
-
-            if (normalized is null && !string.IsNullOrEmpty(original) && unknownColumnsSet.Add(original))
-            {
-                unknownColumns.Add(original);
             }
 
             headers.Add(new HeaderDefinition(original, normalized));
