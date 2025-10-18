@@ -92,10 +92,10 @@ jobs:
         run: |
           dotnet tool install --global dotnet-reportgenerator-globaltool
           echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
-          # (optionnel) aide debug : lister les fichiers trouvés
-          find . -type f -name "coverage.cobertura.xml" -print || true
+          # Debug: montre bien où sont les fichiers
+          find test-results/dotnet -type f -name "coverage.cobertura.xml" -print
           reportgenerator \
-            -reports:'**/TestResults/**/coverage.cobertura.xml' \
+            -reports:'test-results/dotnet/**/coverage.cobertura.xml' \
             -targetdir:test-results/dotnet/coverage-report \
             -reporttypes:HtmlInline;Cobertura
 
