@@ -17,22 +17,9 @@ public class ProductSuggestTests : IClassFixture<TestApiFactory>
     using var scope = await _f.WithDbAsync(async conn =>
     {
       // Arrange: insère 2 produits et un sousGroupe
-      var gid = await conn.ExecuteScalarAsync<long?>(@"
-WITH upsert AS (
-  UPDATE ""ProductGroup""
-  SET ""Label"" = @label
-  WHERE ""Code"" = @code
-  RETURNING ""Id""
-)
-INSERT INTO ""ProductGroup"" (""Code"",""Label"")
-SELECT @code, @label
-WHERE NOT EXISTS (SELECT 1 FROM upsert)
-RETURNING ""Id"";", new { code = "cafe", label = "Café" });
-      await conn.ExecuteAsync(@"
-        INSERT INTO ""Product"" (""Sku"",""Name"",""Ean"",""GroupId"",""CreatedAtUtc"",""UpdatedAtUtc"") VALUES
-        ('CB-0001','Café Grains 1kg','321000000001',@gid, NOW() AT TIME ZONE 'UTC', NOW() AT TIME ZONE 'UTC'),
-        ('CB-0002','Café Moulu','321000000002',@gid, NOW() AT TIME ZONE 'UTC', NOW() AT TIME ZONE 'UTC')
-      ON CONFLICT (""Sku"") DO NOTHING;", new { gid });
+      var gid = await _f.UpsertGroupAsync(conn, "cafe", "Café", System.Threading.CancellationToken.None);
+      await _f.UpsertProductAsync(conn, "CB-0001", "Café Grains 1kg", "321000000001", gid, System.Threading.CancellationToken.None);
+      await _f.UpsertProductAsync(conn, "CB-0002", "Café Moulu", "321000000002", gid, System.Threading.CancellationToken.None);
     });
 
     // Act
