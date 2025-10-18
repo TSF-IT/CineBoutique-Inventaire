@@ -698,133 +698,51 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
     private static void MapSuggestProductsEndpoint(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/products/suggest", async (
-            string? q,
+            string q,
             int? limit,
-            IProductSuggestionService suggestionService,
+            NpgsqlDataSource dataSource,
             CancellationToken cancellationToken) =>
         {
-            var sanitizedQuery = q?.Trim();
-            if (string.IsNullOrWhiteSpace(sanitizedQuery))
+            if (string.IsNullOrWhiteSpace(q))
             {
-                var validation = new ValidationResult(new[]
-                {
-                    new ValidationFailure("q", "Le paramètre 'q' est obligatoire.")
-                });
-
-                return EndpointUtilities.ValidationProblem(validation);
+                return Results.BadRequest("q is required");
             }
 
-            var effectiveLimit = limit ?? 8;
-            if (effectiveLimit < 1 || effectiveLimit > 50)
-            {
-                var validation = new ValidationResult(new[]
-                {
-                    new ValidationFailure("limit", "Le paramètre 'limit' doit être compris entre 1 et 50.")
-                });
+            var top = Math.Clamp(limit ?? 8, 1, 50);
 
-                return EndpointUtilities.ValidationProblem(validation);
-            }
+            await using var connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
 
-            var items = await suggestionService
-                .SuggestAsync(sanitizedQuery, effectiveLimit, cancellationToken)
-                .ConfigureAwait(false);
+            const string sql = @"
+  WITH cand AS (
+    SELECT p.""Sku"", p.""Ean"", p.""Name"", pg.""Label"" AS ""GroupLabel"",
+           GREATEST(
+             CASE WHEN LOWER(p.""Sku"") LIKE LOWER(@q)||'%' THEN 1.0 ELSE 0 END,
+             CASE WHEN LOWER(p.""Ean"") LIKE LOWER(@q)||'%' THEN 1.0 ELSE 0 END,
+             similarity(unaccent(LOWER(p.""Name"")), unaccent(LOWER(@q))) * 0.6,
+             COALESCE(similarity(unaccent(LOWER(pg.""Label"")), unaccent(LOWER(@q))) * 0.4, 0)
+           ) AS score
+    FROM ""Product"" p
+    LEFT JOIN ""ProductGroup"" pg ON pg.""Id"" = p.""GroupId""
+    WHERE
+      LOWER(p.""Sku"") LIKE LOWER(@q)||'%' OR
+      LOWER(p.""Ean"") LIKE LOWER(@q)||'%' OR
+      similarity(unaccent(LOWER(p.""Name"")), unaccent(LOWER(@q))) > 0.2 OR
+      (pg.""Id"" IS NOT NULL AND similarity(unaccent(LOWER(pg.""Label"")), unaccent(LOWER(@q))) > 0.2)
+  )
+  SELECT DISTINCT ON (""Sku"") *
+  FROM cand
+  WHERE score > 0
+  ORDER BY ""Sku"", score DESC
+  LIMIT @top;";
 
-            var response = items
-                .Select(item => new ProductSuggestionDto(item.Sku, item.Ean, item.Name, item.Group, item.SubGroup))
-                .ToArray();
+            var rows = await connection.QueryAsync(sql, new { q, top }).ConfigureAwait(false);
 
-            return Results.Ok(response);
+            return Results.Ok(rows);
         })
         .WithName("SuggestProducts")
         .WithTags("Produits")
-        .Produces<IReadOnlyList<ProductSuggestionDto>>(StatusCodes.Status200OK)
-        .Produces(StatusCodes.Status400BadRequest)
-        .WithOpenApi(operation =>
-        {
-            operation.Summary = "Propose des produits à partir d'une saisie partielle.";
-            operation.Description = "Combine une recherche préfixe sur le SKU et le code barre avec une similarité trigram sur le nom du produit et les libellés de groupe pour proposer des suggestions rapides.";
-
-            operation.Parameters ??= new List<OpenApiParameter>();
-
-            var queryParameter = operation.Parameters.FirstOrDefault(parameter => string.Equals(parameter.Name, "q", StringComparison.OrdinalIgnoreCase));
-            if (queryParameter is null)
-            {
-                queryParameter = new OpenApiParameter
-                {
-                    Name = "q",
-                    In = ParameterLocation.Query,
-                    Required = true
-                };
-                operation.Parameters.Add(queryParameter);
-            }
-
-            queryParameter.Description = "Texte recherché (SKU, EAN/code barre, nom ou groupe).";
-            queryParameter.Required = true;
-
-            var limitParameter = operation.Parameters.FirstOrDefault(parameter => string.Equals(parameter.Name, "limit", StringComparison.OrdinalIgnoreCase));
-            if (limitParameter is null)
-            {
-                limitParameter = new OpenApiParameter
-                {
-                    Name = "limit",
-                    In = ParameterLocation.Query,
-                    Required = false,
-                    Schema = new OpenApiSchema { Type = "integer" }
-                };
-                operation.Parameters.Add(limitParameter);
-            }
-
-            limitParameter.Description = "Nombre maximum de suggestions (défaut : 8, min 1, max 50).";
-            limitParameter.Schema ??= new OpenApiSchema { Type = "integer" };
-            limitParameter.Schema.Minimum = 1;
-            limitParameter.Schema.Maximum = 50;
-            limitParameter.Schema.Default = new OpenApiInteger(8);
-
-            operation.Responses ??= new OpenApiResponses();
-            operation.Responses[StatusCodes.Status200OK.ToString()] = new OpenApiResponse
-            {
-                Description = "Liste ordonnée de suggestions de produits.",
-                Content =
-                {
-                    ["application/json"] = new OpenApiMediaType
-                    {
-                        Schema = new OpenApiSchema
-                        {
-                            Type = "array",
-                            Items = new OpenApiSchema
-                            {
-                                Reference = new OpenApiReference
-                                {
-                                    Type = ReferenceType.Schema,
-                                    Id = nameof(ProductSuggestionDto)
-                                }
-                            }
-                        },
-                        Example = new OpenApiArray
-                        {
-                            new OpenApiObject
-                            {
-                                ["sku"] = new OpenApiString("CB-0001"),
-                                ["ean"] = new OpenApiString("0001234567890"),
-                                ["name"] = new OpenApiString("Café grains 1kg"),
-                                ["group"] = new OpenApiString("Cafés"),
-                                ["subGroup"] = new OpenApiString("Grains 1kg")
-                            },
-                            new OpenApiObject
-                            {
-                                ["sku"] = new OpenApiString("CAF-0102"),
-                                ["ean"] = new OpenApiString("9876543210000"),
-                                ["name"] = new OpenApiString("Machine expresso café"),
-                                ["group"] = new OpenApiString("Machines"),
-                                ["subGroup"] = new OpenApiString("Expressos")
-                            }
-                        }
-                    }
-                }
-            };
-
-            return operation;
-        });
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest);
     }
 
     private static void MapSearchProductsEndpoint(IEndpointRouteBuilder app)
