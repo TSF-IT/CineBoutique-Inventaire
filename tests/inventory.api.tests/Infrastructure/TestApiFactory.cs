@@ -138,4 +138,52 @@ END $$;";
       }
     }
   }
+
+  // --- Helpers de DONNÉES pour les tests (idempotents, sans ON CONFLICT) ---
+
+  private const string __sqlUpsertGroup = @"
+WITH upsert AS (
+  UPDATE ""ProductGroup""
+  SET ""Label"" = @label
+  WHERE ""Code"" = @code
+  RETURNING ""Id""
+)
+INSERT INTO ""ProductGroup"" (""Code"",""Label"")
+SELECT @code, @label
+WHERE NOT EXISTS (SELECT 1 FROM upsert)
+RETURNING ""Id"";";
+
+  private const string __sqlUpsertProduct = @"
+WITH upsert AS (
+  UPDATE ""Product""
+  SET ""Name"" = @name,
+      ""Ean""  = @ean,
+      ""GroupId"" = @gid,
+      ""UpdatedAtUtc"" = NOW() AT TIME ZONE 'UTC'
+  WHERE ""Sku"" = @sku
+  RETURNING ""Sku""
+)
+INSERT INTO ""Product"" (""Sku"",""Name"",""Ean"",""GroupId"",""CreatedAtUtc"",""UpdatedAtUtc"")
+SELECT @sku, @name, @ean, @gid, NOW() AT TIME ZONE 'UTC', NOW() AT TIME ZONE 'UTC'
+WHERE NOT EXISTS (SELECT 1 FROM upsert);";
+
+  public async System.Threading.Tasks.Task<long> UpsertGroupAsync(
+    System.Data.IDbConnection conn, string code, string label,
+    System.Threading.CancellationToken ct = default)
+  {
+    return await Dapper.SqlMapper.ExecuteScalarAsync<long>(
+      conn,
+      new Dapper.CommandDefinition(__sqlUpsertGroup, new { code, label }, cancellationToken: ct)
+    ).ConfigureAwait(false);
+  }
+
+  public async System.Threading.Tasks.Task UpsertProductAsync(
+    System.Data.IDbConnection conn, string sku, string name, string? ean, long? groupId,
+    System.Threading.CancellationToken ct = default)
+  {
+    await Dapper.SqlMapper.ExecuteAsync(
+      conn,
+      new Dapper.CommandDefinition(__sqlUpsertProduct, new { sku, name, ean, gid = (object?)groupId ?? System.DBNull.Value }, cancellationToken: ct)
+    ).ConfigureAwait(false);
+  }
 }
