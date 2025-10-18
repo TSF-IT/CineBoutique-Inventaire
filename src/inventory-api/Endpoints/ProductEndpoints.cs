@@ -712,32 +712,46 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
             await using var connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
 
-            const string sql = @"
-  WITH cand AS (
-    SELECT p.""Sku"", p.""Ean"", p.""Name"", pg.""Label"" AS ""GroupLabel"",
-           GREATEST(
-             CASE WHEN LOWER(p.""Sku"") LIKE LOWER(@q)||'%' THEN 1.0 ELSE 0 END,
-             CASE WHEN LOWER(p.""Ean"") LIKE LOWER(@q)||'%' THEN 1.0 ELSE 0 END,
-             similarity(unaccent(LOWER(p.""Name"")), unaccent(LOWER(@q))) * 0.6,
-             COALESCE(similarity(unaccent(LOWER(pg.""Label"")), unaccent(LOWER(@q))) * 0.4, 0)
-           ) AS score
-    FROM ""Product"" p
-    LEFT JOIN ""ProductGroup"" pg ON pg.""Id"" = p.""GroupId""
-    WHERE
-      LOWER(p.""Sku"") LIKE LOWER(@q)||'%' OR
-      LOWER(p.""Ean"") LIKE LOWER(@q)||'%' OR
-      similarity(unaccent(LOWER(p.""Name"")), unaccent(LOWER(@q))) > 0.2 OR
-      (pg.""Id"" IS NOT NULL AND similarity(unaccent(LOWER(pg.""Label"")), unaccent(LOWER(@q))) > 0.2)
-  )
-  SELECT DISTINCT ON (""Sku"") *
-  FROM cand
-  WHERE score > 0
-  ORDER BY ""Sku"", score DESC
-  LIMIT @top;";
+            const string sql = """
+WITH cand AS (
+  SELECT
+    p."Sku",
+    p."Ean",
+    p."Name",
+    COALESCE(pgp."Label", pg."Label") AS "Group",
+    CASE WHEN pgp."Id" IS NULL THEN NULL ELSE pg."Label" END AS "SubGroup",
+    GREATEST(
+      CASE WHEN LOWER(p."Sku") LIKE LOWER(@q) || '%' THEN 1.00 ELSE 0 END,
+      CASE WHEN LOWER(p."Ean") LIKE LOWER(@q) || '%' THEN 0.95 ELSE 0 END,
+      similarity(immutable_unaccent(LOWER(p."Name")), immutable_unaccent(LOWER(@q))) * 0.65,
+      COALESCE(similarity(immutable_unaccent(LOWER(pg."Label")),  immutable_unaccent(LOWER(@q))) * 0.45, 0),
+      COALESCE(similarity(immutable_unaccent(LOWER(pgp."Label")), immutable_unaccent(LOWER(@q))) * 0.35, 0)
+    ) AS score
+  FROM "Product" p
+  LEFT JOIN "ProductGroup" pg  ON pg."Id"  = p."GroupId"
+  LEFT JOIN "ProductGroup" pgp ON pgp."Id" = pg."ParentId"
+  WHERE
+    LOWER(p."Sku") LIKE LOWER(@q) || '%'
+    OR LOWER(p."Ean") LIKE LOWER(@q) || '%'
+    OR similarity(immutable_unaccent(LOWER(p."Name")), immutable_unaccent(LOWER(@q))) > 0.20
+    OR (pg."Id"  IS NOT NULL AND similarity(immutable_unaccent(LOWER(pg."Label")),  immutable_unaccent(LOWER(@q))) > 0.20)
+    OR (pgp."Id" IS NOT NULL AND similarity(immutable_unaccent(LOWER(pgp."Label")), immutable_unaccent(LOWER(@q))) > 0.20)
+)
+, best_per_sku AS (
+  SELECT DISTINCT ON (c."Sku") c.*
+  FROM cand c
+  WHERE c.score > 0
+  ORDER BY c."Sku", c.score DESC
+)
+SELECT "Sku","Ean","Name","Group","SubGroup"
+FROM best_per_sku
+ORDER BY score DESC, "Sku"
+LIMIT @top;
+""";
 
-            var rows = await connection.QueryAsync(sql, new { q, top }).ConfigureAwait(false);
+            var suggestions = await connection.QueryAsync<ProductSuggestionDto>(sql, new { q, top }).ConfigureAwait(false);
 
-            return Results.Ok(rows);
+            return Results.Ok(suggestions);
         })
         .WithName("SuggestProducts")
         .WithTags("Produits")
