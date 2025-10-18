@@ -84,6 +84,12 @@ BEGIN
 END $$;";
 
     await global::Dapper.SqlMapper.ExecuteAsync(connection, __ensureProductGroupUnique).ConfigureAwait(false);
+
+    // Garantit un index/contrainte unique exploitable par ON CONFLICT("Sku") dans les arranges
+    const string __ensureProductSkuUniqueIndex = @"
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_product_sku_idx
+  ON ""Product"" (""Sku"");";
+    await global::Dapper.SqlMapper.ExecuteAsync(connection, __ensureProductSkuUniqueIndex).ConfigureAwait(false);
     try
     {
       await plan(connection).ConfigureAwait(false);
