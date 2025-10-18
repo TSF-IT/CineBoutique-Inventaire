@@ -715,42 +715,55 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
             await using var connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
 
-            const string sql = """
+            var sql = @"
 WITH cand AS (
   SELECT
-    p."Sku",
-    p."Ean",
-    p."Name",
-    COALESCE(pgp."Label", pg."Label") AS "Group",
-    CASE WHEN pgp."Id" IS NULL THEN NULL ELSE pg."Label" END AS "SubGroup",
+    p.""Sku"",
+    p.""Ean"",
+    p.""Name"",
+    COALESCE(pgp.""Label"", pg.""Label"") AS ""Group"",
+    CASE WHEN pgp.""Id"" IS NULL THEN NULL ELSE pg.""Label"" END AS ""SubGroup"",
     GREATEST(
-      CASE WHEN LOWER(p."Sku") LIKE LOWER(@q) || '%' THEN 1.00 ELSE 0 END,
-      CASE WHEN LOWER(p."Ean") LIKE LOWER(@q) || '%' THEN 0.95 ELSE 0 END,
-      similarity(immutable_unaccent(LOWER(p."Name")), immutable_unaccent(LOWER(@q))) * 0.65,
-      COALESCE(similarity(immutable_unaccent(LOWER(pg."Label")),  immutable_unaccent(LOWER(@q))) * 0.45, 0),
-      COALESCE(similarity(immutable_unaccent(LOWER(pgp."Label")), immutable_unaccent(LOWER(@q))) * 0.35, 0)
+      CASE WHEN LOWER(p.""Sku"") LIKE LOWER(@q) || '%' THEN 1.00 ELSE 0 END,
+      CASE WHEN LOWER(p.""Ean"") LIKE LOWER(@q) || '%' THEN 0.95 ELSE 0 END,
+      -- nom produit (approx, unaccent)
+      similarity(immutable_unaccent(LOWER(p.""Name"")), immutable_unaccent(LOWER(@q))) * 0.65,
+      -- libellé de sous-groupe (approx + préfixe)
+      COALESCE(similarity(immutable_unaccent(LOWER(pg.""Label"")),  immutable_unaccent(LOWER(@q))) * 0.45, 0)
+      + COALESCE(CASE WHEN immutable_unaccent(LOWER(pg.""Label"")) LIKE immutable_unaccent(LOWER(@q)) || '%' THEN 0.30 ELSE 0 END, 0),
+      -- libellé de groupe parent (approx + préfixe)
+      COALESCE(similarity(immutable_unaccent(LOWER(pgp.""Label"")), immutable_unaccent(LOWER(@q))) * 0.35, 0)
+      + COALESCE(CASE WHEN immutable_unaccent(LOWER(pgp.""Label"")) LIKE immutable_unaccent(LOWER(@q)) || '%' THEN 0.20 ELSE 0 END, 0)
     ) AS score
-  FROM "Product" p
-  LEFT JOIN "ProductGroup" pg  ON pg."Id"  = p."GroupId"
-  LEFT JOIN "ProductGroup" pgp ON pgp."Id" = pg."ParentId"
+  FROM ""Product"" p
+  LEFT JOIN ""ProductGroup"" pg  ON pg.""Id""  = p.""GroupId""
+  LEFT JOIN ""ProductGroup"" pgp ON pgp.""Id"" = pg.""ParentId""
   WHERE
-    LOWER(p."Sku") LIKE LOWER(@q) || '%'
-    OR LOWER(p."Ean") LIKE LOWER(@q) || '%'
-    OR similarity(immutable_unaccent(LOWER(p."Name")), immutable_unaccent(LOWER(@q))) > 0.20
-    OR (pg."Id"  IS NOT NULL AND similarity(immutable_unaccent(LOWER(pg."Label")),  immutable_unaccent(LOWER(@q))) > 0.20)
-    OR (pgp."Id" IS NOT NULL AND similarity(immutable_unaccent(LOWER(pgp."Label")), immutable_unaccent(LOWER(@q))) > 0.20)
+    -- préfixe SKU/EAN
+    LOWER(p.""Sku"") LIKE LOWER(@q) || '%'
+    OR LOWER(p.""Ean"") LIKE LOWER(@q) || '%'
+    -- nom produit (approx)
+    OR similarity(immutable_unaccent(LOWER(p.""Name"")), immutable_unaccent(LOWER(@q))) > 0.20
+    -- sous-groupe / groupe parent (approx + préfixe)
+    OR (pg.""Id""  IS NOT NULL AND (
+          similarity(immutable_unaccent(LOWER(pg.""Label"")),  immutable_unaccent(LOWER(@q))) > 0.20
+       OR immutable_unaccent(LOWER(pg.""Label""))  LIKE immutable_unaccent(LOWER(@q)) || '%'
+    ))
+    OR (pgp.""Id"" IS NOT NULL AND (
+          similarity(immutable_unaccent(LOWER(pgp.""Label"")), immutable_unaccent(LOWER(@q))) > 0.20
+       OR immutable_unaccent(LOWER(pgp.""Label"")) LIKE immutable_unaccent(LOWER(@q)) || '%'
+    ))
 )
 , best_per_sku AS (
-  SELECT DISTINCT ON (c."Sku") c.*
+  SELECT DISTINCT ON (c.""Sku"") c.*
   FROM cand c
   WHERE c.score > 0
-  ORDER BY c."Sku", c.score DESC
+  ORDER BY c.""Sku"", c.score DESC
 )
-SELECT "Sku","Ean","Name","Group","SubGroup"
+SELECT ""Sku"",""Ean"",""Name"",""Group"",""SubGroup""
 FROM best_per_sku
-ORDER BY score DESC, "Sku"
-LIMIT @top;
-""";
+ORDER BY score DESC, ""Sku""
+LIMIT @top;";
 
             var suggestions = await connection.QueryAsync<ProductSuggestionDto>(sql, new { q, top }).ConfigureAwait(false);
 
