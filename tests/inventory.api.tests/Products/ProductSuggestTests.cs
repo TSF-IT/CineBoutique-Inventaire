@@ -29,9 +29,9 @@ SELECT @code, @label
 WHERE NOT EXISTS (SELECT 1 FROM upsert)
 RETURNING ""Id"";", new { code = "cafe", label = "Café" });
       await conn.ExecuteAsync(@"
-        INSERT INTO ""Product"" (""Sku"",""Name"",""Ean"",""GroupId"") VALUES
-        ('CB-0001','Café Grains 1kg','321000000001',@gid),
-        ('CB-0002','Café Moulu','321000000002',@gid)
+        INSERT INTO ""Product"" (""Sku"",""Name"",""Ean"",""GroupId"",""CreatedAtUtc"",""UpdatedAtUtc"") VALUES
+        ('CB-0001','Café Grains 1kg','321000000001',@gid, NOW() AT TIME ZONE 'UTC', NOW() AT TIME ZONE 'UTC'),
+        ('CB-0002','Café Moulu','321000000002',@gid, NOW() AT TIME ZONE 'UTC', NOW() AT TIME ZONE 'UTC')
       ON CONFLICT (""Sku"") DO NOTHING;", new { gid });
     });
 
