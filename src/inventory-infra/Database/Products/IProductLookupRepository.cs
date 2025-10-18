@@ -12,4 +12,6 @@ public interface IProductLookupRepository
     Task<IReadOnlyList<ProductLookupItem>> FindByRawCodeAsync(string rawCode, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<ProductLookupItem>> FindByCodeDigitsAsync(string digits, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<ProductLookupItem>> SearchProductsAsync(string code, int limit, CancellationToken cancellationToken);
 }
