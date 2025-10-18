@@ -153,19 +153,6 @@ SELECT @code, @label
 WHERE NOT EXISTS (SELECT 1 FROM upsert)
 RETURNING ""Id"";";
 
-  private const string __sqlUpsertProduct = @"
-WITH upsert AS (
-  UPDATE ""Product""
-  SET ""Name"" = @name,
-      ""Ean""  = @ean,
-      ""GroupId"" = @gid
-  WHERE ""Sku"" = @sku
-  RETURNING ""Sku""
-)
-INSERT INTO ""Product"" (""Sku"",""Name"",""Ean"",""GroupId"")
-SELECT @sku, @name, @ean, @gid
-WHERE NOT EXISTS (SELECT 1 FROM upsert);";
-
   public async System.Threading.Tasks.Task<long> UpsertGroupAsync(
     System.Data.IDbConnection conn, string code, string label,
     System.Threading.CancellationToken ct = default)
@@ -180,9 +167,64 @@ WHERE NOT EXISTS (SELECT 1 FROM upsert);";
     System.Data.IDbConnection conn, string sku, string name, string? ean, long? groupId,
     System.Threading.CancellationToken ct = default)
   {
+    // Présence des colonnes (le schéma peut varier selon le chemin d'init des tests)
+    var hasCreated = await ColumnExistsAsync(conn, "Product", "CreatedAtUtc", ct).ConfigureAwait(false);
+    var hasUpdated = await ColumnExistsAsync(conn, "Product", "UpdatedAtUtc", ct).ConfigureAwait(false);
+
+    // SET de l'UPDATE
+    var updateSet = "\"Name\" = @name, \"Ean\" = @ean, \"GroupId\" = @gid";
+    if (hasUpdated)
+      updateSet += ", \"UpdatedAtUtc\" = NOW() AT TIME ZONE 'UTC'";
+
+    // Colonnes & valeurs de l'INSERT
+    var insertCols = new System.Collections.Generic.List<string> { "\"Sku\"", "\"Name\"", "\"Ean\"", "\"GroupId\"" };
+    var insertVals = new System.Collections.Generic.List<string> { "@sku", "@name", "@ean", "@gid" };
+    if (hasCreated)
+    {
+      insertCols.Add("\"CreatedAtUtc\"");
+      insertVals.Add("NOW() AT TIME ZONE 'UTC'");
+    }
+    if (hasUpdated)
+    {
+      insertCols.Add("\"UpdatedAtUtc\"");
+      insertVals.Add("NOW() AT TIME ZONE 'UTC'");
+    }
+
+    var sql =
+$@"
+WITH upsert AS (
+  UPDATE ""Product""
+  SET {updateSet}
+  WHERE ""Sku"" = @sku
+  RETURNING ""Sku""
+)
+INSERT INTO ""Product"" ({System.String.Join(", ", insertCols)})
+SELECT {System.String.Join(", ", insertVals)}
+WHERE NOT EXISTS (SELECT 1 FROM upsert);";
+
+    var gid = (object?)groupId ?? System.DBNull.Value;
     await Dapper.SqlMapper.ExecuteAsync(
       conn,
-      new Dapper.CommandDefinition(__sqlUpsertProduct, new { sku, name, ean, gid = (object?)groupId ?? System.DBNull.Value }, cancellationToken: ct)
+      new Dapper.CommandDefinition(sql, new { sku, name, ean, gid }, cancellationToken: ct)
     ).ConfigureAwait(false);
+  }
+
+  private static async System.Threading.Tasks.Task<bool> ColumnExistsAsync(
+    System.Data.IDbConnection conn, string table, string column, System.Threading.CancellationToken ct)
+  {
+    const string q = @"
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name   = @t
+      and column_name  = @c
+    limit 1;";
+
+    var found = await Dapper.SqlMapper.ExecuteScalarAsync<object>(
+      conn,
+      new Dapper.CommandDefinition(q, new { t = table, c = column }, cancellationToken: ct)
+    ).ConfigureAwait(false);
+
+    return found is not null;
   }
 }
