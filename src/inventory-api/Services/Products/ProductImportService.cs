@@ -779,8 +779,7 @@ RETURNING (xmax = 0) AS inserted;
         var rows = new List<ProductCsvRow>();
         var errors = new List<ProductImportError>();
         var seenSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var unknownColumns = new List<string>();
-        var unknownColumnsSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var attributeColumns = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
         var proposedGroups = new List<ProductImportGroupProposal>();
         var proposedGroupsSet = new HashSet<GroupKey>(GroupKeyComparer.Instance);
 
@@ -805,7 +804,7 @@ RETURNING (xmax = 0) AS inserted;
                 }
 
                 var headerFields = ParseFields(line);
-                headers = BuildHeaders(headerFields, unknownColumns, unknownColumnsSet);
+                headers = BuildHeaders(headerFields);
 
                 if (!headers.Any(header => string.Equals(header.Target, KnownColumns.Sku, StringComparison.Ordinal)))
                 {
@@ -899,6 +898,11 @@ RETURNING (xmax = 0) AS inserted;
                 attributes[kvp.Key] = kvp.Value;
             }
 
+            foreach (var attributeKey in attributes.Keys)
+            {
+                attributeColumns.Add(attributeKey);
+            }
+
             if (string.IsNullOrWhiteSpace(sku))
             {
                 errors.Add(new ProductImportError(lineNumber, "EMPTY_SKU"));
@@ -939,9 +943,9 @@ RETURNING (xmax = 0) AS inserted;
             errors.Add(new ProductImportError(0, "MISSING_HEADER"));
         }
 
-        var unknownColumnsImmutable = unknownColumns.Count == 0
+        var unknownColumnsImmutable = attributeColumns.Count == 0
             ? EmptyUnknownColumns
-            : unknownColumns.ToImmutableArray();
+            : ImmutableArray.CreateRange(attributeColumns);
 
         var proposedGroupsImmutable = proposedGroups.Count == 0
             ? EmptyProposedGroups
@@ -1026,10 +1030,7 @@ RETURNING (xmax = 0) AS inserted;
         }
     }
 
-    private static List<HeaderDefinition> BuildHeaders(
-        IReadOnlyList<string> headerFields,
-        List<string> unknownColumns,
-        HashSet<string> unknownColumnsSet)
+    private static List<HeaderDefinition> BuildHeaders(IReadOnlyList<string> headerFields)
     {
         var headers = new List<HeaderDefinition>(headerFields.Count);
         var assignedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1042,11 +1043,6 @@ RETURNING (xmax = 0) AS inserted;
             if (normalized is not null && !assignedTargets.Add(normalized))
             {
                 normalized = null;
-            }
-
-            if (normalized is null && !string.IsNullOrEmpty(original) && unknownColumnsSet.Add(original))
-            {
-                unknownColumns.Add(original);
             }
 
             headers.Add(new HeaderDefinition(original, normalized));
