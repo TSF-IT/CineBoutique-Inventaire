@@ -613,14 +613,30 @@ RETURNING (xmax = 0) AS inserted;
 
         foreach (var row in rows)
         {
-            var normalizedEan = NormalizeEan(row.Ean);
-            var codeDigits = BuildCodeDigits(row.Ean ?? normalizedEan);
-            var attributesJson = SerializeAttributes(row.Attributes, row.SubGroup);
-            var groupId = await ResolveGroupIdAsync(row.Group, row.SubGroup, groupCache, cancellationToken)
+            var sku = (row.Sku ?? string.Empty).Trim();
+            var ean = string.IsNullOrWhiteSpace(row.Ean) ? null : row.Ean.Trim();
+            var name = (row.Name ?? string.Empty).Trim();
+            var group = NormalizeOptional(row.Group);
+            var subGroup = NormalizeOptional(row.SubGroup);
+
+            if (string.IsNullOrEmpty(sku))
+            {
+                continue;
+            }
+
+            if (string.IsNullOrEmpty(name))
+            {
+                name = sku;
+            }
+
+            var normalizedEan = NormalizeEan(ean);
+            var codeDigits = BuildCodeDigits(ean ?? normalizedEan);
+            var attributesJson = SerializeAttributes(row.Attributes, subGroup);
+            var groupId = await ResolveGroupIdAsync(group, subGroup, groupCache, cancellationToken)
                 .ConfigureAwait(false);
 
-            skuParameter.Value = row.Sku;
-            nameParameter.Value = row.Name;
+            skuParameter.Value = sku;
+            nameParameter.Value = name;
             eanParameter.Value = normalizedEan ?? (object)DBNull.Value;
             groupParameter.Value = groupId ?? (object)DBNull.Value;
             attributesParameter.Value = attributesJson;
