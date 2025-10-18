@@ -700,7 +700,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
         app.MapGet("/api/products/suggest", async (
             string q,
             int? limit,
-            NpgsqlDataSource dataSource,
+            IDbConnection connection,
             CancellationToken cancellationToken) =>
         {
             // Sanitize / validate inputs (conforme aux tests)
@@ -713,7 +713,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
             var top = Math.Clamp(limit ?? 8, 1, 50);
 
-            await using var connection = await dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
             var sql = @"
 WITH cand AS (
@@ -776,7 +776,9 @@ ORDER BY
   ""Sku""
 LIMIT @top;";
 
-            var suggestions = await connection.QueryAsync<ProductSuggestionDto>(sql, new { q, top }).ConfigureAwait(false);
+            var suggestions = await connection.QueryAsync<ProductSuggestionDto>(
+                new CommandDefinition(sql, new { q, top }, cancellationToken: cancellationToken)
+            ).ConfigureAwait(false);
 
             return Results.Ok(suggestions);
         })
