@@ -102,6 +102,27 @@ END $$;";
     return new ResetScope(_inventory);
   }
 
+  public async System.Threading.Tasks.Task WithDbNoResetAsync(
+    Func<Npgsql.NpgsqlConnection, System.Threading.Tasks.Task> plan)
+  {
+    ArgumentNullException.ThrowIfNull(plan);
+    Skip.If(!IsAvailable, _skipReason ?? "Backend d'intégration indisponible.");
+
+    // S'assure que l'host est démarré (migrations/seed exécutés),
+    // mais SANS remettre la DB à zéro ici.
+    _ = await Client.GetAsync("/health").ConfigureAwait(false);
+
+    var connection = await _inventory.OpenConnectionAsync().ConfigureAwait(false);
+    try
+    {
+      await plan(connection).ConfigureAwait(false);
+    }
+    finally
+    {
+      await connection.DisposeAsync().ConfigureAwait(false);
+    }
+  }
+
   private async Task DisposeCoreAsync()
   {
     if (_disposed)
