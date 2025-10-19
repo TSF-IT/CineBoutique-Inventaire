@@ -20,12 +20,15 @@ public class ProductAdminEndpointsTests : IClassFixture<TestApiFactory>
     var before = System.Text.Json.JsonDocument.Parse(await r0.Content.ReadAsStringAsync())
                   .RootElement.GetProperty("total").GetInt64();
 
-    // --- Arrange taxonomie : groupe "Cafe" + sous-groupe "Grains" (SANS reset DB)
+    // --- Arrange : upsert taxonomie et insertion DB d'UN produit (aucun appel HTTP ici) ---
+    var sku = $"ZZ-COUNT-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
     await _f.WithDbNoResetAsync(async conn =>
     {
+      // Upsert groupe parent "Cafe"
       var parentId = await conn.ExecuteScalarAsync<long>(@"
     WITH upsert AS (
-      UPDATE ""ProductGroup"" SET ""Label""='Cafe'
+      UPDATE ""ProductGroup""
+      SET ""Label""='Cafe'
       WHERE ""Code""='cafe'
       RETURNING ""Id""
     )
@@ -34,7 +37,8 @@ public class ProductAdminEndpointsTests : IClassFixture<TestApiFactory>
     WHERE NOT EXISTS (SELECT 1 FROM upsert)
     RETURNING ""Id"";");
 
-      await conn.ExecuteAsync(@"
+      // Upsert sous-groupe "Grains" rattaché à "Cafe"
+      var gid = await conn.ExecuteScalarAsync<long>(@"
     WITH upsert AS (
       UPDATE ""ProductGroup""
       SET ""Label""='Grains', ""ParentId""=@pid
@@ -43,23 +47,15 @@ public class ProductAdminEndpointsTests : IClassFixture<TestApiFactory>
     )
     INSERT INTO ""ProductGroup"" (""Code"",""Label"",""ParentId"")
     SELECT 'grains','Grains',@pid
-    WHERE NOT EXISTS (SELECT 1 FROM upsert);", new { pid = parentId });
+    WHERE NOT EXISTS (SELECT 1 FROM upsert)
+    RETURNING ""Id"";", new { pid = parentId });
+
+      // Insertion d'un produit minimal (GroupId requis/attendu par ton schéma)
+      await conn.ExecuteAsync(@"
+    INSERT INTO ""Product"" (""Sku"",""Name"",""Ean"",""GroupId"",""Attributes"")
+    VALUES (@Sku,@Name,@Ean,@Gid,'{}'::jsonb);",
+        new { Sku = sku, Name = "Produit Count Test", Ean = "3210000999999", Gid = gid });
     });
-
-    // --- Import CSV (séparateur ';') avec groupe/sous_groupe pour garantir l'insert
-    var csv = new StringBuilder()
-      .AppendLine("barcode_rfid;sku;name;groupe;sous_groupe")
-      .AppendLine("321000000999;ZZ-TEST-COUNT;Produit Count Test;Cafe;Grains")
-      .ToString();
-
-    using var form = new MultipartFormDataContent();
-    var file = new StringContent(csv, Encoding.UTF8, "text/csv");
-    file.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data")
-    { Name = "\"file\"", FileName = "\"import-count.csv\"" };
-    form.Add(file, "file", "import-count.csv");
-
-    var rImport = await _f.Client.PostAsync("/api/products/import?dryRun=false", form);
-    rImport.EnsureSuccessStatusCode();
 
     // count après
     var r1 = await _f.Client.GetAsync("/api/products/count");
