@@ -703,17 +703,53 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             IDbConnection connection,
             CancellationToken cancellationToken) =>
         {
-            // Sanitize / validate inputs (conforme aux tests)
             q = (q ?? string.Empty).Trim();
-            if (q.Length == 0)
-                return Results.BadRequest("q is required");
-
+            if (q.Length == 0) return Results.BadRequest("q is required");
             if (limit.HasValue && (limit.Value < 1 || limit.Value > 50))
                 return Results.BadRequest("limit must be between 1 and 50");
-
             var top = Math.Clamp(limit ?? 8, 1, 50);
 
-            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+            // 🔑 Ouvrir la connexion AVANT toute requête (y compris fast-path)
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken)
+                .ConfigureAwait(false);
+
+            // --- Fast-path douchette RFID/EAN ---
+            var qRaw   = q;
+            var qTight = System.Text.RegularExpressions.Regex.Replace(qRaw, @"[\s\-_]", "");
+
+            if (qTight.Length >= 8)
+            {
+                const string fastSql = @"
+        SELECT p.""Sku"", p.""Ean"", p.""Name"",
+               COALESCE(pgp.""Label"", pg.""Label"") AS ""Group"",
+               CASE WHEN pgp.""Id"" IS NULL THEN NULL ELSE pg.""Label"" END AS ""SubGroup""
+        FROM ""Product"" p
+        LEFT JOIN ""ProductGroup"" pg  ON pg.""Id""  = p.""GroupId""
+        LEFT JOIN ""ProductGroup"" pgp ON pgp.""Id"" = pg.""ParentId""
+        WHERE
+             p.""Ean"" = @qExact
+          OR p.""Ean"" = @qTight
+          OR p.""Ean"" LIKE @qTightPrefix
+        ORDER BY
+          CASE WHEN p.""Ean"" = @qExact THEN 3
+               WHEN p.""Ean"" = @qTight THEN 2
+               WHEN p.""Ean"" LIKE @qTightPrefix THEN 1
+               ELSE 0 END DESC,
+          p.""Sku""
+        LIMIT @top;";
+
+                var fastRows = await connection.QueryAsync<ProductSuggestionDto>(
+                    new CommandDefinition(
+                        fastSql,
+                        new { qExact = qRaw, qTight, qTightPrefix = qTight + "%", top },
+                        cancellationToken: cancellationToken
+                    )
+                ).ConfigureAwait(false);
+
+                if (fastRows.Any())
+                    return Results.Ok(fastRows);
+            }
+            // --- fin fast-path ---
 
             var sql = @"
 WITH cand AS (

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http.Json;
@@ -7,6 +8,7 @@ using CineBoutique.Inventory.Api.Tests.Fixtures;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Api.Tests.Infra;
 using FluentAssertions;
+using Dapper;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests.Products;
@@ -14,6 +16,8 @@ namespace CineBoutique.Inventory.Api.Tests.Products;
 [Collection("api-tests")]
 public sealed class ProductSuggestEndpointTests : IntegrationTestBase
 {
+    private InventoryApiFixture _f => Fixture;
+
     public ProductSuggestEndpointTests(InventoryApiFixture fixture)
     {
         UseFixture(fixture);
@@ -97,6 +101,70 @@ public sealed class ProductSuggestEndpointTests : IntegrationTestBase
         suggestions.Should().NotBeEmpty();
         suggestions.First().Sku.Should().Be("CB-0001");
         suggestions.First().SubGroup.Should().Be("Grains 1kg");
+    }
+
+    [Fact]
+    public async Task Suggest_WithExactRfid_ReturnsProduct_FastPath()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
+
+        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+
+        await using (var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false))
+        {
+            var gid = await connection.ExecuteScalarAsync<long>(@"
+            WITH upsert AS (
+              UPDATE ""ProductGroup"" SET ""Label""='Café' WHERE ""Code""='cafe' RETURNING ""Id""
+            )
+            INSERT INTO ""ProductGroup"" (""Code"",""Label"")
+            SELECT 'cafe','Café' WHERE NOT EXISTS (SELECT 1 FROM upsert)
+            RETURNING ""Id"";").ConfigureAwait(false);
+
+            // Détection runtime des colonnes de timestamp (présence variable selon le schéma chargé)
+            var hasCreated = await connection.ExecuteScalarAsync<object>(@"
+              select 1 from information_schema.columns
+              where table_schema='public' and table_name='Product' and column_name='CreatedAtUtc'
+              limit 1;").ConfigureAwait(false) is not null;
+
+            var hasUpdated = await connection.ExecuteScalarAsync<object>(@"
+              select 1 from information_schema.columns
+              where table_schema='public' and table_name='Product' and column_name='UpdatedAtUtc'
+              limit 1;").ConfigureAwait(false) is not null;
+
+            // Construit l’UPSERT sans ON CONFLICT, et n’utilise les timestamps que s’ils existent
+            var updateSet = "\"Name\"='Café Grains 1kg', \"Ean\"='321000000001', \"GroupId\"=@gid";
+            if (hasUpdated) updateSet += ", \"UpdatedAtUtc\" = NOW() AT TIME ZONE 'UTC'";
+
+            var insertCols = new List<string> { "\"Sku\"", "\"Name\"", "\"Ean\"", "\"GroupId\"" };
+            var insertVals = new List<string> { "'CB-0001'", "'Café Grains 1kg'", "'321000000001'", "@gid" };
+            if (hasCreated) { insertCols.Add("\"CreatedAtUtc\""); insertVals.Add("NOW() AT TIME ZONE 'UTC'"); }
+            if (hasUpdated) { insertCols.Add("\"UpdatedAtUtc\""); insertVals.Add("NOW() AT TIME ZONE 'UTC'"); }
+
+            var upsertSql = $@"
+            WITH upsert AS (
+              UPDATE ""Product""
+              SET {updateSet}
+              WHERE ""Sku"" = 'CB-0001'
+              RETURNING ""Sku""
+            )
+            INSERT INTO ""Product"" ({string.Join(", ", insertCols)})
+            SELECT {string.Join(", ", insertVals)}
+            WHERE NOT EXISTS (SELECT 1 FROM upsert);";
+
+            await connection.ExecuteAsync(upsertSql, new { gid }).ConfigureAwait(false);
+        }
+
+        var r1 = await _f.Client.GetAsync("/api/products/suggest?q=321000000001&limit=5").ConfigureAwait(false);
+        var r2 = await _f.Client.GetAsync("/api/products/suggest?q=321 0000-00001&limit=5").ConfigureAwait(false);
+
+        r1.EnsureSuccessStatusCode();
+        r2.EnsureSuccessStatusCode();
+
+        var j1 = await r1.Content.ReadAsStringAsync().ConfigureAwait(false);
+        var j2 = await r2.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+        Assert.Contains("\"sku\":\"CB-0001\"", j1);
+        Assert.Contains("\"sku\":\"CB-0001\"", j2);
     }
 
     [SkippableFact]
