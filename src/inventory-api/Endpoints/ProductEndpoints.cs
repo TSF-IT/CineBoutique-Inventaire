@@ -52,8 +52,7 @@ internal static class ProductEndpoints
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
             const string sql = @"SELECT COUNT(*) FROM ""Product"";";
-            var total = await Dapper.SqlMapper.ExecuteScalarAsync<long>(
-                connection,
+            var total = await connection.ExecuteScalarAsync<long>(
                 new Dapper.CommandDefinition(sql, cancellationToken: cancellationToken)
             ).ConfigureAwait(false);
 
