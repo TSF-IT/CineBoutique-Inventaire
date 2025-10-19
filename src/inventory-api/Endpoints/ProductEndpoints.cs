@@ -57,7 +57,8 @@ internal static class ProductEndpoints
             ).ConfigureAwait(false);
 
             return Results.Ok(new { total });
-        });
+        })
+        .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
 
         return app;
     }
@@ -895,7 +896,8 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 });
 
                 return operation;
-            });
+            })
+            .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
     }
 
     private static IResult BuildImportSuccessResult(
