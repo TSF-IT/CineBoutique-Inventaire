@@ -1,6 +1,39 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ensure_dotnet() {
+  if command -v dotnet >/dev/null 2>&1; then
+    return
+  fi
+  echo "[run_tests] dotnet not found — installing SDK locally in $HOME/.dotnet ..."
+
+  # Essaye d'extraire la version depuis global.json (si présent)
+  SDK_VERSION=""
+  if [[ -f global.json ]]; then
+    SDK_VERSION="$(grep -Eo '\"version\"[[:space:]]*:[[:space:]]*\"[0-9\.]+' global.json | sed -E 's/.*\"version\"[[:space:]]*:[[:space:]]*\"([0-9\.]+).*/\1/')"
+  fi
+
+  INSTALL_DIR="$HOME/.dotnet"
+  mkdir -p "$INSTALL_DIR"
+  INSTALL_SH="/tmp/dotnet-install.sh"
+
+  if command -v curl >/dev/null 2>&1; then
+    curl -sSLf https://dot.net/v1/dotnet-install.sh -o "$INSTALL_SH"
+  else
+    wget -qO "$INSTALL_SH" https://dot.net/v1/dotnet-install.sh
+  fi
+  chmod +x "$INSTALL_SH"
+
+  if [[ -n "$SDK_VERSION" ]]; then
+    bash "$INSTALL_SH" --version "$SDK_VERSION" --install-dir "$INSTALL_DIR"
+  else
+    bash "$INSTALL_SH" --channel LTS --install-dir "$INSTALL_DIR"
+  fi
+
+  export DOTNET_ROOT="$INSTALL_DIR"
+  export PATH="$DOTNET_ROOT:$HOME/.dotnet/tools:$PATH"
+}
+
 # -----------------------------------------------------------------------------
 # Unified test runner with 3 modes:
 #  - CI (GitHub Actions): reuse the Postgres service (PGPORT provided)
@@ -13,7 +46,7 @@ HAS_DOCKER=0
 if command -v docker >/dev/null 2>&1 ; then HAS_DOCKER=1; fi
 
 DB_HOST=127.0.0.1
-DB_NAME=inventory
+DB_NAME=inventory     # <— corrige ici si besoin
 DB_USER=postgres
 DB_PASS=postgres
 
@@ -69,6 +102,11 @@ fi
 # -----------------------------------------------------------------------------
 # .NET restore/build
 # -----------------------------------------------------------------------------
+# S'assurer que dotnet est disponible (installe localement si nécessaire)
+ensure_dotnet
+# S'assurer que les outils dotnet globaux sont dans le PATH
+export PATH="$HOME/.dotnet:$HOME/.dotnet/tools:$PATH"
+
 echo "[run_tests] dotnet --info"
 dotnet --info
 
