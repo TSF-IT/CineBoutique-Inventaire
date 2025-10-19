@@ -442,6 +442,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 }
 
                 Stream? ownedStream = null;
+                Stream? nonDryBufferedStream = null;
                 Stream streamToImport = request.Body;
 
                 try
@@ -482,22 +483,89 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
                 try
                 {
+                    // Map d'équivalences d'entêtes → canonique (insensible à la casse)
+                    var synonyms = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["barcode_rfid"] = "ean",
+                        ["ean13"] = "ean",
+                        ["item"] = "sku",
+                        ["code"] = "sku",
+                        ["descr"] = "name",
+                        ["description"] = "name",
+                        ["sous_groupe"] = "sousGroupe",
+                        ["subgroup"] = "sousGroupe",
+                        ["groupe"] = "groupe"
+                    };
+
+                    // Colonnes "métier" reconnues (jeu canonique après normalisation)
+                    var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                      { "sku", "ean", "name", "groupe", "sousGroupe" };
+
+                    // En non-dry, on s'assure que l'entête est bien lue
+                    if (!dryRun)
+                    {
+                        Stream headerStream = streamToImport;
+                        MemoryStream? bufferedNonDryStream = null;
+                        if (!headerStream.CanSeek)
+                        {
+                            bufferedNonDryStream = new MemoryStream();
+                            await headerStream.CopyToAsync(bufferedNonDryStream, cancellationToken).ConfigureAwait(false);
+                            bufferedNonDryStream.Position = 0;
+                            streamToImport = bufferedNonDryStream;
+                            headerStream = bufferedNonDryStream;
+
+                            if (ownedStream is null)
+                            {
+                                ownedStream = bufferedNonDryStream;
+                            }
+                            else
+                            {
+                                nonDryBufferedStream = bufferedNonDryStream;
+                            }
+                        }
+                        else
+                        {
+                            headerStream.Seek(0, SeekOrigin.Begin);
+                        }
+
+                        using (var headerReader = new StreamReader(headerStream, Encoding.Latin1, detectEncodingFromByteOrderMarks: true, bufferSize: 1024, leaveOpen: true))
+                        {
+                            var csvConfiguration = new CsvConfiguration(CultureInfo.InvariantCulture)
+                            {
+                                Delimiter = ";",
+                                BadDataFound = null,
+                                MissingFieldFound = null,
+                                PrepareHeaderForMatch = args =>
+                                {
+                                    var k = (args.Header ?? string.Empty).Trim();
+                                    return synonyms.TryGetValue(k, out var mapped) ? mapped : k;
+                                }
+                            };
+
+                            using var csv = new CsvReader(headerReader, csvConfiguration);
+
+                            try
+                            {
+                                if (csv.Context.Reader.HeaderRecord == null || csv.Context.Reader.HeaderRecord.Length == 0)
+                                {
+                                    csv.Read();
+                                    csv.ReadHeader();
+                                }
+                            }
+                            catch
+                            {
+                                // Tolérance : si l'entête est déjà chargée, on ignore.
+                            }
+                        }
+
+                        if (streamToImport.CanSeek)
+                        {
+                            streamToImport.Seek(0, SeekOrigin.Begin);
+                        }
+                    }
+
                     if (dryRun)
                     {
-                        // Map d'équivalences d'entêtes → canonique (insensible à la casse)
-                        var synonyms = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                        {
-                            ["barcode_rfid"] = "ean",
-                            ["ean13"] = "ean",
-                            ["item"] = "sku",
-                            ["code"] = "sku",
-                            ["descr"] = "name",
-                            ["description"] = "name",
-                            ["sous_groupe"] = "sousGroupe",
-                            ["subgroup"] = "sousGroupe",
-                            ["groupe"] = "groupe"
-                        };
-
                         MemoryStream? bufferedStream = null;
                         Stream inspectionStream;
                         if (streamToImport.CanSeek)
@@ -530,10 +598,6 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                                 };
 
                                 using var csv = new CsvReader(inspectionReader, csvConfiguration);
-
-                                // Jeu canonique des colonnes reconnues (après normalisation)
-                                var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                                  { "sku","ean","name","groupe","sousGroupe" };
 
                                 var unknown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -622,6 +686,11 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     if (ownedStream is not null)
                     {
                         await ownedStream.DisposeAsync().ConfigureAwait(false);
+                    }
+
+                    if (nonDryBufferedStream is not null && !ReferenceEquals(nonDryBufferedStream, ownedStream))
+                    {
+                        await nonDryBufferedStream.DisposeAsync().ConfigureAwait(false);
                     }
                 }
             })
