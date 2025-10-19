@@ -44,6 +44,22 @@ internal static class ProductEndpoints
         MapUpdateProductEndpoints(app);
         MapImportProductsEndpoint(app);
 
+        // --- GET /api/products/count ---
+        app.MapGet("/api/products/count", async (
+            System.Data.IDbConnection connection,
+            System.Threading.CancellationToken cancellationToken) =>
+        {
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+            const string sql = @"SELECT COUNT(*) FROM ""Product"";";
+            var total = await connection.ExecuteScalarAsync<long>(
+                new Dapper.CommandDefinition(sql, cancellationToken: cancellationToken)
+            ).ConfigureAwait(false);
+
+            return Results.Ok(new { total });
+        })
+        .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
+
         return app;
     }
 
