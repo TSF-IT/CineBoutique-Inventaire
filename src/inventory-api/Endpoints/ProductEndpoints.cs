@@ -398,6 +398,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
         app.MapPost("/api/products/import", async (
                 HttpContext httpContext,
                 IProductImportService importService,
+                ILogger logger,
                 CancellationToken cancellationToken) =>
             {
                 if (httpContext is null)
