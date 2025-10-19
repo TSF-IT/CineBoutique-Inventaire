@@ -147,6 +147,8 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
         return _factory!.CreateClient();
     }
 
+    public HttpClient Client => CreateClient();
+
     public void ClearAuditLogs()
     {
         if (!IsBackendAvailable)

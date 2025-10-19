@@ -15,6 +15,8 @@ namespace CineBoutique.Inventory.Api.Tests.Products;
 [Collection("api-tests")]
 public sealed class ProductSuggestEndpointTests : IntegrationTestBase
 {
+    private InventoryApiFixture _f => Fixture;
+
     public ProductSuggestEndpointTests(InventoryApiFixture fixture)
     {
         UseFixture(fixture);
@@ -128,10 +130,8 @@ public sealed class ProductSuggestEndpointTests : IntegrationTestBase
             WHERE NOT EXISTS (SELECT 1 FROM upsert);", new { gid }).ConfigureAwait(false);
         }
 
-        var client = CreateClient();
-
-        var r1 = await client.GetAsync("/api/products/suggest?q=321000000001&limit=5").ConfigureAwait(false);
-        var r2 = await client.GetAsync("/api/products/suggest?q=321 0000-00001&limit=5").ConfigureAwait(false);
+        var r1 = await _f.Client.GetAsync("/api/products/suggest?q=321000000001&limit=5").ConfigureAwait(false);
+        var r2 = await _f.Client.GetAsync("/api/products/suggest?q=321 0000-00001&limit=5").ConfigureAwait(false);
 
         r1.EnsureSuccessStatusCode();
         r2.EnsureSuccessStatusCode();
