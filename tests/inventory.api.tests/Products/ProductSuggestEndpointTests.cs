@@ -122,11 +122,12 @@ public sealed class ProductSuggestEndpointTests : IntegrationTestBase
             await connection.ExecuteAsync(@"
             WITH upsert AS (
               UPDATE ""Product""
-              SET ""Name""='Café Grains 1kg', ""Ean""='321000000001', ""GroupId""=@gid
-              WHERE ""Sku""='CB-0001' RETURNING ""Sku""
+              SET ""Name""='Café Grains 1kg',""Ean""='321000000001',""GroupId""=@gid,""UpdatedAtUtc"" = NOW() AT TIME ZONE 'UTC'
+              WHERE ""Sku""='CB-0001'
+              RETURNING ""Sku""
             )
-            INSERT INTO ""Product"" (""Sku"",""Name"",""Ean"",""GroupId"")
-            SELECT 'CB-0001','Café Grains 1kg','321000000001',@gid
+            INSERT INTO ""Product"" (""Sku"",""Name"",""Ean"",""GroupId"",""CreatedAtUtc"",""UpdatedAtUtc"")
+            SELECT 'CB-0001','Café Grains 1kg','321000000001',@gid,NOW() AT TIME ZONE 'UTC',NOW() AT TIME ZONE 'UTC'
             WHERE NOT EXISTS (SELECT 1 FROM upsert);", new { gid }).ConfigureAwait(false);
         }
 
