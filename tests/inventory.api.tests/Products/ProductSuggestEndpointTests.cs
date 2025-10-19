@@ -7,6 +7,7 @@ using CineBoutique.Inventory.Api.Tests.Fixtures;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Api.Tests.Infra;
 using FluentAssertions;
+using Dapper;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests.Products;
@@ -97,6 +98,49 @@ public sealed class ProductSuggestEndpointTests : IntegrationTestBase
         suggestions.Should().NotBeEmpty();
         suggestions.First().Sku.Should().Be("CB-0001");
         suggestions.First().SubGroup.Should().Be("Grains 1kg");
+    }
+
+    [Fact]
+    public async Task Suggest_WithExactRfid_ReturnsProduct_FastPath()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
+
+        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+
+        await using (var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false))
+        {
+            var gid = await connection.ExecuteScalarAsync<long>(@"
+            WITH upsert AS (
+              UPDATE ""ProductGroup"" SET ""Label""='Café' WHERE ""Code""='cafe' RETURNING ""Id""
+            )
+            INSERT INTO ""ProductGroup"" (""Code"",""Label"")
+            SELECT 'cafe','Café' WHERE NOT EXISTS (SELECT 1 FROM upsert)
+            RETURNING ""Id"";").ConfigureAwait(false);
+
+            await connection.ExecuteAsync(@"
+            WITH upsert AS (
+              UPDATE ""Product""
+              SET ""Name""='Café Grains 1kg', ""Ean""='321000000001', ""GroupId""=@gid
+              WHERE ""Sku""='CB-0001' RETURNING ""Sku""
+            )
+            INSERT INTO ""Product"" (""Sku"",""Name"",""Ean"",""GroupId"")
+            SELECT 'CB-0001','Café Grains 1kg','321000000001',@gid
+            WHERE NOT EXISTS (SELECT 1 FROM upsert);", new { gid }).ConfigureAwait(false);
+        }
+
+        var client = CreateClient();
+
+        var r1 = await client.GetAsync("/api/products/suggest?q=321000000001&limit=5").ConfigureAwait(false);
+        var r2 = await client.GetAsync("/api/products/suggest?q=321 0000-00001&limit=5").ConfigureAwait(false);
+
+        r1.EnsureSuccessStatusCode();
+        r2.EnsureSuccessStatusCode();
+
+        var j1 = await r1.Content.ReadAsStringAsync().ConfigureAwait(false);
+        var j2 = await r2.Content.ReadAsStringAsync().ConfigureAwait(false);
+
+        Assert.Contains("\"sku\":\"CB-0001\"", j1);
+        Assert.Contains("\"sku\":\"CB-0001\"", j2);
     }
 
     [SkippableFact]
