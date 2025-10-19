@@ -8,6 +8,8 @@ import { InventorySessionPage } from './app/pages/inventory/InventorySessionPage
 import { ScanCameraPage } from './app/pages/inventory/ScanCameraPage'
 import { AdminLayout } from './app/pages/admin/AdminLayout'
 import { AdminLocationsPage } from './app/pages/admin/AdminLocationsPage'
+import { ProductScanSearch } from './features/products/ProductScanSearch'
+import { AdminProductsPage } from './features/admin/AdminProductsPage'
 import { AppErrorBoundary } from './app/components/AppErrorBoundary'
 import { ScanSimulationPage } from './app/pages/debug/ScanSimulationPage'
 import { LoadingIndicator } from './app/components/LoadingIndicator'
@@ -85,10 +87,12 @@ export const AppRoutes = () => {
               <Route path="scan-camera" element={<ScanCameraPage />} />
             </Route>
           </Route>
+          <Route path="/scan" element={<ProductScanSearch onPick={(sku) => console.log('picked', sku)} />} />
         </Route>
       {/* Admin: à toi de voir si ça doit aussi exiger un user */}
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<AdminLocationsPage />} />
+          <Route path="products" element={<AdminProductsPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
