@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useProductSuggest } from '../../hooks/useProductSuggest'
 import { useProductsSearch } from '../../hooks/useProductsSearch'
+import { BarcodeCameraButton } from './BarcodeCameraButton'
 
 type Mode = 'scan' | 'camera' | 'manuel'
 
@@ -60,6 +61,7 @@ export function ProductScanSearch(props: { onPick?: (sku: string) => void }) {
 
       {(mode === 'scan' || mode === 'camera') && (
         <div style={{ display: 'grid', gap: 8 }}>
+          <BarcodeCameraButton onDetected={(val) => setQ(val)} />
           <input
             ref={inputRef}
             value={q}
