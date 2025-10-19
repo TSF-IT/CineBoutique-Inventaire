@@ -23,7 +23,7 @@ public sealed class ProductImportFlexTests : IClassFixture<TestApiFactory>
   {
     Skip.If(!_f.IsAvailable, _f.SkipReason ?? "Backend d'intégration indisponible.");
 
-    using var scope = await _f.WithDbAsync(_ => Task.CompletedTask);
+    using var dryRunScope = await _f.WithDbAsync(_ => Task.CompletedTask);
 
     var client = _f.Client;
     client.DefaultRequestHeaders.Remove("X-Admin");
@@ -49,7 +49,7 @@ public sealed class ProductImportFlexTests : IClassFixture<TestApiFactory>
     Skip.If(!_f.IsAvailable, _f.SkipReason ?? "Backend d'intégration indisponible.");
 
     // --- Arrange taxonomie : on crée/maj le groupe "Cafe" et le sous-groupe "Grains"
-    using (var scope = await _f.WithDbAsync(async conn =>
+    using (var seedScope = await _f.WithDbAsync(async conn =>
     {
         // parent: "Cafe"
         var parentId = await conn.ExecuteScalarAsync<long>(@"
@@ -77,7 +77,7 @@ public sealed class ProductImportFlexTests : IClassFixture<TestApiFactory>
     }))
     { /* scope dispose */ }
 
-    using var scope = await _f.WithDbAsync(async conn =>
+    using var verifyScope = await _f.WithDbAsync(async conn =>
     {
       await _f.UpsertProductAsync(conn, "CB-0001", "Café Grains", "3210000000013", null).ConfigureAwait(false);
       const string seedAttributes = @"
