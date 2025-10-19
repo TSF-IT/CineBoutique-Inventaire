@@ -409,7 +409,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 var log = loggerFactory?.CreateLogger("InventoryApi.ProductImport")
                           ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
 
-                // Parsing robuste du paramètre dryRun (depuis la query)
+                // Parsing robuste du paramètre dryRun
                 bool isDryRun;
                 if (string.IsNullOrWhiteSpace(dryRun))
                 {
@@ -421,8 +421,8 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 }
                 else
                 {
-                    // ✨ Contrat attendu par les tests : enveloppe Errors[]
-                    return Results.BadRequest(new
+                    // ✨ Contrat attendu par les tests : enveloppe Errors[] + UnknownColumns[]
+                    return Results.Json(new
                     {
                         Errors = new[]
                         {
@@ -431,8 +431,9 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                                 Message = $"'{dryRun}' is not a valid boolean (expected 'true' or 'false').",
                                 Field   = "dryRun"
                             }
-                        }
-                    });
+                        },
+                        UnknownColumns = Array.Empty<string>()
+                    }, statusCode: 400);
                 }
 
                 await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken)
