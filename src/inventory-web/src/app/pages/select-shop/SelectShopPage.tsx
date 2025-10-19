@@ -1,5 +1,6 @@
 import {
   type ChangeEvent,
+  startTransition,
   useCallback,
   useEffect,
   useId,
@@ -102,44 +103,52 @@ export const SelectShopPage = () => {
   }
 }, [retryCount]) 
   useEffect(() => {
-    setSelectedShopId((current) => {
-      if (shops.length === 0) {
-        return shop?.id ?? ''
-      }
+    startTransition(() => {
+      setSelectedShopId((current) => {
+        if (shops.length === 0) {
+          return shop?.id ?? ''
+        }
 
-      if (current && shops.some((item) => item.id === current)) {
-        return current
-      }
+        if (current && shops.some((item) => item.id === current)) {
+          return current
+        }
 
-      if (shop && shops.some((item) => item.id === shop.id)) {
-        return shop.id
-      }
+        if (shop && shops.some((item) => item.id === shop.id)) {
+          return shop.id
+        }
 
-      if (!shop && shops.length === 1) {
-        return shops[0].id
-      }
+        if (!shop && shops.length === 1) {
+          return shops[0].id
+        }
 
-      return ''
+        return ''
+      })
     })
   }, [shop, shops])
 
   useEffect(() => {
     if (!selectedShopId) {
       if (selectionError === INVALID_GUID_ERROR_MESSAGE) {
-        setSelectionError(null)
+        startTransition(() => {
+          setSelectionError(null)
+        })
       }
       return
     }
 
     if (!isValidGuid(selectedShopId)) {
       if (selectionError !== INVALID_GUID_ERROR_MESSAGE) {
-        setSelectionError(INVALID_GUID_ERROR_MESSAGE)
+        startTransition(() => {
+          setSelectionError(INVALID_GUID_ERROR_MESSAGE)
+        })
       }
       return
     }
 
     if (selectionError === INVALID_GUID_ERROR_MESSAGE) {
-      setSelectionError(null)
+      startTransition(() => {
+        setSelectionError(null)
+      })
     }
   }, [selectedShopId, selectionError])
 

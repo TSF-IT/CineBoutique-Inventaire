@@ -119,7 +119,9 @@ test.describe('Mode scan caméra - bottom sheet', () => {
       })
 
       class FakeBarcodeDetector {
-        constructor(_: { formats?: string[] } = {}) {}
+        constructor(options: { formats?: string[] } = {}) {
+          void options
+        }
         async detect() {
           const value = queue.shift()
           if (!value) {

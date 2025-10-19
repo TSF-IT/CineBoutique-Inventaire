@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { startTransition, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { MemoryRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppProviders } from '../providers/AppProviders'
@@ -244,7 +244,10 @@ const renderInventoryRoutes = (initialEntry: string, options?: RenderInventoryOp
     const initializedRef = useRef(false)
     const [ready, setReady] = useState(false)
     const initializeRef = useRef(customInitialize)
-    initializeRef.current = customInitialize
+
+    useEffect(() => {
+      initializeRef.current = customInitialize
+    })
 
     useLayoutEffect(() => {
       if (initializedRef.current) {
@@ -254,7 +257,9 @@ const renderInventoryRoutes = (initialEntry: string, options?: RenderInventoryOp
       const initializer = initializeRef.current ?? applyDefaultInitialization
       initializer(inventory)
       initializedRef.current = true
-      setReady(true)
+      startTransition(() => {
+        setReady(true)
+      })
     }, [inventory])
 
     if (!ready) {
@@ -672,9 +677,9 @@ describe("Workflow d'inventaire", () => {
     })
 
     const modalScope = within(modal)
-    expect(modalScope.getByText('Comptage 1')).toBeInTheDocument()
-    expect(modalScope.getByText('Comptage 2')).toBeInTheDocument()
-    expect(modalScope.getByText('Comptage 3')).toBeInTheDocument()
+    await modalScope.findByText('Comptage 1')
+    await modalScope.findByText('Comptage 2')
+    await modalScope.findByText('Comptage 3')
 
     fireEvent.click(modalScope.getByLabelText('Fermer'))
 

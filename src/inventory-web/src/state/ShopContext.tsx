@@ -6,6 +6,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  startTransition,
 } from 'react'
 import type { Shop } from '@/types/shop'
 import { clearShop, loadShop, saveShop } from '@/lib/shopStorage'
@@ -23,8 +24,11 @@ export const ShopProvider = ({ children }: { children: ReactNode }) => {
   const [isLoaded, setIsLoaded] = useState(false)
 
   useEffect(() => {
-    setShopState(loadShop())
-    setIsLoaded(true)
+    const stored = loadShop()
+    startTransition(() => {
+      setShopState(stored)
+      setIsLoaded(true)
+    })
   }, [])
 
   const setShop = useCallback((nextShop: Shop | null) => {

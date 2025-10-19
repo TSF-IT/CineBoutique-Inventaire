@@ -454,7 +454,7 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
     } finally {
       setGlobalExporting(false)
     }
-  }, [globalExporting, hasCompletedRuns, orderedCompletedRuns, getCompletedRunDetail])
+  }, [globalExporting, hasCompletedRuns, orderedCompletedRuns])
 
   const detailErrorDescription = useMemo(() => describeDetailError(detailError), [detailError])
   const hasDetailView = Boolean(selectedRun)

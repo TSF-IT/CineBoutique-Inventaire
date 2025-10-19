@@ -100,7 +100,10 @@ const renderScanCameraPage = (options?: {
   const ItemsObserver = () => {
     const { items } = useInventory()
     const handlerRef = useRef(onItemsChange)
-    handlerRef.current = onItemsChange
+
+    useEffect(() => {
+      handlerRef.current = onItemsChange
+    })
 
     useEffect(() => {
       handlerRef.current?.(items)

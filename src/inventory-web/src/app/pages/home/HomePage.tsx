@@ -154,6 +154,7 @@ const isRunOwnedByUser = (
 export const HomePage = () => {
   const navigate = useNavigate()
   const { shop, setShop, isLoaded } = useShop()
+  const shopId = shop?.id ?? null
   const {
     selectedUser,
     sessionId,
@@ -200,18 +201,18 @@ export const HomePage = () => {
   })
 
   const loadLocations = useCallback(() => {
-    if (!shop?.id) {
+    if (!shopId) {
       return Promise.resolve<Location[]>([])
     }
-    return fetchLocations(shop.id)
-  }, [shop?.id])
+    return fetchLocations(shopId)
+  }, [shopId])
 
   const loadSummaries = useCallback(() => {
-    if (!shop?.id) {
+    if (!shopId) {
       return Promise.resolve<LocationSummary[]>([])
     }
-    return fetchLocationSummaries(shop.id)
-  }, [shop?.id])
+    return fetchLocationSummaries(shopId)
+  }, [shopId])
 
   const {
     data: locationsData,
@@ -242,7 +243,7 @@ export const HomePage = () => {
       return
     }
 
-    if (!shop?.id) {
+    if (!shopId) {
       lastLoadedShopIdRef.current = null
       setSummaryData(null)
       setLocationsData([])
@@ -251,11 +252,11 @@ export const HomePage = () => {
       return
     }
 
-    if (lastLoadedShopIdRef.current === shop.id) {
+    if (lastLoadedShopIdRef.current === shopId) {
       return
     }
 
-    lastLoadedShopIdRef.current = shop.id
+    lastLoadedShopIdRef.current = shopId
     void executeSummary()
     void executeLocations()
     void executeLocationSummaries()
@@ -268,17 +269,17 @@ export const HomePage = () => {
     setLocationSummariesData,
     setLocationsData,
     setSummaryData,
-    shop?.id,
+    shopId,
   ])
 
   const handleRetry = useCallback(() => {
-    if (!shop?.id) {
+    if (!shopId) {
       return
     }
     void executeSummary()
     void executeLocations()
     void executeLocationSummaries()
-  }, [executeLocationSummaries, executeLocations, executeSummary, shop?.id])
+  }, [executeLocationSummaries, executeLocations, executeSummary, shopId])
 
   const handleChangeShop = useCallback(() => {
     setShop(null)
