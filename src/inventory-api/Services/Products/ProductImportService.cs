@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging;
 using Npgsql;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using CineBoutique.Inventory.Infrastructure.Database.Products;
 using NpgsqlTypes;
 
@@ -34,10 +35,14 @@ public sealed class ProductImportService : IProductImportService
 
     private static readonly Regex DigitsOnlyRegex = new("[^0-9]", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Encoding StrictUtf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
-    private static readonly JsonSerializerOptions JsonSerializerOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonSerializerOptions = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.Never
+    };
     private static readonly ImmutableArray<string> EmptyUnknownColumns = ImmutableArray<string>.Empty;
     private static readonly ImmutableArray<ProductImportGroupProposal> EmptyProposedGroups = ImmutableArray<ProductImportGroupProposal>.Empty;
 
+    // Map d'équivalences d'entêtes → canonique (insensible à la casse)
     private static readonly Dictionary<string, string> HeaderSynonyms = new(StringComparer.OrdinalIgnoreCase)
     {
         ["sku"] = KnownColumns.Sku,
@@ -729,22 +734,24 @@ RETURNING (xmax = 0) AS inserted;
         return digits.Length == 0 ? null : digits;
     }
 
-    private static string SerializeAttributes(IReadOnlyDictionary<string, string> attributes, string? subGroup)
+    private static string SerializeAttributes(IReadOnlyDictionary<string, object?> attributes, string? subGroup)
     {
         if (attributes.Count == 0 && string.IsNullOrEmpty(subGroup))
         {
             return "{}";
         }
 
-        if (string.IsNullOrEmpty(subGroup))
+        var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var kvp in attributes)
         {
-            return JsonSerializer.Serialize(attributes, JsonSerializerOptions);
+            payload[kvp.Key] = kvp.Value;
         }
 
-        var payload = new Dictionary<string, string>(attributes, StringComparer.OrdinalIgnoreCase)
+        if (!string.IsNullOrEmpty(subGroup) && !payload.ContainsKey("originalSousGroupe"))
         {
-            ["originalSousGroupe"] = subGroup
-        };
+            payload["originalSousGroupe"] = subGroup;
+        }
 
         return JsonSerializer.Serialize(payload, JsonSerializerOptions);
     }
@@ -887,15 +894,15 @@ RETURNING (xmax = 0) AS inserted;
                 }
             }
 
-            var attributes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var attributes = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
             foreach (var kvp in rowDict)
             {
-                if (KnownColumnNames.Contains(kvp.Key) || string.IsNullOrEmpty(kvp.Value))
+                if (KnownColumnNames.Contains(kvp.Key))
                 {
                     continue;
                 }
 
-                attributes[kvp.Key] = kvp.Value;
+                attributes[kvp.Key] = string.IsNullOrWhiteSpace(kvp.Value) ? null : kvp.Value;
             }
 
             foreach (var attributeKey in attributes.Keys)
@@ -1010,7 +1017,7 @@ RETURNING (xmax = 0) AS inserted;
         string? Ean,
         string? Group,
         string? SubGroup,
-        IReadOnlyDictionary<string, string> Attributes);
+        IReadOnlyDictionary<string, object?> Attributes);
 
     private sealed record ProductCsvParseOutcome(
         IReadOnlyList<ProductCsvRow> Rows,
