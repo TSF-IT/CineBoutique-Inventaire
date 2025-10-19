@@ -786,13 +786,14 @@ RETURNING (xmax = 0) AS inserted;
         var rows = new List<ProductCsvRow>();
         var errors = new List<ProductImportError>();
         var seenSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var attributeColumns = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        var unknownColumns = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
         var proposedGroups = new List<ProductImportGroupProposal>();
         var proposedGroupsSet = new HashSet<GroupKey>(GroupKeyComparer.Instance);
 
         var lineNumber = 0;
         var totalLines = 0;
         List<HeaderDefinition>? headers = null;
+        var headerCaptured = false;
 
         using var reader = new StreamReader(stream, encoding, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
 
@@ -812,6 +813,34 @@ RETURNING (xmax = 0) AS inserted;
 
                 var headerFields = ParseFields(line);
                 headers = BuildHeaders(headerFields);
+
+                if (!headerCaptured)
+                {
+                    foreach (var header in headers)
+                    {
+                        var original = header.Original?.Trim();
+                        if (string.IsNullOrWhiteSpace(original))
+                        {
+                            continue;
+                        }
+
+                        var canonical = header.Target;
+
+                        if (canonical is not null && KnownColumnNames.Contains(canonical))
+                        {
+                            continue;
+                        }
+
+                        if (KnownColumnNames.Contains(original))
+                        {
+                            continue;
+                        }
+
+                        unknownColumns.Add(original);
+                    }
+
+                    headerCaptured = true;
+                }
 
                 if (!headers.Any(header => string.Equals(header.Target, KnownColumns.Sku, StringComparison.Ordinal)))
                 {
@@ -905,11 +934,6 @@ RETURNING (xmax = 0) AS inserted;
                 attributes[kvp.Key] = string.IsNullOrWhiteSpace(kvp.Value) ? null : kvp.Value;
             }
 
-            foreach (var attributeKey in attributes.Keys)
-            {
-                attributeColumns.Add(attributeKey);
-            }
-
             if (string.IsNullOrWhiteSpace(sku))
             {
                 errors.Add(new ProductImportError(lineNumber, "EMPTY_SKU"));
@@ -950,9 +974,9 @@ RETURNING (xmax = 0) AS inserted;
             errors.Add(new ProductImportError(0, "MISSING_HEADER"));
         }
 
-        var unknownColumnsImmutable = attributeColumns.Count == 0
+        var unknownColumnsImmutable = unknownColumns.Count == 0
             ? EmptyUnknownColumns
-            : ImmutableArray.CreateRange(attributeColumns);
+            : ImmutableArray.CreateRange(unknownColumns);
 
         var proposedGroupsImmutable = proposedGroups.Count == 0
             ? EmptyProposedGroups

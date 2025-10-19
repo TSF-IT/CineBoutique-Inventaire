@@ -479,10 +479,15 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 try
                 {
                     var unknown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    var headerCaptured = false;
                     var command = new ProductImportCommand(streamToImport, dryRun, username);
                     var result = await importService.ImportAsync(command, cancellationToken).ConfigureAwait(false);
 
-                    unknown.UnionWith(result.Response.UnknownColumns);
+                    if (!headerCaptured)
+                    {
+                        unknown.UnionWith(result.Response.UnknownColumns);
+                        headerCaptured = true;
+                    }
 
                     return result.ResultType switch
                     {
