@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http.Json;
@@ -119,16 +120,38 @@ public sealed class ProductSuggestEndpointTests : IntegrationTestBase
             SELECT 'cafe','Café' WHERE NOT EXISTS (SELECT 1 FROM upsert)
             RETURNING ""Id"";").ConfigureAwait(false);
 
-            await connection.ExecuteAsync(@"
+            // Détection runtime des colonnes de timestamp (présence variable selon le schéma chargé)
+            var hasCreated = await connection.ExecuteScalarAsync<object>(@"
+              select 1 from information_schema.columns
+              where table_schema='public' and table_name='Product' and column_name='CreatedAtUtc'
+              limit 1;").ConfigureAwait(false) is not null;
+
+            var hasUpdated = await connection.ExecuteScalarAsync<object>(@"
+              select 1 from information_schema.columns
+              where table_schema='public' and table_name='Product' and column_name='UpdatedAtUtc'
+              limit 1;").ConfigureAwait(false) is not null;
+
+            // Construit l’UPSERT sans ON CONFLICT, et n’utilise les timestamps que s’ils existent
+            var updateSet = "\"Name\"='Café Grains 1kg', \"Ean\"='321000000001', \"GroupId\"=@gid";
+            if (hasUpdated) updateSet += ", \"UpdatedAtUtc\" = NOW() AT TIME ZONE 'UTC'";
+
+            var insertCols = new List<string> { "\"Sku\"", "\"Name\"", "\"Ean\"", "\"GroupId\"" };
+            var insertVals = new List<string> { "'CB-0001'", "'Café Grains 1kg'", "'321000000001'", "@gid" };
+            if (hasCreated) { insertCols.Add("\"CreatedAtUtc\""); insertVals.Add("NOW() AT TIME ZONE 'UTC'"); }
+            if (hasUpdated) { insertCols.Add("\"UpdatedAtUtc\""); insertVals.Add("NOW() AT TIME ZONE 'UTC'"); }
+
+            var upsertSql = $@"
             WITH upsert AS (
               UPDATE ""Product""
-              SET ""Name""='Café Grains 1kg',""Ean""='321000000001',""GroupId""=@gid,""UpdatedAtUtc"" = NOW() AT TIME ZONE 'UTC'
-              WHERE ""Sku""='CB-0001'
+              SET {updateSet}
+              WHERE ""Sku"" = 'CB-0001'
               RETURNING ""Sku""
             )
-            INSERT INTO ""Product"" (""Sku"",""Name"",""Ean"",""GroupId"",""CreatedAtUtc"",""UpdatedAtUtc"")
-            SELECT 'CB-0001','Café Grains 1kg','321000000001',@gid,NOW() AT TIME ZONE 'UTC',NOW() AT TIME ZONE 'UTC'
-            WHERE NOT EXISTS (SELECT 1 FROM upsert);", new { gid }).ConfigureAwait(false);
+            INSERT INTO ""Product"" ({string.Join(", ", insertCols)})
+            SELECT {string.Join(", ", insertVals)}
+            WHERE NOT EXISTS (SELECT 1 FROM upsert);";
+
+            await connection.ExecuteAsync(upsertSql, new { gid }).ConfigureAwait(false);
         }
 
         var r1 = await _f.Client.GetAsync("/api/products/suggest?q=321000000001&limit=5").ConfigureAwait(false);
