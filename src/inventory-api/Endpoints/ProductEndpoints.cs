@@ -400,10 +400,14 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 Microsoft.AspNetCore.Http.HttpRequest request,
                 System.Data.IDbConnection connection,
                 bool? dryRun,
-                Microsoft.Extensions.Logging.ILoggerFactory loggerFactory,
                 System.Threading.CancellationToken cancellationToken) =>
             {
-                var log = loggerFactory.CreateLogger("InventoryApi.ProductImport");
+                var services = request.HttpContext.RequestServices;
+                var loggerFactoryObj = services.GetService(typeof(Microsoft.Extensions.Logging.ILoggerFactory))
+                                      as Microsoft.Extensions.Logging.ILoggerFactory;
+                var log = (loggerFactoryObj != null)
+                    ? loggerFactoryObj.CreateLogger("InventoryApi.ProductImport")
+                    : Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
                 var httpContext = request.HttpContext;
 
                 if (httpContext is null)
@@ -716,7 +720,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     }
                 }
             })
-            .RequireAuthorization("Admin")
+            .RequireAuthorization()
             .WithName("ImportProducts")
             .WithTags("Produits")
             .Produces<ProductImportResponse>(StatusCodes.Status200OK)
