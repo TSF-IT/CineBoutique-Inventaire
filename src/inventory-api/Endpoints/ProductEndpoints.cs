@@ -3,16 +3,20 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Data;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Services.Products;
 using CineBoutique.Inventory.Infrastructure.Database;
-using FluentValidation.Results;
 using Dapper;
+using FluentValidation.Results;
+using CsvHelper;
+using CsvHelper.Configuration;
 using Npgsql;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -478,16 +482,127 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
                 try
                 {
-                    var unknown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    var headerCaptured = false;
+                    if (dryRun)
+                    {
+                        // Map d'équivalences d'entêtes → canonique (insensible à la casse)
+                        var synonyms = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                        {
+                            ["barcode_rfid"] = "ean",
+                            ["ean13"] = "ean",
+                            ["item"] = "sku",
+                            ["code"] = "sku",
+                            ["descr"] = "name",
+                            ["description"] = "name",
+                            ["sous_groupe"] = "sousGroupe",
+                            ["subgroup"] = "sousGroupe",
+                            ["groupe"] = "groupe"
+                        };
+
+                        MemoryStream? bufferedStream = null;
+                        Stream inspectionStream;
+                        if (streamToImport.CanSeek)
+                        {
+                            streamToImport.Seek(0, SeekOrigin.Begin);
+                            inspectionStream = streamToImport;
+                        }
+                        else
+                        {
+                            bufferedStream = new MemoryStream();
+                            await streamToImport.CopyToAsync(bufferedStream, cancellationToken).ConfigureAwait(false);
+                            bufferedStream.Position = 0;
+                            inspectionStream = bufferedStream;
+                        }
+
+                        try
+                        {
+                            using (var inspectionReader = new StreamReader(inspectionStream, Encoding.Latin1, detectEncodingFromByteOrderMarks: true, bufferSize: 1024, leaveOpen: true))
+                            {
+                                var csvConfiguration = new CsvConfiguration(CultureInfo.InvariantCulture)
+                                {
+                                    Delimiter = ";",
+                                    BadDataFound = null,
+                                    MissingFieldFound = null,
+                                    PrepareHeaderForMatch = args =>
+                                    {
+                                        var k = (args.Header ?? string.Empty).Trim();
+                                        return synonyms.TryGetValue(k, out var mapped) ? mapped : k;
+                                    }
+                                };
+
+                                using var csv = new CsvReader(inspectionReader, csvConfiguration);
+
+                                // Jeu canonique des colonnes reconnues (après normalisation)
+                                var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                                  { "sku","ean","name","groupe","sousGroupe" };
+
+                                // Si dry-run: on NE lit PAS les lignes; on ne fait qu'inspecter l'entête normalisée.
+                                if (dryRun)
+                                {
+                                    var unknown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                                    // Assure le chargement de l'entête si besoin
+                                    // (selon la config CsvHelper, ReadHeader peut être nécessaire)
+                                    try
+                                    {
+                                        // Si la lib/ton code lit déjà l'entête en amont, ce ReadHeader sera no-op
+                                        csv.Read();
+                                        csv.ReadHeader();
+                                    }
+                                    catch
+                                    {
+                                        /* on tolère l'absence d'entête */
+                                    }
+
+                                    var header = csv.Context.Reader.HeaderRecord;
+                                    if (header is { Length: > 0 })
+                                    {
+                                        foreach (var raw in header)
+                                        {
+                                            if (string.IsNullOrWhiteSpace(raw)) continue;
+                                            var k = synonyms.TryGetValue(raw, out var mapped) ? mapped : raw;
+                                            if (!known.Contains(k)) unknown.Add(k);
+                                        }
+                                    }
+
+                                    inspectionReader.DiscardBufferedData();
+                                    inspectionStream.Seek(0, SeekOrigin.Begin);
+
+                                    var dryRunCommand = new ProductImportCommand(inspectionStream, dryRun, username);
+                                    var dryRunResult = await importService.ImportAsync(dryRunCommand, cancellationToken).ConfigureAwait(false);
+                                    unknown.UnionWith(dryRunResult.Response.UnknownColumns);
+
+                                    var response = new
+                                    {
+                                        dryRunResult.Response.Total,
+                                        dryRunResult.Response.Inserted,
+                                        dryRunResult.Response.Updated,
+                                        dryRunResult.Response.WouldInsert,
+                                        dryRunResult.Response.ErrorCount,
+                                        dryRunResult.Response.DryRun,
+                                        dryRunResult.Response.Skipped,
+                                        dryRunResult.Response.Errors,
+                                        dryRunResult.Response.ProposedGroups,
+                                        // conserve tes champs de preview existants si tu en as (compteurs, etc.)
+                                        unknownColumns = unknown.OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToArray()
+                                    };
+
+                                    return Results.Ok(response);
+                                }
+                            }
+                        }
+                        finally
+                        {
+                            if (bufferedStream is not null)
+                            {
+                                await bufferedStream.DisposeAsync().ConfigureAwait(false);
+                            }
+                        }
+                    }
+
+                    var unknownColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                     var command = new ProductImportCommand(streamToImport, dryRun, username);
                     var result = await importService.ImportAsync(command, cancellationToken).ConfigureAwait(false);
-
-                    if (!headerCaptured)
-                    {
-                        unknown.UnionWith(result.Response.UnknownColumns);
-                        headerCaptured = true;
-                    }
+                    unknownColumns.UnionWith(result.Response.UnknownColumns);
 
                     return result.ResultType switch
                     {
@@ -495,7 +610,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                         ProductImportResultType.Skipped => Results.Json(
                             result.Response,
                             statusCode: StatusCodes.Status204NoContent),
-                        _ => BuildImportSuccessResult(result.Response, dryRun, unknown)
+                        _ => BuildImportSuccessResult(result.Response, dryRun, unknownColumns)
                     };
                 }
                 catch (ProductImportInProgressException)
