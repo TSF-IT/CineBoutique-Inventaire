@@ -1,6 +1,7 @@
 using System.Linq;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -45,10 +46,20 @@ public sealed class InventoryApiFactory : WebApplicationFactory<Program>
         // >>> clé: on remplace les services DB pour stopper 127.0.0.1
         builder.ConfigureServices(services =>
         {
+            services.AddAuthentication(TestAuthHandler.Scheme)
+                .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.Scheme, _ => { });
+
+            services.PostConfigure<AuthenticationOptions>(opt =>
+            {
+                opt.DefaultAuthenticateScheme = TestAuthHandler.Scheme;
+                opt.DefaultChallengeScheme = TestAuthHandler.Scheme;
+                opt.DefaultScheme = TestAuthHandler.Scheme;
+            });
+
             services.PostConfigure<AuthorizationOptions>(options =>
             {
-                var allowAll = new AuthorizationPolicyBuilder()
-                    .RequireAssertion(_ => true)
+                var allowAll = new AuthorizationPolicyBuilder(TestAuthHandler.Scheme)
+                    .RequireAuthenticatedUser()
                     .Build();
                 options.DefaultPolicy = allowAll;
                 options.FallbackPolicy = allowAll;
