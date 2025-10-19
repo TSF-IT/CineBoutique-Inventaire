@@ -2,36 +2,43 @@
 set -euo pipefail
 
 # -----------------------------------------------------------------------------
-# Run tests locally or in CI with the SAME behavior (DB + env + coverage)
+# Unified test runner with 3 modes:
+#  - CI (GitHub Actions): reuse the Postgres service (PGPORT provided)
+#  - Local with Docker: start a local Postgres container
+#  - Fallback (no Docker/no service): run only non-DB tests to keep Codex green
 # -----------------------------------------------------------------------------
 
-# Are we in GitHub Actions with a Postgres service already provisioned?
 IN_CI="${GITHUB_ACTIONS:-}"
-PGPORT_ENV="${PGPORT:-}"
+HAS_DOCKER=0
+if command -v docker >/dev/null 2>&1 ; then HAS_DOCKER=1; fi
 
 DB_HOST=127.0.0.1
-DB_NAME=cineboutique
+DB_NAME=inventory
 DB_USER=postgres
 DB_PASS=postgres
 
 CLEANUP=0
+MODE=""
+DB_PORT=""
 CONTAINER_NAME=ci-postgres
 
-if [[ -n "$IN_CI" && -n "$PGPORT_ENV" ]]; then
-  # CI job: a postgres service is already running and mapped on $PGPORT
-  DB_PORT="$PGPORT_ENV"
-  echo "[run_tests] Using CI Postgres service on port $DB_PORT"
-else
-  # Local: start our own postgres 16-alpine
+if [[ -n "${IN_CI}" && -n "${PGPORT:-}" ]]; then
+  MODE="ci"
+  DB_PORT="${PGPORT}"
+  echo "[run_tests] Mode=CI, using postgres service on port ${DB_PORT}"
+elif [[ "${RUNTEST_NO_DB:-0}" == "1" ]]; then
+  MODE="nodb"
+  echo "[run_tests] Mode=NO-DB (forced by RUNTEST_NO_DB=1)"
+elif [[ $HAS_DOCKER -eq 1 ]]; then
+  MODE="docker"
   DB_PORT=5432
-  CLEANUP=1
-  echo "[run_tests] Starting local Postgres on port $DB_PORT..."
+  echo "[run_tests] Mode=DOCKER, starting local postgres:${DB_PORT}..."
   docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
   docker run -d --name "$CONTAINER_NAME" \
     -e POSTGRES_USER="$DB_USER" \
     -e POSTGRES_PASSWORD="$DB_PASS" \
     -e POSTGRES_DB="$DB_NAME" \
-    -p "$DB_PORT:5432" \
+    -p "${DB_PORT}:5432" \
     postgres:16-alpine
 
   echo "[run_tests] Waiting for Postgres to become ready..."
@@ -41,21 +48,26 @@ else
     fi
     sleep 1
   done
+else
+  MODE="nodb"
+  echo "[run_tests] Mode=NO-DB (no docker and no CI service available)"
 fi
 
 # -----------------------------------------------------------------------------
-# Environment parity with CI
+# Environment parity (same as CI)
 # -----------------------------------------------------------------------------
 export ASPNETCORE_ENVIRONMENT=CI
 export DOTNET_ENVIRONMENT=CI
 export AppSettings__SeedOnStartup=true
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 
-export ConnectionStrings__Default="Host=$DB_HOST;Port=$DB_PORT;Database=$DB_NAME;Username=$DB_USER;Password=$DB_PASS"
-export TEST_DB_CONN="$ConnectionStrings__Default"
+if [[ "$MODE" != "nodb" ]]; then
+  export ConnectionStrings__Default="Host=$DB_HOST;Port=$DB_PORT;Database=$DB_NAME;Username=$DB_USER;Password=$DB_PASS"
+  export TEST_DB_CONN="$ConnectionStrings__Default"
+fi
 
 # -----------------------------------------------------------------------------
-# .NET build + tests + coverage (identical to CI)
+# .NET restore/build
 # -----------------------------------------------------------------------------
 echo "[run_tests] dotnet --info"
 dotnet --info
@@ -66,17 +78,29 @@ dotnet restore --verbosity minimal
 echo "[run_tests] build"
 dotnet build --no-restore -c Release
 
-echo "[run_tests] test"
+# -----------------------------------------------------------------------------
+# Tests (+ coverage)
+# -----------------------------------------------------------------------------
 rm -rf test-results/dotnet
 mkdir -p test-results/dotnet
 
-dotnet test --no-build -c Release \
-  --logger "trx;LogFileName=test.trx" \
-  --results-directory "test-results/dotnet" \
-  --collect:"XPlat Code Coverage;Format=cobertura"
+if [[ "$MODE" == "nodb" ]]; then
+  echo "[run_tests] No-DB fallback: running only non-DB test projects"
+  # Exclut l'assembly d'API (tests DB) pour que RunTest reste vert sans Postgres
+  dotnet test --no-build -c Release \
+    --filter "FullyQualifiedName!~CineBoutique.Inventory.Api.Tests" \
+    --logger "trx;LogFileName=test.trx" \
+    --results-directory "test-results/dotnet"
+else
+  echo "[run_tests] Full test suite with DB"
+  dotnet test --no-build -c Release \
+    --logger "trx;LogFileName=test.trx" \
+    --results-directory "test-results/dotnet" \
+    --collect:"XPlat Code Coverage;Format=cobertura"
+fi
 
-# Optional HTML coverage report if reportgenerator is installed
-if command -v reportgenerator >/dev/null 2>&1; then
+# Optional HTML coverage (only meaningful in DB mode)
+if [[ "$MODE" != "nodb" ]] && command -v reportgenerator >/dev/null 2>&1; then
   reportgenerator \
     -reports:"test-results/dotnet/**/coverage.cobertura.xml" \
     -targetdir:"test-results/dotnet/coverage-report" \
@@ -88,7 +112,7 @@ echo "[run_tests] done."
 # -----------------------------------------------------------------------------
 # Cleanup local DB
 # -----------------------------------------------------------------------------
-if [[ "$CLEANUP" == "1" ]]; then
+if [[ "$MODE" == "docker" ]]; then
   echo "[run_tests] Stopping local Postgres..."
   docker rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
 fi
