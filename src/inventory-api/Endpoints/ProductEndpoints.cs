@@ -3,16 +3,20 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Data;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Services.Products;
 using CineBoutique.Inventory.Infrastructure.Database;
-using FluentValidation.Results;
 using Dapper;
+using FluentValidation.Results;
+using CsvHelper;
+using CsvHelper.Configuration;
 using Npgsql;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
@@ -438,6 +442,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 }
 
                 Stream? ownedStream = null;
+                Stream? nonDryBufferedStream = null;
                 Stream streamToImport = request.Body;
 
                 try
@@ -478,8 +483,186 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
                 try
                 {
+                    // Map d'équivalences d'entêtes → canonique (insensible à la casse)
+                    var synonyms = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                    {
+                        ["barcode_rfid"] = "ean",
+                        ["ean13"] = "ean",
+                        ["item"] = "sku",
+                        ["code"] = "sku",
+                        ["descr"] = "name",
+                        ["description"] = "name",
+                        ["sous_groupe"] = "sousGroupe",
+                        ["subgroup"] = "sousGroupe",
+                        ["groupe"] = "groupe"
+                    };
+
+                    // Colonnes "métier" reconnues (jeu canonique après normalisation)
+                    var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                      { "sku", "ean", "name", "groupe", "sousGroupe" };
+
+                    // En non-dry, on s'assure que l'entête est bien lue
+                    if (!dryRun)
+                    {
+                        Stream headerStream = streamToImport;
+                        MemoryStream? bufferedNonDryStream = null;
+                        if (!headerStream.CanSeek)
+                        {
+                            bufferedNonDryStream = new MemoryStream();
+                            await headerStream.CopyToAsync(bufferedNonDryStream, cancellationToken).ConfigureAwait(false);
+                            bufferedNonDryStream.Position = 0;
+                            streamToImport = bufferedNonDryStream;
+                            headerStream = bufferedNonDryStream;
+
+                            if (ownedStream is null)
+                            {
+                                ownedStream = bufferedNonDryStream;
+                            }
+                            else
+                            {
+                                nonDryBufferedStream = bufferedNonDryStream;
+                            }
+                        }
+                        else
+                        {
+                            headerStream.Seek(0, SeekOrigin.Begin);
+                        }
+
+                        using (var headerReader = new StreamReader(headerStream, Encoding.Latin1, detectEncodingFromByteOrderMarks: true, bufferSize: 1024, leaveOpen: true))
+                        {
+                            var csvConfiguration = new CsvConfiguration(CultureInfo.InvariantCulture)
+                            {
+                                Delimiter = ";",
+                                BadDataFound = null,
+                                MissingFieldFound = null,
+                                PrepareHeaderForMatch = args =>
+                                {
+                                    var k = (args.Header ?? string.Empty).Trim();
+                                    return synonyms.TryGetValue(k, out var mapped) ? mapped : k;
+                                }
+                            };
+
+                            using var csv = new CsvReader(headerReader, csvConfiguration);
+
+                            try
+                            {
+                                if (csv.Context.Reader.HeaderRecord == null || csv.Context.Reader.HeaderRecord.Length == 0)
+                                {
+                                    csv.Read();
+                                    csv.ReadHeader();
+                                }
+                            }
+                            catch
+                            {
+                                // Tolérance : si l'entête est déjà chargée, on ignore.
+                            }
+                        }
+
+                        if (streamToImport.CanSeek)
+                        {
+                            streamToImport.Seek(0, SeekOrigin.Begin);
+                        }
+                    }
+
+                    if (dryRun)
+                    {
+                        MemoryStream? bufferedStream = null;
+                        Stream inspectionStream;
+                        if (streamToImport.CanSeek)
+                        {
+                            streamToImport.Seek(0, SeekOrigin.Begin);
+                            inspectionStream = streamToImport;
+                        }
+                        else
+                        {
+                            bufferedStream = new MemoryStream();
+                            await streamToImport.CopyToAsync(bufferedStream, cancellationToken).ConfigureAwait(false);
+                            bufferedStream.Position = 0;
+                            inspectionStream = bufferedStream;
+                        }
+
+                        try
+                        {
+                            using (var inspectionReader = new StreamReader(inspectionStream, Encoding.Latin1, detectEncodingFromByteOrderMarks: true, bufferSize: 1024, leaveOpen: true))
+                            {
+                                var csvConfiguration = new CsvConfiguration(CultureInfo.InvariantCulture)
+                                {
+                                    Delimiter = ";",
+                                    BadDataFound = null,
+                                    MissingFieldFound = null,
+                                    PrepareHeaderForMatch = args =>
+                                    {
+                                        var k = (args.Header ?? string.Empty).Trim();
+                                        return synonyms.TryGetValue(k, out var mapped) ? mapped : k;
+                                    }
+                                };
+
+                                using var csv = new CsvReader(inspectionReader, csvConfiguration);
+
+                                var unknown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                                // Assure le chargement de l'entête si besoin
+                                // (selon la config CsvHelper, ReadHeader peut être nécessaire)
+                                try
+                                {
+                                    // Si la lib/ton code lit déjà l'entête en amont, ce ReadHeader sera no-op
+                                    csv.Read();
+                                    csv.ReadHeader();
+                                }
+                                catch
+                                {
+                                    /* on tolère l'absence d'entête */
+                                }
+
+                                var header = csv.Context.Reader.HeaderRecord;
+                                if (header is { Length: > 0 })
+                                {
+                                    foreach (var raw in header)
+                                    {
+                                        if (string.IsNullOrWhiteSpace(raw)) continue;
+                                        var k = synonyms.TryGetValue(raw, out var mapped) ? mapped : raw;
+                                        if (!known.Contains(k)) unknown.Add(k);
+                                    }
+                                }
+
+                                inspectionReader.DiscardBufferedData();
+                                inspectionStream.Seek(0, SeekOrigin.Begin);
+
+                                var dryRunCommand = new ProductImportCommand(inspectionStream, dryRun, username);
+                                var dryRunResult = await importService.ImportAsync(dryRunCommand, cancellationToken).ConfigureAwait(false);
+                                unknown.UnionWith(dryRunResult.Response.UnknownColumns);
+
+                                var response = new
+                                {
+                                    dryRunResult.Response.Total,
+                                    dryRunResult.Response.Inserted,
+                                    dryRunResult.Response.Updated,
+                                    dryRunResult.Response.WouldInsert,
+                                    dryRunResult.Response.ErrorCount,
+                                    dryRunResult.Response.DryRun,
+                                    dryRunResult.Response.Skipped,
+                                    dryRunResult.Response.Errors,
+                                    dryRunResult.Response.ProposedGroups,
+                                    // conserve tes champs de preview existants si tu en as (compteurs, etc.)
+                                    unknownColumns = unknown.OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToArray()
+                                };
+
+                                return Results.Ok(response);
+                            }
+                        }
+                        finally
+                        {
+                            if (bufferedStream is not null)
+                            {
+                                await bufferedStream.DisposeAsync().ConfigureAwait(false);
+                            }
+                        }
+                    }
+
+                    var unknownColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                     var command = new ProductImportCommand(streamToImport, dryRun, username);
                     var result = await importService.ImportAsync(command, cancellationToken).ConfigureAwait(false);
+                    unknownColumns.UnionWith(result.Response.UnknownColumns);
 
                     return result.ResultType switch
                     {
@@ -487,7 +670,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                         ProductImportResultType.Skipped => Results.Json(
                             result.Response,
                             statusCode: StatusCodes.Status204NoContent),
-                        _ => Results.Ok(result.Response)
+                        _ => BuildImportSuccessResult(result.Response, dryRun, unknownColumns)
                     };
                 }
                 catch (ProductImportInProgressException)
@@ -503,6 +686,11 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     if (ownedStream is not null)
                     {
                         await ownedStream.DisposeAsync().ConfigureAwait(false);
+                    }
+
+                    if (nonDryBufferedStream is not null && !ReferenceEquals(nonDryBufferedStream, ownedStream))
+                    {
+                        await nonDryBufferedStream.DisposeAsync().ConfigureAwait(false);
                     }
                 }
             })
@@ -693,6 +881,38 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
                 return operation;
             });
+    }
+
+    private static IResult BuildImportSuccessResult(
+        ProductImportResponse response,
+        bool dryRun,
+        HashSet<string> unknown)
+    {
+        if (!dryRun)
+        {
+            return Results.Ok(response);
+        }
+
+        var orderedUnknown = unknown
+            .OrderBy(static s => s, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var payload = new
+        {
+            response.Total,
+            response.Inserted,
+            response.Updated,
+            response.WouldInsert,
+            response.ErrorCount,
+            response.DryRun,
+            response.Skipped,
+            response.Errors,
+            response.UnknownColumns,
+            response.ProposedGroups,
+            unknownColumns = orderedUnknown
+        };
+
+        return Results.Ok(payload);
     }
 
     private static void MapSuggestProductsEndpoint(IEndpointRouteBuilder app)
