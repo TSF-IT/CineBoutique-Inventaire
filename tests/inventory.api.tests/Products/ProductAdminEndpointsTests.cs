@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -50,17 +51,34 @@ public class ProductAdminEndpointsTests : IClassFixture<TestApiFactory>
     WHERE NOT EXISTS (SELECT 1 FROM upsert)
     RETURNING ""Id"";", new { pid = parentId });
 
-      // Insertion d'un produit minimal (GroupId requis/attendu par ton schéma)
-      await conn.ExecuteAsync(@"
-    INSERT INTO ""Product"" (
-      ""Sku"", ""Name"", ""Ean"", ""GroupId"", ""Attributes"",
-      ""CreatedAtUtc"", ""UpdatedAtUtc""
-    )
-    VALUES (
-      @Sku, @Name, @Ean, @Gid, '{}'::jsonb,
-      NOW() AT TIME ZONE 'UTC', NOW() AT TIME ZONE 'UTC'
-    );",
-        new { Sku = sku, Name = "Produit Count Test", Ean = "3210000999999", Gid = gid });
+      // Détection runtime des colonnes de timestamp
+      var hasCreated = await conn.ExecuteScalarAsync<object>(@"
+    select 1 from information_schema.columns
+    where table_schema='public' and table_name='Product' and column_name='CreatedAtUtc'
+    limit 1;") is not null;
+
+      var hasUpdated = await conn.ExecuteScalarAsync<object>(@"
+    select 1 from information_schema.columns
+    where table_schema='public' and table_name='Product' and column_name='UpdatedAtUtc'
+    limit 1;") is not null;
+
+      // Construit l'INSERT selon les colonnes réellement présentes
+      var cols = new List<string> { "\"Sku\"", "\"Name\"", "\"Ean\"", "\"GroupId\"", "\"Attributes\"" };
+      var vals = new List<string> { "@Sku", "@Name", "@Ean", "@Gid", "'{}'::jsonb" };
+
+      if (hasCreated) { cols.Add("\"CreatedAtUtc\""); vals.Add("NOW() AT TIME ZONE 'UTC'"); }
+      if (hasUpdated) { cols.Add("\"UpdatedAtUtc\""); vals.Add("NOW() AT TIME ZONE 'UTC'"); }
+
+      var insertSql = $@"
+    INSERT INTO ""Product"" ({string.Join(", ", cols)})
+    VALUES ({string.Join(", ", vals)});";
+
+      await conn.ExecuteAsync(insertSql, new {
+        Sku = sku,
+        Name = "Produit Count Test",
+        Ean = "3210000999999",
+        Gid = gid
+      });
     });
 
     // count après
