@@ -715,6 +715,53 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
+            // --- Fast-path douchette RFID/EAN ---
+            // 1) Normalisation légère (enlève espaces et tirets courants des scanners)
+            var qRaw = q;
+            var qTight = System.Text.RegularExpressions.Regex.Replace(qRaw, @"[\s\-_]", "");
+
+            // 2) Si la requête ressemble à un scan (>= 8 chars, pas d'espaces internes),
+            //    on tente d'abord un chemin court très ciblé sur EAN (RFID).
+            if (qTight.Length >= 8)
+            {
+                const string fastSql = @"
+        SELECT p.""Sku"", p.""Ean"", p.""Name"",
+               COALESCE(pgp.""Label"", pg.""Label"") AS ""Group"",
+               CASE WHEN pgp.""Id"" IS NULL THEN NULL ELSE pg.""Label"" END AS ""SubGroup""
+        FROM ""Product"" p
+        LEFT JOIN ""ProductGroup"" pg  ON pg.""Id""  = p.""GroupId""
+        LEFT JOIN ""ProductGroup"" pgp ON pgp.""Id"" = pg.""ParentId""
+        WHERE
+            -- match exact EAN/RFID (prioritaire)
+            p.""Ean"" = @qExact
+            OR p.""Ean"" = @qTight
+            -- puis préfixe si pas d'exact, utile pour certains lecteurs
+            OR p.""Ean"" LIKE @qTightPrefix
+        ORDER BY
+            CASE WHEN p.""Ean"" = @qExact THEN 3
+                 WHEN p.""Ean"" = @qTight THEN 2
+                 WHEN p.""Ean"" LIKE @qTightPrefix THEN 1
+                 ELSE 0 END DESC,
+            p.""Sku""
+        LIMIT @top;";
+
+                var fastRows = await connection.QueryAsync<ProductSuggestionDto>(
+                    new CommandDefinition(
+                        fastSql,
+                        new {
+                            qExact = qRaw,                // ex: "321 0000-00001" si l’app envoie brut
+                            qTight,
+                            qTightPrefix = qTight + "%",
+                            top
+                        },
+                        cancellationToken: cancellationToken
+                    )).ConfigureAwait(false);
+
+                if (fastRows.Any())
+                    return Results.Ok(fastRows);
+            }
+            // --- fin fast-path ---
+
             var sql = @"
 WITH cand AS (
   SELECT
