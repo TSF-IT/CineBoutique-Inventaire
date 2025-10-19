@@ -793,7 +793,6 @@ RETURNING (xmax = 0) AS inserted;
         var lineNumber = 0;
         var totalLines = 0;
         List<HeaderDefinition>? headers = null;
-        var headerCaptured = false;
 
         using var reader = new StreamReader(stream, encoding, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
 
@@ -813,34 +812,6 @@ RETURNING (xmax = 0) AS inserted;
 
                 var headerFields = ParseFields(line);
                 headers = BuildHeaders(headerFields);
-
-                if (!headerCaptured)
-                {
-                    foreach (var header in headers)
-                    {
-                        var original = header.Original?.Trim();
-                        if (string.IsNullOrWhiteSpace(original))
-                        {
-                            continue;
-                        }
-
-                        var canonical = header.Target;
-
-                        if (canonical is not null && KnownColumnNames.Contains(canonical))
-                        {
-                            continue;
-                        }
-
-                        if (KnownColumnNames.Contains(original))
-                        {
-                            continue;
-                        }
-
-                        unknownColumns.Add(original);
-                    }
-
-                    headerCaptured = true;
-                }
 
                 if (!headers.Any(header => string.Equals(header.Target, KnownColumns.Sku, StringComparison.Ordinal)))
                 {
@@ -877,61 +848,79 @@ RETURNING (xmax = 0) AS inserted;
             string? name = null;
             string? group = null;
             string? subGroup = null;
-            var rowDict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            // --- Normalisation et collecte déterministe par ligne ---
+            static string Canon(string? h, IDictionary<string, string> syn)
+            {
+                var k = (h ?? string.Empty).Trim();
+                return syn.TryGetValue(k, out var mapped) ? mapped : k;
+            }
 
+            var rowDict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             for (var i = 0; i < headers.Count; i++)
             {
                 var header = headers[i];
-                var value = fields[i].Trim();
-                var key = header.Target ?? header.Original;
-
-                if (!string.IsNullOrEmpty(key))
-                {
-                    rowDict[key] = value;
-                }
-
-                if (header.Target is null)
+                var key = Canon(header.Target ?? header.Original, HeaderSynonyms);
+                if (string.IsNullOrEmpty(key))
                 {
                     continue;
                 }
 
-                switch (header.Target)
+                var val = (fields[i] ?? string.Empty).Trim();
+
+                // Déduplication : si la même clé canonique apparaît plusieurs fois (ex. ean13 + barcode_rfid),
+                // on garde la 1re valeur non vide.
+                if (rowDict.TryGetValue(key, out var existing))
                 {
-                    case KnownColumns.Sku:
-                        if (!string.IsNullOrWhiteSpace(value))
-                        {
-                            sku ??= value.Trim();
-                        }
-
-                        break;
-                    case KnownColumns.Ean:
-                        ean = string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-                        break;
-                    case KnownColumns.Name:
-                        if (!string.IsNullOrWhiteSpace(value))
-                        {
-                            name = value.Trim();
-                        }
-
-                        break;
-                    case KnownColumns.Group:
-                        group = NormalizeOptional(value);
-                        break;
-                    case KnownColumns.SubGroup:
-                        subGroup = NormalizeOptional(value);
-                        break;
+                    if (string.IsNullOrEmpty(existing) && !string.IsNullOrEmpty(val))
+                    {
+                        rowDict[key] = val;
+                    }
+                }
+                else
+                {
+                    rowDict[key] = val;
                 }
             }
 
-            var attributes = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            foreach (var kvp in rowDict)
+            if (rowDict.TryGetValue(KnownColumns.Sku, out var skuValue) && !string.IsNullOrWhiteSpace(skuValue))
             {
-                if (KnownColumnNames.Contains(kvp.Key))
+                sku ??= skuValue.Trim();
+            }
+
+            if (rowDict.TryGetValue(KnownColumns.Ean, out var eanValue))
+            {
+                ean = string.IsNullOrWhiteSpace(eanValue) ? null : eanValue.Trim();
+            }
+
+            if (rowDict.TryGetValue(KnownColumns.Name, out var nameValue) && !string.IsNullOrWhiteSpace(nameValue))
+            {
+                name = nameValue.Trim();
+            }
+
+            if (rowDict.TryGetValue(KnownColumns.Group, out var groupValue))
+            {
+                group = NormalizeOptional(groupValue);
+            }
+
+            if (rowDict.TryGetValue(KnownColumns.SubGroup, out var subGroupValue))
+            {
+                subGroup = NormalizeOptional(subGroupValue);
+            }
+
+            var attributes = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in rowDict)
+            {
+                if (KnownColumnNames.Contains(kv.Key))
                 {
                     continue;
                 }
 
-                attributes[kvp.Key] = string.IsNullOrWhiteSpace(kvp.Value) ? null : kvp.Value;
+                var val = string.IsNullOrWhiteSpace(kv.Value) ? null : kv.Value;
+                attributes[kv.Key] = val;
+                if (val is not null)
+                {
+                    unknownColumns.Add(kv.Key);
+                }
             }
 
             if (string.IsNullOrWhiteSpace(sku))
