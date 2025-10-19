@@ -478,8 +478,11 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
                 try
                 {
+                    var unknown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                     var command = new ProductImportCommand(streamToImport, dryRun, username);
                     var result = await importService.ImportAsync(command, cancellationToken).ConfigureAwait(false);
+
+                    unknown.UnionWith(result.Response.UnknownColumns);
 
                     return result.ResultType switch
                     {
@@ -487,7 +490,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                         ProductImportResultType.Skipped => Results.Json(
                             result.Response,
                             statusCode: StatusCodes.Status204NoContent),
-                        _ => Results.Ok(result.Response)
+                        _ => BuildImportSuccessResult(result.Response, dryRun, unknown)
                     };
                 }
                 catch (ProductImportInProgressException)
@@ -693,6 +696,38 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
                 return operation;
             });
+    }
+
+    private static IResult BuildImportSuccessResult(
+        ProductImportResponse response,
+        bool dryRun,
+        HashSet<string> unknown)
+    {
+        if (!dryRun)
+        {
+            return Results.Ok(response);
+        }
+
+        var orderedUnknown = unknown
+            .OrderBy(static s => s, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var payload = new
+        {
+            response.Total,
+            response.Inserted,
+            response.Updated,
+            response.WouldInsert,
+            response.ErrorCount,
+            response.DryRun,
+            response.Skipped,
+            response.Errors,
+            response.UnknownColumns,
+            response.ProposedGroups,
+            unknownColumns = orderedUnknown
+        };
+
+        return Results.Ok(payload);
     }
 
     private static void MapSuggestProductsEndpoint(IEndpointRouteBuilder app)
