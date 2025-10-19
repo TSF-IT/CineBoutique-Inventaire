@@ -52,8 +52,14 @@ public class ProductAdminEndpointsTests : IClassFixture<TestApiFactory>
 
       // Insertion d'un produit minimal (GroupId requis/attendu par ton schéma)
       await conn.ExecuteAsync(@"
-    INSERT INTO ""Product"" (""Sku"",""Name"",""Ean"",""GroupId"",""Attributes"")
-    VALUES (@Sku,@Name,@Ean,@Gid,'{}'::jsonb);",
+    INSERT INTO ""Product"" (
+      ""Sku"", ""Name"", ""Ean"", ""GroupId"", ""Attributes"",
+      ""CreatedAtUtc"", ""UpdatedAtUtc""
+    )
+    VALUES (
+      @Sku, @Name, @Ean, @Gid, '{}'::jsonb,
+      NOW() AT TIME ZONE 'UTC', NOW() AT TIME ZONE 'UTC'
+    );",
         new { Sku = sku, Name = "Produit Count Test", Ean = "3210000999999", Gid = gid });
     });
 
