@@ -399,17 +399,53 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
         app.MapPost("/api/products/import", async (
                 Microsoft.AspNetCore.Http.HttpRequest request,
                 System.Data.IDbConnection connection,
-                bool? dryRun,
+                string? dryRun,
                 System.Threading.CancellationToken cancellationToken) =>
             {
+                // Logger local via DI (pas d’injection en signature)
                 var services = request.HttpContext.RequestServices;
-                var loggerFactoryObj = services.GetService(typeof(Microsoft.Extensions.Logging.ILoggerFactory))
-                                      as Microsoft.Extensions.Logging.ILoggerFactory;
-                var log = (loggerFactoryObj != null)
-                    ? loggerFactoryObj.CreateLogger("InventoryApi.ProductImport")
-                    : Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
-                // Sécurise l’option dryRun (nullable) une fois pour toutes
-                var isDryRun = dryRun == true;
+                var loggerFactory = (Microsoft.Extensions.Logging.ILoggerFactory)
+                    services.GetService(typeof(Microsoft.Extensions.Logging.ILoggerFactory))!;
+                var log = loggerFactory?.CreateLogger("InventoryApi.ProductImport")
+                          ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+
+                // Parse robuste du dryRun (JSON garanti en cas d'erreur)
+                bool isDryRun;
+                if (string.IsNullOrWhiteSpace(dryRun))
+                {
+                    isDryRun = false;
+                }
+                else if (bool.TryParse(dryRun, out var b))
+                {
+                    isDryRun = b;
+                }
+                else
+                {
+                    return Results.Problem(
+                        statusCode: 400,
+                        title: "Invalid 'dryRun' query value",
+                        detail: $"'{dryRun}' is not a valid boolean (expected 'true' or 'false').");
+                }
+
+                await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken)
+                    .ConfigureAwait(false);
+
+                // === Ton code existant d'import CSV commence ici ===
+                //  - lecture multipart
+                //  - normalisation d'en-têtes
+                //  - résolution groupe / sous-groupe
+                //  - upserts + merge JSONB
+                //  - utilisation de 'isDryRun' à la place de l'ancien 'dryRun'
+                //  - logs : remplacer 'logger.Log...' éventuels par 'log.Log...'
+                //
+                // NB : là où tu avais "if (dryRun)" / "if (!dryRun)" / "dryRun.Value",
+                // remplace strictement par "isDryRun" / "!isDryRun".
+                //
+                // Exemple de log pour une ligne ignorée (déjà demandé dans C4) :
+                // log.LogWarning("Import: ligne ignorée (sku={Sku}, groupe={Groupe}, sousGroupe={SousGroupe}) — taxonomie introuvable",
+                //                sku, groupe, sousGroupe);
+                // === Ton code existant d'import CSV se termine ici ===
+
                 var httpContext = request.HttpContext;
 
                 if (httpContext is null)
@@ -425,35 +461,6 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
                 }
 
-                static bool TryParseDryRun(HttpRequest req, out bool dryRun, out bool isInvalid)
-                {
-                    dryRun = false;
-                    isInvalid = false;
-
-                    if (!req.Query.TryGetValue("dryRun", out var values) || values.Count == 0)
-                    {
-                        return true;
-                    }
-
-                    var raw = values[^1];
-                    if (string.Equals(raw, "1", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(raw, "true", StringComparison.OrdinalIgnoreCase))
-                    {
-                        dryRun = true;
-                        return true;
-                    }
-
-                    if (string.Equals(raw, "0", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(raw, "false", StringComparison.OrdinalIgnoreCase))
-                    {
-                        dryRun = false;
-                        return true;
-                    }
-
-                    isInvalid = true;
-                    return false;
-                }
-
                 static IResult BuildFailure(string reason) =>
                     Results.BadRequest(ProductImportResponse.Failure(
                         0,
@@ -463,11 +470,6 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                         },
                         ImmutableArray<string>.Empty,
                         ImmutableArray<ProductImportGroupProposal>.Empty));
-
-                if (!TryParseDryRun(request, out var parsedDryRun, out var invalidDryRun) || invalidDryRun)
-                {
-                    return BuildFailure("INVALID_DRY_RUN");
-                }
 
                 Stream? ownedStream = null;
                 Stream? nonDryBufferedStream = null;
@@ -656,7 +658,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                                 inspectionReader.DiscardBufferedData();
                                 inspectionStream.Seek(0, SeekOrigin.Begin);
 
-                                var dryRunCommand = new ProductImportCommand(inspectionStream, parsedDryRun, username);
+                                var dryRunCommand = new ProductImportCommand(inspectionStream, isDryRun, username);
                                 var dryRunResult = await importService.ImportAsync(dryRunCommand, cancellationToken).ConfigureAwait(false);
                                 unknown.UnionWith(dryRunResult.Response.UnknownColumns);
 
@@ -688,7 +690,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     }
 
                     var unknownColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    var command = new ProductImportCommand(streamToImport, parsedDryRun, username);
+                    var command = new ProductImportCommand(streamToImport, isDryRun, username);
                     var result = await importService.ImportAsync(command, cancellationToken).ConfigureAwait(false);
                     unknownColumns.UnionWith(result.Response.UnknownColumns);
 
@@ -698,7 +700,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                         ProductImportResultType.Skipped => Results.Json(
                             result.Response,
                             statusCode: StatusCodes.Status204NoContent),
-                        _ => BuildImportSuccessResult(result.Response, parsedDryRun, unknownColumns)
+                        _ => BuildImportSuccessResult(result.Response, isDryRun, unknownColumns)
                     };
                 }
                 catch (ProductImportInProgressException)
