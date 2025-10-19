@@ -103,8 +103,8 @@ WHERE ""Sku"" = @sku;";
     Assert.NotNull(payload);
     Assert.False(payload!.DryRun);
 
-    // 3) Vérifie en base : Attributes contient TOUT (merge non destructif)
-    using var _ = await _f.WithDbAsync(async conn =>
+    // 3) Vérifie en base : Attributes contient TOUT (merge non destructif) — sans reset DB
+    await _f.WithDbNoResetAsync(async conn =>
     {
       var js = await conn.ExecuteScalarAsync<string>(@"
     SELECT COALESCE(CAST(""Attributes"" AS text), '{}')
