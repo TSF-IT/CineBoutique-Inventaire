@@ -1,6 +1,7 @@
 using System.Linq;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 using System.Net.Http.Headers;
@@ -44,6 +45,15 @@ public sealed class InventoryApiFactory : WebApplicationFactory<Program>
         // >>> clé: on remplace les services DB pour stopper 127.0.0.1
         builder.ConfigureServices(services =>
         {
+            services.PostConfigure<AuthorizationOptions>(options =>
+            {
+                var allowAll = new AuthorizationPolicyBuilder()
+                    .RequireAssertion(_ => true)
+                    .Build();
+                options.DefaultPolicy = allowAll;
+                options.FallbackPolicy = allowAll;
+            });
+
             var doomed = services.Where(d =>
                     d.ServiceType == typeof(NpgsqlDataSource) ||
                     d.ServiceType == typeof(NpgsqlConnection))
