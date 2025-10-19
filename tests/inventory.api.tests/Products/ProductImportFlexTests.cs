@@ -48,6 +48,35 @@ public sealed class ProductImportFlexTests : IClassFixture<TestApiFactory>
   {
     Skip.If(!_f.IsAvailable, _f.SkipReason ?? "Backend d'intégration indisponible.");
 
+    // --- Arrange taxonomie : on crée/maj le groupe "Cafe" et le sous-groupe "Grains"
+    using (var scope = await _f.WithDbAsync(async conn =>
+    {
+        // parent: "Cafe"
+        var parentId = await conn.ExecuteScalarAsync<long>(@"
+      WITH upsert AS (
+        UPDATE ""ProductGroup"" SET ""Label"" = 'Cafe'
+        WHERE ""Code"" = 'cafe'
+        RETURNING ""Id""
+      )
+      INSERT INTO ""ProductGroup"" (""Code"",""Label"")
+      SELECT 'cafe','Cafe'
+      WHERE NOT EXISTS (SELECT 1 FROM upsert)
+      RETURNING ""Id"";");
+
+        // enfant: "Grains" rattaché à "Cafe"
+        await conn.ExecuteAsync(@"
+      WITH upsert AS (
+        UPDATE ""ProductGroup""
+        SET ""Label"" = 'Grains', ""ParentId"" = @pid
+        WHERE ""Code"" = 'grains'
+        RETURNING ""Id""
+      )
+      INSERT INTO ""ProductGroup"" (""Code"",""Label"",""ParentId"")
+      SELECT 'grains','Grains',@pid
+      WHERE NOT EXISTS (SELECT 1 FROM upsert);", new { pid = parentId });
+    }))
+    { /* scope dispose */ }
+
     using var scope = await _f.WithDbAsync(async conn =>
     {
       await _f.UpsertProductAsync(conn, "CB-0001", "Café Grains", "3210000000013", null).ConfigureAwait(false);
