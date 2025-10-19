@@ -11,14 +11,13 @@ const { plugins: _jsxA11yPlugins, parserOptions: _jsxA11yParserOptions, ...jsxA1
   jsxA11y.configs.recommended
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'dev-dist']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
       js.configs.recommended,
       tseslint.configs.recommended,
       react.configs.flat.recommended,
-      reactHooks.configs['recommended-latest'],
       reactRefresh.configs.vite,
       jsxA11yRecommended,
     ],
@@ -28,12 +27,14 @@ export default defineConfig([
     },
     plugins: {
       react,
+      'react-hooks': reactHooks,
       'jsx-a11y': jsxA11y,
     },
     settings: {
       react: { version: 'detect' },
     },
     rules: {
+      ...reactHooks.configs['recommended-latest'].rules,
       'react/button-has-type': 'error',
       'react/react-in-jsx-scope': 'off',
       'jsx-a11y/label-has-associated-control': ['error', { assert: 'either' }],

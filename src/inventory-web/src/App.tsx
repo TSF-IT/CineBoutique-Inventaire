@@ -104,7 +104,7 @@ export const App = () => (
   <AppProviders>
     <AppErrorBoundary>
       {/* Migration React Router v6 → v7 : https://reactrouter.com/upgrading/v6 */}
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <BrowserRouter>
         <AppRoutes />
       </BrowserRouter>
     </AppErrorBoundary>

@@ -1,5 +1,5 @@
 import type { MouseEvent } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { getConflictZoneDetail } from '../../api/inventoryApi'
 import type { ConflictZoneDetail, ConflictZoneItem, ConflictZoneSummary } from '../../types/inventory'
@@ -58,11 +58,16 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
     }
 
     const mediaQuery = window.matchMedia('(max-width: 720px)')
+    const applyMatch = (matches: boolean) => {
+      startTransition(() => {
+        setIsCompact(matches)
+      })
+    }
     const handleChange = (event: MediaQueryListEvent) => {
-      setIsCompact(event.matches)
+      applyMatch(event.matches)
     }
 
-    setIsCompact(mediaQuery.matches)
+    applyMatch(mediaQuery.matches)
 
     if (typeof mediaQuery.addEventListener === 'function') {
       mediaQuery.addEventListener('change', handleChange)
@@ -75,30 +80,38 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
 
   useEffect(() => {
     if (!open || !zone) {
-      setState((current) =>
-        current.status === 'idle' ? current : { status: 'idle', detail: null, error: null },
-      )
+      startTransition(() => {
+        setState((current) =>
+          current.status === 'idle' ? current : { status: 'idle', detail: null, error: null },
+        )
+      })
       return
     }
 
     const abortController = new AbortController()
     let isMounted = true
 
-    setState({ status: 'loading', detail: null, error: null })
+    startTransition(() => {
+      setState({ status: 'loading', detail: null, error: null })
+    })
 
     getConflictZoneDetail(zone.locationId, abortController.signal)
       .then((detail) => {
         if (!isMounted) {
           return
         }
-        setState({ status: 'loaded', detail, error: null })
+        startTransition(() => {
+          setState({ status: 'loaded', detail, error: null })
+        })
       })
       .catch((error: unknown) => {
         if (!isMounted || abortController.signal.aborted) {
           return
         }
         const err = error instanceof Error ? error : new Error('Erreur inconnue')
-        setState({ status: 'error', detail: null, error: err })
+        startTransition(() => {
+          setState({ status: 'error', detail: null, error: err })
+        })
       })
 
     return () => {

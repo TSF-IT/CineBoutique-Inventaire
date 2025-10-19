@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  startTransition,
   useEffect,
   useId,
   useImperativeHandle,
@@ -85,7 +86,9 @@ export const ScannedRow = forwardRef<ScannedRowHandle, ScannedRowProps>(
       if (isEditing) {
         return
       }
-      setDraft(String(qty))
+      startTransition(() => {
+        setDraft(String(qty))
+      })
     }, [isEditing, qty])
 
     const handleChange = (event: ChangeEvent<HTMLInputElement>) => {
