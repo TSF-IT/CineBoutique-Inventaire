@@ -438,22 +438,6 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken)
                     .ConfigureAwait(false);
 
-                // === Ton code existant d'import CSV commence ici ===
-                //  - lecture multipart
-                //  - normalisation d'en-têtes
-                //  - résolution groupe / sous-groupe
-                //  - upserts + merge JSONB
-                //  - utilisation de 'isDryRun' à la place de l'ancien 'dryRun'
-                //  - logs : remplacer 'logger.Log...' éventuels par 'log.Log...'
-                //
-                // NB : là où tu avais "if (dryRun)" / "if (!dryRun)" / "dryRun.Value",
-                // remplace strictement par "isDryRun" / "!isDryRun".
-                //
-                // Exemple de log pour une ligne ignorée (déjà demandé dans C4) :
-                // log.LogWarning("Import: ligne ignorée (sku={Sku}, groupe={Groupe}, sousGroupe={SousGroupe}) — taxonomie introuvable",
-                //                sku, groupe, sousGroupe);
-                // === Ton code existant d'import CSV se termine ici ===
-
                 var httpContext = request.HttpContext;
 
                 if (httpContext is null)
