@@ -640,6 +640,16 @@ RETURNING (xmax = 0) AS inserted;
             var groupId = await ResolveGroupIdAsync(group, subGroup, groupCache, cancellationToken)
                 .ConfigureAwait(false);
 
+            if (groupId is null && (group is not null || subGroup is not null))
+            {
+                _logger.LogWarning(
+                    "Import: ligne ignorée (sku={Sku}, groupe={Groupe}, sousGroupe={SousGroupe}) — groupe/sous-groupe introuvable",
+                    sku,
+                    group,
+                    subGroup);
+                continue;
+            }
+
             skuParameter.Value = sku;
             nameParameter.Value = name;
             eanParameter.Value = normalizedEan ?? (object)DBNull.Value;
