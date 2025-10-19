@@ -896,8 +896,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 });
 
                 return operation;
-            })
-            .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
+            });
     }
 
     private static IResult BuildImportSuccessResult(
