@@ -19,6 +19,7 @@ using CsvHelper;
 using CsvHelper.Configuration;
 using Npgsql;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
@@ -396,17 +397,21 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
     private static void MapImportProductsEndpoint(IEndpointRouteBuilder app)
     {
         app.MapPost("/api/products/import", async (
-                HttpContext httpContext,
-                IProductImportService importService,
-                ILogger logger,
-                CancellationToken cancellationToken) =>
+                Microsoft.AspNetCore.Http.HttpRequest request,
+                System.Data.IDbConnection connection,
+                bool? dryRun,
+                Microsoft.Extensions.Logging.ILoggerFactory loggerFactory,
+                System.Threading.CancellationToken cancellationToken) =>
             {
+                var log = loggerFactory.CreateLogger("InventoryApi.ProductImport");
+                var httpContext = request.HttpContext;
+
                 if (httpContext is null)
                 {
                     return Results.Problem(statusCode: StatusCodes.Status500InternalServerError);
                 }
 
-                var request = httpContext.Request;
+                var importService = httpContext.RequestServices.GetRequiredService<IProductImportService>();
                 const long maxCsvSizeBytes = 25L * 1024L * 1024L;
 
                 if (request.ContentLength is { } contentLength && contentLength > maxCsvSizeBytes)
@@ -453,7 +458,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                         ImmutableArray<string>.Empty,
                         ImmutableArray<ProductImportGroupProposal>.Empty));
 
-                if (!TryParseDryRun(request, out var dryRun, out var invalidDryRun) || invalidDryRun)
+                if (!TryParseDryRun(request, out var parsedDryRun, out var invalidDryRun) || invalidDryRun)
                 {
                     return BuildFailure("INVALID_DRY_RUN");
                 }
@@ -645,7 +650,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                                 inspectionReader.DiscardBufferedData();
                                 inspectionStream.Seek(0, SeekOrigin.Begin);
 
-                                var dryRunCommand = new ProductImportCommand(inspectionStream, dryRun, username);
+                                var dryRunCommand = new ProductImportCommand(inspectionStream, parsedDryRun, username);
                                 var dryRunResult = await importService.ImportAsync(dryRunCommand, cancellationToken).ConfigureAwait(false);
                                 unknown.UnionWith(dryRunResult.Response.UnknownColumns);
 
@@ -677,7 +682,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     }
 
                     var unknownColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    var command = new ProductImportCommand(streamToImport, dryRun, username);
+                    var command = new ProductImportCommand(streamToImport, parsedDryRun, username);
                     var result = await importService.ImportAsync(command, cancellationToken).ConfigureAwait(false);
                     unknownColumns.UnionWith(result.Response.UnknownColumns);
 
@@ -687,7 +692,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                         ProductImportResultType.Skipped => Results.Json(
                             result.Response,
                             statusCode: StatusCodes.Status204NoContent),
-                        _ => BuildImportSuccessResult(result.Response, dryRun, unknownColumns)
+                        _ => BuildImportSuccessResult(result.Response, parsedDryRun, unknownColumns)
                     };
                 }
                 catch (ProductImportInProgressException)
