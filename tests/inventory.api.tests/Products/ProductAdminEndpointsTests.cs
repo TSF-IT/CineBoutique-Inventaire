@@ -20,8 +20,8 @@ public class ProductAdminEndpointsTests : IClassFixture<TestApiFactory>
     var before = System.Text.Json.JsonDocument.Parse(await r0.Content.ReadAsStringAsync())
                   .RootElement.GetProperty("total").GetInt64();
 
-    // --- Arrange taxonomie : groupe "Cafe" + sous-groupe "Grains"
-    await _f.WithDbAsync(async conn =>
+    // --- Arrange taxonomie : groupe "Cafe" + sous-groupe "Grains" (SANS reset DB)
+    await _f.WithDbNoResetAsync(async conn =>
     {
       var parentId = await conn.ExecuteScalarAsync<long>(@"
     WITH upsert AS (
