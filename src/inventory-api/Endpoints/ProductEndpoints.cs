@@ -408,6 +408,8 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 var log = (loggerFactoryObj != null)
                     ? loggerFactoryObj.CreateLogger("InventoryApi.ProductImport")
                     : Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+                // Sécurise l’option dryRun (nullable) une fois pour toutes
+                var isDryRun = dryRun == true;
                 var httpContext = request.HttpContext;
 
                 if (httpContext is null)
@@ -528,7 +530,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                       { "sku", "ean", "name", "groupe", "sousGroupe" };
 
                     // En non-dry, on s'assure que l'entête est bien lue
-                    if (!dryRun)
+                    if (!isDryRun)
                     {
                         Stream headerStream = streamToImport;
                         MemoryStream? bufferedNonDryStream = null;
@@ -590,7 +592,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                         }
                     }
 
-                    if (dryRun)
+                    if (isDryRun)
                     {
                         MemoryStream? bufferedStream = null;
                         Stream inspectionStream;
