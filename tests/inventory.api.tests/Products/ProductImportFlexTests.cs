@@ -29,8 +29,10 @@ public sealed class ProductImportFlexTests : IClassFixture<TestApiFactory>
     client.DefaultRequestHeaders.Remove("X-Admin");
     client.DefaultRequestHeaders.Add("X-Admin", "true");
 
-    var csv = "\"barcode_rfid\";\"item\";\"descr\";\"sous_groupe\";\"couleurSecondaire\"\n" +
-              "\"3210000000013\";\"CB-0001\";\"Café Grains\";\"Cafés grains\";\"Bleu\"";
+    var csv = new StringBuilder()
+      .AppendLine("barcode_rfid;sku;name;couleurSecondaire;packaging;libreX")
+      .AppendLine("321000000002;CB-0002;Café Moulu;Vert;Sachet;foo")
+      .ToString();
 
     using var content = new StringContent(csv, Encoding.UTF8, "text/csv");
     var response = await client.PostAsync("/api/products/import?dryRun=true", content).ConfigureAwait(false);
@@ -91,11 +93,23 @@ WHERE ""Sku"" = @sku;";
     client.DefaultRequestHeaders.Remove("X-Admin");
     client.DefaultRequestHeaders.Add("X-Admin", "true");
 
-    var csv = "\"barcode_rfid\";\"item\";\"descr\";\"sous_groupe\";\"couleurSecondaire\"\n" +
-              "\"3210000000013\";\"CB-0001\";\"Café Grains\";\"Cafés grains\";\"Bleu\"";
+    var csv1 = new StringBuilder()
+      .AppendLine("barcode_rfid;sku;name;groupe;sous_groupe;couleurSecondaire;packaging")
+      .AppendLine("321000000001;CB-0001;Café Grains 1kg;Cafe;Grains;Bleu;Sachet")
+      .ToString();
 
-    using var content = new StringContent(csv, Encoding.UTF8, "text/csv");
-    var response = await client.PostAsync("/api/products/import", content).ConfigureAwait(false);
+    var csv2 = new StringBuilder()
+      .AppendLine("barcode_rfid;sku;name;groupe;sous_groupe;origine")
+      .AppendLine("321000000001;CB-0001;Café Grains 1kg;Cafe;Grains;Colombie")
+      .ToString();
+
+    using var content1 = new StringContent(csv1, Encoding.UTF8, "text/csv");
+    var response1 = await client.PostAsync("/api/products/import", content1).ConfigureAwait(false);
+    Assert.Equal(HttpStatusCode.OK, response1.StatusCode);
+    response1.Dispose();
+
+    using var content2 = new StringContent(csv2, Encoding.UTF8, "text/csv");
+    var response = await client.PostAsync("/api/products/import", content2).ConfigureAwait(false);
 
     Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
