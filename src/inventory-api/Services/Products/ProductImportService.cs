@@ -786,14 +786,15 @@ RETURNING (xmax = 0) AS inserted;
         var rows = new List<ProductCsvRow>();
         var errors = new List<ProductImportError>();
         var seenSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var unknownColumns = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        var unknownColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var headerCaptured = false;
+        var headerMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var proposedGroups = new List<ProductImportGroupProposal>();
         var proposedGroupsSet = new HashSet<GroupKey>(GroupKeyComparer.Instance);
 
         var lineNumber = 0;
         var totalLines = 0;
-        List<HeaderDefinition>? headers = null;
+        List<string>? headers = null;
 
         using var reader = new StreamReader(stream, encoding, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
 
@@ -812,24 +813,33 @@ RETURNING (xmax = 0) AS inserted;
                 }
 
                 var headerFields = ParseFields(line);
-                headers = BuildHeaders(headerFields);
+                headers = headerFields.ToList();
 
-                if (!headers.Any(header => string.Equals(header.Target, KnownColumns.Sku, StringComparison.Ordinal)))
+                headerMap.Clear();
+                for (var i = 0; i < headers.Count; i++)
+                {
+                    var raw = headers[i];
+                    if (string.IsNullOrWhiteSpace(raw))
+                    {
+                        continue;
+                    }
+
+                    var key = HeaderSynonyms.TryGetValue(raw, out var mapped) ? mapped : raw;
+                    if (!headerMap.ContainsKey(key))
+                    {
+                        headerMap[key] = i;
+                    }
+                }
+
+                if (!headerMap.ContainsKey(KnownColumns.Sku))
                 {
                     errors.Add(new ProductImportError(lineNumber, "MISSING_SKU_COLUMN"));
                 }
 
                 if (!headerCaptured)
                 {
-                    foreach (var header in headers)
+                    foreach (var key in headerMap.Keys)
                     {
-                        var raw = (header.Target ?? header.Original)?.Trim();
-                        if (string.IsNullOrWhiteSpace(raw))
-                        {
-                            continue;
-                        }
-
-                        var key = HeaderSynonyms.TryGetValue(raw, out var mapped) ? mapped : raw;
                         if (!KnownColumnNames.Contains(key))
                         {
                             unknownColumns.Add(key);
@@ -870,72 +880,79 @@ RETURNING (xmax = 0) AS inserted;
             string? group = null;
             string? subGroup = null;
 
-            var rowDict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            if (headers.Count > 0)
+            var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var need in new[]
+                   {
+                       KnownColumns.Sku,
+                       KnownColumns.Ean,
+                       KnownColumns.Name,
+                       KnownColumns.Group,
+                       KnownColumns.SubGroup
+                   })
             {
-                for (var i = 0; i < headers.Count; i++)
+                if (!headerMap.TryGetValue(need, out var idx))
                 {
-                    var header = headers[i];
-                    var rawKey = (header.Target ?? header.Original)?.Trim();
-                    if (string.IsNullOrWhiteSpace(rawKey))
-                    {
-                        continue;
-                    }
-
-                    var key = HeaderSynonyms.TryGetValue(rawKey, out var mapped) ? mapped : rawKey;
-                    var val = (fields[i] ?? string.Empty).Trim();
-
-                    // Déduplication : si la même clé canonique apparaît plusieurs fois (ex. ean13 + barcode_rfid),
-                    // on garde la 1re valeur non vide.
-                    if (rowDict.TryGetValue(key, out var existing))
-                    {
-                        if (string.IsNullOrEmpty(existing) && !string.IsNullOrEmpty(val))
-                        {
-                            rowDict[key] = val;
-                        }
-                    }
-                    else
-                    {
-                        rowDict[key] = val;
-                    }
+                    continue;
                 }
+
+                string value;
+                try
+                {
+                    value = fields[idx] ?? string.Empty;
+                }
+                catch
+                {
+                    value = string.Empty;
+                }
+
+                row[need] = value.Trim();
             }
 
-            if (rowDict.TryGetValue(KnownColumns.Sku, out var skuValue) && !string.IsNullOrWhiteSpace(skuValue))
+            if (row.TryGetValue(KnownColumns.Sku, out var skuValue) && !string.IsNullOrWhiteSpace(skuValue))
             {
-                sku ??= skuValue.Trim();
+                sku ??= skuValue;
             }
 
-            if (rowDict.TryGetValue(KnownColumns.Ean, out var eanValue))
+            if (row.TryGetValue(KnownColumns.Ean, out var eanValue))
             {
-                ean = string.IsNullOrWhiteSpace(eanValue) ? null : eanValue.Trim();
+                ean = string.IsNullOrWhiteSpace(eanValue) ? null : eanValue;
             }
 
-            if (rowDict.TryGetValue(KnownColumns.Name, out var nameValue) && !string.IsNullOrWhiteSpace(nameValue))
+            if (row.TryGetValue(KnownColumns.Name, out var nameValue) && !string.IsNullOrWhiteSpace(nameValue))
             {
-                name = nameValue.Trim();
+                name = nameValue;
             }
 
-            if (rowDict.TryGetValue(KnownColumns.Group, out var groupValue))
+            if (row.TryGetValue(KnownColumns.Group, out var groupValue))
             {
                 group = NormalizeOptional(groupValue);
             }
 
-            if (rowDict.TryGetValue(KnownColumns.SubGroup, out var subGroupValue))
+            if (row.TryGetValue(KnownColumns.SubGroup, out var subGroupValue))
             {
                 subGroup = NormalizeOptional(subGroupValue);
             }
 
             var attributes = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
-            foreach (var kv in rowDict)
+            foreach (var key in unknownColumns)
             {
-                if (KnownColumnNames.Contains(kv.Key))
+                if (!headerMap.TryGetValue(key, out var idx))
                 {
                     continue;
                 }
 
-                var val = string.IsNullOrWhiteSpace(kv.Value) ? null : kv.Value;
-                attributes[kv.Key] = val;
+                string value;
+                try
+                {
+                    value = fields[idx] ?? string.Empty;
+                }
+                catch
+                {
+                    value = string.Empty;
+                }
+
+                value = value.Trim();
+                attributes[key] = string.IsNullOrWhiteSpace(value) ? null : value;
             }
 
             if (string.IsNullOrWhiteSpace(sku))
@@ -980,7 +997,8 @@ RETURNING (xmax = 0) AS inserted;
 
         var unknownColumnsImmutable = unknownColumns.Count == 0
             ? EmptyUnknownColumns
-            : ImmutableArray.CreateRange(unknownColumns);
+            : ImmutableArray.CreateRange(
+                unknownColumns.OrderBy(static k => k, StringComparer.OrdinalIgnoreCase));
 
         var proposedGroupsImmutable = proposedGroups.Count == 0
             ? EmptyProposedGroups
@@ -1065,37 +1083,6 @@ RETURNING (xmax = 0) AS inserted;
         }
     }
 
-    private static List<HeaderDefinition> BuildHeaders(IReadOnlyList<string> headerFields)
-    {
-        var headers = new List<HeaderDefinition>(headerFields.Count);
-        var assignedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var field in headerFields)
-        {
-            var original = field.Trim();
-            var normalized = NormalizeHeader(original);
-
-            if (normalized is not null && !assignedTargets.Add(normalized))
-            {
-                normalized = null;
-            }
-
-            headers.Add(new HeaderDefinition(original, normalized));
-        }
-
-        return headers;
-    }
-
-    private static string? NormalizeHeader(string header)
-    {
-        if (string.IsNullOrWhiteSpace(header))
-        {
-            return null;
-        }
-
-        return HeaderSynonyms.TryGetValue(header.Trim(), out var normalized) ? normalized : null;
-    }
-
     private static string? NormalizeOptional(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -1106,8 +1093,6 @@ RETURNING (xmax = 0) AS inserted;
         var trimmed = value.Trim();
         return trimmed.Length == 0 ? null : trimmed;
     }
-
-    private sealed record HeaderDefinition(string Original, string? Target);
 
     private sealed record GroupKey(string? Group, string? SubGroup);
 
