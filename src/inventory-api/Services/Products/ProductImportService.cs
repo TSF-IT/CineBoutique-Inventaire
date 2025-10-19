@@ -787,6 +787,7 @@ RETURNING (xmax = 0) AS inserted;
         var errors = new List<ProductImportError>();
         var seenSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var unknownColumns = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        var headerCaptured = false;
         var proposedGroups = new List<ProductImportGroupProposal>();
         var proposedGroupsSet = new HashSet<GroupKey>(GroupKeyComparer.Instance);
 
@@ -816,6 +817,26 @@ RETURNING (xmax = 0) AS inserted;
                 if (!headers.Any(header => string.Equals(header.Target, KnownColumns.Sku, StringComparison.Ordinal)))
                 {
                     errors.Add(new ProductImportError(lineNumber, "MISSING_SKU_COLUMN"));
+                }
+
+                if (!headerCaptured)
+                {
+                    foreach (var header in headers)
+                    {
+                        var raw = (header.Target ?? header.Original)?.Trim();
+                        if (string.IsNullOrWhiteSpace(raw))
+                        {
+                            continue;
+                        }
+
+                        var key = HeaderSynonyms.TryGetValue(raw, out var mapped) ? mapped : raw;
+                        if (!KnownColumnNames.Contains(key))
+                        {
+                            unknownColumns.Add(key);
+                        }
+                    }
+
+                    headerCaptured = true;
                 }
 
                 continue;
@@ -848,37 +869,35 @@ RETURNING (xmax = 0) AS inserted;
             string? name = null;
             string? group = null;
             string? subGroup = null;
-            // --- Normalisation et collecte déterministe par ligne ---
-            static string Canon(string? h, IDictionary<string, string> syn)
-            {
-                var k = (h ?? string.Empty).Trim();
-                return syn.TryGetValue(k, out var mapped) ? mapped : k;
-            }
 
             var rowDict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < headers.Count; i++)
+            if (headers.Count > 0)
             {
-                var header = headers[i];
-                var key = Canon(header.Target ?? header.Original, HeaderSynonyms);
-                if (string.IsNullOrEmpty(key))
+                for (var i = 0; i < headers.Count; i++)
                 {
-                    continue;
-                }
+                    var header = headers[i];
+                    var rawKey = (header.Target ?? header.Original)?.Trim();
+                    if (string.IsNullOrWhiteSpace(rawKey))
+                    {
+                        continue;
+                    }
 
-                var val = (fields[i] ?? string.Empty).Trim();
+                    var key = HeaderSynonyms.TryGetValue(rawKey, out var mapped) ? mapped : rawKey;
+                    var val = (fields[i] ?? string.Empty).Trim();
 
-                // Déduplication : si la même clé canonique apparaît plusieurs fois (ex. ean13 + barcode_rfid),
-                // on garde la 1re valeur non vide.
-                if (rowDict.TryGetValue(key, out var existing))
-                {
-                    if (string.IsNullOrEmpty(existing) && !string.IsNullOrEmpty(val))
+                    // Déduplication : si la même clé canonique apparaît plusieurs fois (ex. ean13 + barcode_rfid),
+                    // on garde la 1re valeur non vide.
+                    if (rowDict.TryGetValue(key, out var existing))
+                    {
+                        if (string.IsNullOrEmpty(existing) && !string.IsNullOrEmpty(val))
+                        {
+                            rowDict[key] = val;
+                        }
+                    }
+                    else
                     {
                         rowDict[key] = val;
                     }
-                }
-                else
-                {
-                    rowDict[key] = val;
                 }
             }
 
@@ -917,10 +936,6 @@ RETURNING (xmax = 0) AS inserted;
 
                 var val = string.IsNullOrWhiteSpace(kv.Value) ? null : kv.Value;
                 attributes[kv.Key] = val;
-                if (val is not null)
-                {
-                    unknownColumns.Add(kv.Key);
-                }
             }
 
             if (string.IsNullOrWhiteSpace(sku))
