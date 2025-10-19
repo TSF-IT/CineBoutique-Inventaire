@@ -409,7 +409,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 var log = loggerFactory?.CreateLogger("InventoryApi.ProductImport")
                           ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
 
-                // Parse robuste du dryRun (JSON garanti en cas d'erreur)
+                // Parsing robuste du paramètre dryRun (depuis la query)
                 bool isDryRun;
                 if (string.IsNullOrWhiteSpace(dryRun))
                 {
@@ -421,10 +421,18 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 }
                 else
                 {
-                    return Results.Problem(
-                        statusCode: 400,
-                        title: "Invalid 'dryRun' query value",
-                        detail: $"'{dryRun}' is not a valid boolean (expected 'true' or 'false').");
+                    // ✨ Contrat attendu par les tests : enveloppe Errors[]
+                    return Results.BadRequest(new
+                    {
+                        Errors = new[]
+                        {
+                            new {
+                                Reason  = "INVALID_DRY_RUN",
+                                Message = $"'{dryRun}' is not a valid boolean (expected 'true' or 'false').",
+                                Field   = "dryRun"
+                            }
+                        }
+                    });
                 }
 
                 await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken)
@@ -729,10 +737,10 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
     private static IResult BuildImportSuccessResult(
         ProductImportResponse response,
-        bool dryRun,
+        bool isDryRun,
         HashSet<string> unknown)
     {
-        if (!dryRun)
+        if (!isDryRun)
         {
             return Results.Ok(response);
         }
