@@ -535,59 +535,55 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                                 var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                                   { "sku","ean","name","groupe","sousGroupe" };
 
-                                // Si dry-run: on NE lit PAS les lignes; on ne fait qu'inspecter l'entête normalisée.
-                                if (dryRun)
+                                var unknown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                                // Assure le chargement de l'entête si besoin
+                                // (selon la config CsvHelper, ReadHeader peut être nécessaire)
+                                try
                                 {
-                                    var unknown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-                                    // Assure le chargement de l'entête si besoin
-                                    // (selon la config CsvHelper, ReadHeader peut être nécessaire)
-                                    try
-                                    {
-                                        // Si la lib/ton code lit déjà l'entête en amont, ce ReadHeader sera no-op
-                                        csv.Read();
-                                        csv.ReadHeader();
-                                    }
-                                    catch
-                                    {
-                                        /* on tolère l'absence d'entête */
-                                    }
-
-                                    var header = csv.Context.Reader.HeaderRecord;
-                                    if (header is { Length: > 0 })
-                                    {
-                                        foreach (var raw in header)
-                                        {
-                                            if (string.IsNullOrWhiteSpace(raw)) continue;
-                                            var k = synonyms.TryGetValue(raw, out var mapped) ? mapped : raw;
-                                            if (!known.Contains(k)) unknown.Add(k);
-                                        }
-                                    }
-
-                                    inspectionReader.DiscardBufferedData();
-                                    inspectionStream.Seek(0, SeekOrigin.Begin);
-
-                                    var dryRunCommand = new ProductImportCommand(inspectionStream, dryRun, username);
-                                    var dryRunResult = await importService.ImportAsync(dryRunCommand, cancellationToken).ConfigureAwait(false);
-                                    unknown.UnionWith(dryRunResult.Response.UnknownColumns);
-
-                                    var response = new
-                                    {
-                                        dryRunResult.Response.Total,
-                                        dryRunResult.Response.Inserted,
-                                        dryRunResult.Response.Updated,
-                                        dryRunResult.Response.WouldInsert,
-                                        dryRunResult.Response.ErrorCount,
-                                        dryRunResult.Response.DryRun,
-                                        dryRunResult.Response.Skipped,
-                                        dryRunResult.Response.Errors,
-                                        dryRunResult.Response.ProposedGroups,
-                                        // conserve tes champs de preview existants si tu en as (compteurs, etc.)
-                                        unknownColumns = unknown.OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToArray()
-                                    };
-
-                                    return Results.Ok(response);
+                                    // Si la lib/ton code lit déjà l'entête en amont, ce ReadHeader sera no-op
+                                    csv.Read();
+                                    csv.ReadHeader();
                                 }
+                                catch
+                                {
+                                    /* on tolère l'absence d'entête */
+                                }
+
+                                var header = csv.Context.Reader.HeaderRecord;
+                                if (header is { Length: > 0 })
+                                {
+                                    foreach (var raw in header)
+                                    {
+                                        if (string.IsNullOrWhiteSpace(raw)) continue;
+                                        var k = synonyms.TryGetValue(raw, out var mapped) ? mapped : raw;
+                                        if (!known.Contains(k)) unknown.Add(k);
+                                    }
+                                }
+
+                                inspectionReader.DiscardBufferedData();
+                                inspectionStream.Seek(0, SeekOrigin.Begin);
+
+                                var dryRunCommand = new ProductImportCommand(inspectionStream, dryRun, username);
+                                var dryRunResult = await importService.ImportAsync(dryRunCommand, cancellationToken).ConfigureAwait(false);
+                                unknown.UnionWith(dryRunResult.Response.UnknownColumns);
+
+                                var response = new
+                                {
+                                    dryRunResult.Response.Total,
+                                    dryRunResult.Response.Inserted,
+                                    dryRunResult.Response.Updated,
+                                    dryRunResult.Response.WouldInsert,
+                                    dryRunResult.Response.ErrorCount,
+                                    dryRunResult.Response.DryRun,
+                                    dryRunResult.Response.Skipped,
+                                    dryRunResult.Response.Errors,
+                                    dryRunResult.Response.ProposedGroups,
+                                    // conserve tes champs de preview existants si tu en as (compteurs, etc.)
+                                    unknownColumns = unknown.OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToArray()
+                                };
+
+                                return Results.Ok(response);
                             }
                         }
                         finally
