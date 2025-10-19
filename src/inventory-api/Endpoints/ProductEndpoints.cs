@@ -717,7 +717,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     }
                 }
             })
-            .RequireAuthorization();
+           .RequireAuthorization();
     }
 
     private static IResult BuildImportSuccessResult(
