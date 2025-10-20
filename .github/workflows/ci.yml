@@ -19,31 +19,60 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgres:16-alpine
-        ports:
-          - 5432/tcp
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: cineboutique
-        options: >-
-          --health-cmd "pg_isready -U postgres -d cineboutique"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 30
-          --name ci-postgres
-
     env:
       ASPNETCORE_ENVIRONMENT: CI
       DOTNET_ENVIRONMENT: CI
       AppSettings__SeedOnStartup: true
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      PGPORT: 5432
+      ConnectionStrings__Default: Host=localhost;Port=5432;Database=inventory;Username=postgres;Password=postgres
+      ConnectionStrings__Inventory: Host=localhost;Port=5432;Database=inventory;Username=postgres;Password=postgres
+      InventoryDb__ConnectionString: Host=localhost;Port=5432;Database=inventory;Username=postgres;Password=postgres
+      Database__ConnectionString: Host=localhost;Port=5432;Database=inventory;Username=postgres;Password=postgres
+      AppSettings__Db__ConnectionString: Host=localhost;Port=5432;Database=inventory;Username=postgres;Password=postgres
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup PostgreSQL (no container)
+        uses: ankane/setup-postgres@v1
+        with:
+          postgres-version: 16
+          database: inventory
+
+      - name: Init CI DB user/password (mirror docker-compose env)
+        shell: bash
+        run: |
+          # Crée/MAJ le superuser 'postgres' + droits sur DB 'inventory' (heredoc littéral = pas d'expansion)
+          psql -d postgres <<'SQL'
+          DO $do$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='postgres') THEN
+              CREATE ROLE postgres WITH LOGIN SUPERUSER PASSWORD 'postgres';
+            ELSE
+              ALTER ROLE postgres WITH PASSWORD 'postgres';
+            END IF;
+          END
+          $do$;
+          GRANT ALL PRIVILEGES ON DATABASE inventory TO postgres;
+          SQL
+
+      - name: Sanity check DB (inventory)
+        shell: bash
+        run: |
+          psql -d inventory -c "select current_database(), current_user;"
+
+      - name: Wait for PostgreSQL
+        shell: bash
+        run: |
+          for i in {1..30}; do
+            if psql -d postgres -c 'select 1' >/dev/null 2>&1; then
+              echo "DB ready"; exit 0;
+            fi
+            sleep 1
+          done
+          echo "DB not ready in time"; exit 1
 
       - name: Setup .NET from global.json
         uses: actions/setup-dotnet@v4
@@ -56,9 +85,9 @@ jobs:
 
       - name: Export DB env (build the conn string with mapped port)
         run: |
-          echo "PGPORT=${{ job.services.postgres.ports['5432'] }}" >> $GITHUB_ENV
-          echo "ConnectionStrings__Default=Host=127.0.0.1;Port=${{ job.services.postgres.ports['5432'] }};Database=cineboutique;Username=postgres;Password=postgres" >> $GITHUB_ENV
-          echo "TEST_DB_CONN=Host=127.0.0.1;Port=${{ job.services.postgres.ports['5432'] }};Database=cineboutique;Username=postgres;Password=postgres" >> $GITHUB_ENV
+          echo "PGPORT=5432" >> $GITHUB_ENV
+          echo "ConnectionStrings__Default=Host=127.0.0.1;Port=5432;Database=inventory;Username=postgres;Password=postgres" >> $GITHUB_ENV
+          echo "TEST_DB_CONN=Host=127.0.0.1;Port=5432;Database=inventory;Username=postgres;Password=postgres" >> $GITHUB_ENV
 
       - name: Dotnet info
         run: |
@@ -98,15 +127,15 @@ jobs:
             -reporttypes:'HtmlInline;Cobertura'
 
       - name: Upload TRX
-        uses: actions/upload-artifact@v4
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: test-trx
           path: test-results/dotnet/**/*.trx
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
         if: always()
+        uses: actions/upload-artifact@v4
         with:
           name: coverage-report
           path: test-results/dotnet/coverage-report/**

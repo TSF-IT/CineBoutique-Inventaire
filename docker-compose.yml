@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: public.ecr.aws/docker/library/postgres:16-alpine
     container_name: inventory-db
     ports:
       - "55432:5432"
@@ -42,6 +42,8 @@ services:
     build:
       context: ./src/inventory-web
       dockerfile: Dockerfile
+      args:
+        BASE_REG: public.ecr.aws/docker/library
     container_name: inventory-web
     depends_on:
       api:
