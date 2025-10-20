@@ -10,7 +10,7 @@
       },
       "FluentMigrator.Runner": {
         "type": "Direct",
-        "requested": "[5.3.2, )",
+        "requested": "[6.0.0, )",
         "resolved": "6.0.0",
         "contentHash": "yGBo61m6JtdctaPCUHjGf7e5mcezhmtDq3u4JRg8Lm0jFHhlO6svRooJMp7fKWBFsWsg0kyz5L/XJAIcHPmO6w==",
         "dependencies": {
@@ -30,7 +30,7 @@
       },
       "FluentMigrator.Runner.Postgres": {
         "type": "Direct",
-        "requested": "[5.3.2, )",
+        "requested": "[6.0.0, )",
         "resolved": "6.0.0",
         "contentHash": "ZOvsi37YKgd4D3mnCFpGKbrjp3blVvP4OqCVToHAL/YU5ObV2w5sW5wXw5nuyzuTIVTBKPXI149XDlF0wDM0Kw==",
         "dependencies": {

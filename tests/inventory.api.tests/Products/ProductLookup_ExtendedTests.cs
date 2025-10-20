@@ -94,6 +94,7 @@ public sealed class ProductLookup_ExtendedTests : IntegrationTestBase
         product.Name.Should().Be("Code suffixé alpha");
         product.Ean.Should().Be(rawCodeWithSuffix);
     }
+    private static readonly string[] expected = ["LKP-AMB-001", "LKP-AMB-002"];
 
     [SkippableFact]
     public async Task GetProduct_DigitsConflict_ReturnsAmbiguityPayload()
@@ -115,7 +116,7 @@ public sealed class ProductLookup_ExtendedTests : IntegrationTestBase
         conflict.Code.Should().Be("5905954595389");
         conflict.Digits.Should().Be("5905954595389");
         conflict.Matches.Should().HaveCountGreaterOrEqualTo(2);
-        conflict.Matches.Select(m => m.Sku).Should().Contain(new[] { "LKP-AMB-001", "LKP-AMB-002" });
+        conflict.Matches.Select(m => m.Sku).Should().Contain(expected);
     }
 
     [SkippableFact]

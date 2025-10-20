@@ -17,6 +17,7 @@ public sealed class OpenApiContractTests : IntegrationTestBase
     {
         UseFixture(fixture);
     }
+    private static readonly string[] expectation = new[] { "sku", "name" };
 
     [SkippableFact]
     public async Task Swagger_ExposeExpectedProductContract()
@@ -79,7 +80,7 @@ public sealed class OpenApiContractTests : IntegrationTestBase
         document.Components.Schemas.Should().ContainKey("ProductSearchItemDto");
         var searchSchema = document.Components.Schemas["ProductSearchItemDto"];
         searchSchema.Type.Should().Be("object");
-        searchSchema.Required.Should().BeEquivalentTo(new[] { "sku", "name" });
+        searchSchema.Required.Should().BeEquivalentTo(expectation);
         searchSchema.Properties.Should().ContainKeys("sku", "code", "name");
         searchSchema.Properties["sku"].Nullable.Should().BeFalse();
         searchSchema.Properties["code"].Nullable.Should().BeTrue();

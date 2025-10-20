@@ -164,10 +164,7 @@ public sealed class ImportProductsCsv_HardeningTests : IntegrationTestBase
 
         public LargeTestStream(long length)
         {
-            if (length <= 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(length));
-            }
+            ArgumentOutOfRangeException.ThrowIfNegativeOrZero(length);
 
             _length = length;
         }

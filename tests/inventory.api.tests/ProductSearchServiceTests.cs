@@ -54,8 +54,7 @@ public sealed class ProductSearchServiceTests
         var service = CreateService(out _);
 
         var results = await service
-            .SearchAsync("   ", 5, hasPaging: false, pageSize: 50, offset: 0, CancellationToken.None)
-            .ConfigureAwait(false);
+            .SearchAsync("   ", 5, hasPaging: false, pageSize: 50, offset: 0, CancellationToken.None);
 
         results.Should().BeEmpty();
     }
@@ -77,8 +76,7 @@ public sealed class ProductSearchServiceTests
         repository.SearchResults = Array.Empty<ProductLookupItem>();
 
         var results = await service
-            .SearchAsync("code", 25, hasPaging: true, pageSize: 80, offset: 160, CancellationToken.None)
-            .ConfigureAwait(false);
+            .SearchAsync("code", 25, hasPaging: true, pageSize: 80, offset: 160, CancellationToken.None);
 
         results.Should().BeEmpty();
         repository.LastHasPaging.Should().BeTrue();
