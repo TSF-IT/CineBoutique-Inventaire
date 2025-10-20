@@ -70,6 +70,9 @@
 .modal {
   width: min(96vw, 1100px);
   max-height: 90dvh;
+  margin: auto;
+  align-self: center;
+  justify-self: center;
 }
 
 .conflict-modal {
