@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Shop } from '@/types/shop'
@@ -68,6 +68,8 @@ vi.mock('react-router-dom', async (importOriginal) => {
 describe('SelectShopPage', () => {
   const cineShop: Shop = { id: '11111111-1111-1111-1111-111111111111', name: 'CinéBoutique Paris' }
   const lumiereShop: Shop = { id: '22222222-2222-2222-2222-222222222222', name: 'Lumière Lyon' }
+  const bellecourShop: Shop = { id: '33333333-3333-3333-3333-333333333333', name: 'Cinéma Bellecour' }
+  const royalShop: Shop = { id: '44444444-4444-4444-4444-444444444444', name: 'Cinéma Le Royal' }
 
   beforeEach(() => {
     fetchShopsMock.mockReset()
@@ -162,6 +164,17 @@ describe('SelectShopPage', () => {
     expect(resetInventoryFn).not.toHaveBeenCalled()
     expect(clearSelectedUserMock).not.toHaveBeenCalled()
     expect(navigateMock).not.toHaveBeenCalled()
+  })
+
+  it("considère les boutiques sans mot-clé explicite comme faisant partie de l’entité Lumière", async () => {
+    fetchShopsMock.mockResolvedValueOnce([cineShop, bellecourShop, royalShop])
+
+    renderPage()
+
+    const lumiereCard = await screen.findByRole('radio', { name: /Lumière/i })
+    expect(lumiereCard).not.toHaveAttribute('disabled')
+    expect(lumiereCard).toHaveAttribute('aria-disabled', 'false')
+    expect(within(lumiereCard).getByText('2 boutiques disponibles')).toBeInTheDocument()
   })
 
   it('affiche un message d’erreur et permet de réessayer le chargement', async () => {

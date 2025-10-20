@@ -10,7 +10,7 @@ import type { Shop } from '@/types/shop'
 import { useShop } from '@/state/ShopContext'
 import { clearSelectedUserForShop } from '@/lib/selectedUserStorage'
 import { useInventory } from '@/app/contexts/InventoryContext'
-import { ENTITY_DEFINITIONS, type EntityDefinition, type EntityId } from './entities'
+import { buildEntityCards, type EntityCardModel, type EntityId } from './entities'
 
 const DEFAULT_ERROR_MESSAGE = "Impossible de charger les boutiques."
 const INVALID_GUID_ERROR_MESSAGE = 'Identifiant de boutique invalide. Vérifie le code et réessaie.'
@@ -23,12 +23,6 @@ type LoadingState = 'idle' | 'loading' | 'error'
 type RedirectState = {
   redirectTo?: string
 } | null
-
-type EntityCard = {
-  definition: EntityDefinition
-  matches: Shop[]
-  primaryShop: Shop | null
-}
 
 type EntityTheme = {
   selected: string
@@ -131,19 +125,10 @@ export const SelectShopPage = () => {
       ac.abort('route-change')
     }
   }, [retryCount])
-  const entityCards = useMemo(() => {
-    return ENTITY_DEFINITIONS.map<EntityCard>((definition) => {
-      const matches = shops.filter((item) => definition.match(item))
-      return {
-        definition,
-        matches,
-        primaryShop: matches[0] ?? null,
-      }
-    })
-  }, [shops])
+  const entityCards = useMemo(() => buildEntityCards(shops), [shops])
 
   const entityByShopId = useMemo(() => {
-    const map = new Map<string, EntityCard>()
+    const map = new Map<string, EntityCardModel>()
     for (const card of entityCards) {
       for (const candidate of card.matches) {
         map.set(candidate.id, card)
@@ -261,7 +246,7 @@ export const SelectShopPage = () => {
   )
 
   const handleEntitySelection = useCallback(
-    (entity: EntityCard) => {
+    (entity: EntityCardModel) => {
       if (!entity.primaryShop) {
         setSelectionError("Cette entité n’est pas encore disponible.")
         focusFirstAvailableCard()
