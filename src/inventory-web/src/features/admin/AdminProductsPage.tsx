@@ -31,6 +31,13 @@ export function AdminProductsPage() {
   // Ouvre automatiquement quand des données arrivent
   const isOpen = useMemo(() => open || count > 0, [open, count]);
 
+  const getAriaSort = (column: "sku" | "name" | "ean"): "none" | "ascending" | "descending" => {
+    if (sortKey !== column) {
+      return "none";
+    }
+    return sortDir === "asc" ? "ascending" : "descending";
+  };
+
   return (
     <section style={{ display: "grid", gap: 12 }}>
       <header style={{ display:"flex", alignItems:"center", gap:12 }}>
@@ -69,13 +76,13 @@ export function AdminProductsPage() {
           <table style={{ width:"100%", borderCollapse:"collapse" }}>
             <thead>
               <tr>
-                <th style={{ textAlign:"left", cursor:"pointer" }} aria-sort={sortKey==="ean"?sortDir:"none"} onClick={()=>onSort("ean")}>
+                <th style={{ textAlign:"left", cursor:"pointer" }} aria-sort={getAriaSort("ean")} onClick={()=>onSort("ean")}>
                   EAN {sortKey==="ean" ? (sortDir==="asc"?"▲":"▼") : ""}
                 </th>
-                <th style={{ textAlign:"left", cursor:"pointer" }} aria-sort={sortKey==="sku"?sortDir:"none"} onClick={()=>onSort("sku")}>
+                <th style={{ textAlign:"left", cursor:"pointer" }} aria-sort={getAriaSort("sku")} onClick={()=>onSort("sku")}>
                   SKU {sortKey==="sku" ? (sortDir==="asc"?"▲":"▼") : ""}
                 </th>
-                <th style={{ textAlign:"left", cursor:"pointer" }} aria-sort={sortKey==="name"?sortDir:"none"} onClick={()=>onSort("name")}>
+                <th style={{ textAlign:"left", cursor:"pointer" }} aria-sort={getAriaSort("name")} onClick={()=>onSort("name")}>
                   Nom {sortKey==="name" ? (sortDir==="asc"?"▲":"▼") : ""}
                 </th>
                 <th style={{ textAlign:"left" }}>Groupe</th>
