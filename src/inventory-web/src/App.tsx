@@ -11,6 +11,7 @@ import { AdminLocationsPage } from './app/pages/admin/AdminLocationsPage'
 import { ProductScanSearch } from './features/products/ProductScanSearch'
 import { AdminProductsPage } from './features/admin/AdminProductsPage'
 import { AppErrorBoundary } from './app/components/AppErrorBoundary'
+import { ProductImportPage } from "./features/import/ProductImportPage"
 import { ScanSimulationPage } from './app/pages/debug/ScanSimulationPage'
 import { LoadingIndicator } from './app/components/LoadingIndicator'
 import { SelectShopPage } from './app/pages/select-shop/SelectShopPage'
@@ -93,6 +94,7 @@ export const AppRoutes = () => {
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<AdminLocationsPage />} />
           <Route path="products" element={<AdminProductsPage />} />
+          <Route path="/admin/import" element={<ProductImportPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
