@@ -19,7 +19,7 @@ using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests.Products;
 
-[Collection("db")]
+[Collection("ApiSerial")]
 public sealed class ImportProductsCsvTests : IntegrationTestBase
 {
     private static readonly string[] InitialCsvLines =
