@@ -56,7 +56,7 @@ public sealed class ShopUsersController : ControllerBase
                 "shop_users.create.success",
                 cancellationToken).ConfigureAwait(false);
 
-            return Created($"/api/shops/{shopId}/users/{created.Id}", created);
+            return Created(new Uri($"/api/shops/{shopId}/users/{created.Id}", UriKind.Relative), created);
         }
         catch (ShopNotFoundException ex)
         {

@@ -101,6 +101,14 @@ export default defineConfig(({ command }) => {
       sourcemap: false,
       reportCompressedSize: false,
       chunkSizeWarningLimit: 1500,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            react: ['react', 'react-dom'],
+            zod: ['zod'],
+          },
+        },
+      },
     },
     test: {
       environment: 'jsdom',

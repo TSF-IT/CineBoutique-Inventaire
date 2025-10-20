@@ -1,3 +1,4 @@
+import { Suspense, lazy } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppProviders } from './app/providers/AppProviders'
 import { HomePage } from './app/pages/home/HomePage'
@@ -9,10 +10,8 @@ import { ScanCameraPage } from './app/pages/inventory/ScanCameraPage'
 import { AdminLayout } from './app/pages/admin/AdminLayout'
 import { AdminLocationsPage } from './app/pages/admin/AdminLocationsPage'
 import { ProductScanSearch } from './features/products/ProductScanSearch'
-import { AdminProductsPage } from './features/admin/AdminProductsPage'
 import { AppErrorBoundary } from './app/components/AppErrorBoundary'
-import { ProductImportPage } from "./features/import/ProductImportPage"
-import { ProductDetailsPage } from "./features/products/ProductDetailsPage"
+import { ProductDetailsPage } from './features/products/ProductDetailsPage'
 import { ScanSimulationPage } from './app/pages/debug/ScanSimulationPage'
 import { LoadingIndicator } from './app/components/LoadingIndicator'
 import { SelectShopPage } from './app/pages/select-shop/SelectShopPage'
@@ -22,6 +21,18 @@ import RequireShop from '@/app/router/RequireShop'
 import RequireUser from '@/app/router/RequireUser'
 import RequireInventorySession from '@/app/router/RequireInventorySession'
 import { loadSelectedUserForShop } from '@/lib/selectedUserStorage'
+
+const AdminProductsPage = lazy(() =>
+  import('./features/admin/AdminProductsPage').then((module) => ({
+    default: module.AdminProductsPage,
+  })),
+)
+
+const ProductImportPage = lazy(() =>
+  import('./features/import/ProductImportPage').then((module) => ({
+    default: module.ProductImportPage,
+  })),
+)
 
 const BypassSelect = () => {
   const { shop, isLoaded } = useShop()
@@ -71,36 +82,47 @@ export const AppRoutes = () => {
     return <ScanSimulationPage />
   }
 
+  const suspenseFallback = (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10 dark:bg-slate-950">
+      <LoadingIndicator label="Chargement de l’application…" />
+    </div>
+  )
+
   return (
-    <Routes>
-      <Route path="/select-shop" element={<BypassSelect />} />
-      <Route element={<RequireShop />}>
-        <Route path="/select-user" element={<SelectUserPage />} />
-        <Route path="/inventory/start" element={<Navigate to="/select-shop" replace />} />
-        {/* Tout ce qui nécessite un user va ici */}
-        <Route element={<RequireUser />}>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/inventory" element={<InventoryLayout />}>
-            <Route index element={<Navigate to="count-type" replace />} />
-            <Route path="location" element={<InventoryLocationStep />} />
-            <Route path="count-type" element={<InventoryCountTypeStep />} />
-            <Route element={<RequireInventorySession />}>
-              <Route path="session" element={<InventorySessionPage />} />
-              <Route path="scan-camera" element={<ScanCameraPage />} />
+    <Suspense fallback={suspenseFallback}>
+      <Routes>
+        <Route path="/select-shop" element={<BypassSelect />} />
+        <Route element={<RequireShop />}>
+          <Route path="/select-user" element={<SelectUserPage />} />
+          <Route path="/inventory/start" element={<Navigate to="/select-shop" replace />} />
+          {/* Tout ce qui nécessite un user va ici */}
+          <Route element={<RequireUser />}>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/inventory" element={<InventoryLayout />}>
+              <Route index element={<Navigate to="count-type" replace />} />
+              <Route path="location" element={<InventoryLocationStep />} />
+              <Route path="count-type" element={<InventoryCountTypeStep />} />
+              <Route element={<RequireInventorySession />}>
+                <Route path="session" element={<InventorySessionPage />} />
+                <Route path="scan-camera" element={<ScanCameraPage />} />
+              </Route>
             </Route>
+            <Route path="/products/:sku" element={<ProductDetailsPage />} />
+            <Route
+              path="/scan"
+              element={<ProductScanSearch onPick={(sku) => console.log('picked', sku)} />}
+            />
           </Route>
-          <Route path="/products/:sku" element={<ProductDetailsPage />} />
-          <Route path="/scan" element={<ProductScanSearch onPick={(sku) => console.log('picked', sku)} />} />
+          {/* Admin: à toi de voir si ça doit aussi exiger un user */}
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminLocationsPage />} />
+            <Route path="products" element={<AdminProductsPage />} />
+            <Route path="/admin/import" element={<ProductImportPage />} />
+          </Route>
         </Route>
-      {/* Admin: à toi de voir si ça doit aussi exiger un user */}
-        <Route path="/admin" element={<AdminLayout />}>
-          <Route index element={<AdminLocationsPage />} />
-          <Route path="products" element={<AdminProductsPage />} />
-          <Route path="/admin/import" element={<ProductImportPage />} />
-        </Route>
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   )
 }
 

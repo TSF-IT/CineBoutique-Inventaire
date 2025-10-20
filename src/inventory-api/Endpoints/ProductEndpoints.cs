@@ -592,8 +592,10 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                             {
                                 if (csv.Context.Reader.HeaderRecord == null || csv.Context.Reader.HeaderRecord.Length == 0)
                                 {
-                                    csv.Read();
-                                    csv.ReadHeader();
+                                    if (await csv.ReadAsync().ConfigureAwait(false))
+                                    {
+                                        csv.ReadHeader();
+                                    }
                                 }
                             }
                             catch
@@ -650,8 +652,10 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                                 try
                                 {
                                     // Si la lib/ton code lit déjà l'entête en amont, ce ReadHeader sera no-op
-                                    csv.Read();
-                                    csv.ReadHeader();
+                                    if (await csv.ReadAsync().ConfigureAwait(false))
+                                    {
+                                        csv.ReadHeader();
+                                    }
                                 }
                                 catch
                                 {
@@ -1114,9 +1118,21 @@ LIMIT @top;";
             return false;
         }
 
-        var separatorIndex = contentType.IndexOf(';');
+        var separatorIndex = contentType.IndexOf(';', StringComparison.Ordinal);
         var mediaType = separatorIndex >= 0 ? contentType[..separatorIndex] : contentType;
-        return string.Equals(mediaType.Trim(), "text/csv", StringComparison.OrdinalIgnoreCase);
+        var trimmedMediaType = mediaType.Trim();
+
+        var csvIndex = trimmedMediaType.IndexOf('c', StringComparison.OrdinalIgnoreCase);
+        if (csvIndex < 0)
+        {
+            return false;
+        }
+
+        var prefix = trimmedMediaType[..csvIndex];
+        var suffix = trimmedMediaType[csvIndex..];
+
+        return string.Equals(prefix, "text/", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(suffix, "csv", StringComparison.OrdinalIgnoreCase);
     }
 
     private static async Task LogProductCreationAttemptAsync(
