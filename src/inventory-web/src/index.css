@@ -1,8 +1,10 @@
-@import './app/styles/responsive.css';
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.ts";
+@source "../index.html";
+@source "./**/*.{ts,tsx}";
+@layer responsive-styles {
+  @import './app/styles/responsive.css';
+}
 
 html {
   font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;

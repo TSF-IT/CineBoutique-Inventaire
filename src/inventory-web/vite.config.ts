@@ -53,6 +53,9 @@ export default defineConfig(({ command }) => {
                   new RegExp('^/api'),
                   new RegExp('\\.(?:png|jpg|jpeg|svg|webp|gif)$'),
                 ],
+                cleanupOutdatedCaches: true,
+                clientsClaim: true,
+                skipWaiting: true,
                 runtimeCaching: [
                   {
                     urlPattern: ({ url }) =>
