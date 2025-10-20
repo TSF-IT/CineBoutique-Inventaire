@@ -1,6 +1,7 @@
 using System;
 using System.Net.Http;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Hosting;
 using CineBoutique.Inventory.Api.Tests.Fixtures;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using Npgsql;
@@ -17,6 +18,7 @@ public sealed class TestApiFactory : IAsyncLifetime, IAsyncDisposable
 
   public bool IsAvailable => _skipReason is null && _initialized;
   public string? SkipReason => _skipReason;
+  public IServiceProvider Services { get; private set; } = default!;
 
   public HttpClient Client
   {
@@ -49,6 +51,7 @@ public sealed class TestApiFactory : IAsyncLifetime, IAsyncDisposable
 
     await _inventory.EnsureReadyAsync().ConfigureAwait(false);
     _client = _inventory.CreateClient();
+    Services = _inventory.Services;
     _initialized = true;
   }
 

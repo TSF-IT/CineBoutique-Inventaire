@@ -28,6 +28,14 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
     public TestDataSeeder Seeder { get; private set; } = default!;
     public bool IsBackendAvailable => TestDbOptions.UseExternalDb || GetOrCachePostgres().IsDatabaseAvailable;
     public string? SkipReason => GetOrCachePostgres().SkipReason;
+    public IServiceProvider Services
+    {
+        get
+        {
+            EnsureInitialized();
+            return _factory!.Services;
+        }
+    }
     public TestAuditLogger AuditLogger
     {
         get
