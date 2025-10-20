@@ -6,6 +6,7 @@ import type { ConflictZoneDetail, ConflictZoneItem, ConflictZoneSummary } from '
 import { LoadingIndicator } from '../LoadingIndicator'
 import { Button } from '../ui/Button'
 import { useOrientation } from '../../hooks/useOrientation'
+import { modalOverlayClassName } from '../Modal/modalOverlayClassName'
 
 interface ConflictZoneModalProps {
   open: boolean
@@ -314,11 +315,7 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-stretch justify-center bg-slate-900/60 px-4 py-6 sm:items-center"
-      role="presentation"
-      onClick={handleOverlayClick}
-    >
+    <div className={modalOverlayClassName} role="presentation" onClick={handleOverlayClick}>
       <div
         ref={containerRef}
         role="dialog"
