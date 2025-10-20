@@ -24,6 +24,12 @@ jobs:
       DOTNET_ENVIRONMENT: CI
       AppSettings__SeedOnStartup: true
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      PGPORT: 5432
+      ConnectionStrings__Default: Host=localhost;Port=5432;Database=inventory;Username=postgres;Password=postgres
+      ConnectionStrings__Inventory: Host=localhost;Port=5432;Database=inventory;Username=postgres;Password=postgres
+      InventoryDb__ConnectionString: Host=localhost;Port=5432;Database=inventory;Username=postgres;Password=postgres
+      Database__ConnectionString: Host=localhost;Port=5432;Database=inventory;Username=postgres;Password=postgres
+      AppSettings__Db__ConnectionString: Host=localhost;Port=5432;Database=inventory;Username=postgres;Password=postgres
 
     steps:
       - name: Checkout
@@ -33,13 +39,12 @@ jobs:
         uses: ankane/setup-postgres@v1
         with:
           postgres-version: 16
-          database: cineboutique
+          database: inventory
 
       - name: Init CI DB user/password (mirror docker-compose env)
         shell: bash
         run: |
-          # Création/màj du superuser 'postgres' avec mot de passe 'postgres'
-          # Heredoc littéral ('SQL') => aucune expansion bash, quoting SQL intact
+          # Crée/MAJ le superuser 'postgres' + droits sur DB 'inventory' (heredoc littéral = pas d'expansion)
           psql -d postgres <<'SQL'
           DO $do$
           BEGIN
@@ -50,8 +55,13 @@ jobs:
             END IF;
           END
           $do$;
-          GRANT ALL PRIVILEGES ON DATABASE cineboutique TO postgres;
+          GRANT ALL PRIVILEGES ON DATABASE inventory TO postgres;
           SQL
+
+      - name: Sanity check DB (inventory)
+        shell: bash
+        run: |
+          psql -d inventory -c "select current_database(), current_user;"
 
       - name: Wait for PostgreSQL
         shell: bash
@@ -76,8 +86,8 @@ jobs:
       - name: Export DB env (build the conn string with mapped port)
         run: |
           echo "PGPORT=5432" >> $GITHUB_ENV
-          echo "ConnectionStrings__Default=Host=127.0.0.1;Port=5432;Database=cineboutique;Username=postgres;Password=postgres" >> $GITHUB_ENV
-          echo "TEST_DB_CONN=Host=127.0.0.1;Port=5432;Database=cineboutique;Username=postgres;Password=postgres" >> $GITHUB_ENV
+          echo "ConnectionStrings__Default=Host=127.0.0.1;Port=5432;Database=inventory;Username=postgres;Password=postgres" >> $GITHUB_ENV
+          echo "TEST_DB_CONN=Host=127.0.0.1;Port=5432;Database=inventory;Username=postgres;Password=postgres" >> $GITHUB_ENV
 
       - name: Dotnet info
         run: |
