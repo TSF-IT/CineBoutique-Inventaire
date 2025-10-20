@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Clap de cinéma</title>
+  <desc id="desc">Icône simplifiée représentant un clap de cinéma stylisé</desc>
+  <defs>
+    <linearGradient id="bg" x1="0%" x2="100%" y1="0%" y2="100%">
+      <stop offset="0%" stop-color="#facc15" />
+      <stop offset="100%" stop-color="#d97706" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="14" width="56" height="46" rx="6" fill="url(#bg)" />
+  <path
+    d="M8 14h48l-4-10H12z"
+    fill="#0f172a"
+    stroke="#0f172a"
+    stroke-linejoin="round"
+    stroke-width="2"
+  />
+  <g fill="#f8fafc">
+    <rect x="12" y="32" width="40" height="6" rx="3" />
+    <rect x="18" y="44" width="28" height="6" rx="3" />
+  </g>
+  <g fill="#facc15">
+    <path d="M16 8h6l-3-6z" />
+    <path d="M28 8h6l-3-6z" />
+    <path d="M40 8h6l-3-6z" />
+    <path d="M52 8h6l-3-6z" />
+  </g>
+</svg>

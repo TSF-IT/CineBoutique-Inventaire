@@ -7,6 +7,7 @@ import type { HttpError } from '@/lib/api/http'
 import { Button } from '../ui/Button'
 import { ErrorPanel } from '../ErrorPanel'
 import { LoadingIndicator } from '../LoadingIndicator'
+import { modalOverlayClassName } from '../Modal/modalOverlayClassName'
 
 interface CompletedRunsModalProps {
   open: boolean
@@ -473,11 +474,7 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/60 px-4 py-6 sm:items-center"
-      role="presentation"
-      onClick={handleOverlayClick}
-    >
+    <div className={modalOverlayClassName} role="presentation" onClick={handleOverlayClick}>
       <div
         ref={containerRef}
         role="dialog"

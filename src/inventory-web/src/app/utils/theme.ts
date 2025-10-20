@@ -54,8 +54,8 @@ export const applyThemeClass = (theme: Theme) => {
     return
   }
   const root = document.documentElement
+  root.classList.remove('light')
   root.classList.toggle('dark', theme === 'dark')
-  root.classList.toggle('light', theme === 'light')
   root.dataset.theme = theme
 }
 

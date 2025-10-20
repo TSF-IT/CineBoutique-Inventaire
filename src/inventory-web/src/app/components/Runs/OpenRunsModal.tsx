@@ -1,6 +1,7 @@
 import type { MouseEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { OpenRunSummary } from '../../types/inventory'
+import { modalOverlayClassName } from '../Modal/modalOverlayClassName'
 
 interface OpenRunsModalProps {
   open: boolean
@@ -140,11 +141,7 @@ export const OpenRunsModal = ({ open, openRuns, onClose, ownedRunIds, onResumeRu
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/60 px-4 py-6 sm:items-center"
-      role="presentation"
-      onClick={handleOverlayClick}
-    >
+    <div className={modalOverlayClassName} role="presentation" onClick={handleOverlayClick}>
       <div
         ref={containerRef}
         role="dialog"

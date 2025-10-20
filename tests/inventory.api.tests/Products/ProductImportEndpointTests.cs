@@ -23,6 +23,7 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
     {
         UseFixture(fixture);
     }
+    private static readonly string[] expected = new[] { "SKU-100", "SKU-200" };
 
     [SkippableFact]
     public async Task ImportProducts_WithCsvStream_ReplacesExistingRows()
@@ -69,7 +70,7 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
         }
 
         rows.Should().HaveCount(2);
-        rows.Select(r => r.Sku).Should().Contain(new[] { "SKU-100", "SKU-200" });
+        rows.Select(r => r.Sku).Should().Contain(expected);
         rows.Single(r => r.Sku == "SKU-100").Ean.Should().Be("1234567890123");
         rows.Single(r => r.Sku == "SKU-100").CodeDigits.Should().Be("1234567890123");
         rows.Single(r => r.Sku == "SKU-200").Ean.Should().Be("ABC-987654");

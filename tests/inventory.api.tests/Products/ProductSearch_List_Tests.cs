@@ -107,11 +107,11 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
         var items = await response.Content.ReadFromJsonAsync<ProductSearchItemDto[]>().ConfigureAwait(false);
         items.Should().NotBeNull();
         items!.Should().HaveCountGreaterOrEqualTo(4, "un SKU, un code brut et deux matches digits sont attendus");
-        items[0].Sku.Should().Be("5905954595389", "le SKU exact est prioritaire");
+        items![0].Sku.Should().Be("5905954595389", "le SKU exact est prioritaire");
 
         var subsequentSkus = items.Skip(1).Select(i => i.Sku).ToArray();
         subsequentSkus.Should().Contain("AMB-RAW-001", "le code brut doit être renvoyé dans les résultats");
-        subsequentSkus.Should().Contain(new[] { "AMB-DGT-001", "AMB-DGT-002" },
+        subsequentSkus.Should().Contain(expected,
             "les correspondances digits sont listées après la correspondance exacte");
     }
 
@@ -136,6 +136,7 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
     }
 
     private static bool? _supportsRawCodeColumn;
+    private static readonly string[] expected = new[] { "AMB-DGT-001", "AMB-DGT-002" };
 
     private async Task InsertProductAsync(string sku, string name, string? ean, string? codeDigits, string? rawCode = null)
     {

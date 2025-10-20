@@ -3,6 +3,10 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20.10.0",
+    "npm": ">=10.8.0"
+  },
   "scripts": {
     "dev": "vite",
     "dev:api5255": "cross-env DEV_BACKEND_ORIGIN=http://localhost:5255 vite",
@@ -55,11 +59,19 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.1",
     "vite": "^7.1.10",
-    "vite-plugin-pwa": "latest",
+    "vite-plugin-pwa": "^1.1.0",
     "vitest": "^3.2.4",
     "workbox-window": "latest"
   },
   "overrides": {
-    "magic-string": "^0.30.10"
+    "magic-string": "^0.30.10",
+    "glob": "^9.3.5",
+    "source-map": "npm:source-map-js@^1.2.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "glob": "9.3.5",
+      "source-map": "npm:source-map-js@1.2.0"
+    }
   }
 }

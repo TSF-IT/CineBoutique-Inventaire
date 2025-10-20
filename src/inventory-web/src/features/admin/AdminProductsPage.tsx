@@ -6,13 +6,27 @@ export function AdminProductsPage() {
   const [filter, setFilter] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const { rows, loading } = useProductsSearch(filter, 200, { page, pageSize });
+  const [sortKey, setSortKey] = useState<"sku"|"name"|"ean">("name");
+  const [sortDir, setSortDir] = useState<"asc"|"desc">("asc");
+  const { rows, loading } = useProductsSearch(filter, 200, { page, pageSize, sortKey, sortDir });
   const { total, loading: loadingTotal } = useProductsCount(0);
 
   const count = rows.length;
   const [open, setOpen] = useState(count > 0);
 
   useEffect(() => { setPage(1); }, [filter]);
+
+  function onSort(next: "sku"|"name"|"ean") {
+    setSortKey(k => {
+      if (k === next) {
+        setSortDir(d => (d === "asc" ? "desc" : "asc"));
+        return k;
+      }
+      setSortDir("asc");
+      return next;
+    });
+    setPage(1);
+  }
 
   // Ouvre automatiquement quand des données arrivent
   const isOpen = useMemo(() => open || count > 0, [open, count]);
@@ -55,9 +69,15 @@ export function AdminProductsPage() {
           <table style={{ width:"100%", borderCollapse:"collapse" }}>
             <thead>
               <tr>
-                <th style={{ textAlign:"left" }}>EAN</th>
-                <th style={{ textAlign:"left" }}>SKU</th>
-                <th style={{ textAlign:"left" }}>Nom</th>
+                <th style={{ textAlign:"left", cursor:"pointer" }} aria-sort={sortKey==="ean"?sortDir:"none"} onClick={()=>onSort("ean")}>
+                  EAN {sortKey==="ean" ? (sortDir==="asc"?"▲":"▼") : ""}
+                </th>
+                <th style={{ textAlign:"left", cursor:"pointer" }} aria-sort={sortKey==="sku"?sortDir:"none"} onClick={()=>onSort("sku")}>
+                  SKU {sortKey==="sku" ? (sortDir==="asc"?"▲":"▼") : ""}
+                </th>
+                <th style={{ textAlign:"left", cursor:"pointer" }} aria-sort={sortKey==="name"?sortDir:"none"} onClick={()=>onSort("name")}>
+                  Nom {sortKey==="name" ? (sortDir==="asc"?"▲":"▼") : ""}
+                </th>
                 <th style={{ textAlign:"left" }}>Groupe</th>
                 <th style={{ textAlign:"left" }}>Sous‑groupe</th>
               </tr>

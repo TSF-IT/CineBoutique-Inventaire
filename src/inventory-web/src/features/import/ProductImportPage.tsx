@@ -18,6 +18,19 @@ type ImportPayload = {
   [k: string]: any;
 };
 
+function parseCsvSemicolon(text: string, maxRows = 10): { headers: string[]; rows: string[][] } | null {
+  const lines = text.replace(/\r/g, "").split("\n").filter(l => l.trim().length > 0);
+  if (lines.length === 0) return null;
+  const headers = lines[0].split(";").map(s => s.trim());
+  const rows: string[][] = [];
+  for (let i = 1; i < lines.length && rows.length < maxRows; i++) {
+    const cols = lines[i].split(";").map(s => s.trim());
+    while (cols.length < headers.length) cols.push("");
+    rows.push(cols.slice(0, headers.length));
+  }
+  return { headers, rows };
+}
+
 export function ProductImportPage() {
   const [file, setFile] = useState<File | null>(null);
   const [busyDryRun, setBusyDryRun] = useState(false);

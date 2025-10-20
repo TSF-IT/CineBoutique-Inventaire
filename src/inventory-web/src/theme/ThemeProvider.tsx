@@ -37,13 +37,8 @@ export const ThemeProvider: React.FC<React.PropsWithChildren> = ({ children }) =
     }
     const root = document.documentElement
     root.dataset.theme = theme
-    if (theme === 'dark') {
-      root.classList.add('dark')
-      root.classList.remove('light')
-    } else {
-      root.classList.remove('dark')
-      root.classList.add('light')
-    }
+    root.classList.remove('light')
+    root.classList.toggle('dark', theme === 'dark')
   }, [theme])
 
   useEffect(() => {

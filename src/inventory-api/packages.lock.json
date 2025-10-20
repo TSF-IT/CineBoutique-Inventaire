@@ -48,7 +48,7 @@
       },
       "FluentMigrator.Runner": {
         "type": "Direct",
-        "requested": "[5.3.2, )",
+        "requested": "[6.0.0, )",
         "resolved": "6.0.0",
         "contentHash": "yGBo61m6JtdctaPCUHjGf7e5mcezhmtDq3u4JRg8Lm0jFHhlO6svRooJMp7fKWBFsWsg0kyz5L/XJAIcHPmO6w==",
         "dependencies": {
@@ -68,7 +68,7 @@
       },
       "FluentMigrator.Runner.Postgres": {
         "type": "Direct",
-        "requested": "[5.3.2, )",
+        "requested": "[6.0.0, )",
         "resolved": "6.0.0",
         "contentHash": "ZOvsi37YKgd4D3mnCFpGKbrjp3blVvP4OqCVToHAL/YU5ObV2w5sW5wXw5nuyzuTIVTBKPXI149XDlF0wDM0Kw==",
         "dependencies": {
@@ -89,7 +89,7 @@
       },
       "Isopoh.Cryptography.Argon2": {
         "type": "Direct",
-        "requested": "[1.3.6, )",
+        "requested": "[2.0.0, )",
         "resolved": "2.0.0",
         "contentHash": "8ytWN19j+qARb/XYi7KkNMm4Z8zS6tfGgnsZ1N5ihbQ5LXfyL+uYowfJxtGW9TO0S8NM2q0BaTKGOtOlsrhclQ==",
         "dependencies": {
@@ -888,8 +888,8 @@
           "CineBoutique.Inventory.Domain": "[1.0.0, )",
           "CineBoutique.Inventory.Shared": "[1.0.0, )",
           "Dapper": "[2.1.35, )",
-          "FluentMigrator.Runner": "[5.3.2, )",
-          "FluentMigrator.Runner.Postgres": "[5.3.2, )",
+          "FluentMigrator.Runner": "[6.0.0, )",
+          "FluentMigrator.Runner.Postgres": "[6.0.0, )",
           "Npgsql": "[8.0.3, )"
         }
       },

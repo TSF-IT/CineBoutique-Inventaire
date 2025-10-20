@@ -31,6 +31,7 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         "3557191310038S;A-ABC;Suffixed",
         "PMI_AC_CHAMB;A-ROOM;Room"
     };
+    private static readonly string[] expected = new[] { "A-KF63030", "A-KF63030M" };
 
     public ImportProductsCsvTests(InventoryApiFixture fixture)
     {
@@ -80,7 +81,7 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         conflictPayload.Should().NotBeNull();
         conflictPayload!.Ambiguous.Should().BeTrue();
         conflictPayload.Matches.Should().HaveCountGreaterOrEqualTo(2);
-        conflictPayload.Matches.Select(match => match.Sku).Should().Contain(new[] { "A-KF63030", "A-KF63030M" });
+        conflictPayload.Matches.Select(match => match.Sku).Should().Contain(expected);
     }
 
     [SkippableFact]
