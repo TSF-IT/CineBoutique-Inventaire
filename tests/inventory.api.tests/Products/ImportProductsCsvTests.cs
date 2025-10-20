@@ -155,7 +155,10 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
 
         var body = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
         using var doc = System.Text.Json.JsonDocument.Parse(body);
-        doc.RootElement.TryGetProperty("imported", out var _).Should().BeTrue();
+        doc.RootElement.TryGetProperty("inserted", out var inserted).Should()
+            .BeTrue("le résumé d'import utilise la clé 'inserted' (cf. README)");
+        inserted.ValueKind.Should().Be(System.Text.Json.JsonValueKind.Number);
+        inserted.GetInt32().Should().BeGreaterOrEqualTo(0);
     }
 
     [SkippableFact]
