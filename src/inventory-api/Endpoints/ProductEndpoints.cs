@@ -886,6 +886,8 @@ LIMIT @top;";
         app.MapGet("/api/products/search", async (
             string? code,
             int? limit,
+            int? page,
+            int? pageSize,
             IProductSearchService searchService,
             CancellationToken cancellationToken) =>
         {
@@ -900,6 +902,11 @@ LIMIT @top;";
                 return EndpointUtilities.ValidationProblem(validation);
             }
 
+            var hasPaging = page.HasValue || pageSize.HasValue;
+            var p = Math.Max(1, page ?? 1);
+            var ps = Math.Max(1, Math.Min(100, pageSize ?? 50));
+            var offset = (p - 1) * ps;
+
             var effectiveLimit = limit.GetValueOrDefault(20);
             if (effectiveLimit < 1 || effectiveLimit > 50)
             {
@@ -912,7 +919,7 @@ LIMIT @top;";
             }
 
             var items = await searchService
-                .SearchAsync(sanitizedCode, effectiveLimit, cancellationToken)
+                .SearchAsync(sanitizedCode, effectiveLimit, hasPaging, ps, offset, cancellationToken)
                 .ConfigureAwait(false);
 
             var response = items

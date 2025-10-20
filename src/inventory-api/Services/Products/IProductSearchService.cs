@@ -6,5 +6,11 @@ namespace CineBoutique.Inventory.Api.Services.Products;
 
 public interface IProductSearchService
 {
-    Task<IReadOnlyList<ProductSearchResultItem>> SearchAsync(string code, int limit, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ProductSearchResultItem>> SearchAsync(
+        string code,
+        int limit,
+        bool hasPaging,
+        int pageSize,
+        int offset,
+        CancellationToken cancellationToken);
 }

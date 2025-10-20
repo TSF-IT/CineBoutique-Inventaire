@@ -99,7 +99,13 @@ FROM "Product" {whereClause};
         return rows.ToArray();
     }
 
-    public async Task<IReadOnlyList<ProductLookupItem>> SearchProductsAsync(string code, int limit, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ProductLookupItem>> SearchProductsAsync(
+        string code,
+        int limit,
+        bool hasPaging,
+        int pageSize,
+        int offset,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(code))
         {
@@ -118,6 +124,8 @@ FROM "Product" {whereClause};
         }
 
         var effectiveLimit = Math.Clamp(limit, 1, 50);
+        var effectivePageSize = Math.Clamp(pageSize, 1, 100);
+        var effectiveOffset = Math.Max(0, offset);
 
         using var connection = _connectionFactory.CreateConnection();
         await EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -220,9 +228,29 @@ ORDER BY ranked.match_priority, ranked.score DESC, ranked."Name"
 LIMIT @Limit;
 """;
 
+        string finalSql;
+        object finalParams;
+        if (hasPaging)
+        {
+            var trimmedSql = TrimLimitClause(sql);
+            finalSql = $"{trimmedSql} LIMIT @limit OFFSET @offset";
+            finalParams = new
+            {
+                Code = normalizedCode,
+                Limit = effectiveLimit,
+                limit = effectivePageSize,
+                offset = effectiveOffset
+            };
+        }
+        else
+        {
+            finalSql = sql;
+            finalParams = new { Code = normalizedCode, Limit = effectiveLimit };
+        }
+
         var command = new CommandDefinition(
-            sql,
-            new { Code = normalizedCode, Limit = effectiveLimit },
+            finalSql,
+            finalParams,
             cancellationToken: cancellationToken);
 
         var rows = await connection
@@ -250,5 +278,28 @@ LIMIT @Limit;
                 connection.Open();
                 break;
         }
+    }
+
+    private static string TrimLimitClause(string sql)
+    {
+        if (string.IsNullOrEmpty(sql))
+        {
+            return sql;
+        }
+
+        var trimmed = sql.TrimEnd();
+        if (trimmed.EndsWith(";", StringComparison.Ordinal))
+        {
+            trimmed = trimmed[..^1].TrimEnd();
+        }
+
+        const string limitClause = "LIMIT @Limit";
+        var index = trimmed.LastIndexOf(limitClause, StringComparison.Ordinal);
+        if (index >= 0)
+        {
+            trimmed = trimmed[..index].TrimEnd();
+        }
+
+        return trimmed;
     }
 }

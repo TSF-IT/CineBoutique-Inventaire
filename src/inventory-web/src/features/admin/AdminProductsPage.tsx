@@ -1,14 +1,18 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useProductsSearch } from "../../hooks/useProductsSearch";
 import { useProductsCount } from "../../hooks/useProductsCount";
 
 export function AdminProductsPage() {
   const [filter, setFilter] = useState("");
-  const { rows, loading } = useProductsSearch(filter, 200);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const { rows, loading } = useProductsSearch(filter, 200, { page, pageSize });
   const { total, loading: loadingTotal } = useProductsCount(0);
 
   const count = rows.length;
   const [open, setOpen] = useState(count > 0);
+
+  useEffect(() => { setPage(1); }, [filter]);
 
   // Ouvre automatiquement quand des données arrivent
   const isOpen = useMemo(() => open || count > 0, [open, count]);
@@ -36,6 +40,18 @@ export function AdminProductsPage() {
 
       {isOpen && (
         <div style={{ overflowX: "auto" }}>
+          <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:8 }}>
+            <button type="button" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>Préc.</button>
+            <span>Page {page}</span>
+            <button type="button" onClick={() => setPage(p => p + 1)} disabled={rows.length < pageSize}>Suiv.</button>
+            <span style={{ marginLeft: 12 }}>Taille :</span>
+            <select value={pageSize} onChange={(e)=>{ setPage(1); setPageSize(parseInt(e.target.value,10)||25); }}>
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
           <table style={{ width:"100%", borderCollapse:"collapse" }}>
             <thead>
               <tr>

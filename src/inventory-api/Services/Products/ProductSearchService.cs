@@ -15,7 +15,13 @@ public sealed class ProductSearchService : IProductSearchService
         _repository = repository ?? throw new ArgumentNullException(nameof(repository));
     }
 
-    public async Task<IReadOnlyList<ProductSearchResultItem>> SearchAsync(string code, int limit, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ProductSearchResultItem>> SearchAsync(
+        string code,
+        int limit,
+        bool hasPaging,
+        int pageSize,
+        int offset,
+        CancellationToken cancellationToken)
     {
         if (limit <= 0)
         {
@@ -29,9 +35,11 @@ public sealed class ProductSearchService : IProductSearchService
         }
 
         var effectiveLimit = Math.Clamp(limit, 1, 50);
+        var effectivePageSize = Math.Clamp(pageSize, 1, 100);
+        var effectiveOffset = Math.Max(0, offset);
 
         var candidates = await _repository
-            .SearchProductsAsync(normalizedCode, effectiveLimit, cancellationToken)
+            .SearchProductsAsync(normalizedCode, effectiveLimit, hasPaging, effectivePageSize, effectiveOffset, cancellationToken)
             .ConfigureAwait(false);
 
         if (candidates is null || candidates.Count == 0)

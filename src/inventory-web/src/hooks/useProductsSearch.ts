@@ -8,7 +8,12 @@ export interface ProductRow {
   subGroup?: string | null;
 }
 
-export function useProductsSearch(q: string, debounceMs = 200) {
+export function useProductsSearch(q: string, debounceMs = 200, opts?: {
+  page?: number;
+  pageSize?: number;
+  sortKey?: "name" | "sku" | "ean";
+  sortDir?: "asc" | "desc";
+}) {
   const [rows, setRows] = useState<ProductRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -20,8 +25,12 @@ export function useProductsSearch(q: string, debounceMs = 200) {
     // L’endpoint /api/products/search existe dans l’API/backend
     // (on garde la sémantique minimale q=?)
     const p = new URLSearchParams({ q: query });
+    if (opts?.page && opts.page > 0) p.set("page", String(opts.page));
+    if (opts?.pageSize && opts.pageSize > 0) p.set("pageSize", String(opts.pageSize));
+    if (opts?.sortKey) p.set("sort", opts.sortKey);
+    if (opts?.sortDir) p.set("dir", opts.sortDir);
     return `/api/products/search?${p.toString()}`;
-  }, [q]);
+  }, [q, opts?.page, opts?.pageSize, opts?.sortKey, opts?.sortDir]);
 
   useEffect(() => {
     window.clearTimeout(timer.current);

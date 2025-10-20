@@ -13,5 +13,11 @@ public interface IProductLookupRepository
 
     Task<IReadOnlyList<ProductLookupItem>> FindByCodeDigitsAsync(string digits, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<ProductLookupItem>> SearchProductsAsync(string code, int limit, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ProductLookupItem>> SearchProductsAsync(
+        string code,
+        int limit,
+        bool hasPaging,
+        int pageSize,
+        int offset,
+        CancellationToken cancellationToken);
 }

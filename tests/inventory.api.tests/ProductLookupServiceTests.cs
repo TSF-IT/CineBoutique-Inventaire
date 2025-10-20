@@ -108,7 +108,13 @@ public sealed class ProductLookupServiceTests
         public Task<IReadOnlyList<ProductLookupItem>> FindByCodeDigitsAsync(string digits, CancellationToken cancellationToken)
             => Task.FromResult(CodeDigitsItems);
 
-        public Task<IReadOnlyList<ProductLookupItem>> SearchProductsAsync(string code, int limit, CancellationToken cancellationToken)
+        public Task<IReadOnlyList<ProductLookupItem>> SearchProductsAsync(
+            string code,
+            int limit,
+            bool hasPaging,
+            int pageSize,
+            int offset,
+            CancellationToken cancellationToken)
             => Task.FromResult<IReadOnlyList<ProductLookupItem>>(Array.Empty<ProductLookupItem>());
     }
 }
