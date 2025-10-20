@@ -15,14 +15,23 @@ namespace CineBoutique.Inventory.Infrastructure.Seeding;
 
 public sealed class InventoryDataSeeder
 {
-    private const string DefaultShopName = "CinéBoutique Paris";
+    private const string DefaultShopName = "CinéBoutique Saint-Denis";
 
-    private const string InsertShopSql = @"INSERT INTO ""Shop"" (""Name"")
-VALUES (@Name)
-ON CONFLICT DO NOTHING
+    private const string InsertShopSql = @"
+INSERT INTO ""Shop"" (""Name"", ""Kind"")
+SELECT @Name, @Kind
+WHERE NOT EXISTS (
+    SELECT 1 FROM ""Shop"" WHERE LOWER(""Name"") = LOWER(@Name)
+)
 RETURNING ""Id"";";
 
     private const string SelectShopIdSql = @"SELECT ""Id"" FROM ""Shop"" WHERE LOWER(""Name"") = LOWER(@Name) LIMIT 1;";
+
+    private const string RenameParisShopSql =
+        "UPDATE \"Shop\" SET \"Name\"='CinéBoutique Saint-Denis' WHERE \"Name\"='CinéBoutique Paris';";
+
+    private const string RenameBruxellesShopSql =
+        "UPDATE \"Shop\" SET \"Name\"='CinéBoutique Belgique' WHERE \"Name\"='CinéBoutique Bruxelles';";
 
     private const string InsertLocationSql = @"INSERT INTO ""Location"" (""Code"", ""Label"", ""ShopId"")
 SELECT @Code, @Label, @ShopId
@@ -100,7 +109,7 @@ WHERE ""ShopId"" = @ShopId
 
             foreach (var shopSeed in ShopSeeds)
             {
-                var shopId = await GetShopIdAsync(connection, transaction, shopSeed.Name, cancellationToken)
+                var shopId = await GetShopIdAsync(connection, transaction, shopSeed, cancellationToken)
                     .ConfigureAwait(false);
                 shopIds[shopSeed.Name] = shopId;
             }
@@ -164,6 +173,8 @@ WHERE ""ShopId"" = @ShopId
         IDbTransaction transaction,
         CancellationToken cancellationToken)
     {
+        await ApplyShopRenamesAsync(connection, transaction, cancellationToken).ConfigureAwait(false);
+
         var insertedCount = 0;
 
         foreach (var shopSeed in ShopSeeds)
@@ -173,7 +184,8 @@ WHERE ""ShopId"" = @ShopId
                         InsertShopSql,
                         new
                         {
-                            shopSeed.Name
+                            Name = shopSeed.Name,
+                            Kind = shopSeed.Kind
                         },
                         transaction,
                         cancellationToken: cancellationToken))
@@ -188,10 +200,30 @@ WHERE ""ShopId"" = @ShopId
         return insertedCount;
     }
 
+    private async Task ApplyShopRenamesAsync(
+        IDbConnection connection,
+        IDbTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        await connection.ExecuteAsync(
+                new CommandDefinition(
+                    RenameParisShopSql,
+                    transaction: transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        await connection.ExecuteAsync(
+                new CommandDefinition(
+                    RenameBruxellesShopSql,
+                    transaction: transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+    }
+
     private static async Task<Guid> GetShopIdAsync(
         IDbConnection connection,
         IDbTransaction transaction,
-        string name,
+        ShopSeed shopSeed,
         CancellationToken cancellationToken)
     {
         var existingId = await connection.ExecuteScalarAsync<Guid?>(
@@ -199,7 +231,7 @@ WHERE ""ShopId"" = @ShopId
                     SelectShopIdSql,
                     new
                     {
-                        Name = name
+                        Name = shopSeed.Name
                     },
                     transaction,
                     cancellationToken: cancellationToken))
@@ -215,7 +247,8 @@ WHERE ""ShopId"" = @ShopId
                     InsertShopSql,
                     new
                     {
-                        Name = name
+                        Name = shopSeed.Name,
+                        Kind = shopSeed.Kind
                     },
                     transaction,
                     cancellationToken: cancellationToken))
@@ -354,11 +387,16 @@ WHERE ""ShopId"" = @ShopId
     {
         return new List<ShopSeed>
         {
-            new(DefaultShopName),
-            new("CinéBoutique Bordeaux"),
-            new("CinéBoutique Montpellier"),
-            new("CinéBoutique Marseille"),
-            new("CinéBoutique Bruxelles")
+            new(DefaultShopName, "boutique"),
+            new("CinéBoutique Bordeaux", "boutique"),
+            new("CinéBoutique Montpellier", "boutique"),
+            new("CinéBoutique Marseille", "boutique"),
+            new("CinéBoutique Belgique", "boutique"),
+            new("Lumière Saint-Denis", "lumiere"),
+            new("Lumière Marseille", "lumiere"),
+            new("Lumière Montpellier", "lumiere"),
+            new("Lumière Bordeaux", "lumiere"),
+            new("Lumière Belgique", "lumiere")
         };
     }
 
@@ -624,7 +662,7 @@ WHERE ""ShopId"" = @ShopId
         return new Guid(guidBytes);
     }
 
-    private sealed record ShopSeed(string Name);
+    private sealed record ShopSeed(string Name, string Kind);
 
     private sealed record LocationSeed(string ShopName, string Code, string Label);
 
