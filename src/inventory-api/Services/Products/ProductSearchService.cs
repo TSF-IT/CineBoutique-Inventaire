@@ -21,6 +21,8 @@ public sealed class ProductSearchService : IProductSearchService
         bool hasPaging,
         int pageSize,
         int offset,
+        string? sort,
+        string? dir,
         CancellationToken cancellationToken)
     {
         if (limit <= 0)
@@ -39,7 +41,15 @@ public sealed class ProductSearchService : IProductSearchService
         var effectiveOffset = Math.Max(0, offset);
 
         var candidates = await _repository
-            .SearchProductsAsync(normalizedCode, effectiveLimit, hasPaging, effectivePageSize, effectiveOffset, cancellationToken)
+            .SearchProductsAsync(
+                normalizedCode,
+                effectiveLimit,
+                hasPaging,
+                effectivePageSize,
+                effectiveOffset,
+                sort,
+                dir,
+                cancellationToken)
             .ConfigureAwait(false);
 
         if (candidates is null || candidates.Count == 0)

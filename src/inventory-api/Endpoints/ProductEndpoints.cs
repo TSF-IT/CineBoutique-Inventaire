@@ -888,6 +888,8 @@ LIMIT @top;";
             int? limit,
             int? page,
             int? pageSize,
+            string? sort,
+            string? dir,
             IProductSearchService searchService,
             CancellationToken cancellationToken) =>
         {
@@ -919,7 +921,7 @@ LIMIT @top;";
             }
 
             var items = await searchService
-                .SearchAsync(sanitizedCode, effectiveLimit, hasPaging, ps, offset, cancellationToken)
+                .SearchAsync(sanitizedCode, effectiveLimit, hasPaging, ps, offset, sort, dir, cancellationToken)
                 .ConfigureAwait(false);
 
             var response = items
