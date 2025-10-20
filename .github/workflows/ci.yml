@@ -19,22 +19,6 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: public.ecr.aws/docker/library/postgres:16.4-alpine3.19
-        ports:
-          - 5432/tcp
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: cineboutique
-        options: >-
-          --health-cmd="pg_isready -U postgres"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=10
-          --name ci-postgres
-
     env:
       ASPNETCORE_ENVIRONMENT: CI
       DOTNET_ENVIRONMENT: CI
@@ -44,6 +28,37 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup PostgreSQL (no container)
+        uses: ankane/setup-postgres@v1
+        with:
+          postgres-version: 16
+          database: cineboutique
+
+      - name: Init CI DB user/password (mirror docker-compose env)
+        shell: bash
+        run: |
+          # user par défaut = 'runner', sans mot de passe (cf. doc de l'action)
+          psql -d postgres -c "DO $$ BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='postgres') THEN
+              CREATE ROLE postgres WITH LOGIN SUPERUSER PASSWORD 'postgres';
+            ELSE
+              ALTER ROLE postgres WITH PASSWORD 'postgres';
+            END IF;
+          END $$;"
+          # DB déjà créée par l'étape précédente (database: cineboutique), on s'assure des droits
+          psql -d postgres -c "GRANT ALL PRIVILEGES ON DATABASE cineboutique TO postgres;"
+
+      - name: Wait for PostgreSQL
+        shell: bash
+        run: |
+          for i in {1..30}; do
+            if psql -d postgres -c 'select 1' >/dev/null 2>&1; then
+              echo "DB ready"; exit 0;
+            fi
+            sleep 1
+          done
+          echo "DB not ready in time"; exit 1
 
       - name: Setup .NET from global.json
         uses: actions/setup-dotnet@v4
@@ -56,9 +71,9 @@ jobs:
 
       - name: Export DB env (build the conn string with mapped port)
         run: |
-          echo "PGPORT=${{ job.services.postgres.ports['5432'] }}" >> $GITHUB_ENV
-          echo "ConnectionStrings__Default=Host=127.0.0.1;Port=${{ job.services.postgres.ports['5432'] }};Database=cineboutique;Username=postgres;Password=postgres" >> $GITHUB_ENV
-          echo "TEST_DB_CONN=Host=127.0.0.1;Port=${{ job.services.postgres.ports['5432'] }};Database=cineboutique;Username=postgres;Password=postgres" >> $GITHUB_ENV
+          echo "PGPORT=5432" >> $GITHUB_ENV
+          echo "ConnectionStrings__Default=Host=127.0.0.1;Port=5432;Database=cineboutique;Username=postgres;Password=postgres" >> $GITHUB_ENV
+          echo "TEST_DB_CONN=Host=127.0.0.1;Port=5432;Database=cineboutique;Username=postgres;Password=postgres" >> $GITHUB_ENV
 
       - name: Dotnet info
         run: |
