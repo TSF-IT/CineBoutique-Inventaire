@@ -25,6 +25,12 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
     environment:
       ASPNETCORE_ENVIRONMENT: Docker
       ASPNETCORE_DETAILEDERRORS: "true"
@@ -36,7 +42,6 @@ services:
     expose:
       - "8080"   # visible par 'web' via le réseau docker, pas publié vers l'hôte
     restart: unless-stopped
-    # Pas de healthcheck ici: il est désormais défini dans l'image (Dockerfile)
 
   web:
     build:
@@ -47,7 +52,7 @@ services:
     container_name: inventory-web
     depends_on:
       api:
-        condition: service_healthy   # attend que l'API passe healthy (grâce au HEALTHCHECK image)
+        condition: service_healthy
     environment:
       PUBLIC_HOST: ${PUBLIC_HOST}
     ports:
