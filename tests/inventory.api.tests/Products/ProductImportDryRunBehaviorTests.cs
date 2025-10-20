@@ -16,7 +16,7 @@ public class ProductImportDryRunBehaviorTests : IClassFixture<TestApiFactory>
     var r0 = await _f.Client.GetAsync("/api/products/count");
     r0.EnsureSuccessStatusCode();
     var before = System.Text.Json.JsonDocument.Parse(await r0.Content.ReadAsStringAsync())
-                  .RootElement.GetProperty("total").GetInt64();
+                 .RootElement.GetProperty("total").GetInt64();
 
     // Dry‑run : on envoie uniquement l'en‑tête (séparateur ';')
     var csv = new StringBuilder()
