@@ -1,142 +1,58 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { fetchProductByEan } from '@/app/api/inventoryApi'
-import type { Product } from '@/app/types/inventory'
-import { LoadingIndicator } from '@/app/components/LoadingIndicator'
+import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 
-interface ProductAttribute {
-  label: string
-  value: string
-}
+type Details = {
+  sku: string; ean?: string | null; name: string;
+  group?: string | null; subGroup?: string | null;
+  attributes?: Record<string, any> | null;
+};
 
 export function ProductDetailsPage() {
-  const { ean } = useParams<{ ean: string }>()
-  const [data, setData] = useState<Product | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { sku = "" } = useParams();
+  const [data, setData] = useState<Details | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let disposed = false
+    let alive = true;
+    setLoading(true); setError(null);
+    fetch(`/api/products/${encodeURIComponent(sku)}/details`)
+      .then(async r => {
+        if (!alive) return;
+        if (r.status === 404) { setError("Produit introuvable"); setData(null); return; }
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const js = await r.json();
+        setData(js ?? null);
+      })
+      .catch(e => { if (alive) setError(e.message || String(e)); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [sku]);
 
-    const load = async () => {
-      const trimmed = (ean ?? '').trim()
-      if (trimmed.length === 0) {
-        setData(null)
-        setError('EAN manquant')
-        return
-      }
-
-      setLoading(true)
-      setError(null)
-      try {
-        const product = await fetchProductByEan(trimmed)
-        if (!disposed) {
-          setData(product)
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Erreur inconnue'
-        if (!disposed) {
-          setError(message)
-        }
-      } finally {
-        if (!disposed) {
-          setLoading(false)
-        }
-      }
-    }
-
-    load()
-
-    return () => {
-      disposed = true
-    }
-  }, [ean])
-
-  const attrs = useMemo<ProductAttribute[]>(() => {
-    if (!data) {
-      return []
-    }
-
-    const formattedLastCount = (() => {
-      if (!data.lastCountedAt) return 'Jamais'
-      try {
-        const date = new Date(data.lastCountedAt)
-        if (Number.isNaN(date.getTime())) return data.lastCountedAt
-        return new Intl.DateTimeFormat('fr-FR', {
-          dateStyle: 'medium',
-          timeStyle: 'short',
-        }).format(date)
-      } catch {
-        return data.lastCountedAt
-      }
-    })()
-
-    return [
-      { label: 'EAN', value: data.ean ?? '—' },
-      { label: 'SKU', value: data.sku ?? '—' },
-      { label: 'Nom', value: data.name ?? '—' },
-      { label: 'Stock', value: typeof data.stock === 'number' ? `${data.stock}` : '—' },
-      { label: 'Dernier comptage', value: formattedLastCount },
-    ]
-  }, [data])
-
-  const nav = useNavigate()
-  function copy(txt?: string | null) {
-    if (!txt) return
-    navigator.clipboard?.writeText(txt).catch(() => {})
-  }
+  const attrs = data?.attributes && typeof data.attributes === "object" ? data.attributes : null;
 
   return (
-    <div style={{ display: 'grid', gap: 16 }}>
-      <h2>Détails du produit</h2>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button type="button" onClick={() => nav(-1)}>
-          Retour
-        </button>
-        <button type="button" onClick={() => copy(data?.sku)}>
-          Copier SKU
-        </button>
-        <button type="button" onClick={() => copy(data?.ean ?? undefined)} disabled={!data?.ean}>
-          Copier EAN
-        </button>
-      </div>
-      {loading && (
-        <div>
-          <LoadingIndicator label="Chargement du produit…" />
-        </div>
+    <section style={{ display:"grid", gap: 12, maxWidth: 900 }}>
+      <h2 style={{ margin:0 }}>Produit {data?.sku ?? sku}</h2>
+      {loading && <div>Chargement…</div>}
+      {error && <div style={{ color:"#b00020" }}>Erreur : {error}</div>}
+      {!loading && !error && data && (
+        <>
+          <div><strong>Nom</strong> : {data.name}</div>
+          <div><strong>EAN</strong> : {data.ean ?? "—"}</div>
+          <div><strong>Groupe</strong> : {data.group ?? "—"}{data.subGroup ? ` / ${data.subGroup}` : ""}</div>
+          <div>
+            <strong>Attributs</strong> :
+            {attrs && Object.keys(attrs).length > 0 ? (
+              <ul>
+                {Object.entries(attrs).map(([k,v]) => (
+                  <li key={k}><code>{k}</code> : {typeof v === "string" ? v : JSON.stringify(v)}</li>
+                ))}
+              </ul>
+            ) : <span> aucun</span>}
+          </div>
+        </>
       )}
-      {error && (
-        <div role="alert" style={{ color: '#b91c1c' }}>
-          {error}
-        </div>
-      )}
-      {!loading && !error && attrs.length === 0 && (
-        <div style={{ opacity: 0.7 }}>Aucune information disponible.</div>
-      )}
-      {attrs.length > 0 && (
-        <dl
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-            gap: 12,
-          }}
-        >
-          {attrs.map((attr) => (
-            <div
-              key={attr.label}
-              style={{
-                border: '1px solid #e2e8f0',
-                borderRadius: 8,
-                padding: 12,
-                background: '#fff',
-              }}
-            >
-              <dt style={{ fontWeight: 600, marginBottom: 4 }}>{attr.label}</dt>
-              <dd style={{ margin: 0 }}>{attr.value}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
-    </div>
-  )
+    </section>
+  );
 }

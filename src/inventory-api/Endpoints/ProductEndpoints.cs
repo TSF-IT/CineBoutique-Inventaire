@@ -45,6 +45,27 @@ internal static class ProductEndpoints
         MapUpdateProductEndpoints(app);
         MapImportProductsEndpoint(app);
 
+        app.MapGet("/api/products/{sku}/details", async (
+            string sku,
+            System.Data.IDbConnection connection,
+            System.Threading.CancellationToken ct) =>
+        {
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, ct).ConfigureAwait(false);
+            const string sql = @"
+      SELECT p.""Sku"", p.""Ean"", p.""Name"",
+             pg.""Label"" AS ""Group"", pgp.""Label"" AS ""SubGroup"",
+             p.""Attributes""
+      FROM ""Product"" p
+      LEFT JOIN ""ProductGroup"" pg  ON pg.""Id""  = p.""GroupId""
+      LEFT JOIN ""ProductGroup"" pgp ON pgp.""Id"" = pg.""ParentId""
+      WHERE p.""Sku"" = @sku
+      LIMIT 1;";
+            var row = await connection.QueryFirstOrDefaultAsync(
+              new Dapper.CommandDefinition(sql, new { sku }, cancellationToken: ct));
+            return row is null ? Results.NotFound() : Results.Ok(row);
+        })
+        .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
+
         // --- GET /api/products/count ---
         app.MapGet("/api/products/count", async (
             System.Data.IDbConnection connection,
@@ -888,6 +909,8 @@ LIMIT @top;";
             int? limit,
             int? page,
             int? pageSize,
+            string? sort,
+            string? dir,
             IProductSearchService searchService,
             CancellationToken cancellationToken) =>
         {
@@ -919,7 +942,7 @@ LIMIT @top;";
             }
 
             var items = await searchService
-                .SearchAsync(sanitizedCode, effectiveLimit, hasPaging, ps, offset, cancellationToken)
+                .SearchAsync(sanitizedCode, effectiveLimit, hasPaging, ps, offset, sort, dir, cancellationToken)
                 .ConfigureAwait(false);
 
             var response = items

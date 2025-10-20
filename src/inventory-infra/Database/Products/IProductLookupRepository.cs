@@ -19,5 +19,7 @@ public interface IProductLookupRepository
         bool hasPaging,
         int pageSize,
         int offset,
+        string? sort,
+        string? dir,
         CancellationToken cancellationToken);
 }
