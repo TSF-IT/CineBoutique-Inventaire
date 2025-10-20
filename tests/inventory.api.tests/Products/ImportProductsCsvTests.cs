@@ -131,13 +131,13 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
     }
 
     [SkippableFact]
-    public async Task ImportProductsCsv_AllowsAnonymous_InTests()
+    public async Task ImportProductsCsv_RequiresAdminAuthorization()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
 
-        var csv = new StringBuilder()
+        var csv = new System.Text.StringBuilder()
             .AppendLine("barcode_rfid;sku;name")
             .AppendLine("321000000777;ZZ-ALLOW;Produit Test Allow")
             .ToString();
@@ -151,7 +151,7 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         var client = CreateClient();
         var res = await client.PostAsync("/api/products/import?dryRun=true", form).ConfigureAwait(false);
 
-        res.StatusCode.Should().Be(HttpStatusCode.OK);
+        res.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
 
         var body = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
         using var doc = System.Text.Json.JsonDocument.Parse(body);
