@@ -1,9 +1,9 @@
 using System;
+using System.Data.Common;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Data;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
 using CineBoutique.Inventory.Infrastructure.Database;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace CineBoutique.Inventory.Api.Infrastructure.Health
 {
@@ -25,13 +25,19 @@ namespace CineBoutique.Inventory.Api.Infrastructure.Health
         {
             try
             {
-                await using var conn = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken);
+                await using var conn = await _connectionFactory
+                    .CreateOpenConnectionAsync(cancellationToken)
+                    .ConfigureAwait(false);
                 using var cmd = conn.CreateCommand();
                 cmd.CommandText = "SELECT 1";
-                _ = cmd.ExecuteScalar(); // sync ok ici (commande triviale)
+                _ = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
                 return HealthCheckResult.Healthy("DB reachable");
             }
-            catch (Exception ex)
+            catch (TimeoutException ex)
+            {
+                return HealthCheckResult.Unhealthy("DB unreachable", ex);
+            }
+            catch (DbException ex)
             {
                 return HealthCheckResult.Unhealthy("DB unreachable", ex);
             }
