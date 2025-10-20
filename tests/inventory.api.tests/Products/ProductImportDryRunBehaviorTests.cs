@@ -6,10 +6,10 @@ using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests.Products;
 
-// Sérialise uniquement cette classe (évite les courses pendant la mesure)
 [Collection("ApiSerial")]
 public class ProductImportDryRunBehaviorTests : IClassFixture<TestApiFactory>
 {
+  // Sérialise uniquement cette classe (évite les courses pendant la mesure)
   private readonly TestApiFactory _f;
   public ProductImportDryRunBehaviorTests(TestApiFactory f) => _f = f;
 
