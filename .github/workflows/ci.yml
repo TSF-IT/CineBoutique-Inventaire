@@ -21,7 +21,7 @@ jobs:
 
     services:
       postgres:
-        image: public.ecr.aws/docker/library/postgres:16-alpine
+        image: public.ecr.aws/docker/library/postgres:16.4-alpine3.19
         ports:
           - 5432/tcp
         env:
