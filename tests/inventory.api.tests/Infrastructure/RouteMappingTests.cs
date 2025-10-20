@@ -1,8 +1,10 @@
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests.Infrastructure;
@@ -16,7 +18,7 @@ public class RouteMappingTests : IClassFixture<TestApiFactory>
   public void ImportEndpoint_IsSingleAndRequiresAuthorization()
   {
     // Récupère le EndpointDataSource depuis le host de tests
-    var sources = _f.Services.GetServices(typeof(EndpointDataSource)).Cast<EndpointDataSource>().ToArray();
+    var sources = _f.Services.GetRequiredService<IEnumerable<EndpointDataSource>>().ToArray();
     Assert.NotEmpty(sources);
 
     var endpoints = sources.SelectMany(s => s.Endpoints).OfType<RouteEndpoint>().ToArray();
