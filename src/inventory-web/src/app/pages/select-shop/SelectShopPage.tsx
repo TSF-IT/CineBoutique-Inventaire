@@ -10,6 +10,7 @@ import type { Shop } from '@/types/shop'
 import { useShop } from '@/state/ShopContext'
 import { clearSelectedUserForShop } from '@/lib/selectedUserStorage'
 import { useInventory } from '@/app/contexts/InventoryContext'
+import { ENTITY_DEFINITIONS, type EntityDefinition, type EntityId } from './entities'
 
 const DEFAULT_ERROR_MESSAGE = "Impossible de charger les boutiques."
 const INVALID_GUID_ERROR_MESSAGE = 'Identifiant de boutique invalide. Vérifie le code et réessaie.'
@@ -23,6 +24,44 @@ type RedirectState = {
   redirectTo?: string
 } | null
 
+type EntityCard = {
+  definition: EntityDefinition
+  matches: Shop[]
+  primaryShop: Shop | null
+}
+
+type EntityTheme = {
+  selected: string
+  idle: string
+  focusRing: string
+  overlaySelected: string
+  overlayIdle: string
+  badge: string
+}
+
+const ENTITY_THEMES: Record<EntityId, EntityTheme> = {
+  cineboutique: {
+    selected:
+      'border-transparent bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-md dark:from-brand-400 dark:to-brand-500',
+    idle:
+      'border-slate-200/70 bg-slate-900/5 text-slate-900 hover:border-brand-300 hover:bg-slate-900/10 dark:border-slate-700 dark:bg-white/5 dark:text-slate-100',
+    focusRing: 'focus-visible:ring-brand-200 dark:focus-visible:ring-brand-300',
+    overlaySelected: 'bg-white/10',
+    overlayIdle: 'bg-brand-500/10 dark:bg-brand-400/10',
+    badge: 'bg-white/20 text-white dark:bg-slate-900/40 dark:text-slate-100',
+  },
+  lumiere: {
+    selected:
+      'border-transparent bg-gradient-to-br from-indigo-500 via-purple-500 to-fuchsia-500 text-white shadow-md dark:from-indigo-400 dark:via-purple-400 dark:to-fuchsia-400',
+    idle:
+      'border-slate-200/70 bg-slate-900/5 text-slate-900 hover:border-indigo-300 hover:bg-slate-900/10 dark:border-slate-700 dark:bg-white/5 dark:text-slate-100',
+    focusRing: 'focus-visible:ring-indigo-200 dark:focus-visible:ring-indigo-300',
+    overlaySelected: 'bg-white/10',
+    overlayIdle: 'bg-indigo-500/10 dark:bg-indigo-400/20',
+    badge: 'bg-white/20 text-white dark:bg-slate-900/40 dark:text-slate-100',
+  },
+}
+
 export const SelectShopPage = () => {
   const { shop, setShop } = useShop()
   const { reset } = useInventory()
@@ -33,6 +72,7 @@ export const SelectShopPage = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [retryCount, setRetryCount] = useState<number>(0)
   const [selectedShopId, setSelectedShopId] = useState(() => shop?.id ?? '')
+  const [selectedEntityId, setSelectedEntityId] = useState<EntityId | null>(null)
   const [selectionError, setSelectionError] = useState<string | null>(null)
   const [isRedirecting, setIsRedirecting] = useState(false)
   const cardsLabelId = useId()
@@ -91,29 +131,40 @@ export const SelectShopPage = () => {
       ac.abort('route-change')
     }
   }, [retryCount])
+  const entityCards = useMemo(() => {
+    return ENTITY_DEFINITIONS.map<EntityCard>((definition) => {
+      const matches = shops.filter((item) => definition.match(item))
+      return {
+        definition,
+        matches,
+        primaryShop: matches[0] ?? null,
+      }
+    })
+  }, [shops])
+
+  const entityByShopId = useMemo(() => {
+    const map = new Map<string, EntityCard>()
+    for (const card of entityCards) {
+      for (const candidate of card.matches) {
+        map.set(candidate.id, card)
+      }
+    }
+    return map
+  }, [entityCards])
+
   useEffect(() => {
     startTransition(() => {
-      setSelectedShopId((current) => {
-        if (shops.length === 0) {
-          return shop?.id ?? ''
-        }
+      if (!shop) {
+        setSelectedShopId('')
+        setSelectedEntityId(null)
+        return
+      }
 
-        if (current && shops.some((item) => item.id === current)) {
-          return current
-        }
-
-        if (shop && shops.some((item) => item.id === shop.id)) {
-          return shop.id
-        }
-
-        if (!shop && shops.length === 1) {
-          return shops[0].id
-        }
-
-        return ''
-      })
+      const entity = entityByShopId.get(shop.id) ?? null
+      setSelectedShopId(shop.id)
+      setSelectedEntityId(entity?.definition.id ?? null)
     })
-  }, [shop, shops])
+  }, [entityByShopId, shop])
 
   useEffect(() => {
     if (!selectedShopId) {
@@ -142,16 +193,25 @@ export const SelectShopPage = () => {
   }, [selectedShopId, selectionError])
 
   const focusFirstAvailableCard = useCallback(() => {
-    const target = cardRefs.current.find((element): element is HTMLButtonElement => Boolean(element))
-    target?.focus()
-  }, [])
+    for (let index = 0; index < entityCards.length; index += 1) {
+      const card = entityCards[index]
+      if (!card.primaryShop) continue
+      const element = cardRefs.current[index]
+      if (element) {
+        element.focus()
+        return
+      }
+    }
+  }, [entityCards])
 
   useEffect(() => {
-    if (status !== 'idle' || isRedirecting || shops.length === 0) {
+    if (status !== 'idle' || isRedirecting || entityCards.length === 0) {
       return
     }
 
-    const targetIndex = selectedShopId ? shops.findIndex((item) => item.id === selectedShopId) : 0
+    const targetIndex = selectedEntityId
+      ? entityCards.findIndex((item) => item.definition.id === selectedEntityId)
+      : 0
     const fallbackIndex = targetIndex >= 0 ? targetIndex : 0
     const target = cardRefs.current[fallbackIndex]
     if (target) {
@@ -160,7 +220,7 @@ export const SelectShopPage = () => {
     }
 
     focusFirstAvailableCard()
-  }, [focusFirstAvailableCard, isRedirecting, selectedShopId, shops, status])
+  }, [entityCards, focusFirstAvailableCard, isRedirecting, selectedEntityId, status])
 
   const handleRetry = useCallback(() => {
     setRetryCount((count) => count + 1)
@@ -200,18 +260,25 @@ export const SelectShopPage = () => {
     [focusFirstAvailableCard, isRedirecting, navigate, redirectTo, reset, shop, setShop],
   )
 
-  const handleShopSelection = useCallback(
-    (id: string) => {
-      setSelectedShopId(id)
-      const shopToActivate = shops.find((item) => item.id === id) ?? null
-      continueWithShop(shopToActivate)
+  const handleEntitySelection = useCallback(
+    (entity: EntityCard) => {
+      if (!entity.primaryShop) {
+        setSelectionError("Cette entité n’est pas encore disponible.")
+        focusFirstAvailableCard()
+        return
+      }
+
+      setSelectedEntityId(entity.definition.id)
+      setSelectedShopId(entity.primaryShop.id)
+      continueWithShop(entity.primaryShop)
     },
-    [continueWithShop, shops],
+    [continueWithShop, focusFirstAvailableCard],
   )
 
   const isLoadingShops = status === 'loading'
   const shouldShowShopError = status === 'error' && !isRedirecting
   const shouldShowShopForm = status === 'idle' && !isRedirecting
+  const allEntitiesUnavailable = entityCards.every((card) => !card.primaryShop)
 
   return (
     <Page className="px-4 py-6 sm:px-6">
@@ -254,51 +321,65 @@ export const SelectShopPage = () => {
                 <legend id={cardsLabelId} className="sr-only">
                   Boutiques disponibles
                 </legend>
-                <div
-                  aria-labelledby={cardsLabelId}
-                  className="grid gap-3 sm:grid-cols-2"
-                  role="radiogroup"
-                >
-                  {shops.map((item, index) => {
-                    const isSelected = item.id === selectedShopId
+                <div aria-labelledby={cardsLabelId} className="grid gap-3 sm:grid-cols-2" role="radiogroup">
+                  {entityCards.map((card, index) => {
+                    const theme = ENTITY_THEMES[card.definition.id]
+                    const isSelected = card.primaryShop?.id === selectedShopId
+                    const isDisabled = !card.primaryShop
+
                     return (
                       <button
-                        key={item.id}
+                        key={card.definition.id}
                         ref={(element) => {
                           cardRefs.current[index] = element
                         }}
                         type="button"
                         role="radio"
                         aria-checked={isSelected}
-                        onClick={() => handleShopSelection(item.id)}
+                        aria-disabled={isDisabled}
+                        disabled={isDisabled}
+                        onClick={() => handleEntitySelection(card)}
                         className={clsx(
-                          'group relative flex h-full w-full flex-col justify-between overflow-hidden rounded-2xl border px-5 py-4 text-left text-base shadow-sm transition duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
+                          'group relative flex h-full w-full flex-col justify-between overflow-hidden rounded-2xl border px-5 py-4 text-left text-base shadow-sm transition duration-200 focus:outline-none focus-visible:ring-2',
                           isSelected
-                            ? 'border-transparent bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-md dark:from-brand-400 dark:to-brand-500'
-                            : 'border-slate-200/70 bg-slate-900/5 text-slate-900 hover:border-brand-300 hover:bg-slate-900/10 dark:border-slate-700 dark:bg-white/5 dark:text-slate-100',
+                            ? theme.selected
+                            : clsx(theme.idle, isDisabled && 'cursor-not-allowed opacity-70'),
+                          isDisabled ? 'focus-visible:ring-transparent' : theme.focusRing,
                         )}
                       >
                         <span
                           aria-hidden="true"
                           className={clsx(
                             'pointer-events-none absolute inset-0 translate-y-2 opacity-0 transition duration-200 group-hover:translate-y-0 group-hover:opacity-100',
-                            isSelected
-                              ? 'bg-white/10'
-                              : 'bg-brand-500/10 dark:bg-brand-400/10',
+                            isSelected ? theme.overlaySelected : theme.overlayIdle,
                           )}
                         />
-                        <span className="relative block text-lg font-semibold">{item.name}</span>
+                        <span className="relative block text-lg font-semibold">{card.definition.label}</span>
                         <span className="relative mt-2 block text-sm text-slate-600 dark:text-slate-300">
-                          Appuie pour choisir cette boutique et continuer.
+                          {card.definition.description}
+                        </span>
+                        <span
+                          className={clsx(
+                            'relative mt-3 inline-flex w-fit items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide',
+                            isDisabled
+                              ? 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                              : theme.badge,
+                          )}
+                        >
+                          {isDisabled
+                            ? 'Bientôt disponible'
+                            : card.matches.length === 1
+                            ? '1 boutique disponible'
+                            : `${card.matches.length} boutiques disponibles`}
                         </span>
                       </button>
                     )
                   })}
                 </div>
               </fieldset>
-              {shops.length === 0 && (
+              {allEntitiesUnavailable && (
                 <p id="shop-help" className="text-sm text-slate-500 dark:text-slate-300">
-                  Aucune boutique n’est disponible pour le moment.
+                  Aucune entité n’est disponible pour le moment.
                 </p>
               )}
               {selectionError && (

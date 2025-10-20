@@ -66,8 +66,8 @@ vi.mock('react-router-dom', async (importOriginal) => {
 })
 
 describe('SelectShopPage', () => {
-  const shopA: Shop = { id: '11111111-1111-1111-1111-111111111111', name: 'Boutique 1' }
-  const shopB: Shop = { id: '22222222-2222-2222-2222-222222222222', name: 'Boutique 2' }
+  const cineShop: Shop = { id: '11111111-1111-1111-1111-111111111111', name: 'CinéBoutique Paris' }
+  const lumiereShop: Shop = { id: '22222222-2222-2222-2222-222222222222', name: 'Lumière Lyon' }
 
   beforeEach(() => {
     fetchShopsMock.mockReset()
@@ -110,26 +110,26 @@ describe('SelectShopPage', () => {
   })
 
   it('navigue vers la page d’identification dès la sélection d’une boutique', async () => {
-    fetchShopsMock.mockResolvedValueOnce([shopA, shopB])
+    fetchShopsMock.mockResolvedValueOnce([cineShop, lumiereShop])
 
     renderPage({ pathname: '/select-shop', state: { redirectTo: '/inventory' } })
 
-    const shopRadio = await screen.findByRole('radio', { name: /Boutique 2/i })
+    const shopRadio = await screen.findByRole('radio', { name: /Lumière/i })
     fireEvent.click(shopRadio)
 
-    await waitFor(() => expect(setShopFn).toHaveBeenCalledWith(shopB))
+    await waitFor(() => expect(setShopFn).toHaveBeenCalledWith(lumiereShop))
     await waitFor(() => expect(resetInventoryFn).toHaveBeenCalledTimes(1))
-    await waitFor(() => expect(clearSelectedUserMock).toHaveBeenCalledWith(shopB.id))
+    await waitFor(() => expect(clearSelectedUserMock).toHaveBeenCalledWith(lumiereShop.id))
     await waitFor(() =>
       expect(navigateMock).toHaveBeenCalledWith('/select-user', { state: { redirectTo: '/inventory' } }),
     )
   })
 
   it('réutilise la boutique active sans réinitialiser inutilement', async () => {
-    fetchShopsMock.mockResolvedValueOnce([shopA])
+    fetchShopsMock.mockResolvedValueOnce([cineShop])
     useShopMock.mockReturnValue(
       createUseShopValue({
-        shop: shopA,
+        shop: cineShop,
         setShop: setShopFn as unknown as UseShopValue['setShop'],
         isLoaded: true,
       }),
@@ -137,22 +137,22 @@ describe('SelectShopPage', () => {
 
     renderPage()
 
-    const cardButton = await screen.findByRole('radio', { name: /Boutique 1/i })
+    const cardButton = await screen.findByRole('radio', { name: /CinéBoutique/i })
     fireEvent.click(cardButton)
 
-    await waitFor(() => expect(setShopFn).toHaveBeenCalledWith(shopA))
+    await waitFor(() => expect(setShopFn).toHaveBeenCalledWith(cineShop))
     expect(resetInventoryFn).not.toHaveBeenCalled()
     expect(clearSelectedUserMock).not.toHaveBeenCalled()
     await waitFor(() => expect(navigateMock).toHaveBeenCalledWith('/select-user', undefined))
   })
 
   it('bloque la navigation quand le GUID est invalide', async () => {
-    const invalidShop: Shop = { id: 'invalid-id', name: 'Boutique invalide' }
+    const invalidShop: Shop = { id: 'invalid-id', name: 'Lumière test invalide' }
     fetchShopsMock.mockResolvedValueOnce([invalidShop])
 
     renderPage()
 
-    const card = await screen.findByRole('radio', { name: /Boutique invalide/i })
+    const card = await screen.findByRole('radio', { name: /Lumière test invalide/i })
     fireEvent.click(card)
 
     const errorMessage = await screen.findByText(/Identifiant de boutique invalide/i)
@@ -165,7 +165,7 @@ describe('SelectShopPage', () => {
   })
 
   it('affiche un message d’erreur et permet de réessayer le chargement', async () => {
-    const shops: Shop[] = [shopA]
+    const shops: Shop[] = [cineShop]
     fetchShopsMock.mockRejectedValueOnce(new Error('API indisponible'))
     fetchShopsMock.mockRejectedValueOnce(new Error('API indisponible'))
     fetchShopsMock.mockResolvedValueOnce(shops)
