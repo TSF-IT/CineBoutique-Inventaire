@@ -1,7 +1,21 @@
 @import "tailwindcss";
-@config "../tailwind.config.ts";
 @source "../index.html";
 @source "./**/*.{ts,tsx}";
+@theme {
+  /* Reprends ici tes tokens (ex: --color-brand-500, etc.) et
+     ajoute:  --shadow-soft: 0 10px 30px -15px rgba(15,23,42,.35);  */
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-300: #a5b4fc;
+  --color-brand-400: #818cf8;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+  --color-brand-800: #3730a3;
+  --color-brand-900: #312e81;
+  --shadow-soft: 0 10px 30px -15px rgba(15, 23, 42, 0.35);
+}
 @layer responsive-styles {
   @import './app/styles/responsive.css';
 }
