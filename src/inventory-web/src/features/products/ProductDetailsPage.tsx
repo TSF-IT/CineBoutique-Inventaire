@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { extractBadges } from "./attributeBadges";
 
 type Details = {
   sku: string; ean?: string | null; name: string;
@@ -30,6 +31,7 @@ export function ProductDetailsPage() {
   }, [sku]);
 
   const attrs = data?.attributes && typeof data.attributes === "object" ? data.attributes : null;
+  const badges = extractBadges(attrs);
 
   return (
     <section style={{ display:"grid", gap: 12, maxWidth: 900 }}>
@@ -41,6 +43,19 @@ export function ProductDetailsPage() {
           <div><strong>Nom</strong> : {data.name}</div>
           <div><strong>EAN</strong> : {data.ean ?? "—"}</div>
           <div><strong>Groupe</strong> : {data.group ?? "—"}{data.subGroup ? ` / ${data.subGroup}` : ""}</div>
+          {badges.length > 0 && (
+            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+              {badges.map(b => (
+                <span key={b.key}
+                  style={{
+                    display:"inline-flex", alignItems:"center", gap:6,
+                    padding:"2px 10px", borderRadius:999, background:"#eef", border:"1px solid #cde"
+                  }}>
+                  <strong>{b.label} :</strong> {b.value}
+                </span>
+              ))}
+            </div>
+          )}
           <div>
             <strong>Attributs</strong> :
             {attrs && Object.keys(attrs).length > 0 ? (
