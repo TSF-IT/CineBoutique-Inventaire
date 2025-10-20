@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Infrastructure;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
+using CineBoutique.Inventory.Api.Infrastructure.Logging;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Infrastructure.Database;
@@ -243,7 +244,8 @@ ORDER BY l.""Code"";",
 
             summary.Conflicts = summary.ConflictZones.Count;
 
-            logger.LogDebug("ConflictsSummary shop={ShopId} zones={Count}", parsedShopId, summary.Conflicts);
+            var summaryQuery = FormattableString.Invariant($"conflicts summary shop={parsedShopId} zones={summary.Conflicts}");
+            ApiLog.InventorySearch(logger, summaryQuery);
 
             return Results.Ok(summary);
         })
@@ -530,11 +532,8 @@ ORDER BY COALESCE(NULLIF(p."Sku", ''), p."Ean"), p."Ean", pr."RunId";
                 Items = items
             };
 
-            logger.LogDebug(
-                "ConflictsZoneDetail location={LocationId} runs={RunCount} items={ItemCount}",
-                locationId,
-                payload.Runs.Count,
-                payload.Items.Count);
+            var detailQuery = FormattableString.Invariant($"conflicts zone detail location={locationId} runs={payload.Runs.Count} items={payload.Items.Count}");
+            ApiLog.InventorySearch(logger, detailQuery);
 
             return Results.Ok(payload);
         })

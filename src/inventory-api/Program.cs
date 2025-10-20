@@ -7,6 +7,7 @@ using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Authentication;
 using CineBoutique.Inventory.Api.Infrastructure.Http;
+using CineBoutique.Inventory.Api.Infrastructure.Logging;
 using CineBoutique.Inventory.Api.Infrastructure.Middleware;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Hosting;
@@ -346,7 +347,7 @@ if (app.Environment.IsDevelopment())
 
 var env = app.Environment;
 
-app.Logger.LogInformation("[API] Using ownerUserId for runs; legacy operatorName disabled for write.");
+ApiLog.ApiReady(app.Logger);
 
 app.Logger.LogInformation("ASPNETCORE_ENVIRONMENT = {Env}", env.EnvironmentName);
 var devLike = env.IsDevelopment() || env.IsEnvironment("CI") || 

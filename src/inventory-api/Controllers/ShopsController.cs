@@ -46,7 +46,7 @@ public sealed class ShopsController : ControllerBase
                 "shops.create.success",
                 cancellationToken).ConfigureAwait(false);
 
-            return Created($"/api/shops/{created.Id}", created);
+            return Created(new Uri($"/api/shops/{created.Id}", UriKind.Relative), created);
         }
         catch (ShopConflictException ex)
         {
