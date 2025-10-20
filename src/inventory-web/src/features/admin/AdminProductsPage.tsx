@@ -66,7 +66,9 @@ export function AdminProductsPage() {
               {rows.map(p => (
                 <tr key={p.sku}>
                   <td>{p.ean ?? ""}</td>
-                  <td>{p.sku}</td>
+                  <td>
+                    <a href={`/products/${encodeURIComponent(p.sku)}`}>{p.sku}</a>
+                  </td>
                   <td>{p.name}</td>
                   <td>{p.group ?? ""}</td>
                   <td>{p.subGroup ?? ""}</td>
