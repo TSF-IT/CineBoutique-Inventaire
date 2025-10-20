@@ -2,6 +2,28 @@ import { useEffect, useRef, useState } from "react";
 
 declare global { interface Window { BarcodeDetector?: any; } }
 
+function beep() {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.type = "sine";
+    o.frequency.value = 880;
+    g.gain.value = 0.05;
+    o.start();
+    setTimeout(() => {
+      o.stop();
+      ctx.close();
+    }, 120);
+  } catch {}
+}
+
+function haptic() {
+  try { (navigator as any).vibrate?.(50); } catch {}
+}
+
 export function BarcodeCameraButton(props: { onDetected?: (value: string) => void; }) {
   const [supported, setSupported] = useState<boolean>(false);
   const [active, setActive] = useState<boolean>(false);
@@ -29,7 +51,13 @@ export function BarcodeCameraButton(props: { onDetected?: (value: string) => voi
       const codes = await detectorRef.current.detect(bitmap);
       if (codes && codes.length > 0) {
         const raw = String(codes[0].rawValue || "").trim();
-        if (raw) { props.onDetected?.(raw); stop(); return; }
+        if (raw) {
+          beep();
+          haptic();
+          props.onDetected?.(raw);
+          stop();
+          return;
+        }
       }
     } catch { /* ignore */ }
     requestAnimationFrame(scan);
