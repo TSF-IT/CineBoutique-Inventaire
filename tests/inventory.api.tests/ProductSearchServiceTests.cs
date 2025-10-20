@@ -21,7 +21,9 @@ public sealed class ProductSearchServiceTests
             new ProductLookupItem(Guid.NewGuid(), "SKU-002", "Produit 002", null, null, "445566"),
         };
 
-        var results = await service.SearchAsync(" SKU-001 ", 10, CancellationToken.None).ConfigureAwait(false);
+        var results = await service
+            .SearchAsync(" SKU-001 ", 10, hasPaging: false, pageSize: 50, offset: 0, CancellationToken.None)
+            .ConfigureAwait(false);
 
         results.Should().HaveCount(2);
         results[0].Sku.Should().Be("SKU-001");
@@ -38,7 +40,9 @@ public sealed class ProductSearchServiceTests
         var service = CreateService(out var repository);
         repository.SearchResults = Array.Empty<ProductLookupItem>();
 
-        var results = await service.SearchAsync("code", 500, CancellationToken.None).ConfigureAwait(false);
+        var results = await service
+            .SearchAsync("code", 500, hasPaging: false, pageSize: 50, offset: 0, CancellationToken.None)
+            .ConfigureAwait(false);
 
         results.Should().BeEmpty();
         repository.LastLimit.Should().Be(50, "la limite SQL doit être bornée");
@@ -49,7 +53,9 @@ public sealed class ProductSearchServiceTests
     {
         var service = CreateService(out _);
 
-        var results = await service.SearchAsync("   ", 5, CancellationToken.None).ConfigureAwait(false);
+        var results = await service
+            .SearchAsync("   ", 5, hasPaging: false, pageSize: 50, offset: 0, CancellationToken.None)
+            .ConfigureAwait(false);
 
         results.Should().BeEmpty();
     }
@@ -59,7 +65,25 @@ public sealed class ProductSearchServiceTests
     {
         var service = CreateService(out _);
 
-        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => service.SearchAsync("code", 0, CancellationToken.None));
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+            service.SearchAsync("code", 0, hasPaging: false, pageSize: 50, offset: 0, CancellationToken.None));
+
+    }
+
+    [Fact]
+    public async Task SearchAsync_WithPaging_ForwardsPagingParameters()
+    {
+        var service = CreateService(out var repository);
+        repository.SearchResults = Array.Empty<ProductLookupItem>();
+
+        var results = await service
+            .SearchAsync("code", 25, hasPaging: true, pageSize: 80, offset: 160, CancellationToken.None)
+            .ConfigureAwait(false);
+
+        results.Should().BeEmpty();
+        repository.LastHasPaging.Should().BeTrue();
+        repository.LastPageSize.Should().Be(80);
+        repository.LastOffset.Should().Be(160);
     }
 
     private static ProductSearchService CreateService(out FakeProductLookupRepository repository)
@@ -73,6 +97,9 @@ public sealed class ProductSearchServiceTests
         public IReadOnlyList<ProductLookupItem> SearchResults { get; set; } = Array.Empty<ProductLookupItem>();
         public string? LastQuery { get; private set; }
         public int? LastLimit { get; private set; }
+        public bool? LastHasPaging { get; private set; }
+        public int? LastPageSize { get; private set; }
+        public int? LastOffset { get; private set; }
 
         public Task<ProductLookupItem?> FindBySkuAsync(string sku, CancellationToken cancellationToken)
             => Task.FromResult<ProductLookupItem?>(null);
@@ -83,10 +110,19 @@ public sealed class ProductSearchServiceTests
         public Task<IReadOnlyList<ProductLookupItem>> FindByCodeDigitsAsync(string digits, CancellationToken cancellationToken)
             => Task.FromResult<IReadOnlyList<ProductLookupItem>>(Array.Empty<ProductLookupItem>());
 
-        public Task<IReadOnlyList<ProductLookupItem>> SearchProductsAsync(string code, int limit, CancellationToken cancellationToken)
+        public Task<IReadOnlyList<ProductLookupItem>> SearchProductsAsync(
+            string code,
+            int limit,
+            bool hasPaging,
+            int pageSize,
+            int offset,
+            CancellationToken cancellationToken)
         {
             LastQuery = code;
             LastLimit = limit;
+            LastHasPaging = hasPaging;
+            LastPageSize = pageSize;
+            LastOffset = offset;
             return Task.FromResult(SearchResults);
         }
     }
