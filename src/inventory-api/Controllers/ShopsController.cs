@@ -26,9 +26,9 @@ public sealed class ShopsController : ControllerBase
 
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<ActionResult<IReadOnlyList<ShopDto>>> GetAsync(CancellationToken cancellationToken)
+    public async Task<ActionResult<IReadOnlyList<ShopDto>>> GetAsync([FromQuery] string? kind, CancellationToken cancellationToken)
     {
-        var shops = await _shopService.GetAsync(cancellationToken).ConfigureAwait(false);
+        var shops = await _shopService.GetAsync(kind, cancellationToken).ConfigureAwait(false);
         return Ok(shops);
     }
 
