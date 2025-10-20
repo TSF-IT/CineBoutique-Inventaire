@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
+import { mapRowFromCsv, normalizeKey, KNOWN_KEYS } from "./csvMapping";
 
 type ErrorItem = { Reason: string; Message?: string; Field?: string };
 type DryRunPayload = {
@@ -38,6 +39,7 @@ export function ProductImportPage() {
   const [importRes, setImportRes] = useState<ImportPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<{ headers: string[]; rows: string[][] } | null>(null);
+  const [mappedPreview, setMappedPreview] = useState<{ headers: string[]; rows: ReturnType<typeof mapRowFromCsv>[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const canActions = useMemo(() => !!file && !busyDryRun && !busyImport, [file, busyDryRun, busyImport]);
@@ -50,22 +52,54 @@ export function ProductImportPage() {
     return typeof v === "number" ? v : null;
   }, [importRes]);
 
+  function parseCsvSemicolon(text: string, maxRows = 10) {
+    const lines = text.replace(/\r/g, "").split("\n").filter(l => l.trim().length > 0);
+    if (lines.length === 0) return null;
+    const rawHeaders = lines[0].split(";").map(s => s.trim());
+    const headers = rawHeaders.map(normalizeKey);
+    const rows: string[][] = [];
+    for (let i = 1; i < lines.length && rows.length < maxRows; i++) {
+      const cols = lines[i].split(";").map(s => s.trim());
+      while (cols.length < rawHeaders.length) cols.push("");
+      rows.push(cols.slice(0, rawHeaders.length));
+    }
+    return { headers, rawHeaders, rows };
+  }
+
   function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files && e.target.files[0] ? e.target.files[0] : null;
     setFile(f);
-    // reset états de prévisualisation pour éviter toute confusion
-    setDryRunRes(null);
-    setImportRes(null);
-    setError(null);
     if (f) {
       const reader = new FileReader();
       reader.onload = () => {
         const txt = typeof reader.result === "string" ? reader.result : "";
-        setPreview(parseCsvSemicolon(txt, 10));
+        const parsed = parseCsvSemicolon(txt, 10);
+        if (!parsed) {
+          setPreview(null);
+          setMappedPreview(null);
+          setDryRunRes(null);
+          setImportRes(null);
+          setError(null);
+          return;
+        }
+
+        // Aperçu brut (déjà en place chez toi)
+        setPreview({ headers: parsed.rawHeaders, rows: parsed.rows });
+
+        // Aperçu mappé
+        const mapped = parsed.rows.map(row => mapRowFromCsv(parsed.headers, row));
+        setMappedPreview({ headers: parsed.headers, rows: mapped });
+
+        // reset des résultats serveurs
+        setDryRunRes(null); setImportRes(null); setError(null);
       };
       reader.readAsText(f, "utf-8");
     } else {
       setPreview(null);
+      setMappedPreview(null);
+      setDryRunRes(null);
+      setImportRes(null);
+      setError(null);
     }
   }
 
@@ -139,10 +173,11 @@ export function ProductImportPage() {
             onClick={() => {
               setFile(null);
               if (fileInputRef.current) fileInputRef.current.value = "";
+              setPreview(null);
+              setMappedPreview(null);
               setDryRunRes(null);
               setImportRes(null);
               setError(null);
-              setPreview(null);
             }}
             disabled={busyDryRun || busyImport}
           >
@@ -158,17 +193,83 @@ export function ProductImportPage() {
       {error && <div style={{ color: "#b00020" }}>Erreur&nbsp;: {error}</div>}
 
       {preview && (
-        <div style={{ border: "1px dashed #ccc", padding: 12, borderRadius: 6 }}>
-          <h3 style={{ marginTop: 0 }}>Aperçu local (1ʳᵉs 10 lignes)</h3>
+        <div style={{ border: "1px solid #ddd", padding: 12, borderRadius: 6 }}>
+          <h3 style={{ marginTop: 0 }}>Prévisualisation brute (local)</h3>
+          <small style={{ display: "block", opacity: 0.75, marginBottom: 8 }}>
+            Les 10 premières lignes du fichier sélectionné. Les colonnes connues sont surlignées.
+          </small>
           <div style={{ overflowX: "auto" }}>
-            <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr>{preview.headers.map(h => <th key={h} style={{ textAlign: "left" }}>{h}</th>)}</tr>
+                <tr>
+                  {preview.headers.map((h, i) => {
+                    const normalized = normalizeKey(h);
+                    const isKnown = KNOWN_KEYS.has(normalized);
+                    return (
+                      <th
+                        key={i}
+                        style={{
+                          textAlign: "left",
+                          backgroundColor: isKnown ? "#f5f5f5" : undefined,
+                          padding: "4px 6px",
+                        }}
+                        title={isKnown ? `Colonne reconnue (${normalized})` : "Colonne inconnue"}
+                      >
+                        {h}
+                      </th>
+                    );
+                  })}
+                </tr>
               </thead>
               <tbody>
-                {preview.rows.map((r, i) => (
-                  <tr key={i}>{r.map((c, j) => <td key={j}>{c}</td>)}</tr>
+                {preview.rows.map((row, i) => (
+                  <tr key={i}>
+                    {row.map((cell, j) => (
+                      <td key={j} style={{ padding: "4px 6px", borderTop: "1px solid #eee" }}>{cell}</td>
+                    ))}
+                  </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {mappedPreview && (
+        <div style={{ border: "1px solid #ddd", padding: 12, borderRadius: 6 }}>
+          <h3 style={{ marginTop: 0 }}>Prévisualisation mappée (local)</h3>
+          <small style={{ display: "block", opacity: 0.75, marginBottom: 8 }}>
+            Les colonnes sont normalisées comme côté serveur (synonymes → clefs canoniques). Les colonnes non reconnues
+            seront fusionnées dans <code>Attributes</code> lors de l’import.
+          </small>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left" }}>SKU</th>
+                  <th style={{ textAlign: "left" }}>EAN</th>
+                  <th style={{ textAlign: "left" }}>Nom</th>
+                  <th style={{ textAlign: "left" }}>Groupe</th>
+                  <th style={{ textAlign: "left" }}>Sous-groupe</th>
+                  <th style={{ textAlign: "left" }}>Attributs</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mappedPreview.rows.map((r, i) => {
+                  const keys = Object.keys(r.attributes);
+                  return (
+                    <tr key={i}>
+                      <td>{r.sku}</td>
+                      <td>{r.ean}</td>
+                      <td>{r.name}</td>
+                      <td>{r.groupe}</td>
+                      <td>{r.sousGroupe}</td>
+                      <td title={keys.length ? keys.map(k => `${k}: ${r.attributes[k] ?? "null"}`).join("\n") : "—"}>
+                        {keys.length ? `${keys.length} attribut(s)` : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

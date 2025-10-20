@@ -42,7 +42,7 @@ const {
 } = vi.mocked({ createLocation, updateLocation, createShopUser, updateShopUser, disableShopUser })
 const { fetchShopUsers: mockedFetchShopUsers } = vi.mocked({ fetchShopUsers })
 
-const testShop = { id: 'shop-123', name: 'Boutique test' } as const
+const testShop = { id: 'shop-123', name: 'Boutique test', kind: 'boutique' } as const
 
 const renderAdminPage = async () => {
   render(

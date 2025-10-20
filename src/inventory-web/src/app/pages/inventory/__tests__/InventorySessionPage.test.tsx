@@ -16,7 +16,7 @@ import * as inventoryApi from '../../../api/inventoryApi'
 
 const getConflictZoneDetailMock = vi.spyOn(inventoryApi, 'getConflictZoneDetail')
 const fetchProductByEanMock = vi.spyOn(inventoryApi, 'fetchProductByEan')
-const shopMock: Shop = { id: 'shop-test', name: 'Boutique test' }
+const shopMock: Shop = { id: 'shop-test', name: 'Boutique test', kind: 'boutique' }
 
 const inventoryControls: { setCountType?: (type: number | null) => void } = {}
 

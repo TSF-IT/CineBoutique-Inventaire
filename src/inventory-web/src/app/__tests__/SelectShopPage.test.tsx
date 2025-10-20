@@ -3,11 +3,12 @@ import { MemoryRouter, useLocation, type Location } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useEffect } from 'react'
 
+import type { FetchShopsOptions } from '@/api/shops'
 import type { Shop } from '@/types/shop'
 import { SelectShopPage } from '@/app/pages/select-shop/SelectShopPage'
 import { ThemeProvider } from '@/theme/ThemeProvider'
 
-const fetchShopsMock = vi.hoisted(() => vi.fn<(signal?: AbortSignal) => Promise<Shop[]>>())
+const fetchShopsMock = vi.hoisted(() => vi.fn<(options?: FetchShopsOptions) => Promise<Shop[]>>())
 const useShopMock = vi.hoisted(() =>
   vi.fn(() => ({ shop: null, setShop: () => undefined, isLoaded: true })),
 )
@@ -19,7 +20,7 @@ const setShopFn = vi.hoisted(() => vi.fn())
 const resetInventoryFn = vi.hoisted(() => vi.fn())
 
 vi.mock('@/api/shops', () => ({
-  fetchShops: (...args: Parameters<typeof fetchShopsMock>) => fetchShopsMock(...args),
+  fetchShops: (options?: FetchShopsOptions) => fetchShopsMock(options),
 }))
 
 vi.mock('@/state/ShopContext', () => ({
@@ -42,7 +43,11 @@ vi.mock('@/lib/selectedUserStorage', () => ({
 }))
 
 describe('SelectShopPage (routing)', () => {
-  const shop: Shop = { id: '123e4567-e89b-12d3-a456-426614174000', name: 'Boutique 1' }
+  const shop: Shop = {
+    id: '123e4567-e89b-12d3-a456-426614174000',
+    name: 'Boutique 1',
+    kind: 'boutique',
+  }
 
   beforeEach(() => {
     fetchShopsMock.mockReset()

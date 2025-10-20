@@ -186,7 +186,7 @@ vi.mock('../api/inventoryApi', async (importOriginal) => {
 })
 
 describe('HomePage', () => {
-  const testShop = { id: 'shop-123', name: 'Boutique test' } as const
+  const testShop = { id: 'shop-123', name: 'Boutique test', kind: 'boutique' } as const
 
   beforeEach(() => {
     localStorage.clear()

@@ -1,11 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { FetchShopsOptions } from '@/api/shops'
 import type { Shop } from '@/types/shop'
 import { SelectShopPage } from './SelectShopPage'
 import { ThemeProvider } from '@/theme/ThemeProvider'
 
-const fetchShopsMock = vi.hoisted(() => vi.fn<(signal?: AbortSignal) => Promise<Shop[]>>())
+const fetchShopsMock = vi.hoisted(() => vi.fn<(options?: FetchShopsOptions) => Promise<Shop[]>>())
 
 type UseShopValue = {
   shop: Shop | null
@@ -40,7 +41,7 @@ const resetInventoryFn = vi.hoisted(() => vi.fn())
 const clearSelectedUserMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@/api/shops', () => ({
-  fetchShops: (signal?: AbortSignal) => fetchShopsMock(signal),
+  fetchShops: (options?: FetchShopsOptions) => fetchShopsMock(options),
 }))
 
 vi.mock('@/state/ShopContext', () => ({
@@ -66,10 +67,16 @@ vi.mock('react-router-dom', async (importOriginal) => {
 })
 
 describe('SelectShopPage', () => {
-  const cineShop: Shop = { id: '11111111-1111-1111-1111-111111111111', name: 'CinéBoutique Paris' }
-  const lumiereShop: Shop = { id: '22222222-2222-2222-2222-222222222222', name: 'Lumière Lyon' }
-  const bellecourShop: Shop = { id: '33333333-3333-3333-3333-333333333333', name: 'Cinéma Bellecour' }
-  const royalShop: Shop = { id: '44444444-4444-4444-4444-444444444444', name: 'Cinéma Le Royal' }
+  const shopA: Shop = {
+    id: '11111111-1111-1111-1111-111111111111',
+    name: 'Boutique 1',
+    kind: 'boutique',
+  }
+  const shopB: Shop = {
+    id: '22222222-2222-2222-2222-222222222222',
+    name: 'Boutique 2',
+    kind: 'lumiere',
+  }
 
   beforeEach(() => {
     fetchShopsMock.mockReset()
@@ -149,7 +156,7 @@ describe('SelectShopPage', () => {
   })
 
   it('bloque la navigation quand le GUID est invalide', async () => {
-    const invalidShop: Shop = { id: 'invalid-id', name: 'Lumière test invalide' }
+    const invalidShop: Shop = { id: 'invalid-id', name: 'Boutique invalide', kind: 'boutique' }
     fetchShopsMock.mockResolvedValueOnce([invalidShop])
 
     renderPage()
@@ -194,5 +201,20 @@ describe('SelectShopPage', () => {
     await waitFor(() => expect(fetchShopsMock).toHaveBeenCalledTimes(2))
 
     consoleErrorSpy.mockRestore()
+})
+
+  it('rafraîchit la liste selon le filtre sélectionné', async () => {
+    fetchShopsMock.mockResolvedValueOnce([shopA, shopB])
+    fetchShopsMock.mockResolvedValueOnce([shopB])
+
+    renderPage()
+
+    const lumiereButton = await screen.findByRole('button', { name: /Lumière/i })
+
+    fireEvent.click(lumiereButton)
+
+    await waitFor(() => expect(fetchShopsMock).toHaveBeenCalledTimes(2))
+    const [options] = fetchShopsMock.mock.calls.at(-1) ?? []
+    expect(options).toMatchObject({ kind: 'lumiere' })
   })
 })

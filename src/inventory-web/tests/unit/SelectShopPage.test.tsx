@@ -9,9 +9,15 @@ import { ThemeProvider } from '../../src/theme/ThemeProvider'
 type Shop = {
   id: string
   name: string
+  kind: 'boutique' | 'lumiere' | 'camera'
 }
 
-const fetchShopsMock = vi.fn<(signal?: AbortSignal) => Promise<Shop[]>>()
+type FetchShopsOptions = {
+  signal?: AbortSignal
+  kind?: Shop['kind']
+}
+
+const fetchShopsMock = vi.fn<(options?: FetchShopsOptions) => Promise<Shop[]>>()
 const navigateMock = vi.fn()
 const setShopMock = vi.fn()
 const resetInventoryMock = vi.fn()
@@ -28,7 +34,7 @@ vi.mock('react-router-dom', async () => {
 })
 
 vi.mock('../../src/api/shops', () => ({
-  fetchShops: (signal?: AbortSignal) => fetchShopsMock(signal),
+  fetchShops: (options?: FetchShopsOptions) => fetchShopsMock(options),
 }))
 
 const shopContextValue = { shop: null as Shop | null, setShop: setShopMock }
@@ -57,8 +63,8 @@ describe('SelectShopPage', () => {
 
   it('redirige immédiatement après la sélection d’une boutique en mode carte', async () => {
     const shops: Shop[] = [
-      { id: '11111111-1111-4111-8111-111111111111', name: 'Boutique Alpha' },
-      { id: '22222222-2222-4222-8222-222222222222', name: 'Boutique Beta' },
+      { id: '11111111-1111-4111-8111-111111111111', name: 'Boutique Alpha', kind: 'boutique' },
+      { id: '22222222-2222-4222-8222-222222222222', name: 'Boutique Beta', kind: 'lumiere' },
     ]
     fetchShopsMock.mockResolvedValueOnce(shops)
 
@@ -88,6 +94,7 @@ describe('SelectShopPage', () => {
     const shops: Shop[] = Array.from({ length: 6 }, (_, index) => ({
       id: `${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}-${index + 1}${index + 1}${index + 1}${index + 1}-${index + 1}${index + 1}${index + 1}${index + 1}-${index + 1}${index + 1}${index + 1}${index + 1}-${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}`,
       name: `Boutique ${index + 1}`,
+      kind: 'boutique',
     }))
     fetchShopsMock.mockResolvedValueOnce(shops)
 
