@@ -39,3 +39,10 @@ trim_trailing_whitespace = false
 [tests/**.cs]
 dotnet_diagnostic.CA2007.severity = suggestion
 dotnet_diagnostic.CA1711.severity = suggestion
+
+[src/inventory-infra/Migrations/*.cs]
+dotnet_diagnostic.CA1707.severity = none
+
+[src/inventory-infra/**/*.cs]
+dotnet_diagnostic.CA1859.severity = none
+dotnet_diagnostic.CA1812.severity = none
