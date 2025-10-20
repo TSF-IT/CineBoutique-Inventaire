@@ -67,16 +67,29 @@ vi.mock('react-router-dom', async (importOriginal) => {
 })
 
 describe('SelectShopPage', () => {
-  const shopA: Shop = {
+  const cineShop: Shop = {
     id: '11111111-1111-1111-1111-111111111111',
-    name: 'Boutique 1',
+    name: 'CinéBoutique République',
     kind: 'boutique',
   }
-  const shopB: Shop = {
+  const lumiereShop: Shop = {
     id: '22222222-2222-2222-2222-222222222222',
-    name: 'Boutique 2',
+    name: 'Lumière République',
     kind: 'lumiere',
   }
+  const bellecourShop: Shop = {
+    id: '33333333-3333-3333-3333-333333333333',
+    name: 'Lumière Bellecour',
+    kind: 'lumiere',
+  }
+  const royalShop: Shop = {
+    id: '44444444-4444-4444-4444-444444444444',
+    name: 'Lumière Royal',
+    kind: 'lumiere',
+  }
+
+  const shopA = cineShop
+  const shopB = lumiereShop
 
   beforeEach(() => {
     fetchShopsMock.mockReset()
@@ -156,7 +169,7 @@ describe('SelectShopPage', () => {
   })
 
   it('bloque la navigation quand le GUID est invalide', async () => {
-    const invalidShop: Shop = { id: 'invalid-id', name: 'Boutique invalide', kind: 'boutique' }
+    const invalidShop: Shop = { id: 'invalid-id', name: 'Lumière test invalide', kind: 'boutique' }
     fetchShopsMock.mockResolvedValueOnce([invalidShop])
 
     renderPage()
@@ -189,19 +202,21 @@ describe('SelectShopPage', () => {
     fetchShopsMock.mockRejectedValueOnce(new Error('API indisponible'))
     fetchShopsMock.mockRejectedValueOnce(new Error('API indisponible'))
     fetchShopsMock.mockResolvedValueOnce(shops)
-    const consoleErrorSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-    renderPage()
+    try {
+      renderPage()
 
-    expect(await screen.findByText(/API indisponible/i)).toBeInTheDocument()
+      expect(await screen.findByText(/API indisponible/i)).toBeInTheDocument()
 
-    const retryButton = await screen.findByRole('button', { name: /Réessayer/i })
-    fireEvent.click(retryButton)
+      const retryButton = await screen.findByRole('button', { name: /Réessayer/i })
+      fireEvent.click(retryButton)
 
-    await waitFor(() => expect(fetchShopsMock).toHaveBeenCalledTimes(2))
-
-    consoleErrorSpy.mockRestore()
-})
+      await waitFor(() => expect(fetchShopsMock).toHaveBeenCalledTimes(2))
+    } finally {
+      consoleWarnSpy.mockRestore()
+    }
+  })
 
   it('rafraîchit la liste selon le filtre sélectionné', async () => {
     fetchShopsMock.mockResolvedValueOnce([shopA, shopB])

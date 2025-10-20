@@ -149,12 +149,16 @@ export const SelectShopPage = () => {
           return current
         }
 
-    run()
-    return () => {
-      disposed = true
-      ac.abort('route-change')
-    }
-  }, [retryCount])
+        const preferredShopId = shop?.id
+        if (preferredShopId && shops.some((item) => item.id === preferredShopId)) {
+          return preferredShopId
+        }
+
+        return shops[0]?.id ?? ''
+      })
+    })
+  }, [shop?.id, shops])
+
   const entityCards = useMemo(() => buildEntityCards(shops), [shops])
 
   const entityByShopId = useMemo(() => {
@@ -294,6 +298,7 @@ export const SelectShopPage = () => {
   const shouldShowShopError = status === 'error' && !isRedirecting
   const shouldShowShopForm = status === 'idle' && !isRedirecting
   const filterOptions: readonly ShopFilter[] = ['all', 'boutique', 'lumiere'] as const
+  const allEntitiesUnavailable = entityCards.length > 0 && entityCards.every((card) => !card.primaryShop)
 
   return (
     <Page className="px-4 py-6 sm:px-6">
