@@ -61,7 +61,7 @@ describe('SelectShopPage', () => {
     shopContextValue.shop = null
   })
 
-  it('redirige immédiatement après la sélection d’une boutique en mode carte', async () => {
+  it('redirige immédiatement après la sélection d’une boutique via la grille', async () => {
     const shops: Shop[] = [
       { id: '11111111-1111-4111-8111-111111111111', name: 'Boutique Alpha', kind: 'boutique' },
       { id: '22222222-2222-4222-8222-222222222222', name: 'Boutique Beta', kind: 'lumiere' },
@@ -71,13 +71,16 @@ describe('SelectShopPage', () => {
     const user = userEvent.setup()
     render(
       <ThemeProvider>
-        <MemoryRouter initialEntries={[{ pathname: '/select-shop' }]}>
+        <MemoryRouter initialEntries={[{ pathname: '/select-shop' }]}> 
           <SelectShopPage />
         </MemoryRouter>
       </ThemeProvider>,
     )
 
-    const choice = await screen.findByRole('radio', { name: /Boutique Alpha/i })
+    const entityRadio = await screen.findByRole('radio', { name: /CinéBoutique/i })
+    await user.click(entityRadio)
+
+    const choice = await screen.findByRole('button', { name: /Boutique Alpha/i })
     await user.click(choice)
 
     await waitFor(() => {
@@ -87,35 +90,36 @@ describe('SelectShopPage', () => {
     expect(setShopMock).toHaveBeenCalledWith(shops[0])
     expect(resetInventoryMock).toHaveBeenCalledTimes(1)
     expect(clearSelectedUserForShopMock).toHaveBeenCalledWith(shops[0].id)
-    expect(screen.queryByRole('button', { name: /Continuer/i })).not.toBeInTheDocument()
   })
 
-  it('redirige lors du choix d’une boutique via la liste déroulante', async () => {
-    const shops: Shop[] = Array.from({ length: 6 }, (_, index) => ({
-      id: `${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}-${index + 1}${index + 1}${index + 1}${index + 1}-${index + 1}${index + 1}${index + 1}${index + 1}-${index + 1}${index + 1}${index + 1}${index + 1}-${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}${index + 1}`,
-      name: `Boutique ${index + 1}`,
-      kind: 'boutique',
-    }))
+  it('permet de sélectionner une boutique Lumière et de naviguer', async () => {
+    const shops: Shop[] = [
+      { id: '11111111-1111-4111-8111-111111111111', name: 'Boutique Alpha', kind: 'boutique' },
+      { id: '22222222-2222-4222-8222-222222222222', name: 'Lumière Gamma', kind: 'lumiere' },
+    ]
     fetchShopsMock.mockResolvedValueOnce(shops)
 
     const user = userEvent.setup()
     render(
       <ThemeProvider>
-        <MemoryRouter initialEntries={[{ pathname: '/select-shop' }]}>
+        <MemoryRouter initialEntries={[{ pathname: '/select-shop' }]}> 
           <SelectShopPage />
         </MemoryRouter>
       </ThemeProvider>,
     )
 
-    const select = await screen.findByRole('combobox', { name: /Boutique/i })
-    await user.selectOptions(select, shops[2].id)
+    const lumiereRadio = await screen.findByRole('radio', { name: /Lumière/i })
+    await user.click(lumiereRadio)
+
+    const choice = await screen.findByRole('button', { name: /Lumière Gamma/i })
+    await user.click(choice)
 
     await waitFor(() => {
       expect(navigateMock).toHaveBeenCalledWith('/select-user', undefined)
     })
 
-    expect(setShopMock).toHaveBeenCalledWith(shops[2])
+    expect(setShopMock).toHaveBeenCalledWith(shops[1])
     expect(resetInventoryMock).toHaveBeenCalledTimes(1)
-    expect(clearSelectedUserForShopMock).toHaveBeenCalledWith(shops[2].id)
+    expect(clearSelectedUserForShopMock).toHaveBeenCalledWith(shops[1].id)
   })
 })

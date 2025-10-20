@@ -136,8 +136,11 @@ describe('SelectShopPage', () => {
 
     renderPage({ pathname: '/select-shop', state: { redirectTo: '/inventory' } })
 
-    const shopRadio = await screen.findByRole('radio', { name: /Lumière/i })
-    fireEvent.click(shopRadio)
+    const entityRadio = await screen.findByRole('radio', { name: /Lumière/i })
+    fireEvent.click(entityRadio)
+
+    const shopButton = await screen.findByRole('button', { name: /Lumière République/i })
+    fireEvent.click(shopButton)
 
     await waitFor(() => expect(setShopFn).toHaveBeenCalledWith(lumiereShop))
     await waitFor(() => expect(resetInventoryFn).toHaveBeenCalledTimes(1))
@@ -159,8 +162,8 @@ describe('SelectShopPage', () => {
 
     renderPage()
 
-    const cardButton = await screen.findByRole('radio', { name: /CinéBoutique/i })
-    fireEvent.click(cardButton)
+    const shopButton = await screen.findByRole('button', { name: /CinéBoutique République/i })
+    fireEvent.click(shopButton)
 
     await waitFor(() => expect(setShopFn).toHaveBeenCalledWith(cineShop))
     expect(resetInventoryFn).not.toHaveBeenCalled()
@@ -174,8 +177,11 @@ describe('SelectShopPage', () => {
 
     renderPage()
 
-    const card = await screen.findByRole('radio', { name: /Lumière test invalide/i })
-    fireEvent.click(card)
+    const entityRadio = await screen.findByRole('radio', { name: /Lumière/i })
+    fireEvent.click(entityRadio)
+
+    const shopButton = await screen.findByRole('button', { name: /Lumière test invalide/i })
+    fireEvent.click(shopButton)
 
     const errorMessage = await screen.findByText(/Identifiant de boutique invalide/i)
     expect(errorMessage).toBeInTheDocument()
@@ -218,18 +224,15 @@ describe('SelectShopPage', () => {
     }
   })
 
-  it('rafraîchit la liste selon le filtre sélectionné', async () => {
-    fetchShopsMock.mockResolvedValueOnce([shopA, shopB])
-    fetchShopsMock.mockResolvedValueOnce([shopB])
+  it('affiche la liste des boutiques associée à une entité après sélection', async () => {
+    fetchShopsMock.mockResolvedValueOnce([cineShop, lumiereShop])
 
     renderPage()
 
-    const lumiereButton = await screen.findByRole('button', { name: /Lumière/i })
+    const entityRadio = await screen.findByRole('radio', { name: /CinéBoutique/i })
+    fireEvent.click(entityRadio)
 
-    fireEvent.click(lumiereButton)
-
-    await waitFor(() => expect(fetchShopsMock).toHaveBeenCalledTimes(2))
-    const [options] = fetchShopsMock.mock.calls.at(-1) ?? []
-    expect(options).toMatchObject({ kind: 'lumiere' })
+    const shopButton = await screen.findByRole('button', { name: /CinéBoutique République/i })
+    expect(shopButton).toBeInTheDocument()
   })
 })

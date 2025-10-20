@@ -81,7 +81,10 @@ describe('SelectShopPage (routing)', () => {
       </ThemeProvider>,
     )
 
-    const shopButton = await screen.findByRole('radio', { name: /boutique 1/i })
+    const entityRadio = await screen.findByRole('radio', { name: /CinéBoutique/i })
+    fireEvent.click(entityRadio)
+
+    const shopButton = await screen.findByRole('button', { name: /Boutique 1/i })
     fireEvent.click(shopButton)
 
     await waitFor(() => expect(setShopFn).toHaveBeenCalledWith(shop))
@@ -111,7 +114,10 @@ describe('SelectShopPage (routing)', () => {
       </ThemeProvider>,
     )
 
-    const shopButton = await screen.findByRole('radio', { name: /boutique 1/i })
+    const entityRadio = await screen.findByRole('radio', { name: /CinéBoutique/i })
+    fireEvent.click(entityRadio)
+
+    const shopButton = await screen.findByRole('button', { name: /Boutique 1/i })
     fireEvent.click(shopButton)
 
     await waitFor(() => expect(locations.at(-1)?.pathname).toBe('/select-user'))
