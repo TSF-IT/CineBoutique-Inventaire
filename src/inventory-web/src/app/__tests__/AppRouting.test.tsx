@@ -154,7 +154,7 @@ describe('AppRoutes', () => {
   })
 
   it('affiche la page d’accueil quand une boutique est disponible', async () => {
-    const shop: Shop = { id: 'shop-1', name: 'Boutique 1' }
+    const shop: Shop = { id: 'shop-1', name: 'Boutique 1', kind: 'boutique' }
     useShopMock.mockReturnValue(
       createUseShopValue({
         shop,
@@ -206,7 +206,7 @@ describe('AppRoutes', () => {
   })
 
   it('redirige vers l’identification quand aucun utilisateur n’est mémorisé', async () => {
-    const shop: Shop = { id: 'shop-2', name: 'Boutique 2' }
+    const shop: Shop = { id: 'shop-2', name: 'Boutique 2', kind: 'boutique' }
     useShopMock.mockReturnValue(
       createUseShopValue({
         shop,
@@ -225,7 +225,7 @@ describe('AppRoutes', () => {
   })
 
   it('redirige vers la sélection de zone avant la caméra quand aucune zone n’est définie', async () => {
-    const shop: Shop = { id: 'shop-3', name: 'Boutique 3' }
+    const shop: Shop = { id: 'shop-3', name: 'Boutique 3', kind: 'boutique' }
     useShopMock.mockReturnValue(
       createUseShopValue({
         shop,

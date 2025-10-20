@@ -1,6 +1,8 @@
-import type { Shop } from '@/types/shop'
+import type { Shop, ShopKind } from '@/types/shop'
 
 export const SHOP_STORAGE_KEY = 'cb.shop'
+
+const SHOP_KINDS: readonly ShopKind[] = ['boutique', 'lumiere', 'camera'] as const
 
 const isShop = (value: unknown): value is Shop =>
   typeof value === 'object' &&
@@ -8,7 +10,10 @@ const isShop = (value: unknown): value is Shop =>
   'id' in value &&
   typeof (value as { id: unknown }).id === 'string' &&
   'name' in value &&
-  typeof (value as { name: unknown }).name === 'string'
+  typeof (value as { name: unknown }).name === 'string' &&
+  'kind' in value &&
+  typeof (value as { kind: unknown }).kind === 'string' &&
+  SHOP_KINDS.includes((value as { kind: ShopKind }).kind)
 
 export function saveShop(shop: Shop) {
   localStorage.setItem(SHOP_STORAGE_KEY, JSON.stringify(shop))

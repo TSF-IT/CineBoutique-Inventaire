@@ -21,7 +21,11 @@ vi.mock('../../../api/inventoryApi', async (importOriginal) => {
 })
 
 vi.mock('@/state/ShopContext', () => ({
-  useShop: () => ({ shop: { id: 'shop-test', name: 'Boutique test' }, setShop: vi.fn(), isLoaded: true }),
+  useShop: () => ({
+    shop: { id: 'shop-test', name: 'Boutique test', kind: 'boutique' },
+    setShop: vi.fn(),
+    isLoaded: true,
+  }),
 }))
 
 const operator: ShopUser = {

@@ -45,6 +45,7 @@ const mockLocations = [
 const testShop = {
   id: '00000000-0000-4000-8000-0000000000f1',
   name: 'Cinéma test',
+  kind: 'boutique',
 }
 
 const mockUsers = [

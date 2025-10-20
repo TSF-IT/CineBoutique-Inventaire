@@ -15,18 +15,29 @@ public sealed class ShopService : IShopService
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
     }
 
-    public async Task<IReadOnlyList<ShopDto>> GetAsync(CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ShopDto>> GetAsync(string? kind, CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken).ConfigureAwait(false);
 
-        const string sql = """
-        SELECT "Id", "Name"
+        const string baseSql = """
+        SELECT "Id", "Name", "Kind"
         FROM "Shop"
         ORDER BY LOWER("Name");
         """;
 
+        const string filteredSql = """
+        SELECT "Id", "Name", "Kind"
+        FROM "Shop"
+        WHERE lower("Kind") = lower(@Kind)
+        ORDER BY LOWER("Name");
+        """;
+
+        var hasKind = !string.IsNullOrWhiteSpace(kind);
+        var sql = hasKind ? filteredSql : baseSql;
+        var parameters = hasKind ? new { Kind = kind } : null;
+
         var shops = await connection.QueryAsync<ShopDto>(
-            new CommandDefinition(sql, cancellationToken: cancellationToken)).ConfigureAwait(false);
+            new CommandDefinition(sql, parameters, cancellationToken: cancellationToken)).ConfigureAwait(false);
 
         return shops.ToList();
     }
@@ -44,7 +55,7 @@ public sealed class ShopService : IShopService
             const string sql = """
             INSERT INTO "Shop" ("Name")
             VALUES (@Name)
-            RETURNING "Id", "Name";
+            RETURNING "Id", "Name", "Kind";
             """;
 
             var created = await connection.QuerySingleAsync<ShopDto>(
@@ -73,7 +84,7 @@ public sealed class ShopService : IShopService
             UPDATE "Shop"
             SET "Name" = @Name
             WHERE "Id" = @Id
-            RETURNING "Id", "Name";
+            RETURNING "Id", "Name", "Kind";
             """;
 
             var updated = await connection.QuerySingleOrDefaultAsync<ShopDto>(
@@ -103,7 +114,7 @@ public sealed class ShopService : IShopService
         try
         {
             const string selectSql = """
-            SELECT "Id", "Name"
+            SELECT "Id", "Name", "Kind"
             FROM "Shop"
             WHERE "Id" = @Id
             FOR UPDATE;

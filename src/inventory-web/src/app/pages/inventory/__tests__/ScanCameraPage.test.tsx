@@ -37,7 +37,7 @@ vi.mock('../../../components/BarcodeScanner', () => ({
   },
 }))
 
-const shopMock: Shop = { id: 'shop-1', name: 'CinéBoutique Paris' }
+const shopMock: Shop = { id: 'shop-1', name: 'CinéBoutique Paris', kind: 'boutique' }
 const userMock: ShopUser = {
   id: 'user-1',
   shopId: shopMock.id,

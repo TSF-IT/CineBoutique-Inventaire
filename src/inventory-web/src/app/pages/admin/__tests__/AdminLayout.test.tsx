@@ -9,7 +9,7 @@ import { SHOP_STORAGE_KEY } from '@/lib/shopStorage'
 beforeEach(() => {
   window.localStorage.setItem(
     SHOP_STORAGE_KEY,
-    JSON.stringify({ id: 'shop-test', name: 'Boutique test' }),
+    JSON.stringify({ id: 'shop-test', name: 'Boutique test', kind: 'boutique' }),
   )
 })
 

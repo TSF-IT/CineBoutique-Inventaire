@@ -24,7 +24,7 @@ import { InventoryProvider, useInventory } from '../../contexts/InventoryContext
 import type { ShopUser } from '@/types/user'
 
 const navigateMock = vi.fn()
-const testShop = { id: 'shop-1', name: 'Boutique de test' }
+const testShop = { id: 'shop-1', name: 'Boutique de test', kind: 'boutique' }
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom')
