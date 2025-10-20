@@ -643,7 +643,7 @@ RETURNING (xmax = 0) AS inserted;
             if (groupId is null && (group is not null || subGroup is not null))
             {
                 _logger.LogWarning(
-                    "Import: ligne ignorée (sku={Sku}, groupe={Groupe}, sousGroupe={SousGroupe}) — groupe/sous-groupe introuvable",
+                    "Import: ligne ignorée (sku={Sku}, groupe={Groupe}, sousGroupe={SousGroupe}) — taxonomie introuvable",
                     sku,
                     group,
                     subGroup);

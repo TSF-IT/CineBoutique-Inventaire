@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import { useProductsSearch } from "../../hooks/useProductsSearch";
+import { useProductsCount } from "../../hooks/useProductsCount";
 
 export function AdminProductsPage() {
   const [filter, setFilter] = useState("");
   const { rows, loading } = useProductsSearch(filter, 200);
+  const { total, loading: loadingTotal } = useProductsCount(0);
 
   const count = rows.length;
   const [open, setOpen] = useState(count > 0);
@@ -19,13 +21,9 @@ export function AdminProductsPage() {
           type="button"
           onClick={()=>setOpen(o=>!o)}
           title="Afficher/masquer la liste"
-          style={{
-            borderRadius: 12, padding: "2px 10px",
-            background: count>0 ? "#eef" : "#eee",
-            border: "1px solid #ccc"
-          }}
+          style={{ borderRadius: 12, padding: "2px 10px", background:"#eee", border:"1px solid #ccc" }}
         >
-          {loading ? "…" : count} produits
+          {loading || loadingTotal ? "…" : `${rows.length}${total !== null ? ` / ${total}` : ""}`} produits
         </button>
         <input
           value={filter}

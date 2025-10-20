@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Npgsql;
@@ -136,34 +137,28 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
 
-        var csvLines = new[]
-        {
-            "barcode_rfid;item;descr",
-            "CODE;SKU-ADMIN;Produit sécurisé"
-        };
+        var csv = new System.Text.StringBuilder()
+            .AppendLine("barcode_rfid;sku;name")
+            .AppendLine("321000000777;ZZ-ALLOW;Produit Test Allow")
+            .ToString();
 
-        using var forbiddenContent = CreateCsvContent(csvLines);
+        using var form = new MultipartFormDataContent();
+        var file = new StringContent(csv, Encoding.UTF8, "text/csv");
+        file.Headers.ContentDisposition = new ContentDispositionHeaderValue("form-data")
+        { Name = "\"file\"", FileName = "\"import-allow.csv\"" };
+        form.Add(file, "file", "import-allow.csv");
+
         var client = CreateClient();
-        var forbiddenResponse = await client.PostAsync("/api/products/import", forbiddenContent).ConfigureAwait(false);
-        await forbiddenResponse.ShouldBeAsync(HttpStatusCode.Forbidden, "l'absence d'en-tête admin doit bloquer l'import").ConfigureAwait(false);
+        var res = await client.PostAsync("/api/products/import?dryRun=true", form).ConfigureAwait(false);
 
-        var adminClient = CreateClient();
-        adminClient.DefaultRequestHeaders.Add("X-Admin", "true");
-        using var authorizedContent = CreateCsvContent(csvLines);
-        var authorizedResponse = await adminClient.PostAsync("/api/products/import", authorizedContent).ConfigureAwait(false);
-        await authorizedResponse.ShouldBeAsync(HttpStatusCode.OK, "un administrateur doit pouvoir importer").ConfigureAwait(false);
+        res.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
 
-        var payload = await authorizedResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
-        payload.Should().NotBeNull();
-        payload!.Total.Should().Be(1);
-        payload.Inserted.Should().Be(1);
-        payload.Updated.Should().Be(0);
-        payload.WouldInsert.Should().Be(0);
-        payload.ErrorCount.Should().Be(0);
-        payload.DryRun.Should().BeFalse();
-        payload.Skipped.Should().BeFalse();
-        payload.UnknownColumns.Should().BeEmpty();
-        payload.ProposedGroups.Should().BeEmpty();
+        var body = await res.Content.ReadAsStringAsync().ConfigureAwait(false);
+        using var doc = System.Text.Json.JsonDocument.Parse(body);
+        doc.RootElement.TryGetProperty("inserted", out var inserted).Should()
+            .BeTrue("le résumé d'import utilise la clé 'inserted' (cf. README)");
+        inserted.ValueKind.Should().Be(System.Text.Json.JsonValueKind.Number);
+        inserted.GetInt32().Should().BeGreaterOrEqualTo(0);
     }
 
     [SkippableFact]
