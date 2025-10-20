@@ -34,7 +34,7 @@ describe('http helper', () => {
       mockResponse(JSON.stringify({ foo: 'bar' }), { headers: { 'Content-Type': 'application/json' } }),
     )
 
-    localStorage.setItem('cb.shop', JSON.stringify({ id: 'shop-123', name: 'Shop démo' }))
+    localStorage.setItem('cb.shop', JSON.stringify({ id: 'shop-123', name: 'Shop démo', kind: 'boutique' }))
 
     await http(API_URL)
 

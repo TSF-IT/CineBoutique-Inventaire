@@ -28,6 +28,8 @@ const isValidGuid = (value: string) => GUID_REGEX.test(value)
 
 type LoadingState = 'idle' | 'loading' | 'error'
 
+type ShopFilter = 'all' | 'boutique' | 'lumiere'
+
 type RedirectState = {
   redirectTo?: string
 } | null
@@ -44,6 +46,7 @@ export const SelectShopPage = () => {
   const [selectedShopId, setSelectedShopId] = useState(() => shop?.id ?? '')
   const [selectionError, setSelectionError] = useState<string | null>(null)
   const [isRedirecting, setIsRedirecting] = useState(false)
+  const [filter, setFilter] = useState<ShopFilter>('all')
   const labelId = useId()
   const cardsLabelId = useId()
   const selectRef = useRef<HTMLSelectElement | null>(null)
@@ -60,48 +63,57 @@ export const SelectShopPage = () => {
   }, [redirectState])
 
   useEffect(() => {
-  const ac = new AbortController()
-  let disposed = false
+    const ac = new AbortController()
+    let disposed = false
 
-  const run = async () => {
-    try {
-      setStatus('loading')
-      setErrorMessage(null)
+    const run = async () => {
+      try {
+        setStatus('loading')
+        setErrorMessage(null)
 
-      const list = await fetchShops(ac.signal)
-      if (disposed) return
+        const list = await fetchShops({
+          signal: ac.signal,
+          kind: filter === 'all' ? undefined : filter,
+        })
+        if (disposed) {
+          return
+        }
 
-      setShops(list)
-      setStatus('idle')
-    } catch (e: unknown) {
-      if (disposed) return
+        setShops(list)
+        setStatus('idle')
+      } catch (e: unknown) {
+        if (disposed) {
+          return
+        }
 
-      if (
-        (e instanceof DOMException && e.name === 'AbortError') ||
-        (e instanceof Error && e.name === 'AbortError')
-      ) {
-        return
+        if (
+          (e instanceof DOMException && e.name === 'AbortError') ||
+          (e instanceof Error && e.name === 'AbortError')
+        ) {
+          return
+        }
+
+        let msg = ''
+        if (e instanceof Error) msg = e.message
+        else if (typeof e === 'string') msg = e
+        else if (typeof e === 'object' && e !== null && 'message' in e)
+          msg = String((e as { message?: string }).message ?? '')
+
+        if (msg === 'ABORTED' || msg.toLowerCase().includes('aborted')) {
+          return
+        }
+
+        setErrorMessage(msg || 'Erreur de chargement')
+        setStatus('error')
       }
-
-      let msg = ''
-      if (e instanceof Error) msg = e.message
-      else if (typeof e === 'string') msg = e
-      else if (typeof e === 'object' && e !== null && 'message' in e)
-        msg = String((e as { message?: string }).message ?? '')
-
-      if (msg === 'ABORTED' || msg.toLowerCase().includes('aborted')) return
-
-      setErrorMessage(msg || 'Erreur de chargement')
-      setStatus('error')
     }
-  }
 
-  run()
-  return () => {
-    disposed = true
-    ac.abort('route-change')
-  }
-}, [retryCount]) 
+    run()
+    return () => {
+      disposed = true
+      ac.abort('route-change')
+    }
+  }, [filter, retryCount])
   useEffect(() => {
     startTransition(() => {
       setSelectedShopId((current) => {
@@ -241,6 +253,7 @@ export const SelectShopPage = () => {
   const isLoadingShops = status === 'loading'
   const shouldShowShopError = status === 'error' && !isRedirecting
   const shouldShowShopForm = status === 'idle' && !isRedirecting
+  const filterOptions: readonly ShopFilter[] = ['all', 'boutique', 'lumiere'] as const
 
   return (
     <Page className="px-4 py-6 sm:px-6">
@@ -278,6 +291,41 @@ export const SelectShopPage = () => {
 
         {shouldShowShopForm && (
           <>
+            <div
+              style={{
+                position: 'sticky',
+                top: 0,
+                padding: '8px 0',
+                background: '#fff',
+                zIndex: 1,
+              }}
+            >
+              <div
+                style={{
+                  display: 'inline-flex',
+                  border: '1px solid #ccc',
+                  borderRadius: 999,
+                  overflow: 'hidden',
+                }}
+              >
+                {filterOptions.map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setFilter(key)}
+                    style={{
+                      padding: '6px 12px',
+                      border: 'none',
+                      background: filter === key ? '#111' : '#fff',
+                      color: filter === key ? '#fff' : '#111',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {key === 'all' ? 'Toutes' : key === 'boutique' ? 'CinéBoutique' : 'Lumière'}
+                  </button>
+                ))}
+              </div>
+            </div>
             <form className="space-y-4" onSubmit={(event) => event.preventDefault()}>
               <label className="sr-only" htmlFor="shop-select" id={labelId}>
                 Boutique
