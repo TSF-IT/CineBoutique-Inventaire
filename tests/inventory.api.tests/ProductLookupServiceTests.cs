@@ -114,6 +114,8 @@ public sealed class ProductLookupServiceTests
             bool hasPaging,
             int pageSize,
             int offset,
+            string? sort,
+            string? dir,
             CancellationToken cancellationToken)
             => Task.FromResult<IReadOnlyList<ProductLookupItem>>(Array.Empty<ProductLookupItem>());
     }

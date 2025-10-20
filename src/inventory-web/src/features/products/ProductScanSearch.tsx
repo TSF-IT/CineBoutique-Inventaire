@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useProductSuggest } from '../../hooks/useProductSuggest'
 import { useProductsSearch } from '../../hooks/useProductsSearch'
 import { BarcodeCameraButton } from './BarcodeCameraButton'
@@ -9,6 +10,7 @@ export function ProductScanSearch(props: { onPick?: (sku: string) => void }) {
   const [mode, setMode] = useState<Mode>('scan')
   const [q, setQ] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  const nav = useNavigate()
 
   const { data: suggest, loading: loadingSuggest } = useProductSuggest(q, 8, 120)
   const [filter, setFilter] = useState('')
@@ -23,6 +25,12 @@ export function ProductScanSearch(props: { onPick?: (sku: string) => void }) {
       props.onPick(suggest[0].sku)
     }
   }, [q, suggest, props])
+
+  useEffect(() => {
+    if (q.trim().length >= 8 && suggest.length === 1 && !props.onPick) {
+      nav(`/products/${encodeURIComponent(suggest[0].sku)}`)
+    }
+  }, [q, suggest, props, nav])
 
   const list = useMemo(() => suggest.slice(0, 8), [suggest])
 

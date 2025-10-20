@@ -12,6 +12,7 @@ import { ProductScanSearch } from './features/products/ProductScanSearch'
 import { AdminProductsPage } from './features/admin/AdminProductsPage'
 import { AppErrorBoundary } from './app/components/AppErrorBoundary'
 import { ProductImportPage } from "./features/import/ProductImportPage"
+import { ProductDetailsPage } from "./features/products/ProductDetailsPage"
 import { ScanSimulationPage } from './app/pages/debug/ScanSimulationPage'
 import { LoadingIndicator } from './app/components/LoadingIndicator'
 import { SelectShopPage } from './app/pages/select-shop/SelectShopPage'
@@ -88,6 +89,7 @@ export const AppRoutes = () => {
               <Route path="scan-camera" element={<ScanCameraPage />} />
             </Route>
           </Route>
+          <Route path="/products/:sku" element={<ProductDetailsPage />} />
           <Route path="/scan" element={<ProductScanSearch onPick={(sku) => console.log('picked', sku)} />} />
         </Route>
       {/* Admin: à toi de voir si ça doit aussi exiger un user */}

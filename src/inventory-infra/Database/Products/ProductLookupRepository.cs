@@ -105,6 +105,8 @@ FROM "Product" {whereClause};
         bool hasPaging,
         int pageSize,
         int offset,
+        string? sort,
+        string? dir,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(code))
@@ -224,16 +226,32 @@ SELECT
     ranked.match_priority AS "MatchPriority",
     ranked.score AS "Score"
 FROM ranked
-ORDER BY ranked.match_priority, ranked.score DESC, ranked."Name"
-LIMIT @Limit;
 """;
+
+        var key = (sort ?? string.Empty).ToLowerInvariant();
+        var col = key switch
+        {
+            "name" => @"""Name""",
+            "ean"  => @"""Ean""",
+            "sku"  => @"""Sku""",
+            _      => null
+        };
+        var direction = (dir ?? "asc").ToLowerInvariant() == "desc" ? "DESC" : "ASC";
+        var orderByClause = col is null ? string.Empty : $" ORDER BY {col} {direction} ";
+        const string defaultOrderClause = " ORDER BY ranked.match_priority, ranked.score DESC, ranked.\"Name\"";
+        var finalOrderClause = string.IsNullOrEmpty(orderByClause) ? defaultOrderClause : orderByClause;
+        var finalSqlCore = sql + finalOrderClause;
+
+        if (!hasPaging)
+        {
+            finalSqlCore += " LIMIT @Limit";
+        }
 
         string finalSql;
         object finalParams;
         if (hasPaging)
         {
-            var trimmedSql = TrimLimitClause(sql);
-            finalSql = $"{trimmedSql} LIMIT @limit OFFSET @offset";
+            finalSql = finalSqlCore + " LIMIT @limit OFFSET @offset";
             finalParams = new
             {
                 Code = normalizedCode,
@@ -244,7 +262,7 @@ LIMIT @Limit;
         }
         else
         {
-            finalSql = sql;
+            finalSql = finalSqlCore;
             finalParams = new { Code = normalizedCode, Limit = effectiveLimit };
         }
 

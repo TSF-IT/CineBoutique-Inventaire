@@ -22,7 +22,7 @@ public sealed class ProductSearchServiceTests
         };
 
         var results = await service
-            .SearchAsync(" SKU-001 ", 10, hasPaging: false, pageSize: 50, offset: 0, CancellationToken.None)
+            .SearchAsync(" SKU-001 ", 10, hasPaging: false, pageSize: 50, offset: 0, sort: null, dir: null, CancellationToken.None)
             .ConfigureAwait(false);
 
         results.Should().HaveCount(2);
@@ -41,7 +41,7 @@ public sealed class ProductSearchServiceTests
         repository.SearchResults = Array.Empty<ProductLookupItem>();
 
         var results = await service
-            .SearchAsync("code", 500, hasPaging: false, pageSize: 50, offset: 0, CancellationToken.None)
+            .SearchAsync("code", 500, hasPaging: false, pageSize: 50, offset: 0, sort: null, dir: null, CancellationToken.None)
             .ConfigureAwait(false);
 
         results.Should().BeEmpty();
@@ -54,7 +54,7 @@ public sealed class ProductSearchServiceTests
         var service = CreateService(out _);
 
         var results = await service
-            .SearchAsync("   ", 5, hasPaging: false, pageSize: 50, offset: 0, CancellationToken.None)
+            .SearchAsync("   ", 5, hasPaging: false, pageSize: 50, offset: 0, sort: null, dir: null, CancellationToken.None)
             .ConfigureAwait(false);
 
         results.Should().BeEmpty();
@@ -66,7 +66,7 @@ public sealed class ProductSearchServiceTests
         var service = CreateService(out _);
 
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
-            service.SearchAsync("code", 0, hasPaging: false, pageSize: 50, offset: 0, CancellationToken.None));
+            service.SearchAsync("code", 0, hasPaging: false, pageSize: 50, offset: 0, sort: null, dir: null, CancellationToken.None));
 
     }
 
@@ -77,7 +77,7 @@ public sealed class ProductSearchServiceTests
         repository.SearchResults = Array.Empty<ProductLookupItem>();
 
         var results = await service
-            .SearchAsync("code", 25, hasPaging: true, pageSize: 80, offset: 160, CancellationToken.None)
+            .SearchAsync("code", 25, hasPaging: true, pageSize: 80, offset: 160, sort: null, dir: null, CancellationToken.None)
             .ConfigureAwait(false);
 
         results.Should().BeEmpty();
@@ -116,6 +116,8 @@ public sealed class ProductSearchServiceTests
             bool hasPaging,
             int pageSize,
             int offset,
+            string? sort,
+            string? dir,
             CancellationToken cancellationToken)
         {
             LastQuery = code;
@@ -123,7 +125,11 @@ public sealed class ProductSearchServiceTests
             LastHasPaging = hasPaging;
             LastPageSize = pageSize;
             LastOffset = offset;
+            (LastSort, LastDirection) = (sort, dir);
             return Task.FromResult(SearchResults);
         }
+
+        public string? LastSort { get; private set; }
+        public string? LastDirection { get; private set; }
     }
 }
