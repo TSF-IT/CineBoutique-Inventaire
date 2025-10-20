@@ -17,6 +17,19 @@ type ImportPayload = {
   [k: string]: any;
 };
 
+function parseCsvSemicolon(text: string, maxRows = 10): { headers: string[]; rows: string[][] } | null {
+  const lines = text.replace(/\r/g, "").split("\n").filter(l => l.trim().length > 0);
+  if (lines.length === 0) return null;
+  const headers = lines[0].split(";").map(s => s.trim());
+  const rows: string[][] = [];
+  for (let i = 1; i < lines.length && rows.length < maxRows; i++) {
+    const cols = lines[i].split(";").map(s => s.trim());
+    while (cols.length < headers.length) cols.push("");
+    rows.push(cols.slice(0, headers.length));
+  }
+  return { headers, rows };
+}
+
 export function ProductImportPage() {
   const [file, setFile] = useState<File | null>(null);
   const [busyDryRun, setBusyDryRun] = useState(false);
@@ -24,6 +37,7 @@ export function ProductImportPage() {
   const [dryRunRes, setDryRunRes] = useState<DryRunPayload | null>(null);
   const [importRes, setImportRes] = useState<ImportPayload | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<{ headers: string[]; rows: string[][] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const canActions = useMemo(() => !!file && !busyDryRun && !busyImport, [file, busyDryRun, busyImport]);
@@ -43,6 +57,16 @@ export function ProductImportPage() {
     setDryRunRes(null);
     setImportRes(null);
     setError(null);
+    if (f) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const txt = typeof reader.result === "string" ? reader.result : "";
+        setPreview(parseCsvSemicolon(txt, 10));
+      };
+      reader.readAsText(f, "utf-8");
+    } else {
+      setPreview(null);
+    }
   }
 
   async function postCsv(dryRun: boolean): Promise<any> {
@@ -112,7 +136,14 @@ export function ProductImportPage() {
           </button>
           <button
             type="button"
-            onClick={() => { setFile(null); if (fileInputRef.current) fileInputRef.current.value = ""; setDryRunRes(null); setImportRes(null); setError(null); }}
+            onClick={() => {
+              setFile(null);
+              if (fileInputRef.current) fileInputRef.current.value = "";
+              setDryRunRes(null);
+              setImportRes(null);
+              setError(null);
+              setPreview(null);
+            }}
             disabled={busyDryRun || busyImport}
           >
             Réinitialiser
@@ -125,6 +156,24 @@ export function ProductImportPage() {
       </div>
 
       {error && <div style={{ color: "#b00020" }}>Erreur&nbsp;: {error}</div>}
+
+      {preview && (
+        <div style={{ border: "1px dashed #ccc", padding: 12, borderRadius: 6 }}>
+          <h3 style={{ marginTop: 0 }}>Aperçu local (1ʳᵉs 10 lignes)</h3>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ borderCollapse: "collapse", width: "100%" }}>
+              <thead>
+                <tr>{preview.headers.map(h => <th key={h} style={{ textAlign: "left" }}>{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {preview.rows.map((r, i) => (
+                  <tr key={i}>{r.map((c, j) => <td key={j}>{c}</td>)}</tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {dryRunRes && (
         <div style={{ border: "1px solid #ddd", padding: 12, borderRadius: 6 }}>
