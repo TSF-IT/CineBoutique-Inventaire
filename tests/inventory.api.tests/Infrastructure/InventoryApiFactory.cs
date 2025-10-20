@@ -4,6 +4,7 @@ using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Authorization.Policy;
 using Npgsql;
 using System.Net.Http.Headers;
 using Microsoft.AspNetCore.Hosting;
@@ -55,6 +56,8 @@ public sealed class InventoryApiFactory : WebApplicationFactory<Program>
                 opt.DefaultChallengeScheme = TestAuthHandler.Scheme;
                 opt.DefaultScheme = TestAuthHandler.Scheme;
             });
+
+            services.AddSingleton<IAuthorizationMiddlewareResultHandler, AllowAllAuthorizationResultHandler>();
 
             services.PostConfigure<AuthorizationOptions>(options =>
             {
