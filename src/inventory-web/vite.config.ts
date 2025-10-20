@@ -46,6 +46,9 @@ export default defineConfig(({ command }) => {
                 ],
               },
               workbox: {
+                clientsClaim: true,
+                skipWaiting: true,
+                cleanupOutdatedCaches: true,
                 globDirectory: 'dist',
                 globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff2}'],
                 navigateFallback: '/index.html',
@@ -53,9 +56,6 @@ export default defineConfig(({ command }) => {
                   new RegExp('^/api'),
                   new RegExp('\\.(?:png|jpg|jpeg|svg|webp|gif)$'),
                 ],
-                cleanupOutdatedCaches: true,
-                clientsClaim: true,
-                skipWaiting: true,
                 runtimeCaching: [
                   {
                     urlPattern: ({ url }) =>
