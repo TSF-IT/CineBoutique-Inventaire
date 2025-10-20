@@ -1,10 +1,13 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
+using Dapper; // ← nécessaire pour ExecuteScalarAsync
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests.Products;
 
+// Sérialise uniquement cette collection pour éviter les écritures concurrentes
+[Collection("ApiSerial")]
 public class ProductImportDryRunBehaviorTests : IClassFixture<TestApiFactory>
 {
   private readonly TestApiFactory _f;
@@ -13,13 +16,15 @@ public class ProductImportDryRunBehaviorTests : IClassFixture<TestApiFactory>
   [Fact]
   public async System.Threading.Tasks.Task DryRun_HeaderOnly_DoesNotChangeCount()
   {
-    // 1) count avant
-    var r0 = await _f.Client.GetAsync("/api/products/count");
-    r0.EnsureSuccessStatusCode();
-    var before = System.Text.Json.JsonDocument.Parse(await r0.Content.ReadAsStringAsync())
-                  .RootElement.GetProperty("total").GetInt64();
+    long before = 0, after = 0;
 
-    // 2) Appel dry-run avec uniquement l'entête (séparateur ';')
+    // 1) Count AVANT directement en DB (pas via HTTP)
+    await _f.WithDbNoResetAsync(async conn =>
+    {
+      before = await conn.ExecuteScalarAsync<long>(@"SELECT COUNT(*) FROM ""Product"";");
+    });
+
+    // 2) Appel dry-run avec uniquement l'en-tête (séparateur ';')
     var csv = new StringBuilder()
       .AppendLine("barcode_rfid;sku;name;groupe;sous_groupe;extraA;extraB")
       .ToString();
@@ -32,8 +37,7 @@ public class ProductImportDryRunBehaviorTests : IClassFixture<TestApiFactory>
 
     var rDry = await _f.Client.PostAsync("/api/products/import?dryRun=true", form);
 
-    // 3) Quoi qu'il arrive côté statut (401/403/204/200), on vérifie que la base n'a pas bougé.
-    //    -> pas d'appel à EnsureSuccessStatusCode ici : on rend le test robuste vis-à-vis de l'auth.
+    // On ne fait PAS d'EnsureSuccessStatusCode : statut toléré (200/204/401/403)
     Assert.True(
       rDry.StatusCode == HttpStatusCode.OK ||
       rDry.StatusCode == HttpStatusCode.NoContent ||
@@ -41,12 +45,13 @@ public class ProductImportDryRunBehaviorTests : IClassFixture<TestApiFactory>
       rDry.StatusCode == HttpStatusCode.Forbidden,
       $"Unexpected status code: {(int)rDry.StatusCode} {rDry.StatusCode}");
 
-    // 4) count après : doit être identique
-    var r1 = await _f.Client.GetAsync("/api/products/count");
-    r1.EnsureSuccessStatusCode();
-    var after = System.Text.Json.JsonDocument.Parse(await r1.Content.ReadAsStringAsync())
-                 .RootElement.GetProperty("total").GetInt64();
+    // 3) Count APRES directement en DB (pas via HTTP)
+    await _f.WithDbNoResetAsync(async conn =>
+    {
+      after = await conn.ExecuteScalarAsync<long>(@"SELECT COUNT(*) FROM ""Product"";");
+    });
 
+    // 4) Dry-run ne doit JAMAIS écrire
     Assert.Equal(before, after);
   }
 }
