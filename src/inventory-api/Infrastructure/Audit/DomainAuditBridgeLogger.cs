@@ -20,13 +20,16 @@ public sealed class DomainAuditBridgeLogger : IDomainAuditLogger
 
     public DomainAuditBridgeLogger(IApiAuditLogger apiAuditLogger, ILogger<DomainAuditBridgeLogger> logger)
     {
-        _apiAuditLogger = apiAuditLogger ?? throw new ArgumentNullException(nameof(apiAuditLogger));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        ArgumentNullException.ThrowIfNull(apiAuditLogger);
+        ArgumentNullException.ThrowIfNull(logger);
+
+        _apiAuditLogger = apiAuditLogger;
+        _logger = logger;
     }
 
     public async Task LogAsync(DomainAuditEntry entry, CancellationToken cancellationToken = default)
     {
-        if (entry is null) throw new ArgumentNullException(nameof(entry));
+        ArgumentNullException.ThrowIfNull(entry);
 
         var category = entry.EntityName;
         var message = $"{entry.EventType} {entry.EntityName} {entry.EntityId}";

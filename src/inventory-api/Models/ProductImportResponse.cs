@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Immutable;
 
 namespace CineBoutique.Inventory.Api.Models;
@@ -53,8 +54,11 @@ public sealed record ProductImportResponse(
         int total,
         IReadOnlyList<ProductImportError> errors,
         IReadOnlyCollection<string> unknownColumns,
-        IReadOnlyCollection<ProductImportGroupProposal> proposedGroups) =>
-        new(
+        IReadOnlyCollection<ProductImportGroupProposal> proposedGroups)
+    {
+        ArgumentNullException.ThrowIfNull(errors);
+
+        return new(
             total,
             Inserted: 0,
             Updated: 0,
@@ -65,6 +69,7 @@ public sealed record ProductImportResponse(
             errors,
             unknownColumns,
             proposedGroups);
+    }
 
     public static ProductImportResponse SkippedResult() =>
         new(
