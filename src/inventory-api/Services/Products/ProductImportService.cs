@@ -151,7 +151,7 @@ public sealed class ProductImportService : IProductImportService
             await InsertHistoryStartedAsync(historyId, startedAt, command.Username, bufferedCsv.Sha256, transaction, cancellationToken)
                 .ConfigureAwait(false);
 
-            transaction.Save("before_import");
+            await transaction.SaveAsync("before_import", cancellationToken).ConfigureAwait(false);
 
             var stopwatch = Stopwatch.StartNew();
             _metrics.IncrementStarted();
@@ -300,7 +300,7 @@ public sealed class ProductImportService : IProductImportService
             }
             catch
             {
-                transaction.Rollback("before_import");
+                await transaction.RollbackAsync("before_import", cancellationToken).ConfigureAwait(false);
 
                 await CompleteHistoryAsync(
                         historyId,
@@ -406,7 +406,7 @@ public sealed class ProductImportService : IProductImportService
         }
         catch
         {
-            destination.Dispose();
+            await destination.DisposeAsync().ConfigureAwait(false);
             throw;
         }
         finally
@@ -808,7 +808,7 @@ RETURNING (xmax = 0) AS inserted;
 
         using var reader = new StreamReader(stream, encoding, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
 
-        while (await reader.ReadLineAsync().ConfigureAwait(false) is { } rawLine)
+        while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } rawLine)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
