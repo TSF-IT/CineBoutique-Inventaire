@@ -4,9 +4,10 @@ const absolute = fromEnv && /^https?:\/\//i.test(fromEnv)
 
 export const API_BASE = fromEnv && isRelative(fromEnv) ? fromEnv : '/api'
 
-if (import.meta.env.DEV) {
-  if (absolute) {
-    console.warn('[DEV] Les URLs absolues sont ignorées. Utilisez un proxy HTTPS et des chemins relatifs (/api).')
-  }
-  console.info('[DEV] API_BASE =', API_BASE)
+if (import.meta.env.DEV && absolute) {
+  console.warn('[DEV] Les URLs absolues sont ignorées. Utilisez un proxy HTTPS et des chemins relatifs (/api).')
+}
+
+if (import.meta.env.DEV && !absolute) {
+  console.debug('[DEV] API_BASE =', API_BASE)
 }
