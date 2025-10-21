@@ -3,6 +3,7 @@
 ARG BASE_REG=public.ecr.aws/docker/library
 FROM ${BASE_REG}/node:20-alpine AS build
 WORKDIR /app
+RUN npm i -g npm@11.6.2 && npm -v
 
 # Dépendances
 COPY package*.json ./
