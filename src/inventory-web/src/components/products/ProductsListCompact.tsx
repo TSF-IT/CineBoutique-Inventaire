@@ -33,7 +33,7 @@ export function ProductsListCompact({ shopId, onPick }: Props) {
   }, [shopId, page, q])
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 text-sm">
       <input
         value={q}
         onChange={(e) => {
@@ -43,7 +43,7 @@ export function ProductsListCompact({ shopId, onPick }: Props) {
         placeholder="Trouver un produit…"
         className="w-full rounded border px-3 py-2 text-sm"
       />
-      <ul className="divide-y">
+      <ul className="divide-y rounded-lg border bg-white">
         {data?.items.map((p) => (
           <li key={p.id}>
             <button
@@ -52,16 +52,16 @@ export function ProductsListCompact({ shopId, onPick }: Props) {
                 const ok = window.confirm(`Ajouter « ${p.name} » ?`)
                 if (ok) onPick({ sku: p.sku, name: p.name, ean: p.ean ?? undefined })
               }}
-              className="flex w-full items-center justify-between px-2 py-2 text-left hover:bg-gray-50"
+              className="flex w-full min-w-0 items-start justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-gray-50"
             >
-              <div className="truncate">
-                <div className="truncate text-sm font-medium">{p.name}</div>
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-medium">{p.name}</div>
                 <div className="truncate text-xs text-gray-500">
                   {p.sku}
                   {p.ean ? ` • ${p.ean}` : ''}
                 </div>
               </div>
-              <span className="text-xs text-gray-400">+</span>
+              <span className="shrink-0 text-xs text-gray-400">+</span>
             </button>
           </li>
         ))}

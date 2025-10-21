@@ -19,7 +19,11 @@ export const PageShell = ({
 }: PageShellProps) => {
   return (
     <div
-      className={clsx('page-shell safe-pads', nav && 'page-shell--with-nav', className)}
+      className={clsx(
+        'page-shell safe-pads max-w-full overflow-x-hidden',
+        nav && 'page-shell--with-nav',
+        className,
+      )}
       style={style}
       {...rest}
     >
