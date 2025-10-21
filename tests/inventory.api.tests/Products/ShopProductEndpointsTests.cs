@@ -200,7 +200,7 @@ public sealed class ShopProductEndpointsTests : IntegrationTestBase
     }
 
     [SkippableFact]
-    public async Task ListProducts_FilterMatchesSkuEanAndRfid()
+    public async Task ListProducts_FilterMatchesSkuEanAndCodeDigits()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
@@ -217,10 +217,10 @@ public sealed class ShopProductEndpointsTests : IntegrationTestBase
 
         await using (var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false))
         await using (var command = new Npgsql.NpgsqlCommand(
-                               "UPDATE \"Product\" SET \"Attributes\" = jsonb_build_object('barcode_rfid', @rfid) WHERE \"Id\" = @id;",
+                               "UPDATE \"Product\" SET \"CodeDigits\" = @codeDigits WHERE \"Id\" = @id;",
                                connection))
         {
-            command.Parameters.AddWithValue("rfid", "RFID-000123");
+            command.Parameters.AddWithValue("codeDigits", "000123");
             command.Parameters.AddWithValue("id", rfidProductId);
             await command.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
@@ -244,13 +244,13 @@ public sealed class ShopProductEndpointsTests : IntegrationTestBase
         eanPayload.Items.Should().ContainSingle();
         eanPayload.Items.Single().Sku.Should().Be("SKU-EAN");
 
-        var rfidResponse = await client.GetAsync($"/api/shops/{shopId}/products?q=RFID-000123").ConfigureAwait(false);
-        await rfidResponse.ShouldBeAsync(HttpStatusCode.OK).ConfigureAwait(false);
-        var rfidPayload = await rfidResponse.Content.ReadFromJsonAsync<ShopProductListResponse>().ConfigureAwait(false);
-        rfidPayload.Should().NotBeNull();
-        rfidPayload!.Total.Should().Be(1);
-        rfidPayload.Items.Should().ContainSingle();
-        rfidPayload.Items.Single().Sku.Should().Be("SKU-RFID");
+        var digitsResponse = await client.GetAsync($"/api/shops/{shopId}/products?q=000123").ConfigureAwait(false);
+        await digitsResponse.ShouldBeAsync(HttpStatusCode.OK).ConfigureAwait(false);
+        var digitsPayload = await digitsResponse.Content.ReadFromJsonAsync<ShopProductListResponse>().ConfigureAwait(false);
+        digitsPayload.Should().NotBeNull();
+        digitsPayload!.Total.Should().Be(1);
+        digitsPayload.Items.Should().ContainSingle();
+        digitsPayload.Items.Single().Sku.Should().Be("SKU-RFID");
     }
 
     [SkippableFact]

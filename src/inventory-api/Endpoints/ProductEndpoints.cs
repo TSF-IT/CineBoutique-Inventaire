@@ -534,72 +534,92 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     return Results.StatusCode(StatusCodes.Status403Forbidden);
                 }
 
-                var currentPage = Math.Max(page ?? 1, 1);
-                var effectivePageSize = Math.Clamp(pageSize ?? 50, 1, 200);
-                var offset = (currentPage - 1) * effectivePageSize;
+                var currentPage = page.GetValueOrDefault(1);
+                if (currentPage < 1)
+                {
+                    currentPage = 1;
+                }
 
+                var effectivePageSize = pageSize.GetValueOrDefault(50);
+                if (effectivePageSize < 1)
+                {
+                    effectivePageSize = 1;
+                }
+                else if (effectivePageSize > 200)
+                {
+                    effectivePageSize = 200;
+                }
+
+                var offset = (currentPage - 1) * effectivePageSize;
                 var sanitizedQuery = string.IsNullOrWhiteSpace(q) ? null : q.Trim();
-                var escapedFilter = sanitizedQuery is null ? null : "%" + EscapeLikePattern(sanitizedQuery) + "%";
 
                 var normalizedSortBy = sortBy?.Trim().ToLowerInvariant();
-                var sortColumn = normalizedSortBy switch
-                {
-                    "ean" => "\"Ean\"",
-                    "name" => "\"Name\"",
-                    "descr" => "COALESCE(\"Attributes\"->>'descr', \"Name\")",
-                    _ => "\"Sku\""
-                };
-                var responseSortBy = normalizedSortBy switch
-                {
-                    "ean" => "ean",
-                    "name" => "name",
-                    "descr" => "descr",
-                    _ => "sku"
-                };
+                var responseSortBy = normalizedSortBy is "ean" or "name" or "descr" or "digits"
+                    ? normalizedSortBy
+                    : "sku";
 
                 var responseSortDir = string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase) ? "desc" : "asc";
-                var sortDirection = responseSortDir.Equals("desc", StringComparison.Ordinal) ? "DESC" : "ASC";
+                var sortDirectionSql = responseSortDir.Equals("desc", StringComparison.Ordinal) ? "DESC" : "ASC";
 
                 await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-                var whereClause = new StringBuilder("\"ShopId\" = @ShopId");
-                if (escapedFilter is not null)
-                {
-                    whereClause.Append(
-                        " AND (COALESCE(\"Attributes\"->>'barcode_rfid', '') ILIKE @Filter ESCAPE '\\' " +
-                        "OR COALESCE(\"Ean\", '') ILIKE @Filter ESCAPE '\\' " +
-                        "OR \"Sku\" ILIKE @Filter ESCAPE '\\' " +
-                        "OR COALESCE(\"Name\", '') ILIKE @Filter ESCAPE '\\' " +
-                        "OR COALESCE(\"Attributes\"->>'descr', '') ILIKE @Filter ESCAPE '\\' " +
-                        "OR COALESCE(\"CodeDigits\", '') ILIKE @Filter ESCAPE '\\')");
-                }
+                const string whereClause = """
+WHERE "ShopId" = @ShopId
+  AND (
+    @Filter IS NULL OR @Filter='' OR
+    COALESCE("Sku",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE("Ean",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE("CodeDigits",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE("Description",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE("Name",'') ILIKE '%'||@Filter||'%'
+  )
+""";
 
-                var whereSql = whereClause.ToString();
+                var countSql = $"""
+SELECT COUNT(*)
+FROM "Product"
+{whereClause};
+""";
 
-                var countSql = $"SELECT COUNT(*) FROM \"Product\" WHERE {whereSql};";
                 var total = await connection.ExecuteScalarAsync<long>(
-                    new CommandDefinition(countSql, new { ShopId = shopId, Filter = escapedFilter }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+                        new CommandDefinition(
+                            countSql,
+                            new
+                            {
+                                ShopId = shopId,
+                                Filter = sanitizedQuery
+                            },
+                            cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
 
                 var dataSql = $"""
-SELECT
-    "Sku",
-    "Name",
-    "Ean",
-    "CodeDigits",
-    "Attributes"::text AS "Attributes",
-    "CreatedAtUtc"
+SELECT "Id", "Sku", "Name", "Ean", "Description", "CodeDigits"
 FROM "Product"
-WHERE {whereSql}
-ORDER BY {sortColumn} {sortDirection}, "Sku" ASC
+{whereClause}
+ORDER BY
+  CASE WHEN @SortBy='ean' THEN "Ean"
+       WHEN @SortBy='name' THEN "Name"
+       WHEN @SortBy='descr' THEN "Description"
+       WHEN @SortBy='digits' THEN "CodeDigits"
+       ELSE "Sku" END {sortDirectionSql},
+  "Sku" ASC
 LIMIT @Limit OFFSET @Offset;
 """;
 
                 var items = (await connection.QueryAsync<ShopProductListItemDto>(
                         new CommandDefinition(
                             dataSql,
-                            new { ShopId = shopId, Filter = escapedFilter, Offset = offset, Limit = effectivePageSize },
+                            new
+                            {
+                                ShopId = shopId,
+                                Filter = sanitizedQuery,
+                                SortBy = responseSortBy,
+                                Offset = offset,
+                                Limit = effectivePageSize
+                            },
                             cancellationToken: cancellationToken))
-                    .ConfigureAwait(false)).ToList();
+                    .ConfigureAwait(false))
+                    .ToList();
 
                 var totalPages = total == 0 ? 0 : (int)Math.Ceiling(total / (double)effectivePageSize);
 
@@ -1060,11 +1080,6 @@ LIMIT @Limit OFFSET @Offset;
         return false;
     }
 
-    private static string EscapeLikePattern(string value) =>
-        value
-            .Replace("\\", "\\\\", StringComparison.Ordinal)
-            .Replace("%", "\\%", StringComparison.Ordinal)
-            .Replace("_", "\\_", StringComparison.Ordinal);
     private static void MapSuggestProductsEndpoint(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/products/suggest", async (
