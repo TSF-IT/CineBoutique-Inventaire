@@ -46,6 +46,7 @@ coverage/
 *.coverage
 *.coveragexml
 TestResults/
+test-results/
 
 # Misc
 .dotnet/
