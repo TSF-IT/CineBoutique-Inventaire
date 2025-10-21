@@ -24,37 +24,8 @@ type RedirectState = {
   redirectTo?: string
 } | null
 
-type EntityTheme = {
-  selected: string
-  idle: string
-  focusRing: string
-  overlaySelected: string
-  overlayIdle: string
-  badge: string
-}
-
-const ENTITY_THEMES: Record<EntityId, EntityTheme> = {
-  cineboutique: {
-    selected:
-      'border-transparent bg-gradient-to-br from-brand-500 to-brand-600 text-white shadow-md dark:from-brand-400 dark:to-brand-500',
-    idle:
-      'border-slate-200/70 bg-slate-900/5 text-slate-900 hover:border-brand-300 hover:bg-slate-900/10 dark:border-slate-700 dark:bg-white/5 dark:text-slate-100',
-    focusRing: 'focus-visible:ring-brand-200 dark:focus-visible:ring-brand-300',
-    overlaySelected: 'bg-white/10',
-    overlayIdle: 'bg-brand-500/10 dark:bg-brand-400/10',
-    badge: 'bg-white/20 text-white dark:bg-slate-900/40 dark:text-slate-100',
-  },
-  lumiere: {
-    selected:
-      'border-transparent bg-gradient-to-br from-indigo-500 via-purple-500 to-fuchsia-500 text-white shadow-md dark:from-indigo-400 dark:via-purple-400 dark:to-fuchsia-400',
-    idle:
-      'border-slate-200/70 bg-slate-900/5 text-slate-900 hover:border-indigo-300 hover:bg-slate-900/10 dark:border-slate-700 dark:bg-white/5 dark:text-slate-100',
-    focusRing: 'focus-visible:ring-indigo-200 dark:focus-visible:ring-indigo-300',
-    overlaySelected: 'bg-white/10',
-    overlayIdle: 'bg-indigo-500/10 dark:bg-indigo-400/20',
-    badge: 'bg-white/20 text-white dark:bg-slate-900/40 dark:text-slate-100',
-  },
-}
+const ENTITY_BUTTON_BASE_CLASSES =
+  'flex h-full w-full flex-col items-start justify-between gap-3 rounded-lg border bg-white px-4 py-3 text-left text-base text-gray-900 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-900/80 dark:focus:ring-sky-400 dark:focus:ring-offset-slate-900'
 
 export const SelectShopPage = () => {
   const { shop, setShop } = useShop()
@@ -411,9 +382,12 @@ export const SelectShopPage = () => {
                 <legend id={cardsLabelId} className="sr-only">
                   Boutiques disponibles
                 </legend>
-                <div aria-labelledby={cardsLabelId} className="grid gap-3 sm:grid-cols-2" role="radiogroup">
+                <div
+                  aria-labelledby={cardsLabelId}
+                  className="space-y-3 sm:grid sm:grid-cols-2 sm:gap-3 sm:space-y-0"
+                  role="radiogroup"
+                >
                   {entityCards.map((card, index) => {
-                    const theme = ENTITY_THEMES[card.definition.id]
                     const isSelected = card.definition.id === selectedEntityId
                     const isDisabled = card.matches.length === 0
 
@@ -427,33 +401,36 @@ export const SelectShopPage = () => {
                         role="radio"
                         aria-checked={isSelected}
                         aria-disabled={isDisabled}
+                        aria-label={
+                          isDisabled
+                            ? `${card.definition.label} indisponible pour le moment`
+                            : card.definition.label
+                        }
                         disabled={isDisabled}
                         onClick={() => handleEntitySelection(card)}
                         className={clsx(
-                          'group relative flex h-full w-full flex-col justify-between overflow-hidden rounded-2xl border px-5 py-4 text-left text-base shadow-sm transition duration-200 focus:outline-none focus-visible:ring-2',
+                          ENTITY_BUTTON_BASE_CLASSES,
                           isSelected
-                            ? theme.selected
-                            : clsx(theme.idle, isDisabled && 'cursor-not-allowed opacity-70'),
-                          isDisabled ? 'focus-visible:ring-transparent' : theme.focusRing,
+                            ? 'border-sky-500 ring-1 ring-sky-200 dark:border-sky-500 dark:ring-sky-500/40'
+                            : 'border-slate-200/80 dark:border-slate-700',
+                          isDisabled &&
+                            'cursor-not-allowed opacity-60 hover:bg-white focus:ring-0 focus:ring-offset-0 dark:hover:bg-slate-900',
                         )}
                       >
-                        <span
-                          aria-hidden="true"
-                          className={clsx(
-                            'pointer-events-none absolute inset-0 translate-y-2 opacity-0 transition duration-200 group-hover:translate-y-0 group-hover:opacity-100',
-                            isSelected ? theme.overlaySelected : theme.overlayIdle,
-                          )}
-                        />
-                        <span className="relative block text-lg font-semibold">{card.definition.label}</span>
-                        <span className="relative mt-2 block text-sm text-slate-600 dark:text-slate-300">
+                        <span className="text-lg font-semibold">
+                          {card.definition.label}
+                        </span>
+                        <span className="text-sm text-slate-600 dark:text-slate-300">
                           {card.definition.description}
                         </span>
                         <span
                           className={clsx(
-                            'relative mt-3 inline-flex w-fit items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide',
+                            'inline-flex items-center rounded-full px-3 py-1 text-xs font-medium uppercase tracking-wide transition-colors',
                             isDisabled
-                              ? 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
-                              : theme.badge,
+                              ? 'bg-gray-100 text-gray-500 dark:bg-slate-800 dark:text-slate-400'
+                              : isSelected
+                              ? 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-100'
+                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
                           )}
                         >
                           {isDisabled
