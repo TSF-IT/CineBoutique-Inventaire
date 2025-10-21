@@ -62,7 +62,7 @@ internal static class ProductEndpoints
       WHERE p.""Sku"" = @sku
       LIMIT 1;";
             var row = await connection.QueryFirstOrDefaultAsync(
-              new Dapper.CommandDefinition(sql, new { sku }, cancellationToken: ct));
+              new Dapper.CommandDefinition(sql, new { sku }, cancellationToken: ct)).ConfigureAwait(false);
             return row is null ? Results.NotFound() : Results.Ok(row);
         })
         .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
@@ -988,7 +988,7 @@ LIMIT @top;";
             }
 
             operation.Responses ??= new OpenApiResponses();
-            operation.Responses[StatusCodes.Status200OK.ToString()] = new OpenApiResponse
+            operation.Responses[StatusCodes.Status200OK.ToString(CultureInfo.InvariantCulture)] = new OpenApiResponse
             {
                 Description = "Liste des produits correspondant au code recherché.",
                 Content =
