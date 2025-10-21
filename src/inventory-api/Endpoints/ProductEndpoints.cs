@@ -1208,8 +1208,14 @@ LIMIT @top;";
                 }
                 else
                 {
-                    var contentType = request.ContentType ?? "";
-                    if (!contentType.StartsWith("text/csv", System.StringComparison.OrdinalIgnoreCase))
+                    var contentType = (request.ContentType ?? string.Empty).Trim();
+                    var looksCsv =
+                        contentType.StartsWith("text/csv", System.StringComparison.OrdinalIgnoreCase) ||
+                        contentType.StartsWith("application/octet-stream", System.StringComparison.OrdinalIgnoreCase) ||
+                        contentType.StartsWith("application/vnd.ms-excel", System.StringComparison.OrdinalIgnoreCase) ||
+                        contentType.StartsWith("text/plain", System.StringComparison.OrdinalIgnoreCase);
+
+                    if (!looksCsv)
                         return Results.BadRequest(new { reason = "UNSUPPORTED_CONTENT_TYPE" });
                     csvStream = request.Body;
                 }
