@@ -14,17 +14,11 @@ public sealed class DapperAuditLogger : IAuditLogger
 {
     private readonly IDbConnectionFactory _connectionFactory;
     private readonly ILogger<DapperAuditLogger> _logger;
-    private readonly AuditOptions? _options;
-
-    public sealed class AuditOptions
-    {
-        public string? Schema { get; init; }
-        public string? Table  { get; init; }
-    }
+    private readonly DapperAuditLoggerOptions? _options;
 
     public DapperAuditLogger(
         IDbConnectionFactory connectionFactory,
-        IOptions<AuditOptions>? options,
+        IOptions<DapperAuditLoggerOptions>? options,
         ILogger<DapperAuditLogger> logger)
     {
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));

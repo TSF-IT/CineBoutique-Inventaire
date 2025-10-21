@@ -25,6 +25,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # Vérifie l'état de préparation de l'API avant d'exposer le service
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/ready"]
       interval: 10s
@@ -50,6 +51,7 @@ services:
       args:
         BASE_REG: public.ecr.aws/docker/library
     container_name: inventory-web
+    # Attend que l'API soit déclarée healthy avant de démarrer
     depends_on:
       api:
         condition: service_healthy
