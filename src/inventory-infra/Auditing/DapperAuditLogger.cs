@@ -7,6 +7,7 @@ using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Npgsql;
 
 namespace CineBoutique.Inventory.Infrastructure.Auditing;
 
@@ -63,11 +64,25 @@ VALUES
             var cmd = new CommandDefinition(sql, parameters, cancellationToken: cancellationToken);
             await connection.ExecuteAsync(cmd).ConfigureAwait(false);
         }
+        catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex,
+                "Audit logging failed for entity {EntityName} with id {EntityId} and event {EventType}",
+                entry.EntityName, entry.EntityId, entry.EventType);
+            throw;
+        }
+        catch (NpgsqlException ex)
+        {
+            _logger.LogWarning(ex,
+                "Audit logging failed for entity {EntityName} with id {EntityId} and event {EventType}",
+                entry.EntityName, entry.EntityId, entry.EventType);
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(ex,
                 "Audit logging failed for entity {EntityName} with id {EntityId} and event {EventType}",
                 entry.EntityName, entry.EntityId, entry.EventType);
+            throw;
         }
     }
 }
