@@ -1,6 +1,6 @@
 // Modifications : forcer l'inclusion de runId=null lors de la complétion sans run existant.
 import type { KeyboardEvent, ChangeEvent, FocusEvent, PointerEvent } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   completeInventoryRun,
@@ -19,6 +19,7 @@ import type { HttpError } from '@/lib/api/http'
 import type { ConflictZoneSummary, Product } from '../../types/inventory'
 import { CountType } from '../../types/inventory'
 import { useShop } from '@/state/ShopContext'
+import { useProductSuggestions } from '@/hooks/useProductSuggestions'
 
 const DEV_API_UNREACHABLE_HINT =
   "Impossible de joindre l’API : vérifie que le backend tourne (curl http://localhost:8080/healthz) ou que le proxy Vite est actif."
@@ -124,8 +125,15 @@ export const InventorySessionPage = () => {
   const manualLookupIdRef = useRef(0)
   const lastSearchedInputRef = useRef<string | null>(null)
   const previousItemCountRef = useRef(items.length)
+  const pendingFocusEanRef = useRef<string | null>(null)
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
+  const {
+    items: suggestionItems,
+    loading: suggestionsLoading,
+    query: querySuggestions,
+  } = useProductSuggestions()
+  const suggestionListId = useId()
 
   const updateStatus = useCallback(
     (message: string | null) => {
@@ -451,6 +459,7 @@ export const InventorySessionPage = () => {
           if (added) {
             updateStatus(`${product.name} ajouté`)
             setScanValue('')
+            querySuggestions('')
             setInputLookupStatus('found')
           } else {
             setInputLookupStatus('error')
@@ -477,7 +486,14 @@ export const InventorySessionPage = () => {
     return () => {
       window.clearTimeout(timeoutId)
     }
-  }, [addProductToSession, scanInputError, searchProductByEan, trimmedScanValue, updateStatus])
+  }, [
+    addProductToSession,
+    querySuggestions,
+    scanInputError,
+    searchProductByEan,
+    trimmedScanValue,
+    updateStatus,
+  ])
 
   const handleInputKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
@@ -486,11 +502,12 @@ export const InventorySessionPage = () => {
         const value = trimmedScanValue
         if (value) {
           setScanValue('')
+          querySuggestions('')
           void handleDetected(value)
         }
       }
     },
-    [handleDetected, trimmedScanValue],
+    [handleDetected, querySuggestions, trimmedScanValue],
   )
 
   const handleInputChange = useCallback(
@@ -500,6 +517,7 @@ export const InventorySessionPage = () => {
         const [code] = value.split(/\s+/)
         setScanValue('')
         setManualEan('')
+        querySuggestions('')
         if (code.trim()) {
           void handleDetected(code)
         }
@@ -509,8 +527,9 @@ export const InventorySessionPage = () => {
       setScanValue(sanitized)
       setManualEan('')
       setErrorMessage(null)
+      querySuggestions(sanitized)
     },
-    [handleDetected],
+    [handleDetected, querySuggestions],
   )
 
   const handleManualAdd = useCallback(async () => {
@@ -539,9 +558,40 @@ export const InventorySessionPage = () => {
     updateStatus(`${product.name} ajouté manuellement`)
     setManualEan('')
     setScanValue('')
+    querySuggestions('')
     setInputLookupStatus('idle')
     inputRef.current?.focus()
-  }, [addProductToSession, manualCandidateEan, updateStatus])
+  }, [addProductToSession, manualCandidateEan, querySuggestions, updateStatus])
+
+  const handleSuggestionPick = useCallback(
+    async ({ sku, ean, name }: { sku: string; ean?: string | null; name: string }) => {
+      const sanitizedEan = sanitizeEan(ean ?? '')
+      if (!sanitizedEan) {
+        setErrorMessage(`Impossible d’ajouter ${name} : EAN manquant.`)
+        return
+      }
+
+      const product: Product = {
+        ean: sanitizedEan,
+        name,
+        sku,
+      }
+
+      const added = await addProductToSession(product)
+      if (!added) {
+        return
+      }
+
+      updateStatus(`${product.name} ajouté`)
+      setErrorMessage(null)
+      setManualEan('')
+      setScanValue('')
+      querySuggestions('')
+      setInputLookupStatus('idle')
+      pendingFocusEanRef.current = product.ean
+    },
+    [addProductToSession, querySuggestions, updateStatus],
+  )
 
   const canCompleteRun =
     locationId.length > 0 &&
@@ -700,6 +750,25 @@ export const InventorySessionPage = () => {
     }
   }, [existingRunId, items.length, locationId, ownerUserId, setErrorMessage, setSessionId])
 
+  useEffect(() => {
+    const targetEan = pendingFocusEanRef.current
+    if (!targetEan) {
+      return
+    }
+
+    const quantityInput = document.querySelector<HTMLInputElement>(
+      `[data-ean="${targetEan}"] input[data-testid="quantity-input"]`,
+    )
+    if (quantityInput) {
+      requestAnimationFrame(() => {
+        quantityInput.focus({ preventScroll: true })
+        quantityInput.select?.()
+      })
+    }
+
+    pendingFocusEanRef.current = null
+  }, [items])
+
   const handleCompletionModalOk = () => {
     completionDialogRef.current?.close()
     navigate('/', { replace: true })
@@ -827,6 +896,9 @@ export const InventorySessionPage = () => {
     })
   }, [items])
 
+  const hasSuggestionItems = suggestionItems.length > 0
+  const shouldShowSuggestions = (suggestionsLoading || hasSuggestionItems) && scanValue.length > 0
+
   return (
     <div className="flex flex-col gap-6" data-testid="page-session">
       <Card className="space-y-4">
@@ -850,7 +922,7 @@ export const InventorySessionPage = () => {
             Journal des actions ({logs.length})
           </Button>
         </div>
-        <div className="space-y-1">
+        <div className="space-y-2">
           <Input
             ref={inputRef}
             name="scanInput"
@@ -864,8 +936,42 @@ export const InventorySessionPage = () => {
             maxLength={MAX_EAN_LENGTH}
             autoComplete="off"
             aria-invalid={Boolean(scanInputError)}
+            aria-autocomplete="list"
+            aria-controls={shouldShowSuggestions ? suggestionListId : undefined}
+            aria-expanded={shouldShowSuggestions}
             autoFocus
           />
+          {shouldShowSuggestions && (
+            <div
+              id={suggestionsLoading && !hasSuggestionItems ? suggestionListId : undefined}
+              className="max-h-60 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg shadow-slate-200/60 dark:border-slate-700 dark:bg-slate-900/80 dark:shadow-black/30"
+            >
+              {suggestionsLoading && (
+                <p className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">Recherche…</p>
+              )}
+              {hasSuggestionItems && (
+                <ul id={suggestionListId} role="listbox" className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {suggestionItems.map(({ sku, ean, name }) => (
+                    <li key={sku} role="presentation">
+                      <button
+                        type="button"
+                        role="option"
+                        className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 dark:hover:bg-slate-800"
+                        onClick={() => {
+                          void handleSuggestionPick({ sku, ean, name })
+                        }}
+                      >
+                        <span className="text-sm font-medium text-slate-900 dark:text-white">{name}</span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">
+                          {ean ? `EAN ${ean}` : 'EAN indisponible'} • SKU {sku}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           <p
             className={`text-xs ${
               scanInputError ? 'text-rose-600 dark:text-rose-300' : 'text-slate-500 dark:text-slate-400'
