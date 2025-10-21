@@ -8,6 +8,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
@@ -132,51 +133,128 @@ internal static class ProductEndpoints
             string q,
             int? limit,
             System.Data.IDbConnection connection,
-            System.Threading.CancellationToken ct) =>
+            System.Threading.CancellationToken cancellationToken) =>
         {
             q = (q ?? string.Empty).Trim();
             if (q.Length == 0) return Results.BadRequest("q is required");
-            var top = System.Math.Clamp(limit ?? 8, 1, 50);
 
-            await EndpointUtilities.EnsureConnectionOpenAsync(connection, ct).ConfigureAwait(false);
+            // ✅ 400 si limit hors plage, pas de clamp silencieux
+            if (limit.HasValue && (limit.Value < 1 || limit.Value > 50))
+                return Results.BadRequest("limit must be between 1 and 50");
 
-            // Fast-path numérique (EAN/RFID) : exact + prefix sur Ean/CodeDigits
-            var isNumeric = q.All(char.IsDigit);
-            if (isNumeric && q.Length >= 8)
+            var top = Math.Clamp(limit ?? 8, 1, 50);
+
+            // Ouvrir la connexion AVANT toute requête
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken)
+                .ConfigureAwait(false);
+
+            // 🔎 Fast-path EAN/RFID : supprimer séparateurs, >=8 -> exact/prefix, trié en premier
+            var qRaw = q;
+            var qTight = Regex.Replace(qRaw, @"[\s\-_]", string.Empty);
+
+            if (qTight.Length >= 8 && qTight.All(char.IsDigit))
             {
-                const string fastSql = """
-        SELECT "Sku","Ean","Name"
-        FROM "Product"
-        WHERE "Ean"=@q
-           OR "CodeDigits"=@q
-           OR "Ean"       LIKE @prefix
-           OR "CodeDigits"LIKE @prefix
+                const string fastSql = @"
+        SELECT p.""Sku"", p.""Ean"", p.""Name"",
+               COALESCE(pgp.""Label"", pg.""Label"") AS ""Group"",
+               CASE WHEN pgp.""Id"" IS NULL THEN NULL ELSE pg.""Label"" END AS ""SubGroup""
+        FROM ""Product"" p
+        LEFT JOIN ""ProductGroup"" pg  ON pg.""Id""  = p.""GroupId""
+        LEFT JOIN ""ProductGroup"" pgp ON pgp.""Id"" = pg.""ParentId""
+        WHERE
+             p.""Ean"" = @qExact
+          OR p.""Ean"" = @qTight
+          OR p.""Ean"" LIKE @qTightPrefix
+          OR p.""CodeDigits"" = @qExact
+          OR p.""CodeDigits"" = @qTight
+          OR p.""CodeDigits"" LIKE @qTightPrefix
         ORDER BY
-          CASE WHEN "Ean"=@q OR "CodeDigits"=@q THEN 2 ELSE 1 END DESC,
-          "Sku"
-        LIMIT @top;
-        """;
+          CASE
+            WHEN p.""Ean"" = @qExact OR p.""CodeDigits"" = @qExact THEN 3
+            WHEN p.""Ean"" = @qTight OR p.""CodeDigits"" = @qTight THEN 2
+            WHEN p.""Ean"" LIKE @qTightPrefix OR p.""CodeDigits"" LIKE @qTightPrefix THEN 1
+            ELSE 0
+          END DESC,
+          p.""Sku""
+        LIMIT @top;";
 
-                var rows = await connection.QueryAsync(
-                    new Dapper.CommandDefinition(fastSql, new { q, prefix = q + "%", top }, cancellationToken: ct)
+                var fastRows = await connection.QueryAsync<CineBoutique.Inventory.Api.Models.ProductSuggestionDto>(
+                    new Dapper.CommandDefinition(
+                        fastSql,
+                        new { qExact = qRaw, qTight, qTightPrefix = qTight + "%", top },
+                        cancellationToken: cancellationToken
+                    )
                 ).ConfigureAwait(false);
 
-                if (rows.Any()) return Results.Ok(rows);
+                if (fastRows.Any())
+                    return Results.Ok(fastRows);
             }
 
-            // Fallback texte simple
-            const string slowSql = """
-    SELECT "Sku","Ean","Name"
-    FROM "Product"
-    WHERE LOWER("Sku") LIKE LOWER(@p) || '%'
-       OR "Name" ILIKE '%'||@p||'%'
-       OR LOWER("Ean") LIKE LOWER(@p) || '%'
-    ORDER BY "Sku"
-    LIMIT @top;
-    """;
+            // 🧠 Fallback texte : accent-insensible + ranking par similarité, dédoublage par SKU
+            var sql = @"
+WITH cand AS (
+  SELECT
+    p.""Sku"",
+    p.""Ean"",
+    p.""Name"",
+    COALESCE(pgp.""Label"", pg.""Label"") AS ""Group"",
+    CASE WHEN pgp.""Id"" IS NULL THEN NULL ELSE pg.""Label"" END AS ""SubGroup"",
+    /* Flags pour tri déterministe */
+    CASE WHEN LOWER(p.""Sku"") LIKE LOWER(@q) || '%' THEN 1 ELSE 0 END AS sku_pref,
+    CASE WHEN LOWER(p.""Ean"") LIKE LOWER(@q) || '%' THEN 1 ELSE 0 END AS ean_pref,
+    /* Similarité accent-insensible */
+    similarity(immutable_unaccent(LOWER(p.""Name"")), immutable_unaccent(LOWER(@q))) AS name_sim,
+    CASE 
+      WHEN pg.""Id"" IS NOT NULL 
+        AND immutable_unaccent(LOWER(pg.""Label"")) LIKE immutable_unaccent(LOWER(@q)) || '%' 
+      THEN 1 ELSE 0 END AS sub_pref,
+    CASE 
+      WHEN pgp.""Id"" IS NOT NULL 
+        AND immutable_unaccent(LOWER(pgp.""Label"")) LIKE immutable_unaccent(LOWER(@q)) || '%' 
+      THEN 1 ELSE 0 END AS grp_pref,
+    COALESCE(similarity(immutable_unaccent(LOWER(pg.""Label"")),  immutable_unaccent(LOWER(@q))), 0) AS sub_sim,
+    COALESCE(similarity(immutable_unaccent(LOWER(pgp.""Label"")), immutable_unaccent(LOWER(@q))), 0) AS grp_sim
+  FROM ""Product"" p
+  LEFT JOIN ""ProductGroup"" pg  ON pg.""Id""  = p.""GroupId""
+  LEFT JOIN ""ProductGroup"" pgp ON pgp.""Id"" = pg.""ParentId""
+  WHERE
+    LOWER(p.""Sku"") LIKE LOWER(@q) || '%'
+    OR LOWER(p.""Ean"") LIKE LOWER(@q) || '%'
+    OR similarity(immutable_unaccent(LOWER(p.""Name"")), immutable_unaccent(LOWER(@q))) > 0.20
+    OR (pg.""Id""  IS NOT NULL AND (
+          similarity(immutable_unaccent(LOWER(pg.""Label"")),  immutable_unaccent(LOWER(@q))) > 0.20
+       OR immutable_unaccent(LOWER(pg.""Label""))  LIKE immutable_unaccent(LOWER(@q)) || '%'
+    ))
+    OR (pgp.""Id"" IS NOT NULL AND (
+          similarity(immutable_unaccent(LOWER(pgp.""Label"")), immutable_unaccent(LOWER(@q))) > 0.20
+       OR immutable_unaccent(LOWER(pgp.""Label"")) LIKE immutable_unaccent(LOWER(@q)) || '%'
+    ))
+)
+, best_per_sku AS (
+  /* Choisir la meilleure ligne par SKU selon la même priorité */
+  SELECT DISTINCT ON (c.""Sku"") c.*
+  FROM cand c
+  ORDER BY 
+    c.""Sku"",
+    c.sku_pref DESC,
+    c.ean_pref DESC,
+    c.name_sim DESC,
+    GREATEST(c.sub_pref, c.grp_pref) DESC,
+    GREATEST(c.sub_sim,  c.grp_sim)  DESC
+)
+SELECT ""Sku"",""Ean"",""Name"",""Group"",""SubGroup""
+FROM best_per_sku
+ORDER BY
+  sku_pref DESC,
+  ean_pref DESC,
+  name_sim DESC,
+  GREATEST(sub_pref, grp_pref) DESC,
+  GREATEST(sub_sim,  grp_sim)  DESC,
+  ""Sku""
+LIMIT @top;";
 
-            var suggestions = await connection.QueryAsync(
-                new Dapper.CommandDefinition(slowSql, new { p = q, top }, cancellationToken: ct)
+            var suggestions = await connection.QueryAsync<CineBoutique.Inventory.Api.Models.ProductSuggestionDto>(
+                new Dapper.CommandDefinition(sql, new { q, top }, cancellationToken: cancellationToken)
             ).ConfigureAwait(false);
 
             return Results.Ok(suggestions);
