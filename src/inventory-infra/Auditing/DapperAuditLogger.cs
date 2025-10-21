@@ -4,7 +4,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Domain.Auditing;
 using CineBoutique.Inventory.Infrastructure.Database;
-using CsvHelper;
 using Dapper;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -71,12 +70,6 @@ VALUES
                 "Audit logging failed for entity {EntityName} with id {EntityId} and event {EventType}",
                 entry.EntityName, entry.EntityId, entry.EventType);
             throw;
-        }
-        catch (CsvHelperException ex)
-        {
-            _logger.LogWarning(ex,
-                "Audit logging failed for entity {EntityName} with id {EntityId} and event {EventType}",
-                entry.EntityName, entry.EntityId, entry.EventType);
         }
         catch (NpgsqlException ex)
         {
