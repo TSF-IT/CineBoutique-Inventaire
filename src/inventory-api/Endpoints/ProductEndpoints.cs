@@ -542,7 +542,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 {
                     "ean" => "\"Ean\"",
                     "name" => "\"Name\"",
-                    "descr" => "\"Name\"",
+                    "descr" => "COALESCE(\"Attributes\"->>'descr', \"Name\")",
                     _ => "\"Sku\""
                 };
                 var responseSortBy = normalizedSortBy switch
@@ -566,6 +566,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                         "OR COALESCE(\"Ean\", '') ILIKE @Filter ESCAPE '\\' " +
                         "OR \"Sku\" ILIKE @Filter ESCAPE '\\' " +
                         "OR COALESCE(\"Name\", '') ILIKE @Filter ESCAPE '\\' " +
+                        "OR COALESCE(\"Attributes\"->>'descr', '') ILIKE @Filter ESCAPE '\\' " +
                         "OR COALESCE(\"CodeDigits\", '') ILIKE @Filter ESCAPE '\\')");
                 }
 
@@ -586,7 +587,7 @@ SELECT
 FROM "Product"
 WHERE {whereSql}
 ORDER BY {sortColumn} {sortDirection}, "Sku" ASC
-OFFSET @Offset LIMIT @Limit;
+LIMIT @Limit OFFSET @Offset;
 """;
 
                 var items = (await connection.QueryAsync<ShopProductListItemDto>(
@@ -698,6 +699,10 @@ OFFSET @Offset LIMIT @Limit;
         {
             return Results.StatusCode(StatusCodes.Status403Forbidden);
         }
+
+        var importMode = bypassShopAdminCheck
+            ? await ResolveLegacyImportModeAsync(connection, shopId, cancellationToken).ConfigureAwait(false)
+            : ProductImportMode.ReplaceCatalogue;
 
         var importService = httpContext.RequestServices.GetRequiredService<IProductImportService>();
         const long maxCsvSizeBytes = 25L * 1024L * 1024L;
@@ -908,7 +913,7 @@ OFFSET @Offset LIMIT @Limit;
                         inspectionReader.DiscardBufferedData();
                         inspectionStream.Seek(0, SeekOrigin.Begin);
 
-                        var dryRunCommand = new ProductImportCommand(inspectionStream, isDryRun, username, shopId);
+                        var dryRunCommand = new ProductImportCommand(inspectionStream, isDryRun, username, shopId, importMode);
                         var dryRunResult = await importService.ImportAsync(dryRunCommand, cancellationToken).ConfigureAwait(false);
                         unknown.UnionWith(dryRunResult.Response.UnknownColumns);
 
@@ -940,7 +945,7 @@ OFFSET @Offset LIMIT @Limit;
             }
 
             var unknownColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            var command = new ProductImportCommand(streamToImport, isDryRun, username, shopId);
+            var command = new ProductImportCommand(streamToImport, isDryRun, username, shopId, importMode);
             var result = await importService.ImportAsync(command, cancellationToken).ConfigureAwait(false);
             unknownColumns.UnionWith(result.Response.UnknownColumns);
 
@@ -974,6 +979,27 @@ OFFSET @Offset LIMIT @Limit;
                     
     }
 
+
+    private static async Task<ProductImportMode> ResolveLegacyImportModeAsync(
+        IDbConnection connection,
+        Guid shopId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = "SELECT EXISTS (SELECT 1 FROM \"ProductImport\" WHERE \"ShopId\" = @ShopId);";
+
+        try
+        {
+            var hasExistingImport = await connection.ExecuteScalarAsync<bool>(
+                new CommandDefinition(sql, new { ShopId = shopId }, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            return hasExistingImport ? ProductImportMode.MergeWithExisting : ProductImportMode.ReplaceCatalogue;
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedTable)
+        {
+            return ProductImportMode.ReplaceCatalogue;
+        }
+    }
 
     private static long CreateLegacyGlobalImportLockKey(string lockName)
     {
