@@ -1,12 +1,12 @@
 using System;
 using System.Net;
-using System.Net.Http;
 using System.Net.Http.Json;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Fixtures;
 using CineBoutique.Inventory.Api.Tests.Helpers;
 using FluentAssertions;
+using Npgsql;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
@@ -99,6 +99,46 @@ public sealed class ProductEndpointsTests : IntegrationTestBase
         var duplicateLogs = Fixture.DrainAuditLogs();
         duplicateLogs.Should().ContainSingle("le conflit de création doit être auditée")
             .Which.Category.Should().Be("products.create.conflict");
+    }
+
+    [SkippableFact]
+    public async Task CreateProduct_WithShopHeader_UsesRequestedShop()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        Guid requestedShopId = Guid.Empty;
+
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            await seeder.CreateShopAsync("Boutique Principale").ConfigureAwait(false);
+            requestedShopId = await seeder.CreateShopAsync("Boutique Header").ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        requestedShopId.Should().NotBe(Guid.Empty);
+
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Remove("X-Shop-Id");
+        client.DefaultRequestHeaders.Add("X-Shop-Id", requestedShopId.ToString());
+
+        var sku = "HDR-001";
+        var response = await client.PostAsJsonAsync(
+            client.CreateRelativeUri("/api/products"),
+            new CreateProductRequest { Sku = sku, Name = "Produit Header" })
+            .ConfigureAwait(false);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
+        await using var command = new NpgsqlCommand(
+            "SELECT \"ShopId\" FROM \"Product\" WHERE \"Sku\" = @sku LIMIT 1;",
+            connection)
+        {
+            Parameters = { new("sku", sku) }
+        };
+
+        var storedShopId = await command.ExecuteScalarAsync().ConfigureAwait(false);
+        storedShopId.Should().BeOfType<Guid>();
+        ((Guid)storedShopId!).Should().Be(requestedShopId);
     }
 
     [SkippableFact]

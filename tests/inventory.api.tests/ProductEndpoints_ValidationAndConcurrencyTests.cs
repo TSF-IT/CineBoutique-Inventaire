@@ -201,6 +201,43 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
     }
 
     [SkippableFact]
+    public async Task CreateProduct_DuplicateEanAcrossSkus_AllowsInsertion()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+        var client = CreateClient();
+
+        const string sharedEan = "7894561230123";
+
+        var firstResponse = await client.PostAsJsonAsync(
+            client.CreateRelativeUri("/api/products"),
+            new CreateProductRequest { Sku = "SKU-DUP-EAN-1", Name = "Produit Alpha", Ean = sharedEan }
+        ).ConfigureAwait(false);
+
+        await firstResponse.ShouldBeAsync(HttpStatusCode.Created, "la première création doit réussir").ConfigureAwait(false);
+        var firstProduct = await firstResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
+        firstProduct.Should().NotBeNull();
+        firstProduct!.Ean.Should().Be(sharedEan);
+
+        var secondResponse = await client.PostAsJsonAsync(
+            client.CreateRelativeUri("/api/products"),
+            new CreateProductRequest { Sku = "SKU-DUP-EAN-2", Name = "Produit Beta", Ean = sharedEan }
+        ).ConfigureAwait(false);
+
+        await secondResponse.ShouldBeAsync(HttpStatusCode.Created, "un EAN partagé ne doit plus provoquer de 409").ConfigureAwait(false);
+        var secondProduct = await secondResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
+        secondProduct.Should().NotBeNull();
+        secondProduct!.Ean.Should().Be(sharedEan);
+
+        var fetchFirst = await client.GetAsync(client.CreateRelativeUri("/api/products/SKU-DUP-EAN-1")).ConfigureAwait(false);
+        await fetchFirst.ShouldBeAsync(HttpStatusCode.OK, "le premier produit doit rester accessible").ConfigureAwait(false);
+
+        var fetchSecond = await client.GetAsync(client.CreateRelativeUri("/api/products/SKU-DUP-EAN-2")).ConfigureAwait(false);
+        await fetchSecond.ShouldBeAsync(HttpStatusCode.OK, "le second produit doit également être accessible").ConfigureAwait(false);
+    }
+
+    [SkippableFact]
     public async Task CreateProduct_SameSkuInParallel_AllowsSingleSuccess()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
@@ -230,7 +267,11 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
 
-        await Fixture.ResetAndSeedAsync(seeder => seeder.CreateProductAsync("SKU-UPDATE-INVALID", "Produit initial")).ConfigureAwait(false);
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            var shopId = await seeder.GetOrCreateAnyShopIdAsync().ConfigureAwait(false);
+            await seeder.CreateProductAsync("SKU-UPDATE-INVALID", "Produit initial", shopId: shopId).ConfigureAwait(false);
+        }).ConfigureAwait(false);
         var client = CreateClient();
 
         Fixture.ClearAuditLogs();
@@ -317,5 +358,47 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
         var fetchedProduct = await fetchResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
         fetchedProduct.Should().NotBeNull();
         fetchedProduct!.Ean.Should().Be(ean1);
+    }
+
+    [SkippableFact]
+    public async Task UpdateProductById_DuplicateEan_AllowsDuplication()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+        var client = CreateClient();
+
+        const string firstEan = "3216549870123";
+        const string secondEan = "3216549870999";
+
+        var firstCreate = await client.PostAsJsonAsync(
+            client.CreateRelativeUri("/api/products"),
+            new CreateProductRequest { Sku = "SKU-ID-1", Name = "Produit ID 1", Ean = firstEan }
+        ).ConfigureAwait(false);
+        await firstCreate.ShouldBeAsync(HttpStatusCode.Created, "le premier produit doit être créé").ConfigureAwait(false);
+
+        var secondCreate = await client.PostAsJsonAsync(
+            client.CreateRelativeUri("/api/products"),
+            new CreateProductRequest { Sku = "SKU-ID-2", Name = "Produit ID 2", Ean = secondEan }
+        ).ConfigureAwait(false);
+        await secondCreate.ShouldBeAsync(HttpStatusCode.Created, "le second produit doit être créé").ConfigureAwait(false);
+        var secondProduct = await secondCreate.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
+        secondProduct.Should().NotBeNull();
+
+        var updateResponse = await client.PutAsJsonAsync(
+            client.CreateRelativeUri($"/api/products/by-id/{secondProduct!.Id}"),
+            new CreateProductRequest { Sku = "SKU-ID-2", Name = "Produit ID 2", Ean = firstEan }
+        ).ConfigureAwait(false);
+
+        await updateResponse.ShouldBeAsync(HttpStatusCode.OK, "la mise à jour par Id doit accepter un EAN déjà présent").ConfigureAwait(false);
+        var updatedViaId = await updateResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
+        updatedViaId.Should().NotBeNull();
+        updatedViaId!.Ean.Should().Be(firstEan);
+
+        var fetchAfterUpdate = await client.GetAsync(client.CreateRelativeUri("/api/products/SKU-ID-2")).ConfigureAwait(false);
+        await fetchAfterUpdate.ShouldBeAsync(HttpStatusCode.OK, "le produit doit rester accessible après mise à jour par Id").ConfigureAwait(false);
+        var fetched = await fetchAfterUpdate.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
+        fetched.Should().NotBeNull();
+        fetched!.Ean.Should().Be(firstEan);
     }
 }

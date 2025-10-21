@@ -31,6 +31,12 @@ public sealed class TestApiFactory : IAsyncLifetime, IAsyncDisposable
     }
   }
 
+  public async Task<Guid> GetOrCreateAnyShopIdAsync()
+  {
+    Skip.If(!IsAvailable, _skipReason ?? "Backend d'intégration indisponible.");
+    return await _inventory.Seeder.GetOrCreateAnyShopIdAsync().ConfigureAwait(false);
+  }
+
   public async Task InitializeAsync()
   {
     await _postgres.InitializeAsync().ConfigureAwait(false);
@@ -48,6 +54,7 @@ public sealed class TestApiFactory : IAsyncLifetime, IAsyncDisposable
     }
 
     await _inventory.EnsureReadyAsync().ConfigureAwait(false);
+    await _inventory.Seeder.GetOrCreateAnyShopIdAsync().ConfigureAwait(false);
     _client = _inventory.CreateClient();
     _initialized = true;
   }
@@ -68,6 +75,7 @@ public sealed class TestApiFactory : IAsyncLifetime, IAsyncDisposable
     _ = await Client.GetAsync("/health");
 
     await _inventory.DbResetAsync().ConfigureAwait(false);
+    _ = await _inventory.Seeder.GetOrCreateAnyShopIdAsync().ConfigureAwait(false);
 
     var connection = await _inventory.OpenConnectionAsync().ConfigureAwait(false);
 
@@ -111,6 +119,8 @@ END $$;";
     // S'assure que l'host est démarré (migrations/seed exécutés),
     // mais SANS remettre la DB à zéro ici.
     _ = await Client.GetAsync("/health").ConfigureAwait(false);
+
+    _ = await _inventory.Seeder.GetOrCreateAnyShopIdAsync().ConfigureAwait(false);
 
     var connection = await _inventory.OpenConnectionAsync().ConfigureAwait(false);
     try
@@ -185,7 +195,7 @@ RETURNING ""Id"";";
   }
 
   public async System.Threading.Tasks.Task UpsertProductAsync(
-    System.Data.IDbConnection conn, string sku, string name, string? ean, long? groupId,
+    System.Data.IDbConnection conn, Guid shopId, string sku, string name, string? ean, long? groupId,
     System.Threading.CancellationToken ct = default)
   {
     // Présence des colonnes (le schéma peut varier selon le chemin d'init des tests)
@@ -193,13 +203,13 @@ RETURNING ""Id"";";
     var hasUpdated = await ColumnExistsAsync(conn, "Product", "UpdatedAtUtc", ct).ConfigureAwait(false);
 
     // SET de l'UPDATE
-    var updateSet = "\"Name\" = @name, \"Ean\" = @ean, \"GroupId\" = @gid";
+    var updateSet = "\"Name\" = @name, \"Ean\" = @ean, \"GroupId\" = @gid, \"ShopId\" = @shopId";
     if (hasUpdated)
       updateSet += ", \"UpdatedAtUtc\" = NOW() AT TIME ZONE 'UTC'";
 
     // Colonnes & valeurs de l'INSERT
-    var insertCols = new System.Collections.Generic.List<string> { "\"Sku\"", "\"Name\"", "\"Ean\"", "\"GroupId\"" };
-    var insertVals = new System.Collections.Generic.List<string> { "@sku", "@name", "@ean", "@gid" };
+    var insertCols = new System.Collections.Generic.List<string> { "\"ShopId\"", "\"Sku\"", "\"Name\"", "\"Ean\"", "\"GroupId\"" };
+    var insertVals = new System.Collections.Generic.List<string> { "@shopId", "@sku", "@name", "@ean", "@gid" };
     if (hasCreated)
     {
       insertCols.Add("\"CreatedAtUtc\"");
@@ -226,7 +236,7 @@ WHERE NOT EXISTS (SELECT 1 FROM upsert);";
     var gid = (object?)groupId ?? System.DBNull.Value;
     await Dapper.SqlMapper.ExecuteAsync(
       conn,
-      new Dapper.CommandDefinition(sql, new { sku, name, ean, gid }, cancellationToken: ct)
+      new Dapper.CommandDefinition(sql, new { sku, name, ean, gid, shopId }, cancellationToken: ct)
     ).ConfigureAwait(false);
   }
 

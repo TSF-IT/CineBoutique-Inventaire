@@ -43,6 +43,52 @@ public sealed class TestDataSeeder
         return id;
     }
 
+    [Obsolete("Utiliser GetOrCreateAnyShopIdAsync à la place.")]
+    public Task<Guid> GetAnyShopIdAsync() => GetOrCreateAnyShopIdAsync();
+
+    public async Task<Guid> GetOrCreateAnyShopIdAsync()
+    {
+        const string selectSql = "SELECT \"Id\" FROM \"Shop\" ORDER BY \"Name\" LIMIT 1;";
+
+        var connection = _dataSource.CreateConnection();
+        await connection.OpenAsync().ConfigureAwait(false);
+        try
+        {
+            using (var selectCommand = new NpgsqlCommand(selectSql, connection))
+            {
+                var result = await selectCommand.ExecuteScalarAsync().ConfigureAwait(false);
+                if (result is Guid existingId)
+                {
+                    return existingId;
+                }
+            }
+
+            const string insertSql =
+                "INSERT INTO \"Shop\" (\"Id\", \"Name\") VALUES (gen_random_uuid(), 'Legacy') RETURNING \"Id\";";
+            using (var insertCommand = new NpgsqlCommand(insertSql, connection))
+            {
+                var inserted = await insertCommand.ExecuteScalarAsync().ConfigureAwait(false);
+                if (inserted is Guid insertedId)
+                {
+                    return insertedId;
+                }
+            }
+
+            using var fallbackCommand = new NpgsqlCommand(selectSql, connection);
+            var fallback = await fallbackCommand.ExecuteScalarAsync().ConfigureAwait(false);
+            if (fallback is Guid fallbackId)
+            {
+                return fallbackId;
+            }
+
+            throw new InvalidOperationException("Impossible de récupérer ou créer une boutique de test.");
+        }
+        finally
+        {
+            await connection.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
     public async Task<Guid> CreateLocationAsync(Guid shopId, string code, string label)
     {
         if (shopId == Guid.Empty)
@@ -123,15 +169,20 @@ public sealed class TestDataSeeder
         return id;
     }
 
-    public async Task<Guid> CreateProductAsync(string sku, string name, string? ean = null)
+    public async Task<Guid> CreateProductAsync(string sku, string name, string? ean = null, Guid? shopId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sku);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
+        if (!shopId.HasValue)
+        {
+            throw new ArgumentNullException(nameof(shopId));
+        }
+
         var id = Guid.NewGuid();
 
         const string sql =
-            "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"Ean\", \"CreatedAtUtc\") VALUES (@id, @sku, @name, @ean, @createdAt);";
+            "INSERT INTO \"Product\" (\"Id\", \"ShopId\", \"Sku\", \"Name\", \"Ean\", \"CreatedAtUtc\") VALUES (@id, @shopId, @sku, @name, @ean, @createdAt);";
 
         var connection = _dataSource.CreateConnection();
         await connection.OpenAsync().ConfigureAwait(false);
@@ -142,6 +193,7 @@ public sealed class TestDataSeeder
                 Parameters =
                 {
                     new("id", id),
+                    new("shopId", shopId.Value),
                     new("sku", sku),
                     new("name", name),
                     new("ean", (object?)ean ?? DBNull.Value),

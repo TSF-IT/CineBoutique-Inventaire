@@ -8,6 +8,7 @@ using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Authentication;
 using CineBoutique.Inventory.Api.Infrastructure.Http;
 using CineBoutique.Inventory.Api.Infrastructure.Logging;
+using CineBoutique.Inventory.Api.Infrastructure.Shops;
 using CineBoutique.Inventory.Api.Infrastructure.Middleware;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Hosting;
@@ -95,6 +96,8 @@ catch { /* pas bloquant en tests */ }
 // Infrastructure + seeder
 builder.Services.AddInventoryInfrastructure(builder.Configuration);
 builder.Services.AddTransient<InventoryDataSeeder>();
+
+builder.Services.Configure<AppSettingsOptions>(builder.Configuration.GetSection("AppSettings"));
 
 builder.Services.AddHttpContextAccessor();
 
@@ -213,6 +216,7 @@ builder.Services.AddScoped<IShopUserService, ShopUserService>();
 builder.Services.AddScoped<IProductLookupService, ProductLookupService>();
 builder.Services.AddScoped<IProductSearchService, ProductSearchService>();
 builder.Services.AddScoped<IProductSuggestionService, ProductSuggestionService>();
+builder.Services.AddScoped<IShopResolver, ShopResolver>();
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource.AddService("cineboutique.inventory.api"))
     .WithMetrics(metrics =>

@@ -36,7 +36,7 @@ public sealed class InventoryCountingFlowTests : IntegrationTestBase
             locationId = await seeder.CreateLocationAsync(shopId, "Z-001", "Zone Pilote").ConfigureAwait(false);
             primaryUserId = await seeder.CreateShopUserAsync(shopId, "alice", "Alice").ConfigureAwait(false);
             secondaryUserId = await seeder.CreateShopUserAsync(shopId, "bob", "Bob").ConfigureAwait(false);
-            await seeder.CreateProductAsync(productSku, "Film collector", productEan).ConfigureAwait(false);
+            await seeder.CreateProductAsync(productSku, "Film collector", productEan, shopId).ConfigureAwait(false);
         }).ConfigureAwait(false);
 
         var client = CreateClient();

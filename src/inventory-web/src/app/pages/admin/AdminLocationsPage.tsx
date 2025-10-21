@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   createLocation,
@@ -211,6 +211,11 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
   const [isAdmin, setIsAdmin] = useState(user.isAdmin)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const disableConfirmationDialogRef = useRef<HTMLDialogElement | null>(null)
+  const disableConfirmButtonRef = useRef<HTMLButtonElement | null>(null)
+  const disableDialogTitleId = `disable-user-dialog-title-${user.id}`
+  const disableDialogDescriptionId = `disable-user-dialog-description-${user.id}`
+  const disableConfirmationMessage = `Désactiver ${user.displayName} ? L'utilisateur ne pourra plus se connecter tant qu'il n'est pas recréé.`
 
   useEffect(() => {
     if (!isEditing) {
@@ -263,14 +268,7 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
     }
   }
 
-  const handleDisable = async () => {
-    const confirmDisable = window.confirm(
-      `Désactiver ${user.displayName} ? L'utilisateur ne pourra plus se connecter tant qu'il n'est pas recréé.`,
-    )
-    if (!confirmDisable) {
-      return
-    }
-
+  const performDisable = useCallback(async () => {
     setError(null)
     setSaving(true)
     try {
@@ -281,7 +279,31 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
     } finally {
       setSaving(false)
     }
-  }
+  }, [onDisable, user.id])
+
+  const handleOpenDisableDialog = useCallback(() => {
+    const dialog = disableConfirmationDialogRef.current
+    if (dialog && typeof dialog.showModal === 'function') {
+      dialog.showModal()
+      requestAnimationFrame(() => {
+        disableConfirmButtonRef.current?.focus()
+      })
+      return
+    }
+
+    if (window.confirm(disableConfirmationMessage)) {
+      void performDisable()
+    }
+  }, [disableConfirmationMessage, performDisable])
+
+  const handleCancelDisableDialog = useCallback(() => {
+    disableConfirmationDialogRef.current?.close()
+  }, [])
+
+  const handleConfirmDisableDialog = useCallback(() => {
+    disableConfirmationDialogRef.current?.close()
+    void performDisable()
+  }, [performDisable])
 
   return (
     <div
@@ -352,7 +374,7 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
             <Button
               variant="ghost"
               className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-              onClick={handleDisable}
+              onClick={handleOpenDisableDialog}
               disabled={saving}
             >
               Désactiver
@@ -361,6 +383,38 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
           {error && <p className="text-sm text-red-600 dark:text-red-400 sm:ml-auto sm:w-full sm:text-right">{error}</p>}
         </div>
       )}
+      <dialog
+        ref={disableConfirmationDialogRef}
+        aria-modal="true"
+        aria-labelledby={disableDialogTitleId}
+        aria-describedby={disableDialogDescriptionId}
+        className="px-4"
+      >
+        <div className="cb-card w-full max-w-lg p-6 shadow-xl">
+          <div className="space-y-4">
+            <p id={disableDialogTitleId} className="text-lg font-semibold">
+              {`Désactiver ${user.displayName} ?`}
+            </p>
+            <p id={disableDialogDescriptionId} className="text-sm text-slate-600 dark:text-slate-300">
+              L'utilisateur ne pourra plus se connecter tant qu'il n'est pas recréé.
+            </p>
+          </div>
+          <div className="mt-6 flex justify-end gap-3">
+            <Button type="button" variant="secondary" onClick={handleCancelDisableDialog}>
+              Annuler
+            </Button>
+            <Button
+              ref={disableConfirmButtonRef}
+              type="button"
+              onClick={handleConfirmDisableDialog}
+              className="bg-red-600 text-white shadow-soft hover:bg-red-500 focus-visible:ring-2 focus-visible:ring-red-300 dark:bg-red-500 dark:hover:bg-red-400"
+              disabled={saving}
+            >
+              Confirmer la désactivation
+            </Button>
+          </div>
+        </div>
+      </dialog>
     </div>
   )
 }

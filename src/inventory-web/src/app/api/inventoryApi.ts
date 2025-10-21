@@ -8,7 +8,8 @@ import type {
   Location,
   Product,
 } from '../types/inventory'
-import http, { HttpError } from '@/lib/api/http'
+import http from '@/lib/api/http'
+import type { HttpError } from '@/lib/api/http'
 import { API_BASE } from '@/lib/api/config'
 import { z } from 'zod'
 
@@ -255,11 +256,90 @@ export const fetchLocations = async (shopId: string): Promise<Location[]> => {
 
 /* ----------------------------- Produits par EAN --------------------------- */
 
+interface ProductSearchItemDtoLike {
+  sku?: string | null
+  code?: string | null
+  name?: string | null
+}
+
+const normalizeLookupCode = (value: string | null | undefined): string | null => {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const trimmed = value.trim()
+  if (trimmed.length === 0) {
+    return null
+  }
+
+  return trimmed.replace(/\s+/g, '').toLowerCase()
+}
+
+const createNotFoundHttpError = (requestedCode: string): HttpError => {
+  const productPath = `${API_BASE}/products/${encodeURIComponent(requestedCode)}`
+  let absoluteUrl = productPath
+  if (typeof window !== 'undefined' && typeof window.location?.origin === 'string') {
+    try {
+      absoluteUrl = new URL(productPath, window.location.origin).toString()
+    } catch {
+      absoluteUrl = productPath
+    }
+  }
+
+  const error = new Error('Status Code: 404; Not Found') as HttpError
+  error.status = 404
+  error.url = absoluteUrl
+  error.problem = {
+    status: 404,
+    title: 'Not Found',
+    detail: 'Aucun produit ne correspond au code fourni.',
+  }
+  return error
+}
+
+const hasMatchingProductCandidate = (rawCandidates: unknown, normalizedCode: string): boolean => {
+  if (!Array.isArray(rawCandidates)) {
+    return false
+  }
+
+  return rawCandidates.some((candidate) => {
+    if (!candidate || typeof candidate !== 'object') {
+      return false
+    }
+
+    const record = candidate as ProductSearchItemDtoLike
+    const codes = [normalizeLookupCode(record.code), normalizeLookupCode(record.sku)]
+    return codes.some((value) => value === normalizedCode)
+  })
+}
+
 export const fetchProductByEan = async (ean: string): Promise<Product> => {
   const trimmed = (ean ?? '').trim()
   if (trimmed.length === 0 || !/^\d+$/.test(trimmed)) {
     throw new Error("EAN invalide (valeur vide ou non numérique)")
   }
+
+  const normalizedCode = normalizeLookupCode(trimmed)
+
+  if (normalizedCode) {
+    try {
+      const params = new URLSearchParams({ code: trimmed, limit: '5' })
+      const searchUrl = `${API_BASE}/products/search?${params.toString()}`
+      const rawResult = await http(searchUrl)
+      const hasMatch = hasMatchingProductCandidate(rawResult, normalizedCode)
+      if (!hasMatch) {
+        throw createNotFoundHttpError(trimmed)
+      }
+    } catch (error) {
+      if (isHttpError(error) && error.status === 404) {
+        throw error
+      }
+      if (error instanceof Error && error.message === 'Status Code: 404; Not Found') {
+        throw error
+      }
+    }
+  }
+
   const data = await http(`${API_BASE}/products/${encodeURIComponent(trimmed)}`)
   return data as Product
 }

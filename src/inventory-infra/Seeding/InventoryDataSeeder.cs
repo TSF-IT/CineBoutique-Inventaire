@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq;
 using System.Security.Cryptography;
@@ -168,7 +169,7 @@ WHERE ""ShopId"" = @ShopId
         }
     }
 
-    private async Task<int> EnsureShopsAsync(
+    private static async Task<int> EnsureShopsAsync(
         IDbConnection connection,
         IDbTransaction transaction,
         CancellationToken cancellationToken)
@@ -200,7 +201,7 @@ WHERE ""ShopId"" = @ShopId
         return insertedCount;
     }
 
-    private async Task ApplyShopRenamesAsync(
+    private static async Task ApplyShopRenamesAsync(
         IDbConnection connection,
         IDbTransaction transaction,
         CancellationToken cancellationToken)
@@ -276,7 +277,7 @@ WHERE ""ShopId"" = @ShopId
                 new CommandDefinition(
                     hasCodeColumn ? SelectShopsWithCodeSql : SelectShopsWithoutCodeSql,
                     transaction: transaction,
-                    cancellationToken: cancellationToken)))
+                    cancellationToken: cancellationToken)).ConfigureAwait(false))
             .ToList();
 
         var affected = 0;
@@ -553,6 +554,7 @@ WHERE ""ShopId"" = @ShopId
         return string.IsNullOrWhiteSpace(slug) ? "utilisateur" : slug;
     }
 
+    [SuppressMessage("Globalization", "CA1308", Justification = "Slug/title normalization requires lowercase")]
     private static string WordToTitleCase(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -617,6 +619,7 @@ WHERE ""ShopId"" = @ShopId
         return builder.ToString().Normalize(NormalizationForm.FormC);
     }
 
+    [SuppressMessage("Globalization", "CA1308", Justification = "Slug/title normalization requires lowercase")]
     private static string ToSlug(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -650,13 +653,12 @@ WHERE ""ShopId"" = @ShopId
 
     private static Guid CreateStableGuid(Guid shopId, string displayName)
     {
-        using var sha256 = SHA256.Create();
         var shopBytes = shopId.ToByteArray();
         var displayNameBytes = Encoding.UTF8.GetBytes(displayName);
         var buffer = new byte[shopBytes.Length + displayNameBytes.Length];
         Buffer.BlockCopy(shopBytes, 0, buffer, 0, shopBytes.Length);
         Buffer.BlockCopy(displayNameBytes, 0, buffer, shopBytes.Length, displayNameBytes.Length);
-        var hash = sha256.ComputeHash(buffer);
+        var hash = SHA256.HashData(buffer);
         var guidBytes = new byte[16];
         Array.Copy(hash, guidBytes, 16);
         return new Guid(guidBytes);

@@ -2,6 +2,7 @@ using CineBoutique.Inventory.Domain.Auditing;
 using CineBoutique.Inventory.Infrastructure.Auditing;
 using CineBoutique.Inventory.Infrastructure.Database;
 using CineBoutique.Inventory.Infrastructure.Database.Products;
+using CineBoutique.Inventory.Infrastructure.Locks;
 using CineBoutique.Inventory.Infrastructure.Seeding;
 using FluentMigrator.Runner;
 using Microsoft.Extensions.Configuration;
@@ -42,6 +43,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IProductLookupRepository, ProductLookupRepository>();
         services.AddScoped<IProductGroupRepository, ProductGroupRepository>();
         services.AddScoped<IProductSuggestionRepository, ProductSuggestionRepository>();
+        services.AddScoped<IImportLockService, PostgresImportLockService>();
 
         return services;
     }

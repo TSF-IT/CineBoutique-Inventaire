@@ -135,11 +135,12 @@ public sealed class ProductLookup_ExtendedTests : IntegrationTestBase
     private async Task InsertProductAsync(string sku, string name, string? ean, string? codeDigits)
     {
         var id = Guid.NewGuid();
+        var shopId = await Fixture.Seeder.GetOrCreateAnyShopIdAsync().ConfigureAwait(false);
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
 
         const string sql = """
-INSERT INTO "Product" ("Id", "Sku", "Name", "Ean", "CodeDigits", "CreatedAtUtc")
-VALUES (@Id, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc);
+INSERT INTO "Product" ("Id", "ShopId", "Sku", "Name", "Ean", "CodeDigits", "CreatedAtUtc")
+VALUES (@Id, @ShopId, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc);
 """;
 
         await using var command = new NpgsqlCommand(sql, connection)
@@ -147,6 +148,7 @@ VALUES (@Id, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc);
             Parameters =
             {
                 new("Id", id),
+                new("ShopId", shopId),
                 new("Sku", sku),
                 new("Name", name),
                 new("Ean", (object?)ean ?? DBNull.Value),

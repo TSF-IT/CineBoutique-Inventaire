@@ -329,15 +329,12 @@ WHERE p.""Sku"" = @sku;";
             var duplicateResponse = await client.PostAsync("/api/products/import", duplicateContent).ConfigureAwait(false);
             duplicateResponse.StatusCode.Should().Be(HttpStatusCode.NoContent, "l'import identique doit être ignoré");
 
-            var duplicatePayload = await duplicateResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
-            duplicatePayload.Should().NotBeNull();
-            duplicatePayload!.Skipped.Should().BeTrue();
-            duplicatePayload.DryRun.Should().BeFalse();
-            duplicatePayload.Inserted.Should().Be(0);
-            duplicatePayload.Updated.Should().Be(0);
-            duplicatePayload.WouldInsert.Should().Be(0);
-            duplicatePayload.UnknownColumns.Should().BeEmpty();
-            duplicatePayload.ProposedGroups.Should().BeEmpty();
+            duplicateResponse.Headers.TryGetValues("X-Import-Skipped", out var skippedHeader)
+                .Should().BeTrue();
+            skippedHeader!.Should().ContainSingle(value => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
+
+            var duplicatePayload = await duplicateResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
+            duplicatePayload.Should().BeNullOrEmpty();
         }
 
         await using var verifyConnection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);

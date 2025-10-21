@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
@@ -41,6 +42,12 @@ public sealed class InventoryApiFactory : WebApplicationFactory<Program>
                 ["RunMigrationsOnStart"] = "false",
                 ["AppSettings:SeedOnStartup"] = "false"
             };
+
+            var multiShopFlag = Environment.GetEnvironmentVariable("TEST_MULTI_SHOP_CATALOGUES");
+            overrides["AppSettings:MultiShopCatalogues"] = string.IsNullOrWhiteSpace(multiShopFlag)
+                ? "false"
+                : multiShopFlag;
+
             configurationBuilder.AddInMemoryCollection(overrides!);
         });
 

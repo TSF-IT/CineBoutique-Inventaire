@@ -1,4 +1,5 @@
 // Modifications : déplacement des endpoints produits depuis Program.cs avec mutualisation des helpers locaux.
+
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
@@ -9,10 +10,12 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
+using CineBoutique.Inventory.Api.Infrastructure.Shops;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Services.Products;
 using CineBoutique.Inventory.Infrastructure.Database;
+using CineBoutique.Inventory.Infrastructure.Locks;
 using Dapper;
 using FluentValidation.Results;
 using CsvHelper;
@@ -28,8 +31,7 @@ namespace CineBoutique.Inventory.Api.Endpoints;
 
 internal static class ProductEndpoints
 {
-    private const string LowerSkuConstraintName = "UX_Product_LowerSku";
-    private const string EanNotNullConstraintName = "UX_Product_Ean_NotNull";
+    private const string LowerSkuConstraintName = "UX_Product_Shop_LowerSku";
     private sealed class ProductLookupLogger
     {
     }
@@ -44,13 +46,18 @@ internal static class ProductEndpoints
         MapGetProductEndpoint(app);
         MapUpdateProductEndpoints(app);
         MapImportProductsEndpoint(app);
+        MapShopScopedProductEndpoints(app);
 
         app.MapGet("/api/products/{sku}/details", async (
             string sku,
             System.Data.IDbConnection connection,
+            IShopResolver shopResolver,
+            HttpContext httpContext,
             System.Threading.CancellationToken ct) =>
         {
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, ct).ConfigureAwait(false);
+            var legacyShopId = await ResolveLegacyShopIdAsync(connection, shopResolver, httpContext, ct)
+                .ConfigureAwait(false);
             const string sql = @"
       SELECT p.""Sku"", p.""Ean"", p.""Name"",
              pg.""Label"" AS ""Group"", pgp.""Label"" AS ""SubGroup"",
@@ -58,10 +65,10 @@ internal static class ProductEndpoints
       FROM ""Product"" p
       LEFT JOIN ""ProductGroup"" pg  ON pg.""Id""  = p.""GroupId""
       LEFT JOIN ""ProductGroup"" pgp ON pgp.""Id"" = pg.""ParentId""
-      WHERE p.""Sku"" = @sku
+      WHERE p.""Sku"" = @sku AND p.""ShopId"" = @ShopId
       LIMIT 1;";
             var row = await connection.QueryFirstOrDefaultAsync(
-              new Dapper.CommandDefinition(sql, new { sku }, cancellationToken: ct));
+              new Dapper.CommandDefinition(sql, new { sku, ShopId = legacyShopId }, cancellationToken: ct));
             return row is null ? Results.NotFound() : Results.Ok(row);
         })
         .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
@@ -69,13 +76,17 @@ internal static class ProductEndpoints
         // --- GET /api/products/count ---
         app.MapGet("/api/products/count", async (
             System.Data.IDbConnection connection,
+            IShopResolver shopResolver,
+            HttpContext httpContext,
             System.Threading.CancellationToken cancellationToken) =>
         {
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+            var legacyShopId = await ResolveLegacyShopIdAsync(connection, shopResolver, httpContext, cancellationToken)
+                .ConfigureAwait(false);
 
-            const string sql = @"SELECT COUNT(*) FROM ""Product"";";
+            const string sql = @"SELECT COUNT(*) FROM ""Product"" WHERE ""ShopId"" = @ShopId;";
             var total = await connection.ExecuteScalarAsync<long>(
-                new Dapper.CommandDefinition(sql, cancellationToken: cancellationToken)
+                new Dapper.CommandDefinition(sql, new { ShopId = legacyShopId }, cancellationToken: cancellationToken)
             ).ConfigureAwait(false);
 
             return Results.Ok(new { total });
@@ -93,6 +104,7 @@ internal static class ProductEndpoints
             string code,
             CreateProductRequest request,
             IDbConnection connection,
+            IShopResolver shopResolver,
             IAuditLogger auditLogger,
             IClock clock,
             HttpContext httpContext,
@@ -135,14 +147,17 @@ internal static class ProductEndpoints
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+            var legacyShopId = await ResolveLegacyShopIdAsync(connection, shopResolver, httpContext, cancellationToken)
+                .ConfigureAwait(false);
 
             // Récupère le produit par SKU (case-insensitive)
             const string fetchSql = @"SELECT ""Id"", ""Sku"", ""Name"", ""Ean""
                                   FROM ""Product""
                                   WHERE LOWER(""Sku"") = LOWER(@Sku)
+                                    AND ""ShopId"" = @ShopId
                                   LIMIT 1;";
             var existing = await connection.QueryFirstOrDefaultAsync<ProductDto>(
-                new CommandDefinition(fetchSql, new { Sku = sanitizedSku }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+                new CommandDefinition(fetchSql, new { Sku = sanitizedSku, ShopId = legacyShopId }, cancellationToken: cancellationToken)).ConfigureAwait(false);
 
             if (existing is null)
             {
@@ -163,12 +178,6 @@ internal static class ProductEndpoints
             }
             catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
             {
-                if (string.Equals(ex.ConstraintName, EanNotNullConstraintName, StringComparison.Ordinal))
-                {
-                    await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, sanitizedSku, $"EAN déjà utilisé ({sanitizedEan})", "products.update.conflict", cancellationToken).ConfigureAwait(false);
-                    return Results.Conflict(new { message = "Cet EAN est déjà utilisé." });
-                }
-
                 if (string.Equals(ex.ConstraintName, LowerSkuConstraintName, StringComparison.Ordinal))
                 {
                     await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, sanitizedSku, "SKU déjà utilisé", "products.update.conflict", cancellationToken).ConfigureAwait(false);
@@ -207,6 +216,7 @@ internal static class ProductEndpoints
             Guid id,
             CreateProductRequest request,
             IDbConnection connection,
+            IShopResolver shopResolver,
             IAuditLogger auditLogger,
             IClock clock,
             HttpContext httpContext,
@@ -214,7 +224,7 @@ internal static class ProductEndpoints
         {
             if (request is null)
             {
-                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(), "corps null", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "corps null", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le corps de la requête est requis." });
             }
 
@@ -224,34 +234,36 @@ internal static class ProductEndpoints
 
             if (string.IsNullOrWhiteSpace(sanitizedName))
             {
-                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(), "sans nom", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "sans nom", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le nom du produit est requis." });
             }
 
             if (sanitizedName.Length > 256)
             {
-                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(), "nom trop long", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "nom trop long", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le nom du produit ne peut pas dépasser 256 caractères." });
             }
 
             if (sanitizedEan is { Length: > 0 } && (sanitizedEan.Length is < 8 or > 13 || !sanitizedEan.All(char.IsDigit)))
             {
-                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(), "EAN invalide", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "EAN invalide", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "L'EAN doit contenir entre 8 et 13 chiffres." });
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+            var legacyShopId = await ResolveLegacyShopIdAsync(connection, shopResolver, httpContext, cancellationToken)
+                .ConfigureAwait(false);
 
             // Vérifie l'existence
             const string existsSql = @"SELECT ""Id"", ""Sku"", ""Name"", ""Ean""
-                                   FROM ""Product"" WHERE ""Id"" = @Id LIMIT 1;";
+                                   FROM ""Product"" WHERE ""Id"" = @Id AND ""ShopId"" = @ShopId LIMIT 1;";
             var existing = await connection.QueryFirstOrDefaultAsync<ProductDto>(
-                new CommandDefinition(existsSql, new { Id = id }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+                new CommandDefinition(existsSql, new { Id = id, ShopId = legacyShopId }, cancellationToken: cancellationToken)).ConfigureAwait(false);
 
             if (existing is null)
             {
-                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(), "inexistant", "products.update.notfound", cancellationToken).ConfigureAwait(false);
-                return Results.NotFound(new { message = $"Aucun produit avec l'Id '{id}'." });
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "inexistant", "products.update.notfound", cancellationToken).ConfigureAwait(false);
+                return Results.NotFound(new { message = $"Aucun produit avec l'Id '{id.ToString("D")}'." });
             }
 
             const string updateSql = @"UPDATE ""Product""
@@ -267,15 +279,9 @@ internal static class ProductEndpoints
             }
             catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
             {
-                if (string.Equals(ex.ConstraintName, EanNotNullConstraintName, StringComparison.Ordinal))
-                {
-                    await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(), $"EAN déjà utilisé ({sanitizedEan})", "products.update.conflict", cancellationToken).ConfigureAwait(false);
-                    return Results.Conflict(new { message = "Cet EAN est déjà utilisé." });
-                }
-
                 if (string.Equals(ex.ConstraintName, LowerSkuConstraintName, StringComparison.Ordinal))
                 {
-                    await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(), "SKU déjà utilisé", "products.update.conflict", cancellationToken).ConfigureAwait(false);
+                    await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "SKU déjà utilisé", "products.update.conflict", cancellationToken).ConfigureAwait(false);
                     return Results.Conflict(new { message = "Ce SKU est déjà utilisé." });
                 }
 
@@ -306,6 +312,7 @@ internal static class ProductEndpoints
         app.MapPost("/api/products", async (
             CreateProductRequest request,
             IDbConnection connection,
+            IShopResolver shopResolver,
             IAuditLogger auditLogger,
             IClock clock,
             HttpContext httpContext,
@@ -352,10 +359,12 @@ internal static class ProductEndpoints
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+            var legacyShopId = await ResolveLegacyShopIdAsync(connection, shopResolver, httpContext, cancellationToken)
+                .ConfigureAwait(false);
 
-            const string insertSql = @"INSERT INTO ""Product"" (""Id"", ""Sku"", ""Name"", ""Ean"", ""CodeDigits"", ""CreatedAtUtc"")
-VALUES (@Id, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc)
-ON CONFLICT (LOWER(""Sku"")) DO NOTHING
+            const string insertSql = @"INSERT INTO ""Product"" (""Id"", ""ShopId"", ""Sku"", ""Name"", ""Ean"", ""CodeDigits"", ""CreatedAtUtc"")
+VALUES (@Id, @ShopId, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc)
+ON CONFLICT (""ShopId"", LOWER(""Sku"")) DO NOTHING
 RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
             var now = clock.UtcNow;
@@ -367,6 +376,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                         new
                         {
                             Id = Guid.NewGuid(),
+                            ShopId = legacyShopId,
                             Sku = sanitizedSku,
                             Name = sanitizedName,
                             Ean = sanitizedEan,
@@ -386,13 +396,6 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             }
             catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
             {
-                if (string.Equals(ex.ConstraintName, EanNotNullConstraintName, StringComparison.Ordinal))
-                {
-                    var eanLabel = string.IsNullOrWhiteSpace(sanitizedEan) ? "(EAN non renseigné)" : sanitizedEan;
-                    await LogProductCreationAttemptAsync(clock, auditLogger, httpContext, $"avec un EAN déjà utilisé ({eanLabel})", "products.create.conflict", cancellationToken).ConfigureAwait(false);
-                    return Results.Conflict(new { message = "Cet EAN est déjà utilisé." });
-                }
-
                 if (string.Equals(ex.ConstraintName, LowerSkuConstraintName, StringComparison.Ordinal))
                 {
                     await LogProductCreationAttemptAsync(clock, auditLogger, httpContext, $"avec un SKU déjà utilisé ({sanitizedSku})", "products.create.conflict", cancellationToken).ConfigureAwait(false);
@@ -420,326 +423,41 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
         app.MapPost("/api/products/import", async (
                 Microsoft.AspNetCore.Http.HttpRequest request,
                 System.Data.IDbConnection connection,
+                IShopResolver shopResolver,
+                IImportLockService importLockService,
                 string? dryRun,
+                Microsoft.Extensions.Options.IOptions<CineBoutique.Inventory.Api.Configuration.AppSettingsOptions> appSettings,
                 System.Threading.CancellationToken cancellationToken) =>
             {
-                // Logger local via DI (pas d’injection en signature)
-                var services = request.HttpContext.RequestServices;
-                var loggerFactory = (Microsoft.Extensions.Logging.ILoggerFactory)
-                    services.GetService(typeof(Microsoft.Extensions.Logging.ILoggerFactory))!;
-                var log = loggerFactory?.CreateLogger("InventoryApi.ProductImport")
-                          ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
-
-                // Parsing robuste du paramètre dryRun
-                bool isDryRun;
-                if (string.IsNullOrWhiteSpace(dryRun))
+                if (appSettings?.Value?.MultiShopCatalogues == true)
                 {
-                    isDryRun = false;
-                }
-                else if (bool.TryParse(dryRun, out var b))
-                {
-                    isDryRun = b;
-                }
-                else
-                {
-                    // ✨ Contrat attendu par les tests : enveloppe Errors[] + UnknownColumns[]
-                    return Results.Json(new
-                    {
-                        Errors = new[]
-                        {
-                            new {
-                                Reason  = "INVALID_DRY_RUN",
-                                Message = $"'{dryRun}' is not a valid boolean (expected 'true' or 'false').",
-                                Field   = "dryRun"
-                            }
-                        },
-                        UnknownColumns = Array.Empty<string>()
-                    }, statusCode: 400);
+                    return Results.BadRequest(new { reason = "GLOBAL_IMPORT_DISABLED" });
                 }
 
-                await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken)
+                await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+                var httpContext = request.HttpContext
+                    ?? throw new InvalidOperationException("HttpContext requis pour déterminer la boutique.");
+
+                var legacyShopId = await ResolveLegacyShopIdAsync(connection, shopResolver, httpContext, cancellationToken)
                     .ConfigureAwait(false);
 
-                var httpContext = request.HttpContext;
-
-                if (httpContext is null)
-                {
-                    return Results.Problem(statusCode: StatusCodes.Status500InternalServerError);
-                }
-
-                var importService = httpContext.RequestServices.GetRequiredService<IProductImportService>();
-                const long maxCsvSizeBytes = 25L * 1024L * 1024L;
-
-                if (request.ContentLength is { } contentLength && contentLength > maxCsvSizeBytes)
-                {
-                    return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
-                }
-
-                static IResult BuildFailure(string reason) =>
-                    Results.BadRequest(ProductImportResponse.Failure(
-                        0,
-                        new[]
-                        {
-                            new ProductImportError(0, reason)
-                        },
-                        ImmutableArray<string>.Empty,
-                        ImmutableArray<ProductImportGroupProposal>.Empty));
-
-                Stream? ownedStream = null;
-                Stream? nonDryBufferedStream = null;
-                Stream streamToImport = request.Body;
-
-                try
-                {
-                    if (request.HasFormContentType)
-                    {
-                        var form = await request.ReadFormAsync(cancellationToken).ConfigureAwait(false);
-                        var file = form.Files.GetFile("file");
-
-                        if (file is null || file.Length == 0)
-                        {
-                            return BuildFailure("MISSING_FILE");
-                        }
-
-                        if (file.Length > maxCsvSizeBytes)
-                        {
-                            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
-                        }
-
-                        ownedStream = file.OpenReadStream();
-                        streamToImport = ownedStream;
-                    }
-                    else if (!IsCsvContentType(request.ContentType))
-                    {
-                        return BuildFailure("UNSUPPORTED_CONTENT_TYPE");
-                    }
-                }
-                catch (IOException)
-                {
-                    return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
-                }
-                catch (InvalidDataException)
-                {
-                    return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
-                }
-
-                var username = EndpointUtilities.GetAuthenticatedUserName(httpContext);
-
-                try
-                {
-                    // Map d'équivalences d'entêtes → canonique (insensible à la casse)
-                    var synonyms = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-                    {
-                        ["barcode_rfid"] = "ean",
-                        ["ean13"] = "ean",
-                        ["item"] = "sku",
-                        ["code"] = "sku",
-                        ["descr"] = "name",
-                        ["description"] = "name",
-                        ["sous_groupe"] = "sousGroupe",
-                        ["subgroup"] = "sousGroupe",
-                        ["groupe"] = "groupe"
-                    };
-
-                    // Colonnes "métier" reconnues (jeu canonique après normalisation)
-                    var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                      { "sku", "ean", "name", "groupe", "sousGroupe" };
-
-                    // En non-dry, on s'assure que l'entête est bien lue
-                    if (!isDryRun)
-                    {
-                        Stream headerStream = streamToImport;
-                        MemoryStream? bufferedNonDryStream = null;
-                        if (!headerStream.CanSeek)
-                        {
-                            bufferedNonDryStream = new MemoryStream();
-                            await headerStream.CopyToAsync(bufferedNonDryStream, cancellationToken).ConfigureAwait(false);
-                            bufferedNonDryStream.Position = 0;
-                            streamToImport = bufferedNonDryStream;
-                            headerStream = bufferedNonDryStream;
-
-                            if (ownedStream is null)
-                            {
-                                ownedStream = bufferedNonDryStream;
-                            }
-                            else
-                            {
-                                nonDryBufferedStream = bufferedNonDryStream;
-                            }
-                        }
-                        else
-                        {
-                            headerStream.Seek(0, SeekOrigin.Begin);
-                        }
-
-                        using (var headerReader = new StreamReader(headerStream, Encoding.Latin1, detectEncodingFromByteOrderMarks: true, bufferSize: 1024, leaveOpen: true))
-                        {
-                            var csvConfiguration = new CsvConfiguration(CultureInfo.InvariantCulture)
-                            {
-                                Delimiter = ";",
-                                BadDataFound = null,
-                                MissingFieldFound = null,
-                                PrepareHeaderForMatch = args =>
-                                {
-                                    var k = (args.Header ?? string.Empty).Trim();
-                                    return synonyms.TryGetValue(k, out var mapped) ? mapped : k;
-                                }
-                            };
-
-                            using var csv = new CsvReader(headerReader, csvConfiguration);
-
-                            try
-                            {
-                                if (csv.Context.Reader.HeaderRecord == null || csv.Context.Reader.HeaderRecord.Length == 0)
-                                {
-                                    if (await csv.ReadAsync().ConfigureAwait(false))
-                                    {
-                                        csv.ReadHeader();
-                                    }
-                                }
-                            }
-                            catch
-                            {
-                                // Tolérance : si l'entête est déjà chargée, on ignore.
-                            }
-                        }
-
-                        if (streamToImport.CanSeek)
-                        {
-                            streamToImport.Seek(0, SeekOrigin.Begin);
-                        }
-                    }
-
-                    if (isDryRun)
-                    {
-                        MemoryStream? bufferedStream = null;
-                        Stream inspectionStream;
-                        if (streamToImport.CanSeek)
-                        {
-                            streamToImport.Seek(0, SeekOrigin.Begin);
-                            inspectionStream = streamToImport;
-                        }
-                        else
-                        {
-                            bufferedStream = new MemoryStream();
-                            await streamToImport.CopyToAsync(bufferedStream, cancellationToken).ConfigureAwait(false);
-                            bufferedStream.Position = 0;
-                            inspectionStream = bufferedStream;
-                        }
-
-                        try
-                        {
-                            using (var inspectionReader = new StreamReader(inspectionStream, Encoding.Latin1, detectEncodingFromByteOrderMarks: true, bufferSize: 1024, leaveOpen: true))
-                            {
-                                var csvConfiguration = new CsvConfiguration(CultureInfo.InvariantCulture)
-                                {
-                                    Delimiter = ";",
-                                    BadDataFound = null,
-                                    MissingFieldFound = null,
-                                    PrepareHeaderForMatch = args =>
-                                    {
-                                        var k = (args.Header ?? string.Empty).Trim();
-                                        return synonyms.TryGetValue(k, out var mapped) ? mapped : k;
-                                    }
-                                };
-
-                                using var csv = new CsvReader(inspectionReader, csvConfiguration);
-
-                                var unknown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-                                // Assure le chargement de l'entête si besoin
-                                // (selon la config CsvHelper, ReadHeader peut être nécessaire)
-                                try
-                                {
-                                    // Si la lib/ton code lit déjà l'entête en amont, ce ReadHeader sera no-op
-                                    if (await csv.ReadAsync().ConfigureAwait(false))
-                                    {
-                                        csv.ReadHeader();
-                                    }
-                                }
-                                catch
-                                {
-                                    /* on tolère l'absence d'entête */
-                                }
-
-                                var header = csv.Context.Reader.HeaderRecord;
-                                if (header is { Length: > 0 })
-                                {
-                                    foreach (var raw in header)
-                                    {
-                                        if (string.IsNullOrWhiteSpace(raw)) continue;
-                                        var k = synonyms.TryGetValue(raw, out var mapped) ? mapped : raw;
-                                        if (!known.Contains(k)) unknown.Add(k);
-                                    }
-                                }
-
-                                inspectionReader.DiscardBufferedData();
-                                inspectionStream.Seek(0, SeekOrigin.Begin);
-
-                                var dryRunCommand = new ProductImportCommand(inspectionStream, isDryRun, username);
-                                var dryRunResult = await importService.ImportAsync(dryRunCommand, cancellationToken).ConfigureAwait(false);
-                                unknown.UnionWith(dryRunResult.Response.UnknownColumns);
-
-                                var response = new
-                                {
-                                    dryRunResult.Response.Total,
-                                    dryRunResult.Response.Inserted,
-                                    dryRunResult.Response.Updated,
-                                    dryRunResult.Response.WouldInsert,
-                                    dryRunResult.Response.ErrorCount,
-                                    dryRunResult.Response.DryRun,
-                                    dryRunResult.Response.Skipped,
-                                    dryRunResult.Response.Errors,
-                                    dryRunResult.Response.ProposedGroups,
-                                    // conserve tes champs de preview existants si tu en as (compteurs, etc.)
-                                    unknownColumns = unknown.OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToArray()
-                                };
-
-                                return Results.Ok(response);
-                            }
-                        }
-                        finally
-                        {
-                            if (bufferedStream is not null)
-                            {
-                                await bufferedStream.DisposeAsync().ConfigureAwait(false);
-                            }
-                        }
-                    }
-
-                    var unknownColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    var command = new ProductImportCommand(streamToImport, isDryRun, username);
-                    var result = await importService.ImportAsync(command, cancellationToken).ConfigureAwait(false);
-                    unknownColumns.UnionWith(result.Response.UnknownColumns);
-
-                    return result.ResultType switch
-                    {
-                        ProductImportResultType.ValidationFailed => Results.BadRequest(result.Response),
-                        ProductImportResultType.Skipped => Results.Json(
-                            result.Response,
-                            statusCode: StatusCodes.Status204NoContent),
-                        _ => BuildImportSuccessResult(result.Response, isDryRun, unknownColumns)
-                    };
-                }
-                catch (ProductImportInProgressException)
+                var lockHandle = await importLockService.TryAcquireGlobalAsync(cancellationToken).ConfigureAwait(false);
+                if (lockHandle is null)
                 {
                     return Results.Json(new { reason = "import_in_progress" }, statusCode: StatusCodes.Status423Locked);
                 }
-                catch (ProductImportPayloadTooLargeException)
-                {
-                    return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
-                }
-                finally
-                {
-                    if (ownedStream is not null)
-                    {
-                        await ownedStream.DisposeAsync().ConfigureAwait(false);
-                    }
 
-                    if (nonDryBufferedStream is not null && !ReferenceEquals(nonDryBufferedStream, ownedStream))
-                    {
-                        await nonDryBufferedStream.DisposeAsync().ConfigureAwait(false);
-                    }
+                await using (lockHandle)
+                {
+                    return await RunProductImportAsync(
+                            request,
+                            connection,
+                            dryRun,
+                            legacyShopId,
+                            bypassShopAdminCheck: true,
+                            cancellationToken)
+                        .ConfigureAwait(false);
                 }
             })
            .RequireAuthorization();
@@ -775,6 +493,640 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
         };
 
         return Results.Ok(payload);
+    }
+
+
+    private static void MapShopScopedProductEndpoints(IEndpointRouteBuilder app)
+    {
+        app.MapPost("/api/shops/{shopId:guid}/products/import", async (
+                Guid shopId,
+                HttpRequest request,
+                IDbConnection connection,
+                IImportLockService importLockService,
+                string? dryRun,
+                CancellationToken cancellationToken) =>
+            {
+                var lockHandle = await importLockService.TryAcquireForShopAsync(shopId, cancellationToken).ConfigureAwait(false);
+                if (lockHandle is null)
+                {
+                    return Results.Json(new { reason = "import_in_progress" }, statusCode: StatusCodes.Status423Locked);
+                }
+
+                await using (lockHandle)
+                {
+                    return await RunProductImportAsync(request, connection, dryRun, shopId, bypassShopAdminCheck: false, cancellationToken).ConfigureAwait(false);
+                }
+            })
+           .RequireAuthorization();
+
+        app.MapGet("/api/shops/{shopId:guid}/products", async (
+                Guid shopId,
+                int? page,
+                int? pageSize,
+                string? q,
+                string? sortBy,
+                string? sortDir,
+                IDbConnection connection,
+                HttpContext httpContext,
+                CancellationToken cancellationToken) =>
+            {
+                if (!IsShopAdmin(httpContext, shopId))
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                }
+
+                var currentPage = page.GetValueOrDefault(1);
+                if (currentPage < 1)
+                {
+                    currentPage = 1;
+                }
+
+                var effectivePageSize = pageSize.GetValueOrDefault(50);
+                if (effectivePageSize < 1)
+                {
+                    effectivePageSize = 1;
+                }
+                else if (effectivePageSize > 200)
+                {
+                    effectivePageSize = 200;
+                }
+
+                var offset = (currentPage - 1) * effectivePageSize;
+                var sanitizedQuery = string.IsNullOrWhiteSpace(q) ? null : q.Trim();
+
+                var normalizedSortBy = sortBy?.Trim().ToLowerInvariant();
+                var responseSortBy = normalizedSortBy is "ean" or "name" or "descr" or "digits"
+                    ? normalizedSortBy
+                    : "sku";
+
+                var responseSortDir = string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase) ? "desc" : "asc";
+                var sortDirectionSql = responseSortDir.Equals("desc", StringComparison.Ordinal) ? "DESC" : "ASC";
+
+                await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+                const string whereClause = """
+WHERE "ShopId" = @ShopId
+  AND (
+    @Filter IS NULL OR @Filter='' OR
+    COALESCE("Sku",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE("Ean",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE("CodeDigits",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE("Description",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE("Name",'') ILIKE '%'||@Filter||'%'
+  )
+""";
+
+                var countSql = $"""
+SELECT COUNT(*)
+FROM "Product"
+{whereClause};
+""";
+
+                var total = await connection.ExecuteScalarAsync<long>(
+                        new CommandDefinition(
+                            countSql,
+                            new
+                            {
+                                ShopId = shopId,
+                                Filter = sanitizedQuery
+                            },
+                            cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+
+                var dataSql = $"""
+SELECT "Id", "Sku", "Name", "Ean", "Description", "CodeDigits"
+FROM "Product"
+{whereClause}
+ORDER BY
+  CASE WHEN @SortBy='ean' THEN "Ean"
+       WHEN @SortBy='name' THEN "Name"
+       WHEN @SortBy='descr' THEN "Description"
+       WHEN @SortBy='digits' THEN "CodeDigits"
+       ELSE "Sku" END {sortDirectionSql},
+  "Sku" ASC
+LIMIT @Limit OFFSET @Offset;
+""";
+
+                var items = (await connection.QueryAsync<ShopProductListItemDto>(
+                        new CommandDefinition(
+                            dataSql,
+                            new
+                            {
+                                ShopId = shopId,
+                                Filter = sanitizedQuery,
+                                SortBy = responseSortBy,
+                                Offset = offset,
+                                Limit = effectivePageSize
+                            },
+                            cancellationToken: cancellationToken))
+                    .ConfigureAwait(false))
+                    .ToList();
+
+                var totalPages = total == 0 ? 0 : (int)Math.Ceiling(total / (double)effectivePageSize);
+
+                var payload = new ShopProductListResponse
+                {
+                    Items = items,
+                    Page = currentPage,
+                    PageSize = effectivePageSize,
+                    Total = total,
+                    TotalPages = totalPages,
+                    SortBy = responseSortBy,
+                    SortDir = responseSortDir,
+                    Q = sanitizedQuery
+                };
+
+                return Results.Ok(payload);
+            })
+           .RequireAuthorization();
+
+        app.MapGet("/api/shops/{shopId:guid}/products/count", async (
+                Guid shopId,
+                IDbConnection connection,
+                HttpContext httpContext,
+                CancellationToken cancellationToken) =>
+            {
+                if (!IsShopAdmin(httpContext, shopId))
+                {
+                    return Results.StatusCode(StatusCodes.Status403Forbidden);
+                }
+
+                await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+                const string countSql = "SELECT COUNT(*) FROM \"Product\" WHERE \"ShopId\" = @ShopId;";
+                var count = await connection.ExecuteScalarAsync<long>(
+                    new CommandDefinition(countSql, new { ShopId = shopId }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+                const string catalogSql = "SELECT EXISTS (SELECT 1 FROM \"ProductImportHistory\" WHERE \"ShopId\" = @ShopId);";
+                var hasCatalog = await connection.ExecuteScalarAsync<bool>(
+                    new CommandDefinition(catalogSql, new { ShopId = shopId }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+                return Results.Ok(new { count, hasCatalog });
+            })
+           .RequireAuthorization();
+    }
+
+
+
+    private static async Task<IResult> RunProductImportAsync(
+        HttpRequest request,
+        IDbConnection connection,
+        string? dryRun,
+        Guid shopId,
+        bool bypassShopAdminCheck,
+        CancellationToken cancellationToken)
+    {
+        // Logger local via DI (pas d’injection en signature)
+        var services = request.HttpContext.RequestServices;
+        var loggerFactory = (Microsoft.Extensions.Logging.ILoggerFactory)
+            services.GetService(typeof(Microsoft.Extensions.Logging.ILoggerFactory))!;
+        var log = loggerFactory?.CreateLogger("InventoryApi.ProductImport")
+                  ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+
+        // Parsing robuste du paramètre dryRun
+        bool isDryRun;
+        if (string.IsNullOrWhiteSpace(dryRun))
+        {
+            isDryRun = false;
+        }
+        else if (bool.TryParse(dryRun, out var b))
+        {
+            isDryRun = b;
+        }
+        else
+        {
+            // ✨ Contrat attendu par les tests : enveloppe Errors[] + UnknownColumns[]
+            return Results.Json(new
+            {
+                Errors = new[]
+                {
+                    new {
+                        Reason  = "INVALID_DRY_RUN",
+                        Message = $"'{dryRun}' is not a valid boolean (expected 'true' or 'false').",
+                        Field   = "dryRun"
+                    }
+                },
+                UnknownColumns = Array.Empty<string>()
+            }, statusCode: 400);
+        }
+
+        await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken)
+            .ConfigureAwait(false);
+
+        var httpContext = request.HttpContext;
+
+        if (httpContext is null)
+        {
+            return Results.Problem(statusCode: StatusCodes.Status500InternalServerError);
+        }
+
+        if (!bypassShopAdminCheck && !IsShopAdmin(httpContext, shopId))
+        {
+            return Results.StatusCode(StatusCodes.Status403Forbidden);
+        }
+
+        var importMode = await ResolveImportModeAsync(
+                request,
+                connection,
+                shopId,
+                bypassShopAdminCheck,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        var importService = httpContext.RequestServices.GetRequiredService<IProductImportService>();
+        const long maxCsvSizeBytes = 25L * 1024L * 1024L;
+
+        if (request.ContentLength is { } contentLength && contentLength > maxCsvSizeBytes)
+        {
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+
+        static IResult BuildFailure(string reason) =>
+            Results.BadRequest(ProductImportResponse.Failure(
+                0,
+                new[]
+                {
+                    new ProductImportError(0, reason)
+                },
+                ImmutableArray<string>.Empty,
+                ImmutableArray<ProductImportGroupProposal>.Empty));
+
+        Stream? ownedStream = null;
+        Stream? nonDryBufferedStream = null;
+        Stream streamToImport = request.Body;
+
+        try
+        {
+            if (request.HasFormContentType)
+            {
+                var form = await request.ReadFormAsync(cancellationToken).ConfigureAwait(false);
+                var file = form.Files.GetFile("file");
+
+                if (file is null || file.Length == 0)
+                {
+                    return BuildFailure("MISSING_FILE");
+                }
+
+                if (file.Length > maxCsvSizeBytes)
+                {
+                    return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+                }
+
+                ownedStream = file.OpenReadStream();
+                streamToImport = ownedStream;
+            }
+            else if (!IsCsvContentType(request.ContentType))
+            {
+                return BuildFailure("UNSUPPORTED_CONTENT_TYPE");
+            }
+        }
+        catch (IOException)
+        {
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+        catch (InvalidDataException)
+        {
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+
+        var username = EndpointUtilities.GetAuthenticatedUserName(httpContext);
+
+        try
+        {
+            // Map d'équivalences d'entêtes → canonique (insensible à la casse)
+            var synonyms = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["barcode_rfid"] = "ean",
+                ["ean13"] = "ean",
+                ["item"] = "sku",
+                ["code"] = "sku",
+                ["descr"] = "name",
+                ["description"] = "name",
+                ["sous_groupe"] = "sousGroupe",
+                ["subgroup"] = "sousGroupe",
+                ["groupe"] = "groupe"
+            };
+
+            // Colonnes "métier" reconnues (jeu canonique après normalisation)
+            var known = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+              { "sku", "ean", "name", "groupe", "sousGroupe" };
+
+            // En non-dry, on s'assure que l'entête est bien lue
+            if (!isDryRun)
+            {
+                Stream headerStream = streamToImport;
+                MemoryStream? bufferedNonDryStream = null;
+                if (!headerStream.CanSeek)
+                {
+                    bufferedNonDryStream = new MemoryStream();
+                    await headerStream.CopyToAsync(bufferedNonDryStream, cancellationToken).ConfigureAwait(false);
+                    bufferedNonDryStream.Position = 0;
+                    streamToImport = bufferedNonDryStream;
+                    headerStream = bufferedNonDryStream;
+
+                    if (ownedStream is null)
+                    {
+                        ownedStream = bufferedNonDryStream;
+                    }
+                    else
+                    {
+                        nonDryBufferedStream = bufferedNonDryStream;
+                    }
+                }
+                else
+                {
+                    headerStream.Seek(0, SeekOrigin.Begin);
+                }
+
+                using (var headerReader = new StreamReader(headerStream, Encoding.Latin1, detectEncodingFromByteOrderMarks: true, bufferSize: 1024, leaveOpen: true))
+                {
+                    var csvConfiguration = new CsvConfiguration(CultureInfo.InvariantCulture)
+                    {
+                        Delimiter = ";",
+                        BadDataFound = null,
+                        MissingFieldFound = null,
+                        PrepareHeaderForMatch = args =>
+                        {
+                            var k = (args.Header ?? string.Empty).Trim();
+                            return synonyms.TryGetValue(k, out var mapped) ? mapped : k;
+                        }
+                    };
+
+                    using var csv = new CsvReader(headerReader, csvConfiguration);
+
+                    try
+                    {
+                        if (csv.Context.Reader.HeaderRecord == null || csv.Context.Reader.HeaderRecord.Length == 0)
+                        {
+                            if (await csv.ReadAsync().ConfigureAwait(false))
+                            {
+                                csv.ReadHeader();
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Tolérance : si l'entête est déjà chargée, on ignore.
+                    }
+                }
+
+                if (streamToImport.CanSeek)
+                {
+                    streamToImport.Seek(0, SeekOrigin.Begin);
+                }
+            }
+
+            if (isDryRun)
+            {
+                MemoryStream? bufferedStream = null;
+                Stream inspectionStream;
+                if (streamToImport.CanSeek)
+                {
+                    streamToImport.Seek(0, SeekOrigin.Begin);
+                    inspectionStream = streamToImport;
+                }
+                else
+                {
+                    bufferedStream = new MemoryStream();
+                    await streamToImport.CopyToAsync(bufferedStream, cancellationToken).ConfigureAwait(false);
+                    bufferedStream.Position = 0;
+                    inspectionStream = bufferedStream;
+                }
+
+                try
+                {
+                    using (var inspectionReader = new StreamReader(inspectionStream, Encoding.Latin1, detectEncodingFromByteOrderMarks: true, bufferSize: 1024, leaveOpen: true))
+                    {
+                        var csvConfiguration = new CsvConfiguration(CultureInfo.InvariantCulture)
+                        {
+                            Delimiter = ";",
+                            BadDataFound = null,
+                            MissingFieldFound = null,
+                            PrepareHeaderForMatch = args =>
+                            {
+                                var k = (args.Header ?? string.Empty).Trim();
+                                return synonyms.TryGetValue(k, out var mapped) ? mapped : k;
+                            }
+                        };
+
+                        using var csv = new CsvReader(inspectionReader, csvConfiguration);
+
+                        var unknown = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+                        // Assure le chargement de l'entête si besoin
+                        // (selon la config CsvHelper, ReadHeader peut être nécessaire)
+                        try
+                        {
+                            // Si la lib/ton code lit déjà l'entête en amont, ce ReadHeader sera no-op
+                            if (await csv.ReadAsync().ConfigureAwait(false))
+                            {
+                                csv.ReadHeader();
+                            }
+                        }
+                        catch
+                        {
+                            /* on tolère l'absence d'entête */
+                        }
+
+                        var header = csv.Context.Reader.HeaderRecord;
+                        if (header is { Length: > 0 })
+                        {
+                            foreach (var raw in header)
+                            {
+                                if (string.IsNullOrWhiteSpace(raw)) continue;
+                                var k = synonyms.TryGetValue(raw, out var mapped) ? mapped : raw;
+                                if (!known.Contains(k)) unknown.Add(k);
+                            }
+                        }
+
+                        inspectionReader.DiscardBufferedData();
+                        inspectionStream.Seek(0, SeekOrigin.Begin);
+
+                        var dryRunCommand = new ProductImportCommand(inspectionStream, isDryRun, username, shopId, importMode);
+                        var dryRunResult = await importService.ImportAsync(dryRunCommand, cancellationToken).ConfigureAwait(false);
+                        unknown.UnionWith(dryRunResult.Response.UnknownColumns);
+
+                        var response = new
+                        {
+                            dryRunResult.Response.Total,
+                            dryRunResult.Response.Inserted,
+                            dryRunResult.Response.Updated,
+                            dryRunResult.Response.WouldInsert,
+                            dryRunResult.Response.ErrorCount,
+                            dryRunResult.Response.DryRun,
+                            dryRunResult.Response.Skipped,
+                            dryRunResult.Response.Errors,
+                            dryRunResult.Response.ProposedGroups,
+                            // conserve tes champs de preview existants si tu en as (compteurs, etc.)
+                            unknownColumns = unknown.OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToArray()
+                        };
+
+                        return Results.Ok(response);
+                    }
+                }
+                finally
+                {
+                    if (bufferedStream is not null)
+                    {
+                        await bufferedStream.DisposeAsync().ConfigureAwait(false);
+                    }
+                }
+            }
+
+            var unknownColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var command = new ProductImportCommand(streamToImport, isDryRun, username, shopId, importMode);
+            var result = await importService.ImportAsync(command, cancellationToken).ConfigureAwait(false);
+            unknownColumns.UnionWith(result.Response.UnknownColumns);
+
+            switch (result.ResultType)
+            {
+                case ProductImportResultType.ValidationFailed:
+                    return Results.BadRequest(result.Response);
+                case ProductImportResultType.Skipped:
+                    httpContext.Response.Headers["X-Import-Skipped"] = "true";
+                    return Results.StatusCode(StatusCodes.Status204NoContent);
+                default:
+                    return BuildImportSuccessResult(result.Response, isDryRun, unknownColumns);
+            }
+        }
+        catch (ProductImportInProgressException)
+        {
+            return Results.Json(new { reason = "import_in_progress" }, statusCode: StatusCodes.Status423Locked);
+        }
+        catch (ProductImportPayloadTooLargeException)
+        {
+            return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+        }
+        finally
+        {
+            if (ownedStream is not null)
+            {
+                await ownedStream.DisposeAsync().ConfigureAwait(false);
+            }
+
+            if (nonDryBufferedStream is not null && !ReferenceEquals(nonDryBufferedStream, ownedStream))
+            {
+                await nonDryBufferedStream.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+                    
+    }
+
+
+    private static async Task<ProductImportMode> ResolveLegacyImportModeAsync(
+        IDbConnection connection,
+        Guid shopId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = "SELECT EXISTS (SELECT 1 FROM \"ProductImport\" WHERE \"ShopId\" = @ShopId);";
+
+        try
+        {
+            var hasExistingImport = await connection.ExecuteScalarAsync<bool>(
+                new CommandDefinition(sql, new { ShopId = shopId }, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            return hasExistingImport ? ProductImportMode.MergeWithExisting : ProductImportMode.ReplaceCatalogue;
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedTable)
+        {
+            return ProductImportMode.ReplaceCatalogue;
+        }
+    }
+
+    private static bool IsShopAdmin(HttpContext? context, Guid shopId)
+    {
+        if (context is null)
+        {
+            return false;
+        }
+
+        var user = context.User;
+        if (user?.Identity?.IsAuthenticated == true)
+        {
+            if (user.IsInRole("Admin") || user.IsInRole("Administrator"))
+            {
+                return true;
+            }
+
+            if (user.Claims.Any(claim =>
+                    string.Equals(claim.Type, "shop_admin", StringComparison.OrdinalIgnoreCase) &&
+                    Guid.TryParse(claim.Value, out var claimShopId) && claimShopId == shopId))
+            {
+                return true;
+            }
+
+            if (user.Claims.Any(claim =>
+                    string.Equals(claim.Type, "shop_id", StringComparison.OrdinalIgnoreCase) &&
+                    Guid.TryParse(claim.Value, out var claimShopId) && claimShopId == shopId))
+            {
+                return true;
+            }
+        }
+
+        if (context.Request.Headers.TryGetValue("X-Shop-Admin", out var adminHeaders))
+        {
+            foreach (var header in adminHeaders)
+            {
+                if (Guid.TryParse(header, out var parsed) && parsed == shopId)
+                {
+                    return true;
+                }
+            }
+        }
+
+        if (context.Request.Headers.TryGetValue("X-Shop-Id", out var shopHeaders))
+        {
+            foreach (var header in shopHeaders)
+            {
+                if (Guid.TryParse(header, out var parsed) && parsed == shopId)
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    private static async Task<ProductImportMode> ResolveImportModeAsync(
+        HttpRequest request,
+        IDbConnection connection,
+        Guid shopId,
+        bool bypassShopAdminCheck,
+        CancellationToken cancellationToken)
+    {
+        var isFlexRequested = IsFlexModeRequested(request);
+
+        if (isFlexRequested)
+        {
+            return ProductImportMode.Flex;
+        }
+
+        if (bypassShopAdminCheck)
+        {
+            return await ResolveLegacyImportModeAsync(connection, shopId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return ProductImportMode.ReplaceCatalogue;
+    }
+
+    private static bool IsFlexModeRequested(HttpRequest request)
+    {
+        if (request.Query.TryGetValue("mode", out var queryValues)
+            && queryValues.Any(value => string.Equals(value, "flex", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        if (request.Headers.TryGetValue("X-Import-Mode", out var headerValues)
+            && headerValues.Any(value => string.Equals(value, "flex", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private static void MapSuggestProductsEndpoint(IEndpointRouteBuilder app)
@@ -1109,6 +1461,27 @@ LIMIT @top;";
             op.Description = "Résout d'abord par SKU exact, puis par code brut (EAN/Code) et enfin par chiffres extraits. Retourne 409 en cas de collisions sur CodeDigits.";
             return op;
         });
+    }
+
+    private static async Task<Guid> ResolveLegacyShopIdAsync(
+        IDbConnection connection,
+        IShopResolver shopResolver,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(shopResolver);
+        ArgumentNullException.ThrowIfNull(httpContext);
+
+        var resolved = shopResolver.TryGetFromUser(httpContext);
+        if (resolved.HasValue)
+        {
+            return resolved.Value;
+        }
+
+        return await shopResolver
+            .GetDefaultForBackCompatAsync(connection, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private static bool IsCsvContentType(string? contentType)

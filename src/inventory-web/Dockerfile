@@ -1,8 +1,9 @@
 # ---------- BUILD ----------
 # Paramètre: registre des images "library" (par défaut: ECR public, évite Docker Hub)
 ARG BASE_REG=public.ecr.aws/docker/library
-FROM ${BASE_REG}/node:20-alpine AS build
+FROM ${BASE_REG}/node:22-alpine AS build
 WORKDIR /app
+RUN npm i -g npm@11.6.2 && npm -v
 
 # Dépendances
 COPY package*.json ./
@@ -14,7 +15,7 @@ RUN npm run build
 
 # ---------- RUNTIME ----------
 ARG BASE_REG=public.ecr.aws/docker/library
-FROM ${BASE_REG}/nginx:1.27-alpine
+FROM ${BASE_REG}/nginx:1.28-alpine
 
 # OpenSSL pour générer le certificat au démarrage
 RUN apk add --no-cache openssl

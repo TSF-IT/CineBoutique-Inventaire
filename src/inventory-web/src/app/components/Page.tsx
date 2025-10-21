@@ -23,7 +23,7 @@ export const Page = ({
   <PageShell
     {...rest}
     mainClassName={clsx(
-      'page-content flex w-full flex-col gap-6 rounded-3xl bg-slate-50 px-4 py-6 text-slate-900 shadow-sm dark:bg-slate-900/70 dark:text-slate-100',
+      'page-content cb-surface-panel flex w-full flex-col gap-6 px-4 py-6 text-base sm:px-8 sm:py-10',
       className,
     )}
     nav={mobileNav}
@@ -34,7 +34,7 @@ export const Page = ({
             {showHomeLink && (
               <Link
                 to="/"
-                className="inline-flex items-center gap-2 rounded-2xl border border-transparent bg-white px-3 py-2 text-sm font-semibold text-brand-600 shadow-sm transition hover:bg-brand-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:bg-slate-900/60 dark:text-brand-200 dark:hover:bg-slate-800"
+                className="inline-flex items-center gap-2 rounded-2xl border border-[var(--cb-border-strong)] bg-[var(--cb-surface-soft)] px-3 py-2 text-sm font-semibold text-brand-600 shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--cb-surface-strong)] dark:text-brand-200"
                 data-testid="btn-go-home"
                 aria-label="Revenir à l’accueil"
               >
