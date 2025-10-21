@@ -1,56 +1,36 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 
-type Theme = 'light' | 'dark'
+import {
+  applyThemeClass,
+  getStoredTheme,
+  getSystemTheme,
+  listenSystemThemeChanges,
+  persistTheme,
+  type Theme,
+} from '@/app/utils/theme'
 type ThemeContextValue = { theme: Theme; toggleTheme: () => void; setTheme: (t: Theme) => void }
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined)
-const STORAGE_KEY = 'cb_theme'
 
-function detectSystemTheme(): Theme {
-  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-    return 'light'
-  }
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
-}
-
-function readStoredTheme(): Theme | null {
-  if (typeof window === 'undefined') {
-    return null
-  }
-  try {
-    const stored = window.localStorage.getItem(STORAGE_KEY)
-    return stored === 'dark' || stored === 'light' ? stored : null
-  } catch {
-    return null
-  }
-}
+const resolveInitialTheme = (): Theme => getStoredTheme() ?? getSystemTheme()
 
 export const ThemeProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
-  const [theme, setThemeState] = useState<Theme>(() => readStoredTheme() ?? detectSystemTheme())
-  const [hasUserPreference, setHasUserPreference] = useState<boolean>(() => readStoredTheme() !== null)
+  const [theme, setThemeState] = useState<Theme>(() => resolveInitialTheme())
+  const [hasUserPreference, setHasUserPreference] = useState<boolean>(() => getStoredTheme() !== null)
 
   useEffect(() => {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, theme)
-    } catch {
-      // Ignorer les erreurs de stockage (mode privé, quotas, etc.)
-    }
-    const root = document.documentElement
-    root.dataset.theme = theme
-    root.classList.remove('light')
-    root.classList.toggle('dark', theme === 'dark')
+    persistTheme(theme)
+    applyThemeClass(theme)
   }, [theme])
 
   useEffect(() => {
-    if (hasUserPreference || typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+    if (hasUserPreference) {
       return undefined
     }
-    const media = window.matchMedia('(prefers-color-scheme: dark)')
-    const handler = (event: MediaQueryListEvent) => {
-      setThemeState(event.matches ? 'dark' : 'light')
-    }
-    media.addEventListener('change', handler)
-    return () => media.removeEventListener('change', handler)
+
+    return listenSystemThemeChanges((nextTheme) => {
+      setThemeState(nextTheme)
+    })
   }, [hasUserPreference])
 
   const setTheme = useCallback((next: Theme) => {

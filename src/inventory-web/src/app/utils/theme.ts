@@ -53,10 +53,22 @@ export const applyThemeClass = (theme: Theme) => {
   if (!isBrowser()) {
     return
   }
+
   const root = document.documentElement
-  root.classList.remove('light')
-  root.classList.toggle('dark', theme === 'dark')
+  const body = document.body
+
+  const classesToReset = ['light', 'dark']
+
+  root.classList.remove(...classesToReset)
+  root.classList.add(theme)
   root.dataset.theme = theme
+  root.style.colorScheme = theme
+
+  if (body) {
+    body.classList.remove('theme-light', 'theme-dark')
+    body.classList.add(`theme-${theme}`)
+    body.dataset.theme = theme
+  }
 }
 
 export const resolveInitialTheme = (): Theme => getStoredTheme() ?? getSystemTheme()
