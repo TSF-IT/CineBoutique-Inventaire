@@ -45,7 +45,6 @@ internal static class ProductEndpoints
         MapGetProductEndpoint(app);
         MapUpdateProductEndpoints(app);
         MapImportProductsEndpoint(app);
-        MapShopScopedProductEndpoints(app);
 
         app.MapGet("/api/products/{sku}/details", async (
             string sku,
@@ -81,6 +80,8 @@ internal static class ProductEndpoints
             return Results.Ok(new { total });
         })
         .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
+
+        MapShopScopedProductEndpoints(app);
 
         return app;
     }
