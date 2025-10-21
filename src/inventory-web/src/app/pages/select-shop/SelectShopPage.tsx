@@ -24,8 +24,10 @@ type RedirectState = {
   redirectTo?: string
 } | null
 
-const ENTITY_BUTTON_BASE_CLASSES =
-  'flex h-full w-full flex-col items-start justify-between gap-3 rounded-lg border bg-white px-4 py-3 text-left text-base text-gray-900 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:ring-offset-2 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-900/80 dark:focus:ring-sky-400 dark:focus:ring-offset-slate-900'
+const ENTITY_BUTTON_BASE_CLASSES = clsx(
+  'w-full rounded-lg border bg-white hover:bg-gray-50 text-gray-900 shadow-sm px-4 py-3 focus-visible:ring-2 focus-visible:ring-sky-500 ring-offset-2 focus:outline-none',
+  'flex h-full flex-col items-start justify-between gap-3 text-left text-base transition dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-900/80 dark:focus-visible:ring-sky-400 dark:ring-offset-slate-900',
+)
 
 export const SelectShopPage = () => {
   const { shop, setShop } = useShop()
@@ -414,7 +416,7 @@ export const SelectShopPage = () => {
                             ? 'border-sky-500 ring-1 ring-sky-200 dark:border-sky-500 dark:ring-sky-500/40'
                             : 'border-slate-200/80 dark:border-slate-700',
                           isDisabled &&
-                            'cursor-not-allowed opacity-60 hover:bg-white focus:ring-0 focus:ring-offset-0 dark:hover:bg-slate-900',
+                            'cursor-not-allowed opacity-60 hover:bg-white focus-visible:ring-0 focus-visible:ring-offset-0 dark:hover:bg-slate-900',
                         )}
                       >
                         <span className="text-lg font-semibold">
