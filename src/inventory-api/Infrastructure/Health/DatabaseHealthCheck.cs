@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Npgsql;
 
 namespace CineBoutique.Inventory.Api.Infrastructure.Health
 {
@@ -23,9 +24,10 @@ namespace CineBoutique.Inventory.Api.Infrastructure.Health
             HealthCheckContext context,
             CancellationToken cancellationToken = default)
         {
+            NpgsqlConnection? conn = null;
             try
             {
-                await using var conn = await _connectionFactory
+                conn = await _connectionFactory
                     .CreateOpenConnectionAsync(cancellationToken)
                     .ConfigureAwait(false);
                 using var cmd = conn.CreateCommand();
@@ -40,6 +42,13 @@ namespace CineBoutique.Inventory.Api.Infrastructure.Health
             catch (DbException ex)
             {
                 return HealthCheckResult.Unhealthy("DB unreachable", ex);
+            }
+            finally
+            {
+                if (conn is not null)
+                {
+                    await conn.DisposeAsync().ConfigureAwait(false);
+                }
             }
         }
     }

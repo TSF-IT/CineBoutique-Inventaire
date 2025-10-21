@@ -97,75 +97,88 @@ WHERE ""ShopId"" = @ShopId
 
     public async Task SeedAsync(CancellationToken cancellationToken = default)
     {
-        await using var connection = _connectionFactory.CreateConnection();
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        var connection = _connectionFactory.CreateConnection();
 
         try
         {
-            var insertedShopCount = await EnsureShopsAsync(connection, transaction, cancellationToken)
-    .ConfigureAwait(false);
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
 
-            var shopIds = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+            var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
-            foreach (var shopSeed in ShopSeeds)
+            try
             {
-                var shopId = await GetShopIdAsync(connection, transaction, shopSeed, cancellationToken)
-                    .ConfigureAwait(false);
-                shopIds[shopSeed.Name] = shopId;
-            }
-
-            var insertedLocationCount = 0;
-
-            foreach (var seed in LocationSeeds)
-            {
-                if (!shopIds.TryGetValue(seed.ShopName, out var shopId))
-                {
-                    continue;
-                }
-
-                var code = seed.Code.ToUpperInvariant();
-                var label = seed.Label ?? $"Zone {code}";
-
-                var affectedRows = await connection.ExecuteAsync(
-                        new CommandDefinition(
-                            InsertLocationSql,
-                            new
-                            {
-                                Code = code,
-                                Label = label,
-                                ShopId = shopId
-                            },
-                            transaction,
-                            cancellationToken: cancellationToken))
+                var insertedShopCount = await EnsureShopsAsync(connection, transaction, cancellationToken)
                     .ConfigureAwait(false);
 
-                if (affectedRows > 0)
+                var shopIds = new Dictionary<string, Guid>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (var shopSeed in ShopSeeds)
                 {
-                    insertedLocationCount += affectedRows;
+                    var shopId = await GetShopIdAsync(connection, transaction, shopSeed, cancellationToken)
+                        .ConfigureAwait(false);
+                    shopIds[shopSeed.Name] = shopId;
                 }
+
+                var insertedLocationCount = 0;
+
+                foreach (var seed in LocationSeeds)
+                {
+                    if (!shopIds.TryGetValue(seed.ShopName, out var shopId))
+                    {
+                        continue;
+                    }
+
+                    var code = seed.Code.ToUpperInvariant();
+                    var label = seed.Label ?? $"Zone {code}";
+
+                    var affectedRows = await connection.ExecuteAsync(
+                            new CommandDefinition(
+                                InsertLocationSql,
+                                new
+                                {
+                                    Code = code,
+                                    Label = label,
+                                    ShopId = shopId
+                                },
+                                transaction,
+                                cancellationToken: cancellationToken))
+                        .ConfigureAwait(false);
+
+                    if (affectedRows > 0)
+                    {
+                        insertedLocationCount += affectedRows;
+                    }
+                }
+
+                var insertedUserCount = await EnsureShopUsersAsync(
+                        connection,
+                        transaction,
+                        shopIds,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+                _logger.LogInformation(
+                    "Seed terminé. {InsertedShopCount} magasins, {InsertedLocationCount} zones et {InsertedUserCount} comptes utilisateurs créés (idempotent).",
+                    insertedShopCount,
+                    insertedLocationCount,
+                    insertedUserCount);
             }
-
-            var insertedUserCount = await EnsureShopUsersAsync(
-                    connection,
-                    transaction,
-                    shopIds,
-                    cancellationToken)
-                .ConfigureAwait(false);
-
-            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-
-            _logger.LogInformation(
-                "Seed terminé. {InsertedShopCount} magasins, {InsertedLocationCount} zones et {InsertedUserCount} comptes utilisateurs créés (idempotent).",
-                insertedShopCount,
-                insertedLocationCount,
-                insertedUserCount);
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                _logger.LogError(ex, "Échec de l'initialisation des magasins/zones d'inventaire.");
+                throw;
+            }
+            finally
+            {
+                await DisposeTransactionAsync(transaction).ConfigureAwait(false);
+            }
         }
-        catch (Exception ex)
+        finally
         {
-            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-            _logger.LogError(ex, "Échec de l'initialisation des magasins/zones d'inventaire.");
-            throw;
+            await DisposeConnectionAsync(connection).ConfigureAwait(false);
         }
     }
 
@@ -382,6 +395,30 @@ WHERE ""ShopId"" = @ShopId
             disabled);
 
         return upserted + disabled;
+    }
+
+    private static async ValueTask DisposeConnectionAsync(IDbConnection connection)
+    {
+        if (connection is IAsyncDisposable asyncConnection)
+        {
+            await asyncConnection.DisposeAsync().ConfigureAwait(false);
+        }
+        else
+        {
+            connection.Dispose();
+        }
+    }
+
+    private static async ValueTask DisposeTransactionAsync(IDbTransaction transaction)
+    {
+        if (transaction is IAsyncDisposable asyncTransaction)
+        {
+            await asyncTransaction.DisposeAsync().ConfigureAwait(false);
+        }
+        else
+        {
+            transaction.Dispose();
+        }
     }
 
     private static IReadOnlyList<ShopSeed> BuildShopSeeds()

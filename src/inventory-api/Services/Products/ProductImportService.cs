@@ -10,6 +10,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using CineBoutique.Inventory.Api.Infrastructure.Logging;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using Dapper;
@@ -138,7 +139,7 @@ public sealed class ProductImportService : IProductImportService
                         updated: 0,
                         duration: TimeSpan.Zero,
                         unknownColumns: EmptyUnknownColumns);
-                    _logger.LogInformation("Import produits ignoré : fichier identique au dernier import réussi.");
+                    ApiLog.ImportStep(_logger, "Import produits ignoré : fichier identique au dernier import réussi.");
                     return new ProductImportResult(ProductImportResponse.SkippedResult(), ProductImportResultType.Skipped);
                 }
             }
@@ -191,8 +192,8 @@ public sealed class ProductImportService : IProductImportService
                         inserted: 0,
                         errorCount,
                         transaction,
-                        cancellationToken,
-                        stopwatch.Elapsed)
+                        elapsed: stopwatch.Elapsed,
+                        cancellationToken)
                     .ConfigureAwait(false);
 
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -228,8 +229,8 @@ public sealed class ProductImportService : IProductImportService
                         inserted: 0,
                         errorCount: 0,
                         transaction,
-                        cancellationToken,
-                        stopwatch.Elapsed)
+                        elapsed: stopwatch.Elapsed,
+                        cancellationToken)
                     .ConfigureAwait(false);
 
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -269,8 +270,8 @@ public sealed class ProductImportService : IProductImportService
                         inserted: upsertStats.Created + upsertStats.Updated,
                         errorCount: 0,
                         transaction,
-                        cancellationToken,
-                        stopwatch.Elapsed)
+                        elapsed: stopwatch.Elapsed,
+                        cancellationToken)
                     .ConfigureAwait(false);
 
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -289,10 +290,9 @@ public sealed class ProductImportService : IProductImportService
                     stopwatch.Elapsed,
                     unknownColumns);
 
-                _logger.LogInformation(
-                    "Import produits terminé : {Created} créations, {Updated} mises à jour.",
-                    upsertStats.Created,
-                    upsertStats.Updated);
+                ApiLog.ImportStep(
+                    _logger,
+                    $"Import produits terminé : {upsertStats.Created} créations, {upsertStats.Updated} mises à jour.");
 
                 return new ProductImportResult(
                     ProductImportResponse.Success(totalLines, upsertStats.Created, upsertStats.Updated, unknownColumns, parseOutcome.ProposedGroups),
@@ -309,8 +309,8 @@ public sealed class ProductImportService : IProductImportService
                         inserted: 0,
                         errorCount: 0,
                         transaction,
-                        cancellationToken,
-                        stopwatch.Elapsed)
+                        elapsed: stopwatch.Elapsed,
+                        cancellationToken)
                     .ConfigureAwait(false);
 
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -364,7 +364,7 @@ public sealed class ProductImportService : IProductImportService
             UnknownColumns = unknownColumns ?? Array.Empty<string>()
         };
 
-        _logger.LogInformation("{Event} {@Import}", eventName, payload);
+        ApiLog.ImportStep(_logger, $"{eventName} {JsonSerializer.Serialize(payload, JsonSerializerOptions)}");
     }
 
     private async Task<BufferedCsv> BufferStreamAsync(Stream source, CancellationToken cancellationToken)
@@ -531,8 +531,8 @@ public sealed class ProductImportService : IProductImportService
         int inserted,
         int errorCount,
         NpgsqlTransaction transaction,
-        CancellationToken cancellationToken,
-        TimeSpan elapsed)
+        TimeSpan elapsed,
+        CancellationToken cancellationToken)
     {
         const string sql =
             "UPDATE \"ProductImportHistory\" SET " +
@@ -658,15 +658,26 @@ RETURNING (xmax = 0) AS inserted;
             digitsParameter.Value = codeDigits ?? (object)DBNull.Value;
             createdParameter.Value = now;
 
-            var inserted = (bool)await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            var insertedResult = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
 
-            if (inserted)
+            if (insertedResult is bool inserted)
             {
-                created++;
+                if (inserted)
+                {
+                    created++;
+                }
+                else
+                {
+                    updated++;
+                }
             }
             else
             {
-                updated++;
+                _logger.LogError(
+                    "Import: résultat inattendu lors de l'upsert du produit {Sku} — booléen attendu, obtenu {Type}",
+                    sku,
+                    insertedResult?.GetType().FullName ?? "null");
+                continue;
             }
         }
 

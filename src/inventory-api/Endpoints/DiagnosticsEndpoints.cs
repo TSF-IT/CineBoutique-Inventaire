@@ -52,11 +52,13 @@ internal static class DiagnosticsEndpoints
             }
 
             var stopwatch = Stopwatch.StartNew();
+            NpgsqlConnection? conn = null;
+            NpgsqlCommand? cmd = null;
             try
             {
-                await using var conn = new NpgsqlConnection(cs);
+                conn = new NpgsqlConnection(cs);
                 await conn.OpenAsync().ConfigureAwait(false);
-                await using var cmd = new NpgsqlCommand("SELECT 1", conn);
+                cmd = new NpgsqlCommand("SELECT 1", conn);
                 var result = await cmd.ExecuteScalarAsync().ConfigureAwait(false);
                 stopwatch.Stop();
                 return Results.Ok(new { ok = true, result, elapsedMs = stopwatch.ElapsedMilliseconds });
@@ -71,6 +73,18 @@ internal static class DiagnosticsEndpoints
                     {
                         ["elapsedMs"] = stopwatch.ElapsedMilliseconds
                     });
+            }
+            finally
+            {
+                if (cmd is not null)
+                {
+                    await cmd.DisposeAsync().ConfigureAwait(false);
+                }
+
+                if (conn is not null)
+                {
+                    await conn.DisposeAsync().ConfigureAwait(false);
+                }
             }
         }).WithName("DiagPingDb");
 #pragma warning restore CA1031
