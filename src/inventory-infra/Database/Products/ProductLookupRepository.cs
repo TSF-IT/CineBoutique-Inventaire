@@ -281,10 +281,7 @@ FROM ranked
 
     private static async Task EnsureConnectionOpenAsync(IDbConnection connection, CancellationToken cancellationToken)
     {
-        if (connection is null)
-        {
-            throw new ArgumentNullException(nameof(connection));
-        }
+        ArgumentNullException.ThrowIfNull(connection);
 
         switch (connection)
         {
