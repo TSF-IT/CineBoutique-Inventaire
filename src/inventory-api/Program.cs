@@ -10,6 +10,7 @@ using CineBoutique.Inventory.Api.Infrastructure.Http;
 using CineBoutique.Inventory.Api.Infrastructure.Logging;
 using CineBoutique.Inventory.Api.Infrastructure.Middleware;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
+using CineBoutique.Inventory.Api.Infrastructure.Shops;
 using CineBoutique.Inventory.Api.Hosting;
 using CineBoutique.Inventory.Api.Services;
 using CineBoutique.Inventory.Api.Services.Products;
@@ -97,6 +98,7 @@ builder.Services.AddInventoryInfrastructure(builder.Configuration);
 builder.Services.AddTransient<InventoryDataSeeder>();
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<IShopResolver, DefaultShopResolver>();
 
 builder.Services
     .AddAuthentication(options =>

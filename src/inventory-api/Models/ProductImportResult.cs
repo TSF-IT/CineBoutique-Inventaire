@@ -1,6 +1,4 @@
-using CineBoutique.Inventory.Api.Models;
-
-namespace CineBoutique.Inventory.Api.Services.Products;
+namespace CineBoutique.Inventory.Api.Models;
 
 public sealed record ProductImportResult(ProductImportResponse Response, ProductImportResultType ResultType);
 

@@ -14,11 +14,11 @@ using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Services.Products;
 using CineBoutique.Inventory.Infrastructure.Database;
-using Dapper;
+using Dapper; // Requis pour CommandDefinition et les extensions Dapper.
 using FluentValidation.Results;
 using CsvHelper;
 using CsvHelper.Configuration;
-using Npgsql;
+using Npgsql; // Requis pour PostgresException et PostgresErrorCodes dans les endpoints.
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -67,21 +67,67 @@ internal static class ProductEndpoints
         })
         .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
 
-        // --- GET /api/products/count ---
         app.MapGet("/api/products/count", async (
             System.Data.IDbConnection connection,
-            System.Threading.CancellationToken cancellationToken) =>
+            CineBoutique.Inventory.Api.Infrastructure.Shops.IShopResolver shopResolver,
+            Microsoft.AspNetCore.Http.HttpContext httpContext,
+            System.Threading.CancellationToken ct) =>
         {
-            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, ct).ConfigureAwait(false);
 
-            const string sql = @"SELECT COUNT(*) FROM ""Product"";";
-            var total = await connection.ExecuteScalarAsync<long>(
-                new Dapper.CommandDefinition(sql, cancellationToken: cancellationToken)
-            ).ConfigureAwait(false);
+            // Essayez d’abord de résoudre le shop back-compat
+            System.Guid? shopId = null;
+            try
+            {
+                shopId = await shopResolver.GetDefaultForBackCompatAsync(connection, ct).ConfigureAwait(false);
+            }
+            catch (Npgsql.PostgresException ex) when (ex.SqlState == Npgsql.PostgresErrorCodes.UndefinedTable)
+            {
+                // La table des shops n’est pas encore prête : on tombera en fallback global plus bas
+            }
+            catch
+            {
+                // Toute autre erreur de résolution -> fallback global
+            }
 
-            return Results.Ok(new { total });
+            // 1) Si un ShopId est disponible, tenter COUNT(scopé)
+            if (shopId.HasValue)
+            {
+                try
+                {
+                    const string scopedSql = @"SELECT COUNT(*) FROM ""Product"" WHERE ""ShopId"" = @ShopId;";
+                    var totalScoped = await connection.ExecuteScalarAsync<long>(
+                        new Dapper.CommandDefinition(scopedSql, new { ShopId = shopId.Value }, cancellationToken: ct)
+                    ).ConfigureAwait(false);
+
+                    return Results.Ok(new { total = totalScoped });
+                }
+                catch (Npgsql.PostgresException ex) when (ex.SqlState == Npgsql.PostgresErrorCodes.UndefinedTable)
+                {
+                    // Table Product absente -> 0
+                    return Results.Ok(new { total = 0L });
+                }
+            }
+
+            // 2) Fallback global : COUNT(*) sans filtre (si Product existe)
+            try
+            {
+                const string globalSql = @"SELECT COUNT(*) FROM ""Product"";";
+                var totalGlobal = await connection.ExecuteScalarAsync<long>(
+                    new Dapper.CommandDefinition(globalSql, cancellationToken: ct)
+                ).ConfigureAwait(false);
+
+                return Results.Ok(new { total = totalGlobal });
+            }
+            catch (Npgsql.PostgresException ex) when (ex.SqlState == Npgsql.PostgresErrorCodes.UndefinedTable)
+            {
+                // Table Product absente -> 0
+                return Results.Ok(new { total = 0L });
+            }
         })
         .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
+
+        MapShopScopedProductEndpoints(app);
 
         return app;
     }
@@ -1169,4 +1215,175 @@ LIMIT @top;";
         await auditLogger.LogAsync(message, userName, category, cancellationToken).ConfigureAwait(false);
     }
 
+    private static void MapShopScopedProductEndpoints(Microsoft.AspNetCore.Routing.IEndpointRouteBuilder app)
+    {
+        // IMPORT CSV PAR BOUTIQUE (écrase ou merge selon service d'import)
+        app.MapPost("/api/shops/{shopId:guid}/products/import", async (
+            System.Guid shopId,
+            Microsoft.AspNetCore.Http.HttpRequest request,
+            System.Data.IDbConnection connection,
+            CineBoutique.Inventory.Infrastructure.Locks.IImportLockService importLockService,
+            string? dryRun,
+            System.Threading.CancellationToken ct) =>
+        {
+            var lockHandle = await importLockService.TryAcquireForShopAsync(shopId, ct).ConfigureAwait(false);
+            if (lockHandle is null)
+                return Results.Json(new { reason = "import_in_progress" }, statusCode: StatusCodes.Status423Locked);
+
+            await using (lockHandle)
+            {
+                await EndpointUtilities.EnsureConnectionOpenAsync(connection, ct).ConfigureAwait(false);
+
+                // dryRun (bool)
+                bool isDryRun = false;
+                if (!string.IsNullOrWhiteSpace(dryRun) && bool.TryParse(dryRun, out var b)) isDryRun = b;
+
+                // 25 MiB
+                const long maxCsvSizeBytes = 25L * 1024L * 1024L;
+                if (request.ContentLength is { } len && len > maxCsvSizeBytes)
+                    return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+
+                // Récupération du flux CSV
+                System.IO.Stream csvStream;
+                if (request.HasFormContentType)
+                {
+                    var form = await request.ReadFormAsync(ct).ConfigureAwait(false);
+                    var file = form.Files.GetFile("file");
+                    if (file is null || file.Length == 0) return Results.BadRequest(new { reason = "MISSING_FILE" });
+                    if (file.Length > maxCsvSizeBytes) return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+                    csvStream = file.OpenReadStream();
+                }
+                else
+                {
+                    var contentType = (request.ContentType ?? string.Empty).Trim();
+                    var looksCsv =
+                        contentType.StartsWith("text/csv", System.StringComparison.OrdinalIgnoreCase) ||
+                        contentType.StartsWith("application/octet-stream", System.StringComparison.OrdinalIgnoreCase) ||
+                        contentType.StartsWith("application/vnd.ms-excel", System.StringComparison.OrdinalIgnoreCase) ||
+                        contentType.StartsWith("text/plain", System.StringComparison.OrdinalIgnoreCase);
+
+                    if (!looksCsv)
+                        return Results.BadRequest(new { reason = "UNSUPPORTED_CONTENT_TYPE" });
+                    csvStream = request.Body;
+                }
+
+                var user = EndpointUtilities.GetAuthenticatedUserName(request.HttpContext);
+                var importService = request.HttpContext.RequestServices.GetRequiredService<CineBoutique.Inventory.Api.Services.Products.IProductImportService>();
+                var cmd = new CineBoutique.Inventory.Api.Models.ProductImportCommand(csvStream, isDryRun, user, shopId, CineBoutique.Inventory.Api.Models.ProductImportMode.ReplaceCatalogue);
+                var result = await importService.ImportAsync(cmd, ct).ConfigureAwait(false);
+
+                return result.ResultType switch
+                {
+                    CineBoutique.Inventory.Api.Models.ProductImportResultType.ValidationFailed => Results.BadRequest(result.Response),
+                    CineBoutique.Inventory.Api.Models.ProductImportResultType.Skipped          => Results.StatusCode(StatusCodes.Status204NoContent),
+                    _                                                                          => Results.Ok(result.Response)
+                };
+            }
+        }).RequireAuthorization();
+
+        // LISTE PAGINÉE/Tri/Filtre
+        app.MapGet("/api/shops/{shopId:guid}/products", async (
+            System.Guid shopId,
+            int? page,
+            int? pageSize,
+            string? q,
+            string? sortBy,
+            string? sortDir,
+            System.Data.IDbConnection connection,
+            System.Threading.CancellationToken ct) =>
+        {
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, ct).ConfigureAwait(false);
+
+            var p  = System.Math.Max(1, page ?? 1);
+            var ps = System.Math.Clamp(pageSize ?? 50, 1, 200);
+            var off = (p - 1) * ps;
+            var filter = string.IsNullOrWhiteSpace(q) ? null : q.Trim();
+            var sort = (sortBy ?? "sku").Trim().ToLowerInvariant();
+            sort = sort switch
+            {
+                "ean"    => "ean",
+                "name"   => "name",
+                "descr"  => "descr",
+                "digits" => "digits",
+                _         => "sku"
+            };
+            var dir  = string.Equals(sortDir, "desc", System.StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
+
+            const string whereClause = """
+WHERE "ShopId"=@ShopId AND (
+    @Filter IS NULL OR @Filter='' OR
+    COALESCE("Sku",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE("Ean",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE("CodeDigits",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE("Description",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE("Name",'') ILIKE '%'||@Filter||'%'
+)
+""";
+
+            var total = await connection.ExecuteScalarAsync<long>(
+                new Dapper.CommandDefinition($$"""
+SELECT COUNT(*)
+FROM "Product"
+{{whereClause}};
+""", new { ShopId = shopId, Filter = filter }, cancellationToken: ct)).ConfigureAwait(false);
+
+            var data = await connection.QueryAsync(
+                new Dapper.CommandDefinition($$"""
+SELECT "Id","Sku","Name","Ean","Description","CodeDigits"
+FROM "Product"
+{{whereClause}}
+ORDER BY
+  CASE WHEN @Sort='ean'   THEN "Ean"
+       WHEN @Sort='name'  THEN "Name"
+       WHEN @Sort='descr' THEN "Description"
+       WHEN @Sort='digits'THEN "CodeDigits"
+       ELSE "Sku" END {{dir}},
+  "Sku" ASC
+LIMIT @Limit OFFSET @Offset;
+""", new { ShopId = shopId, Filter = filter, Sort = sort, Limit = ps, Offset = off }, cancellationToken: ct)).ConfigureAwait(false);
+
+            var totalPages = total == 0 ? 0 : (int)System.Math.Ceiling(total / (double)ps);
+            return Results.Ok(new {
+                items = data,
+                page = p,
+                pageSize = ps,
+                total,
+                totalPages,
+                sortBy = sort,
+                sortDir = dir,
+                q = filter
+            });
+        })
+        .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
+
+        // COMPTEUR PAR BOUTIQUE (+ présence de catalogue)
+        app.MapGet("/api/shops/{shopId:guid}/products/count", async (
+            System.Guid shopId,
+            System.Data.IDbConnection connection,
+            System.Threading.CancellationToken ct) =>
+        {
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, ct).ConfigureAwait(false);
+
+            const string countSql = "SELECT COUNT(*) FROM \"Product\" WHERE \"ShopId\"=@ShopId;";
+            var count = await connection.ExecuteScalarAsync<long>(
+                new Dapper.CommandDefinition(countSql, new { ShopId = shopId }, cancellationToken: ct)).ConfigureAwait(false);
+
+            bool hasCatalog;
+            try
+            {
+                const string histSql = "SELECT EXISTS (SELECT 1 FROM \"ProductImportHistory\" WHERE \"ShopId\"=@ShopId);";
+                hasCatalog = await connection.ExecuteScalarAsync<bool>(
+                    new Dapper.CommandDefinition(histSql, new { ShopId = shopId }, cancellationToken: ct)).ConfigureAwait(false);
+            }
+            catch (Npgsql.PostgresException ex) when (ex.SqlState == Npgsql.PostgresErrorCodes.UndefinedTable)
+            {
+                const string fallbackSql = "SELECT EXISTS (SELECT 1 FROM \"ProductImport\" WHERE \"ShopId\"=@ShopId);";
+                hasCatalog = await connection.ExecuteScalarAsync<bool>(
+                    new Dapper.CommandDefinition(fallbackSql, new { ShopId = shopId }, cancellationToken: ct)).ConfigureAwait(false);
+            }
+
+            return Results.Ok(new { count, hasCatalog });
+        })
+        .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
+    }
 }
