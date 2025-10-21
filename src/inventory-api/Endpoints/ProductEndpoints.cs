@@ -363,7 +363,7 @@ internal static class ProductEndpoints
 
             const string insertSql = @"INSERT INTO ""Product"" (""Id"", ""ShopId"", ""Sku"", ""Name"", ""Ean"", ""CodeDigits"", ""CreatedAtUtc"")
 VALUES (@Id, @ShopId, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc)
-ON CONFLICT (""ShopId"", LOWER(""Sku"")) DO NOTHING
+ON CONFLICT ON CONSTRAINT ""UX_Product_Shop_LowerSku"" DO NOTHING
 RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
             var now = clock.UtcNow;

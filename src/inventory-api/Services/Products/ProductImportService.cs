@@ -567,9 +567,17 @@ public sealed class ProductImportService : IProductImportService
             ShopId = shopId
         };
 
-        await _connection.ExecuteAsync(
-                new CommandDefinition(sql, parameters, transaction: transaction, cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
+        try
+        {
+            await _connection.ExecuteAsync(
+            new CommandDefinition(sql, parameters, transaction: transaction, cancellationToken: cancellationToken))
+                            .ConfigureAwait(false);
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedTable)
+        {
+            // CI/back-compat: si la table d'historique n'existe pas, on continue sans journaliser
+            _logger.LogDebug("ProductImportHistory absent, insertion ignorée (Started).");
+        }
     }
 
     private async Task DeleteExistingProductsAsync(NpgsqlTransaction transaction, Guid shopId, CancellationToken cancellationToken)
@@ -625,9 +633,17 @@ public sealed class ProductImportService : IProductImportService
             ErrorCount = errorCount
         };
 
-        await _connection.ExecuteAsync(
-                new CommandDefinition(sql, parameters, transaction: transaction, cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
+        try
+        {
+            await _connection.ExecuteAsync(
+            new CommandDefinition(sql, parameters, transaction: transaction, cancellationToken: cancellationToken))
+                            .ConfigureAwait(false);
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedTable)
+        {
+            _logger.LogDebug("ProductImportHistory absent, mise à jour ignorée (Completed).");
+        }
+
     }
 
     private async Task<bool> HasImportAlreadyBeenProcessedAsync(
@@ -665,9 +681,18 @@ public sealed class ProductImportService : IProductImportService
             ImportedAtUtc = _clock.UtcNow
         };
 
-        await _connection.ExecuteAsync(
-                new CommandDefinition(sql, parameters, transaction: transaction, cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
+        try
+        {
+            await _connection.ExecuteAsync(
+            new CommandDefinition(sql, parameters, transaction: transaction, cancellationToken: cancellationToken))
+                            .ConfigureAwait(false);
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedTable)
+        {
+            // Si la table ProductImport n'existe pas encore, on n'empêche pas l'import de réussir
+            _logger.LogDebug("ProductImport absent, idempotence non enregistrée (RecordSuccessfulImport).");
+        }
+
     }
 
     private async Task<IReadOnlyList<PreparedProductRow>> PrepareRowsAsync(

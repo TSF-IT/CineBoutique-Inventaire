@@ -93,9 +93,6 @@ catch { /* pas bloquant en tests */ }
 builder.Services.AddInventoryInfrastructure(builder.Configuration);
 builder.Services.AddTransient<InventoryDataSeeder>();
 
-// DI – Import locks
-builder.Services.AddScoped<IImportLockService, PostgresAdvisoryImportLockService>();
-
 builder.Services.Configure<AppSettingsOptions>(builder.Configuration.GetSection("AppSettings"));
 
 builder.Services.AddHttpContextAccessor();
@@ -215,6 +212,7 @@ builder.Services.AddScoped<IShopUserService, ShopUserService>();
 builder.Services.AddScoped<IProductLookupService, ProductLookupService>();
 builder.Services.AddScoped<IProductSearchService, ProductSearchService>();
 builder.Services.AddScoped<IProductSuggestionService, ProductSuggestionService>();
+builder.Services.AddScoped<IImportLockService, PostgresAdvisoryImportLockService>();
 builder.Services.AddScoped<IShopResolver, ShopResolver>();
 builder.Services.AddOpenTelemetry()
     .ConfigureResource(resource => resource.AddService("cineboutique.inventory.api"))
