@@ -251,7 +251,7 @@ internal static class ProductEndpoints
             if (existing is null)
             {
                 await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "inexistant", "products.update.notfound", cancellationToken).ConfigureAwait(false);
-                return Results.NotFound(new { message = $"Aucun produit avec l'Id '{id}'." });
+                return Results.NotFound(new { message = $"Aucun produit avec l'Id '{id.ToString("D")}'." });
             }
 
             const string updateSql = @"UPDATE ""Product""
