@@ -43,6 +43,29 @@ public sealed class TestDataSeeder
         return id;
     }
 
+    public async Task<Guid> GetAnyShopIdAsync()
+    {
+        const string sql = "SELECT \"Id\" FROM \"Shop\" ORDER BY \"Name\" LIMIT 1;";
+
+        var connection = _dataSource.CreateConnection();
+        await connection.OpenAsync().ConfigureAwait(false);
+        try
+        {
+            using var command = new NpgsqlCommand(sql, connection);
+            var result = await command.ExecuteScalarAsync().ConfigureAwait(false);
+            if (result is Guid guid)
+            {
+                return guid;
+            }
+
+            throw new InvalidOperationException("Aucune boutique n'est disponible dans la base de tests.");
+        }
+        finally
+        {
+            await connection.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
     public async Task<Guid> CreateLocationAsync(Guid shopId, string code, string label)
     {
         if (shopId == Guid.Empty)

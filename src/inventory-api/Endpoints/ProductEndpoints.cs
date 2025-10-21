@@ -9,6 +9,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
+using CineBoutique.Inventory.Api.Infrastructure.Shops;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Services.Products;
@@ -29,8 +30,6 @@ namespace CineBoutique.Inventory.Api.Endpoints;
 internal static class ProductEndpoints
 {
     private const string LowerSkuConstraintName = "UX_Product_Shop_LowerSku";
-    private const string EanNotNullConstraintName = "UX_Product_Shop_Ean_NotNull";
-    private static readonly Guid GlobalShopId = Guid.Empty;
     private sealed class ProductLookupLogger
     {
     }
@@ -53,6 +52,7 @@ internal static class ProductEndpoints
             System.Threading.CancellationToken ct) =>
         {
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, ct).ConfigureAwait(false);
+            var legacyShopId = await ResolveLegacyShopIdAsync(connection, ct).ConfigureAwait(false);
             const string sql = @"
       SELECT p.""Sku"", p.""Ean"", p.""Name"",
              pg.""Label"" AS ""Group"", pgp.""Label"" AS ""SubGroup"",
@@ -63,7 +63,7 @@ internal static class ProductEndpoints
       WHERE p.""Sku"" = @sku AND p.""ShopId"" = @ShopId
       LIMIT 1;";
             var row = await connection.QueryFirstOrDefaultAsync(
-              new Dapper.CommandDefinition(sql, new { sku, ShopId = GlobalShopId }, cancellationToken: ct));
+              new Dapper.CommandDefinition(sql, new { sku, ShopId = legacyShopId }, cancellationToken: ct));
             return row is null ? Results.NotFound() : Results.Ok(row);
         })
         .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
@@ -74,10 +74,11 @@ internal static class ProductEndpoints
             System.Threading.CancellationToken cancellationToken) =>
         {
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+            var legacyShopId = await ResolveLegacyShopIdAsync(connection, cancellationToken).ConfigureAwait(false);
 
             const string sql = @"SELECT COUNT(*) FROM ""Product"" WHERE ""ShopId"" = @ShopId;";
             var total = await connection.ExecuteScalarAsync<long>(
-                new Dapper.CommandDefinition(sql, new { ShopId = GlobalShopId }, cancellationToken: cancellationToken)
+                new Dapper.CommandDefinition(sql, new { ShopId = legacyShopId }, cancellationToken: cancellationToken)
             ).ConfigureAwait(false);
 
             return Results.Ok(new { total });
@@ -137,6 +138,7 @@ internal static class ProductEndpoints
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+            var legacyShopId = await ResolveLegacyShopIdAsync(connection, cancellationToken).ConfigureAwait(false);
 
             // Récupère le produit par SKU (case-insensitive)
             const string fetchSql = @"SELECT ""Id"", ""Sku"", ""Name"", ""Ean""
@@ -145,7 +147,7 @@ internal static class ProductEndpoints
                                     AND ""ShopId"" = @ShopId
                                   LIMIT 1;";
             var existing = await connection.QueryFirstOrDefaultAsync<ProductDto>(
-                new CommandDefinition(fetchSql, new { Sku = sanitizedSku, ShopId = GlobalShopId }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+                new CommandDefinition(fetchSql, new { Sku = sanitizedSku, ShopId = legacyShopId }, cancellationToken: cancellationToken)).ConfigureAwait(false);
 
             if (existing is null)
             {
@@ -166,12 +168,6 @@ internal static class ProductEndpoints
             }
             catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
             {
-                if (string.Equals(ex.ConstraintName, EanNotNullConstraintName, StringComparison.Ordinal))
-                {
-                    await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, sanitizedSku, $"EAN déjà utilisé ({sanitizedEan})", "products.update.conflict", cancellationToken).ConfigureAwait(false);
-                    return Results.Conflict(new { message = "Cet EAN est déjà utilisé." });
-                }
-
                 if (string.Equals(ex.ConstraintName, LowerSkuConstraintName, StringComparison.Ordinal))
                 {
                     await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, sanitizedSku, "SKU déjà utilisé", "products.update.conflict", cancellationToken).ConfigureAwait(false);
@@ -244,12 +240,13 @@ internal static class ProductEndpoints
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+            var legacyShopId = await ResolveLegacyShopIdAsync(connection, cancellationToken).ConfigureAwait(false);
 
             // Vérifie l'existence
             const string existsSql = @"SELECT ""Id"", ""Sku"", ""Name"", ""Ean""
                                    FROM ""Product"" WHERE ""Id"" = @Id AND ""ShopId"" = @ShopId LIMIT 1;";
             var existing = await connection.QueryFirstOrDefaultAsync<ProductDto>(
-                new CommandDefinition(existsSql, new { Id = id, ShopId = GlobalShopId }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+                new CommandDefinition(existsSql, new { Id = id, ShopId = legacyShopId }, cancellationToken: cancellationToken)).ConfigureAwait(false);
 
             if (existing is null)
             {
@@ -270,12 +267,6 @@ internal static class ProductEndpoints
             }
             catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
             {
-                if (string.Equals(ex.ConstraintName, EanNotNullConstraintName, StringComparison.Ordinal))
-                {
-                    await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(), $"EAN déjà utilisé ({sanitizedEan})", "products.update.conflict", cancellationToken).ConfigureAwait(false);
-                    return Results.Conflict(new { message = "Cet EAN est déjà utilisé." });
-                }
-
                 if (string.Equals(ex.ConstraintName, LowerSkuConstraintName, StringComparison.Ordinal))
                 {
                     await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(), "SKU déjà utilisé", "products.update.conflict", cancellationToken).ConfigureAwait(false);
@@ -355,6 +346,7 @@ internal static class ProductEndpoints
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+            var legacyShopId = await ResolveLegacyShopIdAsync(connection, cancellationToken).ConfigureAwait(false);
 
             const string insertSql = @"INSERT INTO ""Product"" (""Id"", ""ShopId"", ""Sku"", ""Name"", ""Ean"", ""CodeDigits"", ""CreatedAtUtc"")
 VALUES (@Id, @ShopId, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc)
@@ -370,7 +362,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                         new
                         {
                             Id = Guid.NewGuid(),
-                            ShopId = GlobalShopId,
+                            ShopId = legacyShopId,
                             Sku = sanitizedSku,
                             Name = sanitizedName,
                             Ean = sanitizedEan,
@@ -390,13 +382,6 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             }
             catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
             {
-                if (string.Equals(ex.ConstraintName, EanNotNullConstraintName, StringComparison.Ordinal))
-                {
-                    var eanLabel = string.IsNullOrWhiteSpace(sanitizedEan) ? "(EAN non renseigné)" : sanitizedEan;
-                    await LogProductCreationAttemptAsync(clock, auditLogger, httpContext, $"avec un EAN déjà utilisé ({eanLabel})", "products.create.conflict", cancellationToken).ConfigureAwait(false);
-                    return Results.Conflict(new { message = "Cet EAN est déjà utilisé." });
-                }
-
                 if (string.Equals(ex.ConstraintName, LowerSkuConstraintName, StringComparison.Ordinal))
                 {
                     await LogProductCreationAttemptAsync(clock, auditLogger, httpContext, $"avec un SKU déjà utilisé ({sanitizedSku})", "products.create.conflict", cancellationToken).ConfigureAwait(false);
@@ -432,7 +417,8 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 {
                     return Results.BadRequest(new { reason = "GLOBAL_IMPORT_DISABLED" });
                 }
-                return await RunProductImportAsync(request, connection, dryRun, GlobalShopId, cancellationToken).ConfigureAwait(false);
+                var legacyShopId = await ResolveLegacyShopIdAsync(connection, cancellationToken).ConfigureAwait(false);
+                return await RunProductImportAsync(request, connection, dryRun, legacyShopId, bypassShopAdminCheck: true, cancellationToken).ConfigureAwait(false);
             })
            .RequireAuthorization();
     }
@@ -479,7 +465,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 string? dryRun,
                 CancellationToken cancellationToken) =>
             {
-                return await RunProductImportAsync(request, connection, dryRun, shopId, cancellationToken).ConfigureAwait(false);
+                return await RunProductImportAsync(request, connection, dryRun, shopId, bypassShopAdminCheck: false, cancellationToken).ConfigureAwait(false);
             })
            .RequireAuthorization();
 
@@ -611,6 +597,7 @@ OFFSET @Offset LIMIT @Limit;
         IDbConnection connection,
         string? dryRun,
         Guid shopId,
+        bool bypassShopAdminCheck,
         CancellationToken cancellationToken)
     {
         // Logger local via DI (pas d’injection en signature)
@@ -657,7 +644,7 @@ OFFSET @Offset LIMIT @Limit;
             return Results.Problem(statusCode: StatusCodes.Status500InternalServerError);
         }
 
-        if (shopId != GlobalShopId && !IsShopAdmin(httpContext, shopId))
+        if (!bypassShopAdminCheck && !IsShopAdmin(httpContext, shopId))
         {
             return Results.StatusCode(StatusCodes.Status403Forbidden);
         }
@@ -1333,6 +1320,9 @@ LIMIT @top;";
             return op;
         });
     }
+
+    private static Task<Guid> ResolveLegacyShopIdAsync(IDbConnection connection, CancellationToken cancellationToken) =>
+        ShopIdResolver.ResolveAsync(connection, Guid.Empty, cancellationToken);
 
     private static bool IsCsvContentType(string? contentType)
     {

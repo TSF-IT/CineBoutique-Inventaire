@@ -230,7 +230,11 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
 
-        await Fixture.ResetAndSeedAsync(seeder => seeder.CreateProductAsync("SKU-UPDATE-INVALID", "Produit initial", shopId: Guid.Empty)).ConfigureAwait(false);
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            var shopId = await seeder.GetAnyShopIdAsync().ConfigureAwait(false);
+            await seeder.CreateProductAsync("SKU-UPDATE-INVALID", "Produit initial", shopId: shopId).ConfigureAwait(false);
+        }).ConfigureAwait(false);
         var client = CreateClient();
 
         Fixture.ClearAuditLogs();

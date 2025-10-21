@@ -11,6 +11,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using CineBoutique.Inventory.Api.Infrastructure.Shops;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using Dapper;
@@ -28,7 +29,6 @@ public sealed class ProductImportService : IProductImportService
 {
     private const long MaxCsvSizeBytes = 25L * 1024L * 1024L;
     private const long GlobalAdvisoryLockKey = 297351;
-    private static readonly Guid GlobalShopId = Guid.Empty;
     private const string StatusStarted = "Started";
     private const string StatusSucceeded = "Succeeded";
     private const string StatusFailed = "Failed";
@@ -105,14 +105,16 @@ public sealed class ProductImportService : IProductImportService
 
         var encoding = DetectEncoding(bufferedStream);
 
-        var shopId = command.ShopId == Guid.Empty ? GlobalShopId : command.ShopId;
-
         if (_connection is not NpgsqlConnection npgsqlConnection)
         {
             throw new InvalidOperationException("L'import produit requiert une connexion Npgsql active.");
         }
 
         await EnsureConnectionOpenAsync(npgsqlConnection, cancellationToken).ConfigureAwait(false);
+
+        var shopId = await ShopIdResolver
+            .ResolveAsync(npgsqlConnection, command.ShopId, cancellationToken)
+            .ConfigureAwait(false);
 
         await using var transaction = await npgsqlConnection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
