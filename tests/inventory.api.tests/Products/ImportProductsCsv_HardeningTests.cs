@@ -84,17 +84,14 @@ public sealed class ImportProductsCsv_HardeningTests : IntegrationTestBase
 
         using var duplicateContent = CreateCsvContent(SampleCsvLines);
         var duplicateResponse = await client.PostAsync("/api/products/import", duplicateContent).ConfigureAwait(false);
-        await duplicateResponse.ShouldBeAsync(HttpStatusCode.OK, "un import identique doit être ignoré").ConfigureAwait(false);
+        await duplicateResponse.ShouldBeAsync(HttpStatusCode.NoContent, "un import identique doit être ignoré").ConfigureAwait(false);
 
-        var payload = await duplicateResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
-        payload.Should().NotBeNull();
-        payload!.Skipped.Should().BeTrue();
-        payload.DryRun.Should().BeFalse();
-        payload.Inserted.Should().Be(0);
-        payload.Updated.Should().Be(0);
-        payload.WouldInsert.Should().Be(0);
-        payload.UnknownColumns.Should().BeEmpty();
-        payload.ProposedGroups.Should().BeEmpty();
+        duplicateResponse.Headers.TryGetValues("X-Import-Skipped", out var skippedHeader)
+            .Should().BeTrue("le serveur signale l'idempotence via un en-tête explicite");
+        skippedHeader!.Should().ContainSingle(value => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
+
+        var payload = await duplicateResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
+        payload.Should().BeNullOrEmpty();
     }
 
     [SkippableFact]

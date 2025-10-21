@@ -973,12 +973,16 @@ LIMIT @Limit OFFSET @Offset;
             var result = await importService.ImportAsync(command, cancellationToken).ConfigureAwait(false);
             unknownColumns.UnionWith(result.Response.UnknownColumns);
 
-            return result.ResultType switch
+            switch (result.ResultType)
             {
-                ProductImportResultType.ValidationFailed => Results.BadRequest(result.Response),
-                ProductImportResultType.Skipped => Results.Ok(result.Response),
-                _ => BuildImportSuccessResult(result.Response, isDryRun, unknownColumns)
-            };
+                case ProductImportResultType.ValidationFailed:
+                    return Results.BadRequest(result.Response);
+                case ProductImportResultType.Skipped:
+                    httpContext.Response.Headers["X-Import-Skipped"] = "true";
+                    return Results.StatusCode(StatusCodes.Status204NoContent);
+                default:
+                    return BuildImportSuccessResult(result.Response, isDryRun, unknownColumns);
+            }
         }
         catch (ProductImportInProgressException)
         {

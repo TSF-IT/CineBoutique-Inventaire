@@ -58,8 +58,8 @@ public sealed class ProductImportService : IProductImportService
         ["barcode"] = KnownColumns.Ean,
         ["barcode_rfid"] = KnownColumns.Ean,
         ["name"] = KnownColumns.Name,
-        ["descr"] = KnownColumns.Name,
-        ["description"] = KnownColumns.Name,
+        ["descr"] = KnownColumns.Description,
+        ["description"] = KnownColumns.Description,
         ["libelle"] = KnownColumns.Name,
         ["groupe"] = KnownColumns.Group,
         ["group"] = KnownColumns.Group,
@@ -74,6 +74,7 @@ public sealed class ProductImportService : IProductImportService
         KnownColumns.Sku,
         KnownColumns.Ean,
         KnownColumns.Name,
+        KnownColumns.Description,
         KnownColumns.Group,
         KnownColumns.SubGroup
     };
@@ -106,7 +107,7 @@ public sealed class ProductImportService : IProductImportService
         var bufferedCsv = await BufferStreamAsync(command.CsvStream, cancellationToken).ConfigureAwait(false);
         await using var bufferedStream = bufferedCsv.Stream;
 
-        var encoding = DetectEncoding(bufferedStream);
+        var encoding = Encoding.Latin1;
 
         if (_connection is not NpgsqlConnection npgsqlConnection)
         {
@@ -657,8 +658,9 @@ public sealed class ProductImportService : IProductImportService
             }
 
             var name = string.IsNullOrWhiteSpace(row.Name) ? sku : row.Name.Trim();
+            var description = string.IsNullOrWhiteSpace(row.Description) ? null : row.Description.Trim();
             var normalizedEan = NormalizeEan(row.Ean);
-            var codeDigits = BuildCodeDigits(row.Ean ?? normalizedEan);
+            var codeDigits = BuildCodeDigits(normalizedEan);
             var attributesJson = SerializeAttributes(row.Attributes, row.SubGroup);
             var groupId = await ResolveGroupIdAsync(row.Group, row.SubGroup, groupCache, cancellationToken)
                 .ConfigureAwait(false);
@@ -677,6 +679,7 @@ public sealed class ProductImportService : IProductImportService
                 shopId,
                 sku,
                 name,
+                description,
                 normalizedEan,
                 groupId,
                 attributesJson,
@@ -702,7 +705,7 @@ public sealed class ProductImportService : IProductImportService
             throw new InvalidOperationException("Une connexion Npgsql est requise pour insérer des produits.");
         }
 
-        const string sql = "COPY \"Product\" (\"ShopId\", \"Sku\", \"Name\", \"Ean\", \"GroupId\", \"Attributes\", \"CodeDigits\", \"CreatedAtUtc\") FROM STDIN (FORMAT BINARY);";
+        const string sql = "COPY \"Product\" (\"ShopId\", \"Sku\", \"Name\", \"Description\", \"Ean\", \"GroupId\", \"Attributes\", \"CodeDigits\", \"CreatedAtUtc\") FROM STDIN (FORMAT BINARY);";
 
         await using var importer = await npgsqlConnection.BeginBinaryImportAsync(sql, cancellationToken).ConfigureAwait(false);
 
@@ -714,6 +717,15 @@ public sealed class ProductImportService : IProductImportService
             importer.Write(row.ShopId, NpgsqlDbType.Uuid);
             importer.Write(row.Sku, NpgsqlDbType.Text);
             importer.Write(row.Name, NpgsqlDbType.Text);
+
+            if (row.Description is null)
+            {
+                importer.WriteNull();
+            }
+            else
+            {
+                importer.Write(row.Description, NpgsqlDbType.Text);
+            }
 
             if (row.Ean is null)
             {
@@ -768,12 +780,12 @@ public sealed class ProductImportService : IProductImportService
         }
 
         const string dropSql = "DROP TABLE IF EXISTS temp_product_import;";
-        const string createSql = "CREATE TEMP TABLE temp_product_import (\"ShopId\" uuid NOT NULL, \"Sku\" text NOT NULL, \"Name\" text NOT NULL, \"Ean\" text NULL, \"GroupId\" bigint NULL, \"Attributes\" jsonb NOT NULL, \"CodeDigits\" text NULL, \"CreatedAtUtc\" timestamptz NOT NULL) ON COMMIT DROP;";
+        const string createSql = "CREATE TEMP TABLE temp_product_import (\"ShopId\" uuid NOT NULL, \"Sku\" text NOT NULL, \"Name\" text NOT NULL, \"Description\" text NULL, \"Ean\" text NULL, \"GroupId\" bigint NULL, \"Attributes\" jsonb NOT NULL, \"CodeDigits\" text NULL, \"CreatedAtUtc\" timestamptz NOT NULL) ON COMMIT DROP;";
 
         await _connection.ExecuteAsync(new CommandDefinition(dropSql, transaction: transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
         await _connection.ExecuteAsync(new CommandDefinition(createSql, transaction: transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
 
-        const string copyTempSql = "COPY temp_product_import (\"ShopId\", \"Sku\", \"Name\", \"Ean\", \"GroupId\", \"Attributes\", \"CodeDigits\", \"CreatedAtUtc\") FROM STDIN (FORMAT BINARY);";
+        const string copyTempSql = "COPY temp_product_import (\"ShopId\", \"Sku\", \"Name\", \"Description\", \"Ean\", \"GroupId\", \"Attributes\", \"CodeDigits\", \"CreatedAtUtc\") FROM STDIN (FORMAT BINARY);";
         await using (var tempImporter = await npgsqlConnection.BeginBinaryImportAsync(copyTempSql, cancellationToken).ConfigureAwait(false))
         {
             foreach (var row in rows)
@@ -784,6 +796,15 @@ public sealed class ProductImportService : IProductImportService
                 tempImporter.Write(row.ShopId, NpgsqlDbType.Uuid);
                 tempImporter.Write(row.Sku, NpgsqlDbType.Text);
                 tempImporter.Write(row.Name, NpgsqlDbType.Text);
+
+                if (row.Description is null)
+                {
+                    tempImporter.WriteNull();
+                }
+                else
+                {
+                    tempImporter.Write(row.Description, NpgsqlDbType.Text);
+                }
 
                 if (row.Ean is null)
                 {
@@ -822,16 +843,17 @@ public sealed class ProductImportService : IProductImportService
 
         const string upsertSql = """
 WITH upsert AS (
-    INSERT INTO "Product" ("ShopId", "Sku", "Name", "Ean", "GroupId", "Attributes", "CodeDigits", "CreatedAtUtc")
-    SELECT t."ShopId", t."Sku", t."Name", t."Ean", t."GroupId", t."Attributes", t."CodeDigits", t."CreatedAtUtc"
+    INSERT INTO "Product" AS target ("ShopId", "Sku", "Name", "Description", "Ean", "GroupId", "Attributes", "CodeDigits", "CreatedAtUtc")
+    SELECT t."ShopId", t."Sku", t."Name", t."Description", t."Ean", t."GroupId", t."Attributes", t."CodeDigits", t."CreatedAtUtc"
     FROM temp_product_import t
     ON CONFLICT ON CONSTRAINT "UX_Product_Shop_LowerSku" DO UPDATE
     SET
-        "Name" = EXCLUDED."Name",
-        "Ean" = EXCLUDED."Ean",
+        "Name" = COALESCE(target."Name", EXCLUDED."Name"),
+        "Description" = COALESCE(target."Description", EXCLUDED."Description"),
+        "Ean" = COALESCE(target."Ean", EXCLUDED."Ean"),
         "GroupId" = EXCLUDED."GroupId",
         "Attributes" = EXCLUDED."Attributes",
-        "CodeDigits" = EXCLUDED."CodeDigits"
+        "CodeDigits" = COALESCE(target."CodeDigits", EXCLUDED."CodeDigits")
     RETURNING (xmax = 0) AS inserted
 )
 SELECT
@@ -857,6 +879,7 @@ SELECT
         Guid ShopId,
         string Sku,
         string Name,
+        string? Description,
         string? Ean,
         long? GroupId,
         string AttributesJson,
@@ -953,7 +976,7 @@ SELECT
         var totalLines = 0;
         List<string>? headers = null;
 
-        using var reader = new StreamReader(stream, encoding, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+        using var reader = new StreamReader(stream, encoding, detectEncodingFromByteOrderMarks: false, leaveOpen: true);
 
         while (await reader.ReadLineAsync(cancellationToken).ConfigureAwait(false) is { } rawLine)
         {
@@ -1036,6 +1059,7 @@ SELECT
             string? name = null;
             string? group = null;
             string? subGroup = null;
+            string? description = null;
 
             var row = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var need in new[]
@@ -1043,6 +1067,7 @@ SELECT
                        KnownColumns.Sku,
                        KnownColumns.Ean,
                        KnownColumns.Name,
+                       KnownColumns.Description,
                        KnownColumns.Group,
                        KnownColumns.SubGroup
                    })
@@ -1078,6 +1103,12 @@ SELECT
             if (row.TryGetValue(KnownColumns.Name, out var nameValue) && !string.IsNullOrWhiteSpace(nameValue))
             {
                 name = nameValue;
+            }
+
+            if (row.TryGetValue(KnownColumns.Description, out var descriptionValue)
+                && !string.IsNullOrWhiteSpace(descriptionValue))
+            {
+                description = descriptionValue;
             }
 
             if (row.TryGetValue(KnownColumns.Group, out var groupValue))
@@ -1138,9 +1169,17 @@ SELECT
                 }
             }
 
+            if (string.IsNullOrWhiteSpace(name) && !string.IsNullOrWhiteSpace(description))
+            {
+                name = description;
+            }
+
+            name ??= sku;
+
             rows.Add(new ProductCsvRow(
                 sku,
                 name!,
+                description,
                 ean,
                 normalizedGroup,
                 normalizedSubGroup,
@@ -1217,6 +1256,7 @@ SELECT
     private sealed record ProductCsvRow(
         string Sku,
         string Name,
+        string? Description,
         string? Ean,
         string? Group,
         string? SubGroup,
@@ -1291,6 +1331,7 @@ SELECT
         public const string Sku = "sku";
         public const string Ean = "ean";
         public const string Name = "name";
+        public const string Description = "description";
         public const string Group = "groupe";
         public const string SubGroup = "sousGroupe";
     }

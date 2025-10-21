@@ -114,11 +114,14 @@ public sealed class ShopProductEndpointsTests : IntegrationTestBase
 
         using var duplicate = new StringContent(csv, Encoding.Latin1, "text/csv");
         var duplicateResponse = await client.PostAsync($"/api/shops/{shopId}/products/import", duplicate).ConfigureAwait(false);
-        await duplicateResponse.ShouldBeAsync(HttpStatusCode.OK, "un import identique doit être ignoré sans erreur").ConfigureAwait(false);
+        await duplicateResponse.ShouldBeAsync(HttpStatusCode.NoContent, "un import identique doit être ignoré sans erreur").ConfigureAwait(false);
 
-        var payload = await duplicateResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
-        payload.Should().NotBeNull();
-        payload!.Skipped.Should().BeTrue();
+        duplicateResponse.Headers.TryGetValues("X-Import-Skipped", out var skippedHeader)
+            .Should().BeTrue();
+        skippedHeader!.Should().ContainSingle(value => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase));
+
+        var payload = await duplicateResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
+        payload.Should().BeNullOrEmpty();
 
         await using (var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false))
         await using (var command = new Npgsql.NpgsqlCommand(
