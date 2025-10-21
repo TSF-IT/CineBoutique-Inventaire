@@ -10,6 +10,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using CineBoutique.Inventory.Api.Infrastructure.Logging;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using Dapper;
@@ -138,7 +139,7 @@ public sealed class ProductImportService : IProductImportService
                         updated: 0,
                         duration: TimeSpan.Zero,
                         unknownColumns: EmptyUnknownColumns);
-                    _logger.LogInformation("Import produits ignoré : fichier identique au dernier import réussi.");
+                    ApiLog.ImportStep(_logger, "Import produits ignoré : fichier identique au dernier import réussi.");
                     return new ProductImportResult(ProductImportResponse.SkippedResult(), ProductImportResultType.Skipped);
                 }
             }
@@ -289,10 +290,9 @@ public sealed class ProductImportService : IProductImportService
                     stopwatch.Elapsed,
                     unknownColumns);
 
-                _logger.LogInformation(
-                    "Import produits terminé : {Created} créations, {Updated} mises à jour.",
-                    upsertStats.Created,
-                    upsertStats.Updated);
+                ApiLog.ImportStep(
+                    _logger,
+                    $"Import produits terminé : {upsertStats.Created} créations, {upsertStats.Updated} mises à jour.");
 
                 return new ProductImportResult(
                     ProductImportResponse.Success(totalLines, upsertStats.Created, upsertStats.Updated, unknownColumns, parseOutcome.ProposedGroups),
@@ -364,7 +364,7 @@ public sealed class ProductImportService : IProductImportService
             UnknownColumns = unknownColumns ?? Array.Empty<string>()
         };
 
-        _logger.LogInformation("{Event} {@Import}", eventName, payload);
+        ApiLog.ImportStep(_logger, $"{eventName} {JsonSerializer.Serialize(payload, JsonSerializerOptions)}");
     }
 
     private async Task<BufferedCsv> BufferStreamAsync(Stream source, CancellationToken cancellationToken)

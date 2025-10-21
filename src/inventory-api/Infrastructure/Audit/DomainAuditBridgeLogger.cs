@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using CsvHelper;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using CineBoutique.Inventory.Api.Infrastructure.Logging;
 using DomainAuditEntry = CineBoutique.Inventory.Domain.Auditing.AuditEntry;
 using IDomainAuditLogger = CineBoutique.Inventory.Domain.Auditing.IAuditLogger;
 using IApiAuditLogger = CineBoutique.Inventory.Api.Infrastructure.Audit.IAuditLogger;
@@ -49,24 +50,28 @@ public sealed class DomainAuditBridgeLogger : IDomainAuditLogger
         }
         catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested)
         {
-            _logger.LogWarning(ex, "Failed to bridge domain audit event {EventType} for {EntityName} {EntityId}",
-                entry.EventType, entry.EntityName, entry.EntityId);
+            ApiLog.DomainAuditFallback(
+                _logger,
+                $"Failed to bridge domain audit event {entry.EventType} for {entry.EntityName} {entry.EntityId}: {ex.Message}");
             throw;
         }
         catch (CsvHelperException ex)
         {
-            _logger.LogWarning(ex, "Failed to bridge domain audit event {EventType} for {EntityName} {EntityId}",
-                entry.EventType, entry.EntityName, entry.EntityId);
+            ApiLog.DomainAuditFallback(
+                _logger,
+                $"Failed to bridge domain audit event {entry.EventType} for {entry.EntityName} {entry.EntityId}: {ex.Message}");
         }
         catch (NpgsqlException ex)
         {
-            _logger.LogWarning(ex, "Failed to bridge domain audit event {EventType} for {EntityName} {EntityId}",
-                entry.EventType, entry.EntityName, entry.EntityId);
+            ApiLog.DomainAuditFallback(
+                _logger,
+                $"Failed to bridge domain audit event {entry.EventType} for {entry.EntityName} {entry.EntityId}: {ex.Message}");
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "Failed to bridge domain audit event {EventType} for {EntityName} {EntityId}",
-                entry.EventType, entry.EntityName, entry.EntityId);
+            ApiLog.DomainAuditFallback(
+                _logger,
+                $"Failed to bridge domain audit event {entry.EventType} for {entry.EntityName} {entry.EntityId}: {ex.Message}");
             throw;
         }
     }
