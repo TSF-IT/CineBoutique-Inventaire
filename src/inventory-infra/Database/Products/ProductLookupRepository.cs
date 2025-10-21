@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -99,6 +100,7 @@ FROM "Product" {whereClause};
         return rows.ToArray();
     }
 
+    [SuppressMessage("Globalization", "CA1308", Justification = "Search normalization")]
     public async Task<IReadOnlyList<ProductLookupItem>> SearchProductsAsync(
         string code,
         int limit,
@@ -114,10 +116,7 @@ FROM "Product" {whereClause};
             return Array.Empty<ProductLookupItem>();
         }
 
-        if (limit <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(limit));
-        }
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
 
         var normalizedCode = code.Trim();
         if (normalizedCode.Length == 0)
@@ -236,7 +235,7 @@ FROM ranked
             "sku"  => @"""Sku""",
             _      => null
         };
-        var direction = (dir ?? "asc").ToLowerInvariant() == "desc" ? "DESC" : "ASC";
+        var direction = string.Equals(dir, "desc", StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
         var orderByClause = col is null ? string.Empty : $" ORDER BY {col} {direction} ";
         const string defaultOrderClause = " ORDER BY ranked.match_priority, ranked.score DESC, ranked.\"Name\"";
         var finalOrderClause = string.IsNullOrEmpty(orderByClause) ? defaultOrderClause : orderByClause;
@@ -306,7 +305,7 @@ FROM ranked
         }
 
         var trimmed = sql.TrimEnd();
-        if (trimmed.EndsWith(";", StringComparison.Ordinal))
+        if (trimmed.EndsWith(';'))
         {
             trimmed = trimmed[..^1].TrimEnd();
         }
