@@ -35,13 +35,16 @@ public sealed class ProductImportFlexTests : IClassFixture<TestApiFactory>
       .ToString();
 
     using var content = new StringContent(csv, Encoding.UTF8, "text/csv");
-    var response = await client.PostAsync("/api/products/import?dryRun=true", content).ConfigureAwait(false);
+    var response = await client.PostAsync("/api/products/import?dryRun=true&mode=flex", content).ConfigureAwait(false);
 
     Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
     var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
     Assert.NotNull(payload);
     Assert.True(payload!.DryRun);
+    Assert.Equal(1, payload.Inserted);
+    Assert.Equal(0, payload.Updated);
+    Assert.Equal(1, payload.WouldInsert);
     Assert.Contains("couleurSecondaire", payload.UnknownColumns, StringComparer.OrdinalIgnoreCase);
   }
 
@@ -93,6 +96,8 @@ WHERE ""Sku"" = @sku;";
     var client = _f.Client;
     client.DefaultRequestHeaders.Remove("X-Admin");
     client.DefaultRequestHeaders.Add("X-Admin", "true");
+    client.DefaultRequestHeaders.Remove("X-Import-Mode");
+    client.DefaultRequestHeaders.Add("X-Import-Mode", "flex");
 
     var csv1 = new StringBuilder()
       .AppendLine("barcode_rfid;sku;name;groupe;sous_groupe;couleurSecondaire;packaging")

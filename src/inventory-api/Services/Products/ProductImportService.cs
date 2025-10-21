@@ -230,9 +230,25 @@ public sealed class ProductImportService : IProductImportService
                     ProductImportResultType.ValidationFailed);
             }
 
+            var preparedRows = await PrepareRowsAsync(parseOutcome.Rows, shopId, cancellationToken)
+                .ConfigureAwait(false);
+
             if (command.DryRun)
             {
-                var wouldInsert = parseOutcome.Rows.Count;
+                var previewStats = ImportStatistics.Empty;
+                var wouldInsert = preparedRows.Count;
+
+                if (command.Mode == ProductImportMode.Flex)
+                {
+                    previewStats = await CalculateFlexDryRunStatisticsAsync(
+                            preparedRows,
+                            shopId,
+                            transaction,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+
+                    wouldInsert = previewStats.Inserted;
+                }
 
                 await CompleteHistoryAsync(
                         historyId,
@@ -250,39 +266,50 @@ public sealed class ProductImportService : IProductImportService
                 _metrics.IncrementSucceeded(true);
                 _metrics.ObserveDuration(stopwatch.Elapsed, true);
 
+                var loggedInserted = previewStats.Inserted != 0 ? previewStats.Inserted : wouldInsert;
+
                 LogImportEvent(
                     "ImportCompleted",
                     StatusDryRun,
                     command.Username,
                     bufferedCsv.Sha256,
                     totalLines,
-                    created: wouldInsert,
-                    updated: 0,
+                    created: loggedInserted,
+                    updated: previewStats.Updated,
                     stopwatch.Elapsed,
                     unknownColumns,
                     shopId);
 
                 return new ProductImportResult(
-                    ProductImportResponse.DryRunResult(totalLines, wouldInsert, unknownColumns, parseOutcome.ProposedGroups),
+                    ProductImportResponse.DryRunResult(
+                        totalLines,
+                        wouldInsert,
+                        unknownColumns,
+                        parseOutcome.ProposedGroups,
+                        previewStats.Inserted,
+                        previewStats.Updated),
                     ProductImportResultType.DryRun);
             }
 
             try
             {
-                var preparedRows = await PrepareRowsAsync(parseOutcome.Rows, shopId, cancellationToken).ConfigureAwait(false);
-
-                ImportStatistics importStats;
-                if (command.Mode == ProductImportMode.ReplaceCatalogue)
+                var importStats = command.Mode switch
                 {
-                    await DeleteExistingProductsAsync(transaction, shopId, cancellationToken).ConfigureAwait(false);
-                    importStats = await BulkInsertPreparedRowsAsync(preparedRows, transaction, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                else
-                {
-                    importStats = await UpsertPreparedRowsAsync(preparedRows, transaction, cancellationToken)
-                        .ConfigureAwait(false);
-                }
+                    ProductImportMode.ReplaceCatalogue => await ReplaceCatalogueAsync(
+                        preparedRows,
+                        transaction,
+                        shopId,
+                        cancellationToken).ConfigureAwait(false),
+                    ProductImportMode.MergeWithExisting => await UpsertPreparedRowsAsync(
+                        preparedRows,
+                        transaction,
+                        cancellationToken).ConfigureAwait(false),
+                    ProductImportMode.Flex => await UpsertPreparedRowsFlexAsync(
+                        preparedRows,
+                        transaction,
+                        cancellationToken).ConfigureAwait(false),
+                    _ => throw new InvalidOperationException("Mode d'import inconnu.")
+                };
 
                 await RecordSuccessfulImportAsync(
                         transaction,
@@ -554,6 +581,16 @@ public sealed class ProductImportService : IProductImportService
             .ConfigureAwait(false);
     }
 
+    private async Task<ImportStatistics> ReplaceCatalogueAsync(
+        IReadOnlyList<PreparedProductRow> rows,
+        NpgsqlTransaction transaction,
+        Guid shopId,
+        CancellationToken cancellationToken)
+    {
+        await DeleteExistingProductsAsync(transaction, shopId, cancellationToken).ConfigureAwait(false);
+        return await BulkInsertPreparedRowsAsync(rows, transaction, cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task CompleteHistoryAsync(
         Guid historyId,
         string status,
@@ -764,6 +801,79 @@ public sealed class ProductImportService : IProductImportService
         return new ImportStatistics(rows.Count, 0);
     }
 
+    private async Task PopulateTempProductImportTableAsync(
+        IReadOnlyList<PreparedProductRow> rows,
+        NpgsqlTransaction transaction,
+        NpgsqlConnection npgsqlConnection,
+        CancellationToken cancellationToken)
+    {
+        const string dropSql = "DROP TABLE IF EXISTS temp_product_import;";
+        const string createSql = "CREATE TEMP TABLE temp_product_import (\"ShopId\" uuid NOT NULL, \"Sku\" text NOT NULL, \"Name\" text NOT NULL, \"Description\" text NULL, \"Ean\" text NULL, \"GroupId\" bigint NULL, \"Attributes\" jsonb NOT NULL, \"CodeDigits\" text NULL, \"CreatedAtUtc\" timestamptz NOT NULL) ON COMMIT DROP;";
+
+        await _connection.ExecuteAsync(new CommandDefinition(dropSql, transaction: transaction, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        await _connection.ExecuteAsync(new CommandDefinition(createSql, transaction: transaction, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        const string copyTempSql = "COPY temp_product_import (\"ShopId\", \"Sku\", \"Name\", \"Description\", \"Ean\", \"GroupId\", \"Attributes\", \"CodeDigits\", \"CreatedAtUtc\") FROM STDIN (FORMAT BINARY);";
+
+        await using var tempImporter = await npgsqlConnection.BeginBinaryImportAsync(copyTempSql, cancellationToken)
+            .ConfigureAwait(false);
+
+        foreach (var row in rows)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            await tempImporter.StartRowAsync(cancellationToken).ConfigureAwait(false);
+            tempImporter.Write(row.ShopId, NpgsqlDbType.Uuid);
+            tempImporter.Write(row.Sku, NpgsqlDbType.Text);
+            tempImporter.Write(row.Name, NpgsqlDbType.Text);
+
+            if (row.Description is null)
+            {
+                tempImporter.WriteNull();
+            }
+            else
+            {
+                tempImporter.Write(row.Description, NpgsqlDbType.Text);
+            }
+
+            if (row.Ean is null)
+            {
+                tempImporter.WriteNull();
+            }
+            else
+            {
+                tempImporter.Write(row.Ean, NpgsqlDbType.Text);
+            }
+
+            if (row.GroupId is null)
+            {
+                tempImporter.WriteNull();
+            }
+            else
+            {
+                tempImporter.Write(row.GroupId.Value, NpgsqlDbType.Bigint);
+            }
+
+            tempImporter.Write(row.AttributesJson, NpgsqlDbType.Jsonb);
+
+            if (row.CodeDigits is null)
+            {
+                tempImporter.WriteNull();
+            }
+            else
+            {
+                tempImporter.Write(row.CodeDigits, NpgsqlDbType.Text);
+            }
+
+            tempImporter.Write(row.CreatedAtUtc, NpgsqlDbType.TimestampTz);
+        }
+
+        await tempImporter.CompleteAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     private async Task<ImportStatistics> UpsertPreparedRowsAsync(
         IReadOnlyList<PreparedProductRow> rows,
         NpgsqlTransaction transaction,
@@ -779,67 +889,8 @@ public sealed class ProductImportService : IProductImportService
             throw new InvalidOperationException("Une connexion Npgsql est requise pour insérer des produits.");
         }
 
-        const string dropSql = "DROP TABLE IF EXISTS temp_product_import;";
-        const string createSql = "CREATE TEMP TABLE temp_product_import (\"ShopId\" uuid NOT NULL, \"Sku\" text NOT NULL, \"Name\" text NOT NULL, \"Description\" text NULL, \"Ean\" text NULL, \"GroupId\" bigint NULL, \"Attributes\" jsonb NOT NULL, \"CodeDigits\" text NULL, \"CreatedAtUtc\" timestamptz NOT NULL) ON COMMIT DROP;";
-
-        await _connection.ExecuteAsync(new CommandDefinition(dropSql, transaction: transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
-        await _connection.ExecuteAsync(new CommandDefinition(createSql, transaction: transaction, cancellationToken: cancellationToken)).ConfigureAwait(false);
-
-        const string copyTempSql = "COPY temp_product_import (\"ShopId\", \"Sku\", \"Name\", \"Description\", \"Ean\", \"GroupId\", \"Attributes\", \"CodeDigits\", \"CreatedAtUtc\") FROM STDIN (FORMAT BINARY);";
-        await using (var tempImporter = await npgsqlConnection.BeginBinaryImportAsync(copyTempSql, cancellationToken).ConfigureAwait(false))
-        {
-            foreach (var row in rows)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                await tempImporter.StartRowAsync(cancellationToken).ConfigureAwait(false);
-                tempImporter.Write(row.ShopId, NpgsqlDbType.Uuid);
-                tempImporter.Write(row.Sku, NpgsqlDbType.Text);
-                tempImporter.Write(row.Name, NpgsqlDbType.Text);
-
-                if (row.Description is null)
-                {
-                    tempImporter.WriteNull();
-                }
-                else
-                {
-                    tempImporter.Write(row.Description, NpgsqlDbType.Text);
-                }
-
-                if (row.Ean is null)
-                {
-                    tempImporter.WriteNull();
-                }
-                else
-                {
-                    tempImporter.Write(row.Ean, NpgsqlDbType.Text);
-                }
-
-                if (row.GroupId is null)
-                {
-                    tempImporter.WriteNull();
-                }
-                else
-                {
-                    tempImporter.Write(row.GroupId.Value, NpgsqlDbType.Bigint);
-                }
-
-                tempImporter.Write(row.AttributesJson, NpgsqlDbType.Jsonb);
-
-                if (row.CodeDigits is null)
-                {
-                    tempImporter.WriteNull();
-                }
-                else
-                {
-                    tempImporter.Write(row.CodeDigits, NpgsqlDbType.Text);
-                }
-
-                tempImporter.Write(row.CreatedAtUtc, NpgsqlDbType.TimestampTz);
-            }
-
-            await tempImporter.CompleteAsync(cancellationToken).ConfigureAwait(false);
-        }
+        await PopulateTempProductImportTableAsync(rows, transaction, npgsqlConnection, cancellationToken)
+            .ConfigureAwait(false);
 
         const string upsertSql = """
 WITH upsert AS (
@@ -868,11 +919,156 @@ SELECT
         return new ImportStatistics(counts.Inserted, counts.Updated);
     }
 
+    private async Task<ImportStatistics> UpsertPreparedRowsFlexAsync(
+        IReadOnlyList<PreparedProductRow> rows,
+        NpgsqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        if (rows.Count == 0)
+        {
+            return ImportStatistics.Empty;
+        }
+
+        if (transaction.Connection is not NpgsqlConnection npgsqlConnection)
+        {
+            throw new InvalidOperationException("Une connexion Npgsql est requise pour insérer des produits.");
+        }
+
+        await PopulateTempProductImportTableAsync(rows, transaction, npgsqlConnection, cancellationToken)
+            .ConfigureAwait(false);
+
+        const string insertSql = """
+INSERT INTO "Product" ("ShopId", "Sku", "Name", "Description", "Ean", "GroupId", "Attributes", "CodeDigits", "CreatedAtUtc")
+SELECT t."ShopId", t."Sku", t."Name", t."Description", t."Ean", t."GroupId", t."Attributes", t."CodeDigits", t."CreatedAtUtc"
+FROM temp_product_import t
+ON CONFLICT ON CONSTRAINT "UX_Product_Shop_LowerSku" DO NOTHING;
+""";
+
+        var inserted = await _connection.ExecuteAsync(
+                new CommandDefinition(insertSql, transaction: transaction, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        const string updateSql = """
+WITH updated AS (
+    UPDATE "Product" AS p
+    SET
+        "Name" = CASE
+            WHEN (p."Name" IS NULL OR btrim(p."Name") = '') AND t."Name" IS NOT NULL AND btrim(t."Name") <> '' THEN t."Name"
+            ELSE p."Name"
+        END,
+        "Description" = CASE
+            WHEN (p."Description" IS NULL OR btrim(p."Description") = '') AND t."Description" IS NOT NULL AND btrim(t."Description") <> '' THEN t."Description"
+            ELSE p."Description"
+        END,
+        "Ean" = CASE
+            WHEN (p."Ean" IS NULL OR btrim(p."Ean") = '') AND t."Ean" IS NOT NULL AND btrim(t."Ean") <> '' THEN t."Ean"
+            ELSE p."Ean"
+        END,
+        "CodeDigits" = CASE
+            WHEN (p."CodeDigits" IS NULL OR btrim(p."CodeDigits") = '') AND t."CodeDigits" IS NOT NULL AND btrim(t."CodeDigits") <> '' THEN t."CodeDigits"
+            ELSE p."CodeDigits"
+        END,
+        "GroupId" = CASE
+            WHEN p."GroupId" IS NULL AND t."GroupId" IS NOT NULL THEN t."GroupId"
+            ELSE p."GroupId"
+        END,
+        "Attributes" = CASE
+            WHEN t."Attributes" IS NOT NULL AND t."Attributes" <> '{}'::jsonb
+                THEN COALESCE(p."Attributes", '{}'::jsonb) || t."Attributes"
+            ELSE p."Attributes"
+        END
+    FROM temp_product_import t
+    WHERE p."ShopId" = t."ShopId"
+      AND lower(p."Sku") = lower(t."Sku")
+      AND (
+            ((p."Name" IS NULL OR btrim(p."Name") = '') AND t."Name" IS NOT NULL AND btrim(t."Name") <> '')
+         OR ((p."Description" IS NULL OR btrim(p."Description") = '') AND t."Description" IS NOT NULL AND btrim(t."Description") <> '')
+         OR ((p."Ean" IS NULL OR btrim(p."Ean") = '') AND t."Ean" IS NOT NULL AND btrim(t."Ean") <> '')
+         OR ((p."CodeDigits" IS NULL OR btrim(p."CodeDigits") = '') AND t."CodeDigits" IS NOT NULL AND btrim(t."CodeDigits") <> '')
+         OR (p."GroupId" IS NULL AND t."GroupId" IS NOT NULL)
+         OR (t."Attributes" IS NOT NULL AND t."Attributes" <> '{}'::jsonb AND (p."Attributes" IS NULL OR NOT (p."Attributes" @> t."Attributes")))
+      )
+    RETURNING 1
+)
+SELECT COUNT(*) FROM updated;
+""";
+
+        var updated = await _connection.ExecuteScalarAsync<int>(
+                new CommandDefinition(updateSql, transaction: transaction, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return new ImportStatistics(inserted, updated);
+    }
+
     private sealed record ImportStatistics(int Inserted, int Updated)
     {
         public static ImportStatistics Empty { get; } = new(0, 0);
 
         public int TotalAffected => Inserted + Updated;
+    }
+
+    private async Task<ImportStatistics> CalculateFlexDryRunStatisticsAsync(
+        IReadOnlyList<PreparedProductRow> rows,
+        Guid shopId,
+        NpgsqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        if (rows.Count == 0)
+        {
+            return ImportStatistics.Empty;
+        }
+
+        var lowerSkus = rows
+            .Select(row => row.Sku.ToLowerInvariant())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        const string existingSql = """
+SELECT lower("Sku") AS "LowerSku",
+       "Name",
+       "Description",
+       "Ean",
+       "CodeDigits",
+       "GroupId",
+       CAST("Attributes" AS text) AS "Attributes"
+FROM "Product"
+WHERE "ShopId" = @ShopId
+  AND lower("Sku") = ANY(@LowerSkus);
+""";
+
+        var existingRows = await _connection.QueryAsync<(string LowerSku, string? Name, string? Description, string? Ean, string? CodeDigits, long? GroupId, string? Attributes)>(
+                new CommandDefinition(existingSql, new { ShopId = shopId, LowerSkus = lowerSkus }, transaction: transaction, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        var existingMap = existingRows.ToDictionary(row => row.LowerSku, StringComparer.Ordinal);
+
+        var inserted = 0;
+        var updated = 0;
+
+        foreach (var row in rows)
+        {
+            var key = row.Sku.ToLowerInvariant();
+
+            if (!existingMap.TryGetValue(key, out var current))
+            {
+                inserted++;
+                continue;
+            }
+
+            var hasNameUpdate = ShouldFill(current.Name, row.Name);
+            var hasDescriptionUpdate = ShouldFill(current.Description, row.Description);
+            var hasEanUpdate = ShouldFill(current.Ean, row.Ean);
+            var hasDigitsUpdate = ShouldFill(current.CodeDigits, row.CodeDigits);
+            var hasGroupUpdate = current.GroupId is null && row.GroupId is not null;
+            var hasAttributeUpdate = ShouldMergeAttributes(current.Attributes, row.AttributesJson);
+
+            if (hasNameUpdate || hasDescriptionUpdate || hasEanUpdate || hasDigitsUpdate || hasGroupUpdate || hasAttributeUpdate)
+            {
+                updated++;
+            }
+        }
+
+        return new ImportStatistics(inserted, updated);
     }
 
     private sealed record PreparedProductRow(
@@ -912,6 +1108,57 @@ SELECT
 
         var digits = DigitsOnlyRegex.Replace(ean, string.Empty);
         return digits.Length == 0 ? null : digits;
+    }
+
+    private static bool ShouldFill(string? existing, string? incoming)
+        => string.IsNullOrWhiteSpace(existing) && !string.IsNullOrWhiteSpace(incoming);
+
+    private static bool ShouldMergeAttributes(string? existingJson, string newJson)
+    {
+        if (string.IsNullOrWhiteSpace(newJson))
+        {
+            return false;
+        }
+
+        var trimmed = newJson.Trim();
+        if (string.Equals(trimmed, "{}", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(existingJson))
+        {
+            return true;
+        }
+
+        using var newDoc = JsonDocument.Parse(trimmed);
+        using var existingDoc = JsonDocument.Parse(existingJson);
+
+        if (existingDoc.RootElement.ValueKind != JsonValueKind.Object)
+        {
+            return true;
+        }
+
+        foreach (var property in newDoc.RootElement.EnumerateObject())
+        {
+            if (property.Value.ValueKind == JsonValueKind.Null)
+            {
+                continue;
+            }
+
+            if (!existingDoc.RootElement.TryGetProperty(property.Name, out var existingValue))
+            {
+                return true;
+            }
+
+            if (existingValue.ValueKind != property.Value.ValueKind ||
+                !string.Equals(existingValue.ToString(), property.Value.ToString(), StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string SerializeAttributes(IReadOnlyDictionary<string, object?> attributes, string? subGroup)

@@ -725,9 +725,13 @@ LIMIT @Limit OFFSET @Offset;
             return Results.StatusCode(StatusCodes.Status403Forbidden);
         }
 
-        var importMode = bypassShopAdminCheck
-            ? await ResolveLegacyImportModeAsync(connection, shopId, cancellationToken).ConfigureAwait(false)
-            : ProductImportMode.ReplaceCatalogue;
+        var importMode = await ResolveImportModeAsync(
+                request,
+                connection,
+                shopId,
+                bypassShopAdminCheck,
+                cancellationToken)
+            .ConfigureAwait(false);
 
         var importService = httpContext.RequestServices.GetRequiredService<IProductImportService>();
         const long maxCsvSizeBytes = 25L * 1024L * 1024L;
@@ -1080,6 +1084,46 @@ LIMIT @Limit OFFSET @Offset;
                     return true;
                 }
             }
+        }
+
+        return false;
+    }
+
+    private static async Task<ProductImportMode> ResolveImportModeAsync(
+        HttpRequest request,
+        IDbConnection connection,
+        Guid shopId,
+        bool bypassShopAdminCheck,
+        CancellationToken cancellationToken)
+    {
+        var isFlexRequested = IsFlexModeRequested(request);
+
+        if (isFlexRequested)
+        {
+            return ProductImportMode.Flex;
+        }
+
+        if (bypassShopAdminCheck)
+        {
+            return await ResolveLegacyImportModeAsync(connection, shopId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return ProductImportMode.ReplaceCatalogue;
+    }
+
+    private static bool IsFlexModeRequested(HttpRequest request)
+    {
+        if (request.Query.TryGetValue("mode", out var queryValues)
+            && queryValues.Any(value => string.Equals(value, "flex", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        if (request.Headers.TryGetValue("X-Import-Mode", out var headerValues)
+            && headerValues.Any(value => string.Equals(value, "flex", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
         }
 
         return false;

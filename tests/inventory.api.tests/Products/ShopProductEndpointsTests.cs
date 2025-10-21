@@ -135,6 +135,52 @@ public sealed class ShopProductEndpointsTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task ImportProducts_ForShop_FlexMode_FillsEmptyFields()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
+
+        Guid shopId = Guid.Empty;
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.CreateShopAsync("Boutique Flex").ConfigureAwait(false);
+            await seeder.CreateProductAsync("FLEX-001", "Produit existant", shopId: shopId).ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add("X-Shop-Admin", shopId.ToString());
+
+        var csv = "\"barcode_rfid\";\"item\";\"descr\";\"name\"\n" +
+                  "\"321000000010\";\"FLEX-001\";\"Description importée\";\"Nouveau nom\"\n";
+
+        using var content = new StringContent(csv, Encoding.Latin1, "text/csv");
+        var response = await client.PostAsync($"/api/shops/{shopId}/products/import?mode=flex", content).ConfigureAwait(false);
+        await response.ShouldBeAsync(HttpStatusCode.OK).ConfigureAwait(false);
+
+        var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
+        payload.Should().NotBeNull();
+        payload!.Inserted.Should().Be(0);
+        payload.Updated.Should().Be(1);
+        payload.Skipped.Should().BeFalse();
+
+        await using (var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false))
+        await using (var command = new Npgsql.NpgsqlCommand(
+                           "SELECT \"Name\", \"Description\", \"Ean\", \"CodeDigits\" FROM \"Product\" WHERE \"ShopId\" = @shop AND \"Sku\" = 'FLEX-001';",
+                           connection))
+        {
+            command.Parameters.AddWithValue("shop", shopId);
+            await using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
+            var hasRow = await reader.ReadAsync().ConfigureAwait(false);
+            hasRow.Should().BeTrue();
+
+            reader.GetString(0).Should().Be("Produit existant");
+            reader.IsDBNull(1).Should().BeFalse();
+            reader.GetString(1).Should().Be("Description importée");
+            reader.GetString(2).Should().Be("321000000010");
+            reader.GetString(3).Should().Be("321000000010");
+        }
+    }
+
+    [SkippableFact]
     public async Task ImportProducts_ConcurrentRequests_Returns423()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");

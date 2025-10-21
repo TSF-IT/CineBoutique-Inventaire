@@ -37,11 +37,13 @@ public sealed record ProductImportResponse(
         int total,
         int wouldInsert,
         IReadOnlyCollection<string> unknownColumns,
-        IReadOnlyCollection<ProductImportGroupProposal> proposedGroups) =>
+        IReadOnlyCollection<ProductImportGroupProposal> proposedGroups,
+        int inserted = 0,
+        int updated = 0) =>
         new(
             total,
-            Inserted: 0,
-            Updated: 0,
+            Inserted: inserted,
+            Updated: updated,
             WouldInsert: wouldInsert,
             ErrorCount: 0,
             DryRun: true,
