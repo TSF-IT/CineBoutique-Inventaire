@@ -15,7 +15,7 @@ RUN npm run build
 
 # ---------- RUNTIME ----------
 ARG BASE_REG=public.ecr.aws/docker/library
-FROM ${BASE_REG}/nginx:1.27-alpine
+FROM ${BASE_REG}/nginx:1.28-alpine
 
 # OpenSSL pour générer le certificat au démarrage
 RUN apk add --no-cache openssl
