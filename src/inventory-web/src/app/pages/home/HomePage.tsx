@@ -19,6 +19,8 @@ import type { HttpError } from '@/lib/api/http'
 import { useShop } from '@/state/ShopContext'
 import { BackToShopSelectionLink } from '@/app/components/BackToShopSelectionLink'
 import { useInventory } from '../../contexts/InventoryContext'
+import { ProductsCountCard } from '@/components/products/ProductsCountCard'
+import { ProductsModal } from '@/components/products/ProductsModal'
 
 const isHttpError = (value: unknown): value is HttpError =>
   typeof value === 'object' &&
@@ -167,6 +169,7 @@ export const HomePage = () => {
   const [completedRunsModalOpen, setCompletedRunsModalOpen] = useState(false)
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
   const [selectedZone, setSelectedZone] = useState<ConflictZoneSummary | null>(null)
+  const [showProducts, setShowProducts] = useState(false)
   const lastLoadedShopIdRef = useRef<string | null>(null)
   const onError = useCallback((error: unknown) => {
     if (isProductNotFoundError(error)) {
@@ -465,6 +468,9 @@ export const HomePage = () => {
         )}
         {!combinedLoading && !errorDetails && displaySummary && (
           <div className="cards">
+            {shopId && (
+              <ProductsCountCard shopId={shopId} onClick={() => setShowProducts(true)} />
+            )}
             <button
               type="button"
               onClick={handleOpenRunsClick}
@@ -637,6 +643,9 @@ export const HomePage = () => {
         onClose={handleConflictModalClose}
         onStartExtraCount={selectedZone ? handleStartConflictCount : undefined}
       />
+      {shopId && (
+        <ProductsModal open={showProducts} onClose={() => setShowProducts(false)} shopId={shopId} />
+      )}
     </Page>
   )
 }
