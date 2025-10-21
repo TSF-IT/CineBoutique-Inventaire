@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -23,7 +23,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="../../db/migrations/20251017_01_AddProductAttributesAndGroups.cs"
-             Link="Migrations/20251017_01_AddProductAttributesAndGroups.cs" />
+    <Compile Include="../../db/migrations/20251017_01_AddProductAttributesAndGroups.cs" Link="Migrations/20251017_01_AddProductAttributesAndGroups.cs" />
   </ItemGroup>
 </Project>

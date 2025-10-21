@@ -1,47 +1,43 @@
 // Modifications : simplification de Program.cs via des extensions et intégration du mapping conflits.
-using Microsoft.Extensions.Diagnostics.HealthChecks;
-using System.Data;
-using System.Diagnostics.Metrics;
 using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Authentication;
+using CineBoutique.Inventory.Api.Infrastructure.Health;
 using CineBoutique.Inventory.Api.Infrastructure.Http;
 using CineBoutique.Inventory.Api.Infrastructure.Logging;
-using CineBoutique.Inventory.Api.Infrastructure.Shops;
 using CineBoutique.Inventory.Api.Infrastructure.Middleware;
+using CineBoutique.Inventory.Api.Infrastructure.Shops;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
-using CineBoutique.Inventory.Api.Hosting;
 using CineBoutique.Inventory.Api.Services;
 using CineBoutique.Inventory.Api.Services.Products;
-using FluentValidation;
 using CineBoutique.Inventory.Infrastructure.Database;
 using CineBoutique.Inventory.Infrastructure.DependencyInjection;
+using CineBoutique.Inventory.Infrastructure.Locks;
 using CineBoutique.Inventory.Infrastructure.Migrations;
 using CineBoutique.Inventory.Infrastructure.Seeding;
-using FluentValidation.AspNetCore;
+using Dapper;
 using FluentMigrator.Runner;
 using FluentMigrator.Runner.Processors;
+using FluentValidation;
+using FluentValidation.AspNetCore;
 using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 using Npgsql;
-using Serilog; // requis pour UseSerilog()
-using CineBoutique.Inventory.Api.Infrastructure.Health;
-using AppLog = CineBoutique.Inventory.Api.Hosting.Log;
-using Dapper;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using Serilog;
+using System.Data;
+using System.Diagnostics.Metrics;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using OpenTelemetry.Metrics;
-using OpenTelemetry.Resources;
+using AppLog = CineBoutique.Inventory.Api.Hosting.Log;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -96,6 +92,9 @@ catch { /* pas bloquant en tests */ }
 // Infrastructure + seeder
 builder.Services.AddInventoryInfrastructure(builder.Configuration);
 builder.Services.AddTransient<InventoryDataSeeder>();
+
+// DI – Import locks
+builder.Services.AddScoped<IImportLockService, PostgresAdvisoryImportLockService>();
 
 builder.Services.Configure<AppSettingsOptions>(builder.Configuration.GetSection("AppSettings"));
 

@@ -279,12 +279,12 @@ internal static class ProductEndpoints
             }
             catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
             {
-                 if (string.Equals(ex.ConstraintName, LowerSkuConstraintName, StringComparison.Ordinal))
-                 {
-                     await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "SKU déjà utilisé", "products.update.conflict", cancellationToken).ConfigureAwait(false);
-                     return Results.Conflict(new { message = "Ce SKU est déjà utilisé." });
-                 }
-                 throw;
+                if (string.Equals(ex.ConstraintName, LowerSkuConstraintName, StringComparison.Ordinal))
+                {
+                    await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "SKU déjà utilisé", "products.update.conflict", cancellationToken).ConfigureAwait(false);
+                    return Results.Conflict(new { message = "Ce SKU est déjà utilisé." });
+                }
+                throw;
             }
         };
 
@@ -420,18 +420,14 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
     private static void MapImportProductsEndpoint(IEndpointRouteBuilder app)
     {
         app.MapPost("/api/products/import", async (
-                Microsoft.AspNetCore.Http.HttpRequest request,
-                System.Data.IDbConnection connection,
+                HttpRequest request,
+                IDbConnection connection,
                 IShopResolver shopResolver,
                 IImportLockService importLockService,
                 string? dryRun,
-                Microsoft.Extensions.Options.IOptions<CineBoutique.Inventory.Api.Configuration.AppSettingsOptions> appSettings,
-                System.Threading.CancellationToken cancellationToken) =>
+                Microsoft.Extensions.Options.IOptions<Configuration.AppSettingsOptions> appSettings,
+                CancellationToken cancellationToken) =>
             {
-                if (appSettings?.Value?.MultiShopCatalogues == true)
-                {
-                    return Results.BadRequest(new { reason = "GLOBAL_IMPORT_DISABLED" });
-                }
 
                 await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
@@ -656,9 +652,20 @@ LIMIT @Limit OFFSET @Offset;
                 var count = await connection.ExecuteScalarAsync<long>(
                     new CommandDefinition(countSql, new { ShopId = shopId }, cancellationToken: cancellationToken)).ConfigureAwait(false);
 
-                const string catalogSql = "SELECT EXISTS (SELECT 1 FROM \"ProductImportHistory\" WHERE \"ShopId\" = @ShopId);";
-                var hasCatalog = await connection.ExecuteScalarAsync<bool>(
+                bool hasCatalog;
+                try
+                {
+                    const string catalogSql = "SELECT EXISTS (SELECT 1 FROM \"ProductImportHistory\" WHERE \"ShopId\" = @ShopId);";
+                    hasCatalog = await connection.ExecuteScalarAsync<bool>(
                     new CommandDefinition(catalogSql, new { ShopId = shopId }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+                }
+                catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedTable)
+                {
+                    // Fallback compat : ancienne table de journal d'import
+                    const string fallbackSql = "SELECT EXISTS (SELECT 1 FROM \"ProductImport\" WHERE \"ShopId\" = @ShopId);";
+                    hasCatalog = await connection.ExecuteScalarAsync<bool>(
+                    new CommandDefinition(fallbackSql, new { ShopId = shopId }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+                }
 
                 return Results.Ok(new { count, hasCatalog });
             })
@@ -1008,7 +1015,7 @@ LIMIT @Limit OFFSET @Offset;
                 await nonDryBufferedStream.DisposeAsync().ConfigureAwait(false);
             }
         }
-                    
+
     }
 
 
@@ -1147,7 +1154,7 @@ LIMIT @Limit OFFSET @Offset;
                 .ConfigureAwait(false);
 
             // --- Fast-path douchette RFID/EAN ---
-            var qRaw   = q;
+            var qRaw = q;
             var qTight = System.Text.RegularExpressions.Regex.Replace(qRaw, @"[\s\-_]", "");
 
             if (qTight.Length >= 8)
@@ -1403,50 +1410,50 @@ LIMIT @top;";
             switch (result.Status)
             {
                 case ProductLookupStatus.Success:
-                {
-                    var product = result.Product!;
-                    var productLabel = product.Name;
-                    var skuLabel = string.IsNullOrWhiteSpace(product.Sku) ? "non renseigné" : product.Sku;
-                    var eanLabel = string.IsNullOrWhiteSpace(product.Ean) ? "non renseigné" : product.Ean;
-                    var successMessage = $"{actor} a scanné le code {displayCode} et a identifié le produit \"{productLabel}\" (SKU {skuLabel}, EAN {eanLabel}) le {timestamp} UTC.";
-                    await auditLogger.LogAsync(successMessage, userName, "products.scan.success", cancellationToken).ConfigureAwait(false);
-                    return Results.Ok(product);
-                }
+                    {
+                        var product = result.Product!;
+                        var productLabel = product.Name;
+                        var skuLabel = string.IsNullOrWhiteSpace(product.Sku) ? "non renseigné" : product.Sku;
+                        var eanLabel = string.IsNullOrWhiteSpace(product.Ean) ? "non renseigné" : product.Ean;
+                        var successMessage = $"{actor} a scanné le code {displayCode} et a identifié le produit \"{productLabel}\" (SKU {skuLabel}, EAN {eanLabel}) le {timestamp} UTC.";
+                        await auditLogger.LogAsync(successMessage, userName, "products.scan.success", cancellationToken).ConfigureAwait(false);
+                        return Results.Ok(product);
+                    }
 
                 case ProductLookupStatus.Conflict:
-                {
-                    var matches = result.Matches
-                        .Select(match => new ProductLookupConflictMatch(match.Sku, match.Code))
-                        .ToArray();
+                    {
+                        var matches = result.Matches
+                            .Select(match => new ProductLookupConflictMatch(match.Sku, match.Code))
+                            .ToArray();
 
-                    lookupMetrics.IncrementAmbiguity();
-                    logger.LogInformation(
-                        "ProductLookupAmbiguity {@Lookup}",
-                        new
-                        {
-                            Code = result.OriginalCode,
-                            Digits = result.Digits ?? string.Empty,
-                            MatchCount = matches.Length
-                        });
+                        lookupMetrics.IncrementAmbiguity();
+                        logger.LogInformation(
+                            "ProductLookupAmbiguity {@Lookup}",
+                            new
+                            {
+                                Code = result.OriginalCode,
+                                Digits = result.Digits ?? string.Empty,
+                                MatchCount = matches.Length
+                            });
 
-                    var conflictPayload = new ProductLookupConflictResponse(
-                        Ambiguous: true,
-                        Code: result.OriginalCode,
-                        Digits: result.Digits ?? string.Empty,
-                        Matches: matches);
+                        var conflictPayload = new ProductLookupConflictResponse(
+                            Ambiguous: true,
+                            Code: result.OriginalCode,
+                            Digits: result.Digits ?? string.Empty,
+                            Matches: matches);
 
-                    var digitsLabel = string.IsNullOrEmpty(result.Digits) ? "(n/a)" : result.Digits;
-                    var conflictMessage = $"{actor} a scanné le code {displayCode} mais plusieurs produits partagent les chiffres {digitsLabel} le {timestamp} UTC.";
-                    await auditLogger.LogAsync(conflictMessage, userName, "products.scan.conflict", cancellationToken).ConfigureAwait(false);
-                    return Results.Json(conflictPayload, statusCode: StatusCodes.Status409Conflict);
-                }
+                        var digitsLabel = string.IsNullOrEmpty(result.Digits) ? "(n/a)" : result.Digits;
+                        var conflictMessage = $"{actor} a scanné le code {displayCode} mais plusieurs produits partagent les chiffres {digitsLabel} le {timestamp} UTC.";
+                        await auditLogger.LogAsync(conflictMessage, userName, "products.scan.conflict", cancellationToken).ConfigureAwait(false);
+                        return Results.Json(conflictPayload, statusCode: StatusCodes.Status409Conflict);
+                    }
 
                 default:
-                {
-                    var notFoundMessage = $"{actor} a scanné le code {displayCode} sans correspondance produit le {timestamp} UTC.";
-                    await auditLogger.LogAsync(notFoundMessage, userName, "products.scan.not_found", cancellationToken).ConfigureAwait(false);
-                    return Results.NotFound();
-                }
+                    {
+                        var notFoundMessage = $"{actor} a scanné le code {displayCode} sans correspondance produit le {timestamp} UTC.";
+                        await auditLogger.LogAsync(notFoundMessage, userName, "products.scan.not_found", cancellationToken).ConfigureAwait(false);
+                        return Results.NotFound();
+                    }
             }
         })
         .WithName("GetProductByCode")
