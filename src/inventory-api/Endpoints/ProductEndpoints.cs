@@ -279,13 +279,12 @@ internal static class ProductEndpoints
             }
             catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
             {
-                if (string.Equals(ex.ConstraintName, LowerSkuConstraintName, StringComparison.Ordinal))
-                {
-                    await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "SKU déjà utilisé", "products.update.conflict", cancellationToken).ConfigureAwait(false);
-                    return Results.Conflict(new { message = "Ce SKU est déjà utilisé." });
-                }
-
-                throw;
+                 if (string.Equals(ex.ConstraintName, LowerSkuConstraintName, StringComparison.Ordinal))
+                 {
+                     await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "SKU déjà utilisé", "products.update.conflict", cancellationToken).ConfigureAwait(false);
+                     return Results.Conflict(new { message = "Ce SKU est déjà utilisé." });
+                 }
+                 throw;
             }
         };
 
