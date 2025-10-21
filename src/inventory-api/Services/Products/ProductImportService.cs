@@ -191,8 +191,8 @@ public sealed class ProductImportService : IProductImportService
                         inserted: 0,
                         errorCount,
                         transaction,
-                        cancellationToken,
-                        stopwatch.Elapsed)
+                        stopwatch.Elapsed,
+                        cancellationToken)
                     .ConfigureAwait(false);
 
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -228,8 +228,8 @@ public sealed class ProductImportService : IProductImportService
                         inserted: 0,
                         errorCount: 0,
                         transaction,
-                        cancellationToken,
-                        stopwatch.Elapsed)
+                        stopwatch.Elapsed,
+                        cancellationToken)
                     .ConfigureAwait(false);
 
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -269,8 +269,8 @@ public sealed class ProductImportService : IProductImportService
                         inserted: upsertStats.Created + upsertStats.Updated,
                         errorCount: 0,
                         transaction,
-                        cancellationToken,
-                        stopwatch.Elapsed)
+                        stopwatch.Elapsed,
+                        cancellationToken)
                     .ConfigureAwait(false);
 
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -309,8 +309,8 @@ public sealed class ProductImportService : IProductImportService
                         inserted: 0,
                         errorCount: 0,
                         transaction,
-                        cancellationToken,
-                        stopwatch.Elapsed)
+                        stopwatch.Elapsed,
+                        cancellationToken)
                     .ConfigureAwait(false);
 
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -531,8 +531,8 @@ public sealed class ProductImportService : IProductImportService
         int inserted,
         int errorCount,
         NpgsqlTransaction transaction,
-        CancellationToken cancellationToken,
-        TimeSpan elapsed)
+        TimeSpan elapsed,
+        CancellationToken cancellationToken)
     {
         const string sql =
             "UPDATE \"ProductImportHistory\" SET " +
