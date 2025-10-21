@@ -1,6 +1,5 @@
 // Modifications : déplacement des endpoints produits depuis Program.cs avec mutualisation des helpers locaux.
 using System;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Data;
@@ -8,7 +7,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Security.Cryptography;
 using System.Threading;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Shops;
@@ -16,6 +14,7 @@ using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Services.Products;
 using CineBoutique.Inventory.Infrastructure.Database;
+using CineBoutique.Inventory.Infrastructure.Locks;
 using Dapper;
 using FluentValidation.Results;
 using CsvHelper;
@@ -32,8 +31,6 @@ namespace CineBoutique.Inventory.Api.Endpoints;
 internal static class ProductEndpoints
 {
     private const string LowerSkuConstraintName = "UX_Product_Shop_LowerSku";
-    private const string LegacyGlobalImportLockName = "product_import_global";
-    private static readonly long LegacyGlobalImportLockKey = CreateLegacyGlobalImportLockKey(LegacyGlobalImportLockName);
     private sealed class ProductLookupLogger
     {
     }
@@ -426,6 +423,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 Microsoft.AspNetCore.Http.HttpRequest request,
                 System.Data.IDbConnection connection,
                 IShopResolver shopResolver,
+                IImportLockService importLockService,
                 string? dryRun,
                 Microsoft.Extensions.Options.IOptions<CineBoutique.Inventory.Api.Configuration.AppSettingsOptions> appSettings,
                 System.Threading.CancellationToken cancellationToken) =>
@@ -443,13 +441,13 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 var legacyShopId = await ResolveLegacyShopIdAsync(connection, shopResolver, httpContext, cancellationToken)
                     .ConfigureAwait(false);
 
-                var acquired = await TryAcquireLegacyImportLockAsync(connection, cancellationToken).ConfigureAwait(false);
-                if (!acquired)
+                var lockHandle = await importLockService.TryAcquireGlobalAsync(cancellationToken).ConfigureAwait(false);
+                if (lockHandle is null)
                 {
                     return Results.Json(new { reason = "import_in_progress" }, statusCode: StatusCodes.Status423Locked);
                 }
 
-                try
+                await using (lockHandle)
                 {
                     return await RunProductImportAsync(
                             request,
@@ -459,10 +457,6 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                             bypassShopAdminCheck: true,
                             cancellationToken)
                         .ConfigureAwait(false);
-                }
-                finally
-                {
-                    await ReleaseLegacyImportLockAsync(connection, cancellationToken).ConfigureAwait(false);
                 }
             })
            .RequireAuthorization();
@@ -507,10 +501,20 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 Guid shopId,
                 HttpRequest request,
                 IDbConnection connection,
+                IImportLockService importLockService,
                 string? dryRun,
                 CancellationToken cancellationToken) =>
             {
-                return await RunProductImportAsync(request, connection, dryRun, shopId, bypassShopAdminCheck: false, cancellationToken).ConfigureAwait(false);
+                var lockHandle = await importLockService.TryAcquireForShopAsync(shopId, cancellationToken).ConfigureAwait(false);
+                if (lockHandle is null)
+                {
+                    return Results.Json(new { reason = "import_in_progress" }, statusCode: StatusCodes.Status423Locked);
+                }
+
+                await using (lockHandle)
+                {
+                    return await RunProductImportAsync(request, connection, dryRun, shopId, bypassShopAdminCheck: false, cancellationToken).ConfigureAwait(false);
+                }
             })
            .RequireAuthorization();
 
@@ -1000,35 +1004,6 @@ LIMIT @Limit OFFSET @Offset;
             return ProductImportMode.ReplaceCatalogue;
         }
     }
-
-    private static long CreateLegacyGlobalImportLockKey(string lockName)
-    {
-        using var sha256 = SHA256.Create();
-        var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(lockName));
-        return BinaryPrimitives.ReadInt64LittleEndian(hash);
-    }
-
-    private static async Task<bool> TryAcquireLegacyImportLockAsync(IDbConnection connection, CancellationToken cancellationToken)
-    {
-        const string sql = "SELECT pg_try_advisory_lock(@Key);";
-        return await connection.ExecuteScalarAsync<bool>(
-                new CommandDefinition(sql, new { Key = LegacyGlobalImportLockKey }, cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
-    }
-
-    private static async Task ReleaseLegacyImportLockAsync(IDbConnection connection, CancellationToken cancellationToken)
-    {
-        if (connection.State != ConnectionState.Open)
-        {
-            return;
-        }
-
-        const string sql = "SELECT pg_advisory_unlock(@Key);";
-        await connection.ExecuteScalarAsync<bool>(
-                new CommandDefinition(sql, new { Key = LegacyGlobalImportLockKey }, cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
-    }
-
 
     private static bool IsShopAdmin(HttpContext? context, Guid shopId)
     {
