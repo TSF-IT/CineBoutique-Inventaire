@@ -200,6 +200,60 @@ public sealed class ShopProductEndpointsTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task ListProducts_FilterMatchesSkuEanAndRfid()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
+
+        Guid shopId = Guid.Empty;
+        Guid rfidProductId = Guid.Empty;
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.CreateShopAsync("Boutique Recherche").ConfigureAwait(false);
+            await seeder.CreateProductAsync("SKU-BASE", "Produit générique", shopId: shopId).ConfigureAwait(false);
+            await seeder.CreateProductAsync("XYZ-REF", "Produit ciblé", shopId: shopId).ConfigureAwait(false);
+            await seeder.CreateProductAsync("SKU-EAN", "Produit code", "9900001112223", shopId).ConfigureAwait(false);
+            rfidProductId = await seeder.CreateProductAsync("SKU-RFID", "Produit RFID", shopId: shopId).ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        await using (var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false))
+        await using (var command = new Npgsql.NpgsqlCommand(
+                               "UPDATE \"Product\" SET \"Attributes\" = jsonb_build_object('barcode_rfid', @rfid) WHERE \"Id\" = @id;",
+                               connection))
+        {
+            command.Parameters.AddWithValue("rfid", "RFID-000123");
+            command.Parameters.AddWithValue("id", rfidProductId);
+            await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add("X-Shop-Admin", shopId.ToString());
+
+        var skuResponse = await client.GetAsync($"/api/shops/{shopId}/products?q=XYZ-REF").ConfigureAwait(false);
+        await skuResponse.ShouldBeAsync(HttpStatusCode.OK).ConfigureAwait(false);
+        var skuPayload = await skuResponse.Content.ReadFromJsonAsync<ShopProductListResponse>().ConfigureAwait(false);
+        skuPayload.Should().NotBeNull();
+        skuPayload!.Total.Should().Be(1);
+        skuPayload.Items.Should().ContainSingle();
+        skuPayload.Items.Single().Sku.Should().Be("XYZ-REF");
+
+        var eanResponse = await client.GetAsync($"/api/shops/{shopId}/products?q=9900001112223").ConfigureAwait(false);
+        await eanResponse.ShouldBeAsync(HttpStatusCode.OK).ConfigureAwait(false);
+        var eanPayload = await eanResponse.Content.ReadFromJsonAsync<ShopProductListResponse>().ConfigureAwait(false);
+        eanPayload.Should().NotBeNull();
+        eanPayload!.Total.Should().Be(1);
+        eanPayload.Items.Should().ContainSingle();
+        eanPayload.Items.Single().Sku.Should().Be("SKU-EAN");
+
+        var rfidResponse = await client.GetAsync($"/api/shops/{shopId}/products?q=RFID-000123").ConfigureAwait(false);
+        await rfidResponse.ShouldBeAsync(HttpStatusCode.OK).ConfigureAwait(false);
+        var rfidPayload = await rfidResponse.Content.ReadFromJsonAsync<ShopProductListResponse>().ConfigureAwait(false);
+        rfidPayload.Should().NotBeNull();
+        rfidPayload!.Total.Should().Be(1);
+        rfidPayload.Items.Should().ContainSingle();
+        rfidPayload.Items.Single().Sku.Should().Be("SKU-RFID");
+    }
+
+    [SkippableFact]
     public async Task CountEndpoint_ReturnsCatalogInfo()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");

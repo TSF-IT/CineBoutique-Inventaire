@@ -532,7 +532,12 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 var whereClause = new StringBuilder("\"ShopId\" = @ShopId");
                 if (escapedFilter is not null)
                 {
-                    whereClause.Append(" AND (\"Sku\" ILIKE @Filter ESCAPE '\\' OR COALESCE(\"Ean\", '') ILIKE @Filter ESCAPE '\\' OR COALESCE(\"Name\", '') ILIKE @Filter ESCAPE '\\' OR COALESCE(\"CodeDigits\", '') ILIKE @Filter ESCAPE '\\')");
+                    whereClause.Append(
+                        " AND (COALESCE(\"Attributes\"->>'barcode_rfid', '') ILIKE @Filter ESCAPE '\\' " +
+                        "OR COALESCE(\"Ean\", '') ILIKE @Filter ESCAPE '\\' " +
+                        "OR \"Sku\" ILIKE @Filter ESCAPE '\\' " +
+                        "OR COALESCE(\"Name\", '') ILIKE @Filter ESCAPE '\\' " +
+                        "OR COALESCE(\"CodeDigits\", '') ILIKE @Filter ESCAPE '\\')");
                 }
 
                 var whereSql = whereClause.ToString();
