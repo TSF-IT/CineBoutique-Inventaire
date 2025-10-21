@@ -8,7 +8,6 @@ import { InventoryLocationStep } from './app/pages/inventory/InventoryLocationSt
 import { InventorySessionPage } from './app/pages/inventory/InventorySessionPage'
 import { ScanCameraPage } from './app/pages/inventory/ScanCameraPage'
 import { AdminLayout } from './app/pages/admin/AdminLayout'
-import { AdminLocationsPage } from './app/pages/admin/AdminLocationsPage'
 import { ProductScanSearch } from './features/products/ProductScanSearch'
 import { AppErrorBoundary } from './app/components/AppErrorBoundary'
 import { ProductDetailsPage } from './features/products/ProductDetailsPage'
@@ -25,6 +24,12 @@ import { loadSelectedUserForShop } from '@/lib/selectedUserStorage'
 const AdminProductsPage = lazy(() =>
   import('./features/admin/AdminProductsPage').then((module) => ({
     default: module.AdminProductsPage,
+  })),
+)
+
+const AdminLocationsPage = lazy(() =>
+  import('./app/pages/admin/AdminLocationsPage').then((module) => ({
+    default: module.AdminLocationsPage,
   })),
 )
 

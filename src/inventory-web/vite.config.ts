@@ -101,6 +101,13 @@ export default defineConfig(({ command }) => {
       sourcemap: false,
       reportCompressedSize: false,
       chunkSizeWarningLimit: 1500,
+      minify: 'terser',
+      target: 'es2020',
+      terserOptions: {
+        compress: { passes: 2, pure_getters: true, ecma: 2020 },
+        mangle: true,
+        format: { comments: false },
+      },
       rollupOptions: {
         output: {
           manualChunks: {
