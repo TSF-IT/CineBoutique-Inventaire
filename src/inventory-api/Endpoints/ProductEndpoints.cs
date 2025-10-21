@@ -1,4 +1,5 @@
 // Modifications : déplacement des endpoints produits depuis Program.cs avec mutualisation des helpers locaux.
+
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
