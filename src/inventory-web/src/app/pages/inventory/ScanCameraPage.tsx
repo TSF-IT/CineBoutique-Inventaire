@@ -19,6 +19,7 @@ import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
 import { CountType, type ConflictZoneSummary, type Product } from '../../types/inventory'
 import { fetchProductByEan, startInventoryRun } from '../../api/inventoryApi'
 import type { HttpError } from '@/lib/api/http'
+import { ProductsListCompact } from '@/components/products/ProductsListCompact'
 
 const MIN_EAN_LENGTH = 8
 const MAX_EAN_LENGTH = 13
@@ -67,6 +68,7 @@ export const ScanCameraPage = () => {
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
   const [pendingManualEan, setPendingManualEan] = useState<string | null>(null)
   const [manualAddLoading, setManualAddLoading] = useState(false)
+  const shopId = shop?.id?.trim() ?? ''
   const dragStateRef = useRef<{ startY: number; pointerId: number } | null>(null)
   const manualInputActiveRef = useRef(false)
   const focusedRowKeyRef = useRef<string | null>(null)
@@ -300,6 +302,56 @@ export const ScanCameraPage = () => {
       setManualAddLoading(false)
     }
   }, [addProductToSession, manualAddLoading, pendingManualEan])
+
+  const handlePickFromCatalogue = useCallback(
+    async ({ sku, name, ean }: { sku: string; name: string; ean?: string | null }) => {
+      const sanitizedEan = sanitizeEan(ean ?? '')
+      if (!sanitizedEan) {
+        setErrorMessage(`Impossible d’ajouter ${name} : EAN manquant.`)
+        setStatusMessage(null)
+        return
+      }
+      if (!isEanLengthValid(sanitizedEan)) {
+        setErrorMessage(
+          `EAN ${sanitizedEan} invalide : saisir entre ${MIN_EAN_LENGTH} et ${MAX_EAN_LENGTH} chiffres.`,
+        )
+        setStatusMessage(null)
+        return
+      }
+      try {
+        ensureScanPrerequisites()
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : 'Impossible d’ajouter ce produit.')
+        setStatusMessage(null)
+        return
+      }
+
+      setStatusMessage(`Ajout de ${name}…`)
+      setErrorMessage(null)
+      try {
+        const product = await fetchProductByEan(sanitizedEan)
+        const added = await addProductToSession({ ...product, sku: product.sku ?? sku })
+        if (!added) {
+          setStatusMessage(null)
+          return
+        }
+        setStatusMessage(`${product.name} ajouté`)
+        setHighlightEan(product.ean)
+        scrollToEndRef.current = true
+        pendingFocusEanRef.current = product.ean
+        setSheetState('full')
+      } catch (error) {
+        const err = error as HttpError
+        if (err?.status === 404) {
+          setErrorMessage(`Produit introuvable pour ${sanitizedEan}.`)
+        } else {
+          setErrorMessage('Impossible d’ajouter ce produit. Réessayez.')
+        }
+        setStatusMessage(null)
+      }
+    },
+    [addProductToSession, ensureScanPrerequisites],
+  )
 
   const handleDec = useCallback(
     (ean: string, quantity: number) => {
@@ -555,6 +607,11 @@ export const ScanCameraPage = () => {
                   )
                 })}
               </ul>
+            )}
+            {shopId && (
+              <div className="mt-6 border-t border-slate-200 pt-4 dark:border-slate-700">
+                <ProductsListCompact shopId={shopId} onPick={handlePickFromCatalogue} />
+              </div>
             )}
           </div>
         </div>
