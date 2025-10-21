@@ -15,17 +15,58 @@ export const ThemeToggle = () => {
     <button
       type="button"
       onClick={toggleTheme}
+      role="switch"
       aria-label={label}
-      aria-pressed={isDark}
+      aria-checked={isDark}
       title={`Thème: ${isDark ? 'sombre' : 'clair'}`}
       className={clsx(
-        'inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400',
-        'border-slate-300 bg-white text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800',
+        'group relative inline-flex h-11 w-24 items-center overflow-hidden rounded-full border border-[var(--cb-border-strong)] bg-[var(--cb-surface-soft)] px-1 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--cb-surface-strong)]',
+        isDark ? 'shadow-[var(--cb-card-shadow-soft)]' : 'shadow-sm',
       )}
       style={{ minHeight: 'var(--tap-min)' }}
     >
-      <span aria-hidden>{isDark ? '🌙' : '☀️'}</span>
-      <span>{isDark ? 'Sombre' : 'Clair'}</span>
+      <span className="sr-only">{label}</span>
+      <span
+        aria-hidden
+        className={clsx(
+          'pointer-events-none absolute inset-0 rounded-full transition-all duration-300 ease-out',
+          isDark ? 'bg-[var(--cb-toggle-track-dark)]' : 'bg-[var(--cb-toggle-track-light)]',
+        )}
+      />
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-0 flex items-center justify-between px-3 text-lg"
+      >
+        <span
+          className={clsx(
+            'transition-all duration-300 ease-out',
+            isDark
+              ? '-translate-x-1 scale-75 opacity-50'
+              : 'translate-x-0 scale-100 opacity-100 text-amber-400',
+          )}
+        >
+          ☀️
+        </span>
+        <span
+          className={clsx(
+            'transition-all duration-300 ease-out',
+            isDark
+              ? 'translate-x-0 scale-100 opacity-100 text-amber-200'
+              : 'translate-x-1 scale-75 opacity-50',
+          )}
+        >
+          🌙
+        </span>
+      </span>
+      <span
+        aria-hidden
+        className={clsx(
+          'pointer-events-none absolute inset-y-1 left-1 flex h-9 w-9 items-center justify-center rounded-full transition-all duration-300 ease-out shadow-[0_18px_38px_-20px_rgba(15,23,42,0.6)]',
+          isDark
+            ? 'translate-x-12 bg-[var(--cb-toggle-knob-dark)]'
+            : 'translate-x-0 bg-[var(--cb-toggle-knob-light)]',
+        )}
+      />
     </button>
   )
 }
