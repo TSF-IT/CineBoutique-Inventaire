@@ -1292,7 +1292,8 @@ LIMIT @Limit OFFSET @Offset;
                 sortDir = dir,
                 q = filter
             });
-        }).RequireAuthorization();
+        })
+        .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
 
         // COMPTEUR PAR BOUTIQUE (+ présence de catalogue)
         app.MapGet("/api/shops/{shopId:guid}/products/count", async (
@@ -1321,6 +1322,7 @@ LIMIT @Limit OFFSET @Offset;
             }
 
             return Results.Ok(new { count, hasCatalog });
-        }).RequireAuthorization();
+        })
+        .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
     }
 }
