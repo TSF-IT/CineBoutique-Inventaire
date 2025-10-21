@@ -48,7 +48,14 @@ public sealed class LegacyOperatorNameWriteGuardMiddleware
             return;
         }
 
-        await _next(context).ConfigureAwait(false);
+        try
+        {
+            await _next(context).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
     }
 
     private static bool ShouldInspect(HttpRequest request)

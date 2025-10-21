@@ -1339,7 +1339,7 @@ LIMIT @top;";
             }
 
             operation.Responses ??= new OpenApiResponses();
-            operation.Responses[StatusCodes.Status200OK.ToString()] = new OpenApiResponse
+            operation.Responses[StatusCodes.Status200OK.ToString(CultureInfo.InvariantCulture)] = new OpenApiResponse
             {
                 Description = "Liste des produits correspondant au code recherché.",
                 Content =

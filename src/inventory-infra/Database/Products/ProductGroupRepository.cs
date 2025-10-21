@@ -45,9 +45,19 @@ public sealed class ProductGroupRepository : IProductGroupRepository
     VALUES (@code,@label,@pid)
     ON CONFLICT (""Code"") DO UPDATE SET ""Label"" = EXCLUDED.""Label""
     RETURNING ""Id"";";
+        var parentIdentifier = (object?)parentId ?? Guid.Empty;
+        var parameters = new
+        {
+            code,
+            label,
+            pid = parentIdentifier is Guid guid && guid == Guid.Empty
+                ? DBNull.Value
+                : parentIdentifier
+        };
+
         return await _conn.ExecuteScalarAsync<long>(new CommandDefinition(
             sql,
-            new { code, label, pid = (object?)parentId ?? DBNull.Value },
+            parameters,
             cancellationToken: ct)).ConfigureAwait(false);
     }
 

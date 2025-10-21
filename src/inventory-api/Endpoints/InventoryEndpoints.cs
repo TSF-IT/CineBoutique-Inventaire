@@ -781,7 +781,7 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                         .Where(r => r.CountType == requestedType)
                         .ToList();
 
-                    location.IsBusy = runsForRequestedType.Any();
+                    location.IsBusy = runsForRequestedType.Count != 0;
 
                     var mostRecent = runsForRequestedType
                         .OrderByDescending(r => r.StartedAtUtc)
@@ -991,71 +991,78 @@ LIMIT 1;";
                     statusCode: StatusCodes.Status500InternalServerError);
             }
 
-            await using var transaction = await dbConnection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            var transaction = await dbConnection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
-            var now = DateTimeOffset.UtcNow;
+            try
+            {
+                var now = DateTimeOffset.UtcNow;
 
-            const string insertSessionSql =
-                "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc);";
+                const string insertSessionSql =
+                    "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc);";
 
-            var sessionId = Guid.NewGuid();
-            await connection
-                .ExecuteAsync(
-                    new CommandDefinition(
-                        insertSessionSql,
-                        new
-                        {
-                            Id = sessionId,
-                            Name = $"Session zone {location.Code}",
-                            StartedAtUtc = now
-                        },
-                        transaction,
-                        cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
+                var sessionId = Guid.NewGuid();
+                await connection
+                    .ExecuteAsync(
+                        new CommandDefinition(
+                            insertSessionSql,
+                            new
+                            {
+                                Id = sessionId,
+                                Name = $"Session zone {location.Code}",
+                                StartedAtUtc = now
+                            },
+                            transaction,
+                            cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
 
-            var runId = Guid.NewGuid();
+                var runId = Guid.NewGuid();
 
-            var ownerColumn = columnsState.HasOwnerUserId ? ", \"OwnerUserId\"" : string.Empty;
-            var ownerValue = columnsState.HasOwnerUserId ? ", @OwnerUserId" : string.Empty;
-            var operatorColumn = shouldPersistOperatorDisplayName ? ", \"OperatorDisplayName\"" : string.Empty;
-            var operatorValue = shouldPersistOperatorDisplayName ? ", @OperatorDisplayName" : string.Empty;
+                var ownerColumn = columnsState.HasOwnerUserId ? ", \"OwnerUserId\"" : string.Empty;
+                var ownerValue = columnsState.HasOwnerUserId ? ", @OwnerUserId" : string.Empty;
+                var operatorColumn = shouldPersistOperatorDisplayName ? ", \"OperatorDisplayName\"" : string.Empty;
+                var operatorValue = shouldPersistOperatorDisplayName ? ", @OperatorDisplayName" : string.Empty;
 
-            var insertRunSql = $@"INSERT INTO ""CountingRun"" (""Id"", ""InventorySessionId"", ""LocationId"", ""CountType"", ""StartedAtUtc""{ownerColumn}{operatorColumn})
+                var insertRunSql = $@"INSERT INTO ""CountingRun"" (""Id"", ""InventorySessionId"", ""LocationId"", ""CountType"", ""StartedAtUtc""{ownerColumn}{operatorColumn})
 VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc{ownerValue}{operatorValue});";
 
-            var insertParameters = new
+                var insertParameters = new
+                {
+                    Id = runId,
+                    SessionId = sessionId,
+                    LocationId = locationId,
+                    CountType = request.CountType,
+                    StartedAtUtc = now,
+                    OwnerUserId = request.OwnerUserId,
+                    OperatorDisplayName = storedOperatorDisplayName
+                };
+
+                await connection
+                    .ExecuteAsync(
+                        new CommandDefinition(
+                            insertRunSql,
+                            insertParameters,
+                            transaction,
+                            cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+
+                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+                return Results.Ok(new StartInventoryRunResponse
+                {
+                    RunId = runId,
+                    InventorySessionId = sessionId,
+                    LocationId = locationId,
+                    CountType = request.CountType,
+                    OwnerUserId = request.OwnerUserId,
+                    OwnerDisplayName = ownerDisplayName,
+                    OperatorDisplayName = ownerDisplayName ?? storedOperatorDisplayName,
+                    StartedAtUtc = now
+                });
+            }
+            finally
             {
-                Id = runId,
-                SessionId = sessionId,
-                LocationId = locationId,
-                CountType = request.CountType,
-                StartedAtUtc = now,
-                OwnerUserId = request.OwnerUserId,
-                OperatorDisplayName = storedOperatorDisplayName
-            };
-
-            await connection
-                .ExecuteAsync(
-                    new CommandDefinition(
-                        insertRunSql,
-                        insertParameters,
-                        transaction,
-                        cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
-
-            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-
-            return Results.Ok(new StartInventoryRunResponse
-            {
-                RunId = runId,
-                InventorySessionId = sessionId,
-                LocationId = locationId,
-                CountType = request.CountType,
-                OwnerUserId = request.OwnerUserId,
-                OwnerDisplayName = ownerDisplayName,
-                OperatorDisplayName = ownerDisplayName ?? storedOperatorDisplayName,
-                StartedAtUtc = now
-            });
+                await transaction.DisposeAsync().ConfigureAwait(false);
+            }
         })
         .WithName("StartInventoryRun")
         .WithTags("Inventories")
@@ -1202,11 +1209,13 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc{ownerValue}{oper
                     statusCode: StatusCodes.Status500InternalServerError);
             }
 
-            await using var transaction = await dbConnection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            var transaction = await dbConnection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
-            var runOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
+            try
+            {
+                var runOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
 
-            var selectRunSql = $@"SELECT
+                var selectRunSql = $@"SELECT
     cr.""Id""                             AS ""Id"",
     l.""ShopId""                          AS ""ShopId"",
     cr.""InventorySessionId""             AS ""InventorySessionId"",
@@ -1237,54 +1246,54 @@ LEFT JOIN (
 WHERE cr.""Id"" = @RunId
 LIMIT 1;";
 
-            CountingRunDto? existingRun = null;
-            if (request.RunId is { } runId)
-            {
-                existingRun = await connection
-                    .QuerySingleOrDefaultAsync<CountingRunDto>(
-                        new CommandDefinition(
-                            selectRunSql,
-                            new
-                            {
-                                RunId = runId,
-                                StatusCompleted = LocationCountStatus.Completed,
-                                StatusInProgress = LocationCountStatus.InProgress,
-                                StatusNotStarted = LocationCountStatus.NotStarted
-                            },
-                            transaction,
-                            cancellationToken: cancellationToken))
-                    .ConfigureAwait(false);
-
-                if (existingRun is null)
+                CountingRunDto? existingRun = null;
+                if (request.RunId is { } runId)
                 {
-                    return EndpointUtilities.Problem(
-                        "Ressource introuvable",
-                        "Le run fourni est introuvable.",
-                        StatusCodes.Status404NotFound);
+                    existingRun = await connection
+                        .QuerySingleOrDefaultAsync<CountingRunDto>(
+                            new CommandDefinition(
+                                selectRunSql,
+                                new
+                                {
+                                    RunId = runId,
+                                    StatusCompleted = LocationCountStatus.Completed,
+                                    StatusInProgress = LocationCountStatus.InProgress,
+                                    StatusNotStarted = LocationCountStatus.NotStarted
+                                },
+                                transaction,
+                                cancellationToken: cancellationToken))
+                        .ConfigureAwait(false);
+
+                    if (existingRun is null)
+                    {
+                        return EndpointUtilities.Problem(
+                            "Ressource introuvable",
+                            "Le run fourni est introuvable.",
+                            StatusCodes.Status404NotFound);
+                    }
+
+                    if (existingRun.LocationId != locationId)
+                    {
+                        return EndpointUtilities.Problem(
+                            "Requête invalide",
+                            "Le run ne correspond pas à la zone demandée.",
+                            StatusCodes.Status400BadRequest);
+                    }
+
+                    if (existingRun.OwnerUserId is Guid ownerId && ownerId != request.OwnerUserId)
+                    {
+                        return EndpointUtilities.Problem(
+                            "Conflit",
+                            "Le run est attribué à un autre opérateur.",
+                            StatusCodes.Status409Conflict);
+                    }
                 }
 
-                if (existingRun.LocationId != locationId)
+                if (countType == 2)
                 {
-                    return EndpointUtilities.Problem(
-                        "Requête invalide",
-                        "Le run ne correspond pas à la zone demandée.",
-                        StatusCodes.Status400BadRequest);
-                }
-
-                if (existingRun.OwnerUserId is Guid ownerId && ownerId != request.OwnerUserId)
-                {
-                    return EndpointUtilities.Problem(
-                        "Conflit",
-                        "Le run est attribué à un autre opérateur.",
-                        StatusCodes.Status409Conflict);
-                }
-            }
-
-            if (countType == 2)
-            {
-                if (columnsState.HasOwnerUserId)
-                {
-                    const string selectFirstRunOwnerSql = @"
+                    if (columnsState.HasOwnerUserId)
+                    {
+                        const string selectFirstRunOwnerSql = @"
 SELECT ""OwnerUserId""
 FROM ""CountingRun""
 WHERE ""LocationId"" = @LocationId
@@ -1293,27 +1302,27 @@ WHERE ""LocationId"" = @LocationId
 ORDER BY ""CompletedAtUtc"" DESC
 LIMIT 1;";
 
-                    var firstRunOwner = await connection
-                        .ExecuteScalarAsync<Guid?>(
-                            new CommandDefinition(
-                                selectFirstRunOwnerSql,
-                                new { LocationId = locationId },
-                                transaction,
-                                cancellationToken: cancellationToken))
-                        .ConfigureAwait(false);
+                        var firstRunOwner = await connection
+                            .ExecuteScalarAsync<Guid?>(
+                                new CommandDefinition(
+                                    selectFirstRunOwnerSql,
+                                    new { LocationId = locationId },
+                                    transaction,
+                                    cancellationToken: cancellationToken))
+                            .ConfigureAwait(false);
 
-                    if (firstRunOwner is Guid ownerId && ownerId == request.OwnerUserId)
-                    {
-                        await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-                        return EndpointUtilities.Problem(
-                            "Conflit",
-                            "Le deuxième comptage doit être réalisé par un opérateur différent du premier.",
-                            StatusCodes.Status409Conflict);
+                        if (firstRunOwner is Guid ownerId && ownerId == request.OwnerUserId)
+                        {
+                            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                            return EndpointUtilities.Problem(
+                                "Conflit",
+                                "Le deuxième comptage doit être réalisé par un opérateur différent du premier.",
+                                StatusCodes.Status409Conflict);
+                        }
                     }
-                }
-                else if (columnsState.HasOperatorDisplayName)
-                {
-                    const string selectFirstRunOperatorSql = @"
+                    else if (columnsState.HasOperatorDisplayName)
+                    {
+                        const string selectFirstRunOperatorSql = @"
 SELECT ""OperatorDisplayName""
 FROM ""CountingRun""
 WHERE ""LocationId"" = @LocationId
@@ -1322,209 +1331,214 @@ WHERE ""LocationId"" = @LocationId
 ORDER BY ""CompletedAtUtc"" DESC
 LIMIT 1;";
 
-                    var firstRunOperator = await connection
-                        .ExecuteScalarAsync<string?>(
-                            new CommandDefinition(
-                                selectFirstRunOperatorSql,
-                                new { LocationId = locationId },
-                                transaction,
-                                cancellationToken: cancellationToken))
-                        .ConfigureAwait(false);
+                        var firstRunOperator = await connection
+                            .ExecuteScalarAsync<string?>(
+                                new CommandDefinition(
+                                    selectFirstRunOperatorSql,
+                                    new { LocationId = locationId },
+                                    transaction,
+                                    cancellationToken: cancellationToken))
+                            .ConfigureAwait(false);
 
-                    if (!string.IsNullOrWhiteSpace(firstRunOperator) &&
-                        !string.IsNullOrWhiteSpace(ownerDisplayName) &&
-                        string.Equals(firstRunOperator.Trim(), ownerDisplayName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-                        return EndpointUtilities.Problem(
-                            "Conflit",
-                            "Le deuxième comptage doit être réalisé par un opérateur différent du premier.",
-                            StatusCodes.Status409Conflict);
+                        if (!string.IsNullOrWhiteSpace(firstRunOperator) &&
+                            !string.IsNullOrWhiteSpace(ownerDisplayName) &&
+                            string.Equals(firstRunOperator.Trim(), ownerDisplayName, StringComparison.OrdinalIgnoreCase))
+                        {
+                            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                            return EndpointUtilities.Problem(
+                                "Conflit",
+                                "Le deuxième comptage doit être réalisé par un opérateur différent du premier.",
+                                StatusCodes.Status409Conflict);
+                        }
                     }
                 }
-            }
 
-            var now = clock.UtcNow;
+                var now = clock.UtcNow;
 
-            Guid countingRunId;
-            Guid inventorySessionId;
+                Guid countingRunId;
+                Guid inventorySessionId;
 
-            if (existingRun is not null)
-            {
-                countingRunId = existingRun.Id;
-                inventorySessionId = existingRun.InventorySessionId;
-            }
-            else
-            {
-                inventorySessionId = Guid.NewGuid();
-                countingRunId = Guid.NewGuid();
-
-                const string insertSessionSql =
-                    "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc);";
-
-                await connection
-                    .ExecuteAsync(
-                        new CommandDefinition(
-                            insertSessionSql,
-                            new
-                            {
-                                Id = inventorySessionId,
-                                Name = $"Session zone {location.Code}",
-                                StartedAtUtc = now
-                            },
-                            transaction,
-                            cancellationToken: cancellationToken))
-                    .ConfigureAwait(false);
-
-                var ownerColumn = columnsState.HasOwnerUserId ? ", \"OwnerUserId\"" : string.Empty;
-                var ownerValue = columnsState.HasOwnerUserId ? ", @OwnerUserId" : string.Empty;
-                var operatorColumn = shouldPersistOperatorDisplayName ? ", \"OperatorDisplayName\"" : string.Empty;
-                var operatorValue = shouldPersistOperatorDisplayName ? ", @OperatorDisplayName" : string.Empty;
-
-                var insertRunSql = $@"INSERT INTO ""CountingRun"" (""Id"", ""InventorySessionId"", ""LocationId"", ""CountType"", ""StartedAtUtc"", ""CompletedAtUtc""{ownerColumn}{operatorColumn})
-VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc, @CompletedAtUtc{ownerValue}{operatorValue});";
-
-                await connection
-                    .ExecuteAsync(
-                        new CommandDefinition(
-                            insertRunSql,
-                            new
-                            {
-                                Id = countingRunId,
-                                SessionId = inventorySessionId,
-                                LocationId = locationId,
-                                CountType = countType,
-                                StartedAtUtc = now,
-                                CompletedAtUtc = now,
-                                request.OwnerUserId,
-                                OperatorDisplayName = storedOperatorDisplayName
-                            },
-                            transaction,
-                            cancellationToken: cancellationToken))
-                    .ConfigureAwait(false);
-            }
-
-            const string updateSessionSql =
-                "UPDATE \"InventorySession\" SET \"CompletedAtUtc\" = @CompletedAtUtc WHERE \"Id\" = @SessionId;";
-
-            await connection
-                .ExecuteAsync(new CommandDefinition(updateSessionSql, new { SessionId = inventorySessionId, CompletedAtUtc = now }, transaction, cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
-
-            var ownerUpdateFragment = columnsState.HasOwnerUserId ? ", \"OwnerUserId\" = @OwnerUserId" : string.Empty;
-            var operatorUpdateFragment = shouldPersistOperatorDisplayName ? ", \"OperatorDisplayName\" = @OperatorDisplayName" : string.Empty;
-
-            var updateRunSql = $@"UPDATE ""CountingRun""
-SET ""CountType"" = @CountType,
-    ""CompletedAtUtc"" = @CompletedAtUtc{ownerUpdateFragment}{operatorUpdateFragment}
-WHERE ""Id"" = @RunId;";
-
-            var updateRunParameters = new
-            {
-                RunId = countingRunId,
-                CountType = countType,
-                CompletedAtUtc = now,
-                request.OwnerUserId,
-                OperatorDisplayName = storedOperatorDisplayName
-            };
-
-            await connection
-                .ExecuteAsync(
-                    new CommandDefinition(
-                        updateRunSql,
-                        updateRunParameters,
-                        transaction,
-                        cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
-
-            var requestedEans = aggregatedItems.Select(item => item.Ean).Distinct(StringComparer.Ordinal).ToArray();
-
-            const string selectProductsSql = "SELECT \"Id\", \"Ean\", \"CodeDigits\" FROM \"Product\" WHERE \"Ean\" = ANY(@Eans::text[]);";
-            var existingProducts = (await connection
-                    .QueryAsync<ProductLookupRow>(
-                        new CommandDefinition(selectProductsSql, new { Eans = requestedEans }, transaction, cancellationToken: cancellationToken))
-                    .ConfigureAwait(false))
-                .ToDictionary(row => row.Ean, row => row.Id, StringComparer.Ordinal);
-
-            const string insertProductSql =
-                "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"Ean\", \"CodeDigits\", \"CreatedAtUtc\") VALUES (@Id, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc);";
-
-            const string insertLineSql =
-                "INSERT INTO \"CountLine\" (\"Id\", \"CountingRunId\", \"ProductId\", \"Quantity\", \"CountedAtUtc\") VALUES (@Id, @RunId, @ProductId, @Quantity, @CountedAtUtc);";
-
-            foreach (var item in aggregatedItems)
-            {
-                if (!existingProducts.TryGetValue(item.Ean, out var productId))
+                if (existingRun is not null)
                 {
-                    productId = Guid.NewGuid();
-                    var sku = BuildUnknownSku(item.Ean);
-                    var name = $"Produit inconnu EAN {item.Ean}";
+                    countingRunId = existingRun.Id;
+                    inventorySessionId = existingRun.InventorySessionId;
+                }
+                else
+                {
+                    inventorySessionId = Guid.NewGuid();
+                    countingRunId = Guid.NewGuid();
+
+                    const string insertSessionSql =
+                        "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc);";
 
                     await connection
                         .ExecuteAsync(
                             new CommandDefinition(
-                                insertProductSql,
+                                insertSessionSql,
                                 new
                                 {
-                                    Id = productId,
-                                    Sku = sku,
-                                    Name = name,
-                                    Ean = item.Ean,
-                                    CodeDigits = CodeDigitsSanitizer.Build(item.Ean),
-                                    CreatedAtUtc = now
+                                    Id = inventorySessionId,
+                                    Name = $"Session zone {location.Code}",
+                                    StartedAtUtc = now
                                 },
                                 transaction,
                                 cancellationToken: cancellationToken))
                         .ConfigureAwait(false);
 
-                    existingProducts[item.Ean] = productId;
+                    var ownerColumn = columnsState.HasOwnerUserId ? ", \"OwnerUserId\"" : string.Empty;
+                    var ownerValue = columnsState.HasOwnerUserId ? ", @OwnerUserId" : string.Empty;
+                    var operatorColumn = shouldPersistOperatorDisplayName ? ", \"OperatorDisplayName\"" : string.Empty;
+                    var operatorValue = shouldPersistOperatorDisplayName ? ", @OperatorDisplayName" : string.Empty;
+
+                    var insertRunSql = $@"INSERT INTO ""CountingRun"" (""Id"", ""InventorySessionId"", ""LocationId"", ""CountType"", ""StartedAtUtc"", ""CompletedAtUtc""{ownerColumn}{operatorColumn})
+VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc, @CompletedAtUtc{ownerValue}{operatorValue});";
+
+                    await connection
+                        .ExecuteAsync(
+                            new CommandDefinition(
+                                insertRunSql,
+                                new
+                                {
+                                    Id = countingRunId,
+                                    SessionId = inventorySessionId,
+                                    LocationId = locationId,
+                                    CountType = countType,
+                                    StartedAtUtc = now,
+                                    CompletedAtUtc = now,
+                                    request.OwnerUserId,
+                                    OperatorDisplayName = storedOperatorDisplayName
+                                },
+                                transaction,
+                                cancellationToken: cancellationToken))
+                        .ConfigureAwait(false);
                 }
 
-                var lineId = Guid.NewGuid();
+                const string updateSessionSql =
+                    "UPDATE \"InventorySession\" SET \"CompletedAtUtc\" = @CompletedAtUtc WHERE \"Id\" = @SessionId;";
+
+                await connection
+                    .ExecuteAsync(new CommandDefinition(updateSessionSql, new { SessionId = inventorySessionId, CompletedAtUtc = now }, transaction, cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+
+                var ownerUpdateFragment = columnsState.HasOwnerUserId ? ", \"OwnerUserId\" = @OwnerUserId" : string.Empty;
+                var operatorUpdateFragment = shouldPersistOperatorDisplayName ? ", \"OperatorDisplayName\" = @OperatorDisplayName" : string.Empty;
+
+                var updateRunSql = $@"UPDATE ""CountingRun""
+SET ""CountType"" = @CountType,
+    ""CompletedAtUtc"" = @CompletedAtUtc{ownerUpdateFragment}{operatorUpdateFragment}
+WHERE ""Id"" = @RunId;";
+
+                var updateRunParameters = new
+                {
+                    RunId = countingRunId,
+                    CountType = countType,
+                    CompletedAtUtc = now,
+                    request.OwnerUserId,
+                    OperatorDisplayName = storedOperatorDisplayName
+                };
+
                 await connection
                     .ExecuteAsync(
                         new CommandDefinition(
-                            insertLineSql,
-                            new
-                            {
-                                Id = lineId,
-                                RunId = countingRunId,
-                                ProductId = productId,
-                                Quantity = item.Quantity,
-                                CountedAtUtc = now
-                            },
+                            updateRunSql,
+                            updateRunParameters,
                             transaction,
                             cancellationToken: cancellationToken))
                     .ConfigureAwait(false);
+
+                var requestedEans = aggregatedItems.Select(item => item.Ean).Distinct(StringComparer.Ordinal).ToArray();
+
+                const string selectProductsSql = "SELECT \"Id\", \"Ean\", \"CodeDigits\" FROM \"Product\" WHERE \"Ean\" = ANY(@Eans::text[]);";
+                var existingProducts = (await connection
+                        .QueryAsync<ProductLookupRow>(
+                            new CommandDefinition(selectProductsSql, new { Eans = requestedEans }, transaction, cancellationToken: cancellationToken))
+                        .ConfigureAwait(false))
+                    .ToDictionary(row => row.Ean, row => row.Id, StringComparer.Ordinal);
+
+                const string insertProductSql =
+                    "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"Ean\", \"CodeDigits\", \"CreatedAtUtc\") VALUES (@Id, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc);";
+
+                const string insertLineSql =
+                    "INSERT INTO \"CountLine\" (\"Id\", \"CountingRunId\", \"ProductId\", \"Quantity\", \"CountedAtUtc\") VALUES (@Id, @RunId, @ProductId, @Quantity, @CountedAtUtc);";
+
+                foreach (var item in aggregatedItems)
+                {
+                    if (!existingProducts.TryGetValue(item.Ean, out var productId))
+                    {
+                        productId = Guid.NewGuid();
+                        var sku = BuildUnknownSku(item.Ean);
+                        var name = $"Produit inconnu EAN {item.Ean}";
+
+                        await connection
+                            .ExecuteAsync(
+                                new CommandDefinition(
+                                    insertProductSql,
+                                    new
+                                    {
+                                        Id = productId,
+                                        Sku = sku,
+                                        Name = name,
+                                        Ean = item.Ean,
+                                        CodeDigits = CodeDigitsSanitizer.Build(item.Ean),
+                                        CreatedAtUtc = now
+                                    },
+                                    transaction,
+                                    cancellationToken: cancellationToken))
+                            .ConfigureAwait(false);
+
+                        existingProducts[item.Ean] = productId;
+                    }
+
+                    var lineId = Guid.NewGuid();
+                    await connection
+                        .ExecuteAsync(
+                            new CommandDefinition(
+                                insertLineSql,
+                                new
+                                {
+                                    Id = lineId,
+                                    RunId = countingRunId,
+                                    ProductId = productId,
+                                    Quantity = item.Quantity,
+                                    CountedAtUtc = now
+                                },
+                                transaction,
+                                cancellationToken: cancellationToken))
+                        .ConfigureAwait(false);
+                }
+
+                await ManageConflictsAsync(connection, transaction, locationId, countingRunId, countType, now, cancellationToken).ConfigureAwait(false);
+
+                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+                var response = new CompleteInventoryRunResponse
+                {
+                    RunId = countingRunId,
+                    InventorySessionId = inventorySessionId,
+                    LocationId = locationId,
+                    CountType = countType,
+                    CompletedAtUtc = now,
+                    ItemsCount = aggregatedItems.Count,
+                    TotalQuantity = aggregatedItems.Sum(item => item.Quantity),
+                };
+
+                var actor = EndpointUtilities.FormatActorLabel(httpContext);
+                var timestamp = EndpointUtilities.FormatTimestamp(now);
+                var zoneDescription = string.IsNullOrWhiteSpace(location.Code)
+                    ? location.Label
+                    : $"{location.Code} – {location.Label}";
+                var countDescription = EndpointUtilities.DescribeCountType(countType);
+                var auditMessage =
+                    $"{actor} a terminé {zoneDescription} pour un {countDescription} le {timestamp} UTC ({response.ItemsCount} références, total {response.TotalQuantity}).";
+
+                await auditLogger.LogAsync(auditMessage, ownerDisplayName, "inventories.complete.success", cancellationToken).ConfigureAwait(false);
+
+                return Results.Ok(response);
             }
-
-            await ManageConflictsAsync(connection, transaction, locationId, countingRunId, countType, now, cancellationToken).ConfigureAwait(false);
-
-            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-
-            var response = new CompleteInventoryRunResponse
+            finally
             {
-                RunId = countingRunId,
-                InventorySessionId = inventorySessionId,
-                LocationId = locationId,
-                CountType = countType,
-                CompletedAtUtc = now,
-                ItemsCount = aggregatedItems.Count,
-                TotalQuantity = aggregatedItems.Sum(item => item.Quantity),
-            };
-
-            var actor = EndpointUtilities.FormatActorLabel(httpContext);
-            var timestamp = EndpointUtilities.FormatTimestamp(now);
-            var zoneDescription = string.IsNullOrWhiteSpace(location.Code)
-                ? location.Label
-                : $"{location.Code} – {location.Label}";
-            var countDescription = EndpointUtilities.DescribeCountType(countType);
-            var auditMessage =
-                $"{actor} a terminé {zoneDescription} pour un {countDescription} le {timestamp} UTC ({response.ItemsCount} références, total {response.TotalQuantity}).";
-
-            await auditLogger.LogAsync(auditMessage, ownerDisplayName, "inventories.complete.success", cancellationToken).ConfigureAwait(false);
-
-            return Results.Ok(response);
+                await transaction.DisposeAsync().ConfigureAwait(false);
+            }
         })
         .WithName("CompleteInventoryRun")
         .WithTags("Inventories")
@@ -1624,59 +1638,66 @@ LIMIT 1;";
                     statusCode: StatusCodes.Status500InternalServerError);
             }
 
-            await using var transaction = await dbConnection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            var transaction = await dbConnection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
-            const string countLinesSql =
-                "SELECT COUNT(*)::int FROM \"CountLine\" WHERE \"CountingRunId\" = @RunId";
-
-            var lineCount = await connection
-                .ExecuteScalarAsync<int>(
-                    new CommandDefinition(countLinesSql, new { RunId = request.RunId }, transaction, cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
-
-            if (lineCount > 0)
+            try
             {
-                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-                return EndpointUtilities.Problem(
-                    "Conflit",
-                    "Impossible de libérer un comptage contenant des lignes enregistrées.",
-                    StatusCodes.Status409Conflict);
-            }
+                const string countLinesSql =
+                    "SELECT COUNT(*)::int FROM \"CountLine\" WHERE \"CountingRunId\" = @RunId";
 
-            const string deleteRunSql = "DELETE FROM \"CountingRun\" WHERE \"Id\" = @RunId;";
-            await connection
-                .ExecuteAsync(
-                    new CommandDefinition(deleteRunSql, new { RunId = request.RunId }, transaction, cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
+                var lineCount = await connection
+                    .ExecuteScalarAsync<int>(
+                        new CommandDefinition(countLinesSql, new { RunId = request.RunId }, transaction, cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
 
-            const string countSessionRunsSql =
-                "SELECT COUNT(*)::int FROM \"CountingRun\" WHERE \"InventorySessionId\" = @SessionId;";
+                if (lineCount > 0)
+                {
+                    await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                    return EndpointUtilities.Problem(
+                        "Conflit",
+                        "Impossible de libérer un comptage contenant des lignes enregistrées.",
+                        StatusCodes.Status409Conflict);
+                }
 
-            var remainingRuns = await connection
-                .ExecuteScalarAsync<int>(
-                    new CommandDefinition(
-                        countSessionRunsSql,
-                        new { SessionId = run.Value.InventorySessionId },
-                        transaction,
-                        cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
-
-            if (remainingRuns == 0)
-            {
-                const string deleteSessionSql = "DELETE FROM \"InventorySession\" WHERE \"Id\" = @SessionId;";
+                const string deleteRunSql = "DELETE FROM \"CountingRun\" WHERE \"Id\" = @RunId;";
                 await connection
                     .ExecuteAsync(
+                        new CommandDefinition(deleteRunSql, new { RunId = request.RunId }, transaction, cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+
+                const string countSessionRunsSql =
+                    "SELECT COUNT(*)::int FROM \"CountingRun\" WHERE \"InventorySessionId\" = @SessionId;";
+
+                var remainingRuns = await connection
+                    .ExecuteScalarAsync<int>(
                         new CommandDefinition(
-                            deleteSessionSql,
+                            countSessionRunsSql,
                             new { SessionId = run.Value.InventorySessionId },
                             transaction,
                             cancellationToken: cancellationToken))
                     .ConfigureAwait(false);
+
+                if (remainingRuns == 0)
+                {
+                    const string deleteSessionSql = "DELETE FROM \"InventorySession\" WHERE \"Id\" = @SessionId;";
+                    await connection
+                        .ExecuteAsync(
+                            new CommandDefinition(
+                                deleteSessionSql,
+                                new { SessionId = run.Value.InventorySessionId },
+                                transaction,
+                                cancellationToken: cancellationToken))
+                        .ConfigureAwait(false);
+                }
+
+                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+                return Results.NoContent();
             }
-
-            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-
-            return Results.NoContent();
+            finally
+            {
+                await transaction.DisposeAsync().ConfigureAwait(false);
+            }
         }
 
         app.MapPost("/api/inventories/{locationId:guid}/release", async (
@@ -2255,8 +2276,8 @@ WHERE ""Conflict"".""CountLineId"" = cl.""Id""
                 EqualityComparer<Guid>.Default);
 
     private static bool HaveIdenticalQuantities(
-        IDictionary<string, decimal> current,
-        IDictionary<string, decimal> reference)
+        Dictionary<string, decimal> current,
+        Dictionary<string, decimal> reference)
     {
         var keys = current.Keys
             .Union(reference.Keys, StringComparer.Ordinal)
@@ -2276,12 +2297,11 @@ WHERE ""Conflict"".""CountLineId"" = cl.""Id""
         return true;
     }
 
-    private static Guid? ResolveCountLineId<TInner>(
-        IDictionary<Guid, TInner> lookup,
+    private static Guid? ResolveCountLineId(
+        Dictionary<Guid, Dictionary<string, Guid>> lookup,
         Guid currentRunId,
         Guid counterpartRunId,
         string key)
-    where TInner : IDictionary<string, Guid>
     {
         if (lookup.TryGetValue(currentRunId, out var currentLines) && currentLines.TryGetValue(key, out var currentLineId))
             return currentLineId;

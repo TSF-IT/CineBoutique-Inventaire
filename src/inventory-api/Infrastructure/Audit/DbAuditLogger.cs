@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Npgsql;
 using CineBoutique.Inventory.Api.Endpoints;
+using CineBoutique.Inventory.Api.Infrastructure.Logging;
 
 namespace CineBoutique.Inventory.Api.Infrastructure.Audit;
 
@@ -61,16 +62,21 @@ public sealed class DbAuditLogger : IAuditLogger
                 new CommandDefinition(
                     sql,
                     new { Message = message, Actor = normalizedActor, Category = trimmedCategory },
-                    cancellationToken: cancellationToken)).ConfigureAwait(false);
+                    cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (NpgsqlException ex)
+        {
+            ApiLog.DbAuditWriteFailed(_logger, ex);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(
-                ex,
-                "Audit log failed for category {Category} by {Actor} with message {Message}",
-                category ?? "(none)",
-                string.IsNullOrWhiteSpace(actor) ? "anonymous" : actor,
-                string.IsNullOrWhiteSpace(message) ? "(empty)" : message);
+            ApiLog.DbAuditWriteFailed(_logger, ex);
+            throw;
         }
     }
 }
