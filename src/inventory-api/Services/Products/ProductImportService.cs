@@ -191,7 +191,7 @@ public sealed class ProductImportService : IProductImportService
                         inserted: 0,
                         errorCount,
                         transaction,
-                        stopwatch.Elapsed,
+                        elapsed: stopwatch.Elapsed,
                         cancellationToken)
                     .ConfigureAwait(false);
 
@@ -228,7 +228,7 @@ public sealed class ProductImportService : IProductImportService
                         inserted: 0,
                         errorCount: 0,
                         transaction,
-                        stopwatch.Elapsed,
+                        elapsed: stopwatch.Elapsed,
                         cancellationToken)
                     .ConfigureAwait(false);
 
@@ -269,7 +269,7 @@ public sealed class ProductImportService : IProductImportService
                         inserted: upsertStats.Created + upsertStats.Updated,
                         errorCount: 0,
                         transaction,
-                        stopwatch.Elapsed,
+                        elapsed: stopwatch.Elapsed,
                         cancellationToken)
                     .ConfigureAwait(false);
 
@@ -309,7 +309,7 @@ public sealed class ProductImportService : IProductImportService
                         inserted: 0,
                         errorCount: 0,
                         transaction,
-                        stopwatch.Elapsed,
+                        elapsed: stopwatch.Elapsed,
                         cancellationToken)
                     .ConfigureAwait(false);
 
@@ -660,13 +660,16 @@ RETURNING (xmax = 0) AS inserted;
 
             var insertedResult = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
 
-            if (insertedResult is true)
+            if (insertedResult is bool inserted)
             {
-                created++;
-            }
-            else if (insertedResult is false)
-            {
-                updated++;
+                if (inserted)
+                {
+                    created++;
+                }
+                else
+                {
+                    updated++;
+                }
             }
             else
             {
