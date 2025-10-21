@@ -1,5 +1,6 @@
 using System;
 using System.Data;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Dapper;
@@ -22,13 +23,18 @@ public sealed class ProductGroupRepository : IProductGroupRepository
 
         await EnsureConnectionOpenAsync(cancellationToken).ConfigureAwait(false);
 
-        var parentId = string.IsNullOrWhiteSpace(group)
-            ? (long?)null
-            : await UpsertAsync(group!, null, cancellationToken).ConfigureAwait(false);
+        long? parentId = null;
+        if (!string.IsNullOrWhiteSpace(group))
+        {
+            parentId = await UpsertAsync(group!, null, cancellationToken).ConfigureAwait(false);
+        }
 
-        return string.IsNullOrWhiteSpace(subGroup)
-            ? parentId
-            : await UpsertAsync(subGroup!, parentId, cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(subGroup))
+        {
+            return parentId;
+        }
+
+        return await UpsertAsync(subGroup!, parentId, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<long> UpsertAsync(string label, long? parentId, CancellationToken ct)
@@ -45,6 +51,7 @@ public sealed class ProductGroupRepository : IProductGroupRepository
             cancellationToken: ct)).ConfigureAwait(false);
     }
 
+    [SuppressMessage("Globalization", "CA1308", Justification = "Slug normalization requires lowercase")]
     private static string Slugify(string s) =>
         System.Text.RegularExpressions.Regex.Replace(
             s.Normalize().ToLowerInvariant(), @"[^a-z0-9]+", "-").Trim('-');

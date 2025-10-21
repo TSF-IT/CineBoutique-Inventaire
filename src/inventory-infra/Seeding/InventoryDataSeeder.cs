@@ -169,7 +169,7 @@ WHERE ""ShopId"" = @ShopId
         }
     }
 
-    private async Task<int> EnsureShopsAsync(
+    private static async Task<int> EnsureShopsAsync(
         IDbConnection connection,
         IDbTransaction transaction,
         CancellationToken cancellationToken)
@@ -277,7 +277,7 @@ WHERE ""ShopId"" = @ShopId
                 new CommandDefinition(
                     hasCodeColumn ? SelectShopsWithCodeSql : SelectShopsWithoutCodeSql,
                     transaction: transaction,
-                    cancellationToken: cancellationToken)))
+                    cancellationToken: cancellationToken)).ConfigureAwait(false))
             .ToList();
 
         var affected = 0;
