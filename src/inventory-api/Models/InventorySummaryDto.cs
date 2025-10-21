@@ -20,4 +20,8 @@ public sealed class InventorySummaryDto
     public IReadOnlyList<CompletedRunSummaryDto> CompletedRunDetails { get; set; } = Array.Empty<CompletedRunSummaryDto>();
 
     public IReadOnlyList<ConflictZoneSummaryDto> ConflictZones { get; set; } = Array.Empty<ConflictZoneSummaryDto>();
+
+    public int? ProductCount { get; set; }
+
+    public bool? HasCatalog { get; set; }
 }

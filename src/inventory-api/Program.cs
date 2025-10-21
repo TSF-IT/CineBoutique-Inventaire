@@ -96,6 +96,8 @@ catch { /* pas bloquant en tests */ }
 builder.Services.AddInventoryInfrastructure(builder.Configuration);
 builder.Services.AddTransient<InventoryDataSeeder>();
 
+builder.Services.Configure<AppSettingsOptions>(builder.Configuration.GetSection("AppSettings"));
+
 builder.Services.AddHttpContextAccessor();
 
 builder.Services

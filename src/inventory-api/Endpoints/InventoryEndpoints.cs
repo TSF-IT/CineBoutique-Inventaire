@@ -54,20 +54,12 @@ internal static class InventoryEndpoints
             string? shopId,
             IDbConnection connection,
             [FromServices] ILogger<InventoryEndpointsMarker> logger,
+            HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            if (string.IsNullOrWhiteSpace(shopId))
+            if (!TryResolveShopId(httpContext, shopId, out var parsedShopId, out var resolutionError))
             {
-                return Results.Problem(
-                    detail: "ShopId requis",
-                    statusCode: StatusCodes.Status400BadRequest);
-            }
-
-            if (!Guid.TryParse(shopId, out var parsedShopId))
-            {
-                return Results.Problem(
-                    detail: "ShopId invalide",
-                    statusCode: StatusCodes.Status400BadRequest);
+                return resolutionError!;
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -243,6 +235,18 @@ ORDER BY l.""Code"";",
                 })];
 
             summary.Conflicts = summary.ConflictZones.Count;
+
+            const string productCountSql = @"SELECT COUNT(*) FROM ""Product"" WHERE ""ShopId"" = @ShopId;";
+            var productCount = await connection.ExecuteScalarAsync<long>(
+                new CommandDefinition(productCountSql, new { ShopId = parsedShopId }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            const string catalogSql = @"SELECT EXISTS (SELECT 1 FROM ""ProductImportHistory"" WHERE ""ShopId"" = @ShopId);";
+            var hasCatalog = await connection.ExecuteScalarAsync<bool>(
+                new CommandDefinition(catalogSql, new { ShopId = parsedShopId }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+
+            summary.ProductCount = productCount > int.MaxValue ? int.MaxValue : (int)productCount;
+            summary.HasCatalog = hasCatalog;
+
 
             var summaryQuery = FormattableString.Invariant($"conflicts summary shop={parsedShopId} zones={summary.Conflicts}");
             ApiLog.InventorySearch(logger, summaryQuery);
@@ -2426,4 +2430,66 @@ WHERE ""Conflict"".""CountLineId"" = cl.""Id""
                 [nameof(ownerUserId)] = ownerUserId,
                 [nameof(shopId)] = shopId
             });
+
+    private static bool TryResolveShopId(HttpContext httpContext, string? value, out Guid shopId, out IResult? error)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            if (!Guid.TryParse(value, out shopId))
+            {
+                error = Results.Problem(
+                    detail: "ShopId invalide",
+                    statusCode: StatusCodes.Status400BadRequest);
+                return false;
+            }
+
+            error = null;
+            return true;
+        }
+
+        if (TryGetShopIdFromContext(httpContext, out shopId))
+        {
+            error = null;
+            return true;
+        }
+
+        error = Results.Problem(
+            detail: "ShopId requis",
+            statusCode: StatusCodes.Status400BadRequest);
+        shopId = Guid.Empty;
+        return false;
+    }
+
+    private static bool TryGetShopIdFromContext(HttpContext? context, out Guid shopId)
+    {
+        shopId = Guid.Empty;
+        if (context is null)
+        {
+            return false;
+        }
+
+        if (context.Request.Headers.TryGetValue("X-Shop-Id", out var headerValues))
+        {
+            foreach (var value in headerValues)
+            {
+                if (Guid.TryParse(value, out shopId))
+                {
+                    return true;
+                }
+            }
+        }
+
+        var claim = context.User?.Claims.FirstOrDefault(cl =>
+            string.Equals(cl.Type, "shop_id", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(cl.Type, "shop_admin", StringComparison.OrdinalIgnoreCase));
+
+        if (claim is not null && Guid.TryParse(claim.Value, out var claimShopId))
+        {
+            shopId = claimShopId;
+            return true;
+        }
+
+        return false;
+    }
+
 }

@@ -123,15 +123,20 @@ public sealed class TestDataSeeder
         return id;
     }
 
-    public async Task<Guid> CreateProductAsync(string sku, string name, string? ean = null)
+    public async Task<Guid> CreateProductAsync(string sku, string name, string? ean = null, Guid? shopId = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sku);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
+        if (!shopId.HasValue)
+        {
+            throw new ArgumentNullException(nameof(shopId));
+        }
+
         var id = Guid.NewGuid();
 
         const string sql =
-            "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"Ean\", \"CreatedAtUtc\") VALUES (@id, @sku, @name, @ean, @createdAt);";
+            "INSERT INTO \"Product\" (\"Id\", \"ShopId\", \"Sku\", \"Name\", \"Ean\", \"CreatedAtUtc\") VALUES (@id, @shopId, @sku, @name, @ean, @createdAt);";
 
         var connection = _dataSource.CreateConnection();
         await connection.OpenAsync().ConfigureAwait(false);
@@ -142,6 +147,7 @@ public sealed class TestDataSeeder
                 Parameters =
                 {
                     new("id", id),
+                    new("shopId", shopId.Value),
                     new("sku", sku),
                     new("name", name),
                     new("ean", (object?)ean ?? DBNull.Value),

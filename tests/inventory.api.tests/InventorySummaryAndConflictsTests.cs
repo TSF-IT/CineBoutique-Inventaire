@@ -1,5 +1,7 @@
 using System.Net;
+using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Fixtures;
 using CineBoutique.Inventory.Api.Tests.Helpers;
@@ -33,6 +35,8 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
         summary!.Conflicts.Should().BeGreaterOrEqualTo(1);
         summary.ConflictZones.Should().NotBeNull();
         summary.ConflictZones.Should().Contain(zone => zone.LocationId == seeded.LocationId);
+        summary.ProductCount.Should().Be(1);
+        summary.HasCatalog.Should().BeFalse();
     }
 
     [SkippableFact]
@@ -68,6 +72,40 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
         var resolved = await resolvedResponse.Content.ReadFromJsonAsync<ConflictZoneDetailDto>().ConfigureAwait(false);
         resolved.Should().NotBeNull();
         resolved!.Items.Should().BeEmpty("conflit résolu");
+    }
+
+    [SkippableFact]
+    public async Task Summary_AfterCatalogImport_ReturnsCatalogStats()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        Guid shopId = Guid.Empty;
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.CreateShopAsync("Boutique Résumé").ConfigureAwait(false);
+            await seeder.CreateLocationAsync(shopId, "LOC-SUM", "Zone Résumé").ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add("X-Shop-Admin", shopId.ToString());
+
+        var csv = "\"barcode_rfid\";\"item\";\"descr\"\n" +
+                  "\"7770000000001\";\"SUM-SKU\";\"Produit Résumé\"\n";
+        using (var content = new StringContent(csv, Encoding.Latin1, "text/csv"))
+        {
+            var importResponse = await client.PostAsync($"/api/shops/{shopId}/products/import", content).ConfigureAwait(false);
+            await importResponse.ShouldBeAsync(HttpStatusCode.OK, "l'import doit réussir").ConfigureAwait(false);
+        }
+
+        var summaryResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/inventories/summary?shopId={shopId}")
+        ).ConfigureAwait(false);
+
+        await summaryResponse.ShouldBeAsync(HttpStatusCode.OK, "inventory summary with catalog").ConfigureAwait(false);
+        var summary = await summaryResponse.Content.ReadFromJsonAsync<InventorySummaryDto>().ConfigureAwait(false);
+        summary.Should().NotBeNull();
+        summary!.ProductCount.Should().Be(1);
+        summary.HasCatalog.Should().BeTrue();
     }
 
     [SkippableFact]
@@ -117,7 +155,7 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
             locationId = await seeder.CreateLocationAsync(shopId, "LOC-CONF", "Zone Conflits").ConfigureAwait(false);
             primaryUserId = await seeder.CreateShopUserAsync(shopId, "charlie", "Charlie").ConfigureAwait(false);
             secondaryUserId = await seeder.CreateShopUserAsync(shopId, "diana", "Diana").ConfigureAwait(false);
-            await seeder.CreateProductAsync(productSku, "Produit Conflit", productEan).ConfigureAwait(false);
+            await seeder.CreateProductAsync(productSku, "Produit Conflit", productEan, shopId).ConfigureAwait(false);
         }).ConfigureAwait(false);
 
         return (shopId, locationId, primaryUserId, secondaryUserId, productEan);

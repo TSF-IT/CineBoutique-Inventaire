@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Fixtures;
@@ -32,7 +33,7 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
 
         await Fixture.ResetAndSeedAsync(async seeder =>
         {
-            await seeder.CreateProductAsync("OLD-001", "Ancien produit", "1111111111111").ConfigureAwait(false);
+            await seeder.CreateProductAsync("OLD-001", "Ancien produit", "1111111111111", Guid.Empty).ConfigureAwait(false);
         }).ConfigureAwait(false);
 
         var client = CreateClient();
@@ -84,7 +85,7 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
 
         await Fixture.ResetAndSeedAsync(async seeder =>
         {
-            await seeder.CreateProductAsync("LEGACY", "Produit existant", "999").ConfigureAwait(false);
+            await seeder.CreateProductAsync("LEGACY", "Produit existant", "999", Guid.Empty).ConfigureAwait(false);
         }).ConfigureAwait(false);
 
         var client = CreateClient();
@@ -115,5 +116,36 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
         await using var command = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\" WHERE \"Sku\" = 'LEGACY';", connection);
         var remaining = (long)await command.ExecuteScalarAsync().ConfigureAwait(false);
         remaining.Should().Be(1);
+    }
+
+    [SkippableFact]
+    public async Task GlobalImport_Disabled_WhenMultiShopCataloguesEnabled()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
+
+        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+
+        var previous = Environment.GetEnvironmentVariable("TEST_MULTI_SHOP_CATALOGUES");
+        Environment.SetEnvironmentVariable("TEST_MULTI_SHOP_CATALOGUES", "true");
+
+        try
+        {
+            await using var factory = new InventoryApiFactory(Fixture.ConnectionString);
+            using var client = factory.CreateClient();
+            client.DefaultRequestHeaders.Add("X-Admin", "true");
+
+            const string csv = "\"barcode_rfid\";\"item\";\"descr\"\n\"9000000000000\";\"SKU-LOCK\";\"Produit\"\n";
+            using var content = new StringContent(csv, Encoding.Latin1, "text/csv");
+            var response = await client.PostAsync("/api/products/import", content).ConfigureAwait(false);
+
+            response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+            var payload = await response.Content.ReadFromJsonAsync<JsonElement>().ConfigureAwait(false);
+            payload.TryGetProperty("reason", out var reason).Should().BeTrue();
+            reason.GetString().Should().Be("GLOBAL_IMPORT_DISABLED");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("TEST_MULTI_SHOP_CATALOGUES", previous);
+        }
     }
 }
