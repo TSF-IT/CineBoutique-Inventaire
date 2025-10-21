@@ -74,10 +74,56 @@ internal static class ProductEndpoints
             System.Threading.CancellationToken ct) =>
         {
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, ct).ConfigureAwait(false);
-            var shopId = await shopResolver.GetDefaultForBackCompatAsync(connection, ct).ConfigureAwait(false);
-            const string sql = @"SELECT COUNT(*) FROM ""Product"" WHERE ""ShopId""=@ShopId;";
-            var total = await connection.ExecuteScalarAsync<long>(new Dapper.CommandDefinition(sql, new { ShopId = shopId }, cancellationToken: ct));
-            return Results.Ok(new { total });
+
+            // Essayez d’abord de résoudre le shop back-compat
+            System.Guid? shopId = null;
+            try
+            {
+                shopId = await shopResolver.GetDefaultForBackCompatAsync(connection, ct).ConfigureAwait(false);
+            }
+            catch (Npgsql.PostgresException ex) when (ex.SqlState == Npgsql.PostgresErrorCodes.UndefinedTable)
+            {
+                // La table des shops n’est pas encore prête : on tombera en fallback global plus bas
+            }
+            catch
+            {
+                // Toute autre erreur de résolution -> fallback global
+            }
+
+            // 1) Si un ShopId est disponible, tenter COUNT(scopé)
+            if (shopId.HasValue)
+            {
+                try
+                {
+                    const string scopedSql = @"SELECT COUNT(*) FROM ""Product"" WHERE ""ShopId"" = @ShopId;";
+                    var totalScoped = await connection.ExecuteScalarAsync<long>(
+                        new Dapper.CommandDefinition(scopedSql, new { ShopId = shopId.Value }, cancellationToken: ct)
+                    ).ConfigureAwait(false);
+
+                    return Results.Ok(new { total = totalScoped });
+                }
+                catch (Npgsql.PostgresException ex) when (ex.SqlState == Npgsql.PostgresErrorCodes.UndefinedTable)
+                {
+                    // Table Product absente -> 0
+                    return Results.Ok(new { total = 0L });
+                }
+            }
+
+            // 2) Fallback global : COUNT(*) sans filtre (si Product existe)
+            try
+            {
+                const string globalSql = @"SELECT COUNT(*) FROM ""Product"";";
+                var totalGlobal = await connection.ExecuteScalarAsync<long>(
+                    new Dapper.CommandDefinition(globalSql, cancellationToken: ct)
+                ).ConfigureAwait(false);
+
+                return Results.Ok(new { total = totalGlobal });
+            }
+            catch (Npgsql.PostgresException ex) when (ex.SqlState == Npgsql.PostgresErrorCodes.UndefinedTable)
+            {
+                // Table Product absente -> 0
+                return Results.Ok(new { total = 0L });
+            }
         })
         .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
 
