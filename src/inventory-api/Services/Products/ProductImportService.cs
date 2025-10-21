@@ -658,15 +658,23 @@ RETURNING (xmax = 0) AS inserted;
             digitsParameter.Value = codeDigits ?? (object)DBNull.Value;
             createdParameter.Value = now;
 
-            var inserted = (bool)await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            var insertedResult = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
 
-            if (inserted)
+            if (insertedResult is true)
             {
                 created++;
             }
-            else
+            else if (insertedResult is false)
             {
                 updated++;
+            }
+            else
+            {
+                _logger.LogError(
+                    "Import: résultat inattendu lors de l'upsert du produit {Sku} — booléen attendu, obtenu {Type}",
+                    sku,
+                    insertedResult?.GetType().FullName ?? "null");
+                continue;
             }
         }
 
