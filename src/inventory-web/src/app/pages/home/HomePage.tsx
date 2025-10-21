@@ -467,9 +467,9 @@ export const HomePage = () => {
           <ErrorPanel title={errorDetails.title} details={errorDetails.details} actionLabel="Réessayer" onAction={handleRetry} />
         )}
         {!combinedLoading && !errorDetails && displaySummary && (
-          <div className="cards">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {shopId && (
-              <ProductsCountCard shopId={shopId} onClick={() => setShowProducts(true)} />
+              <ProductsCountCard shopId={shopId} onOpen={() => setShowProducts(true)} />
             )}
             <button
               type="button"
