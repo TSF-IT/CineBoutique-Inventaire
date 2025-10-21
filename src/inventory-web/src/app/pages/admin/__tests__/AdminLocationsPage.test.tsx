@@ -318,34 +318,66 @@ describe('AdminLocationsPage', () => {
     mockedFetchShopUsers.mockResolvedValue([existingUser])
     mockedDisableShopUser.mockResolvedValue(disabledUser)
 
-    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
-
-    await renderAdminPage()
-
-    const user = userEvent.setup()
-    await openUsersTab(user)
-
-    await waitFor(() => {
-      expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id)
-    })
-
-    const userCard = (await screen.findAllByTestId('user-card')).find(
-      (card) => card.getAttribute('data-user-id') === existingUser.id,
-    ) as HTMLElement | undefined
-    expect(userCard).toBeDefined()
-    if (!userCard) {
-      throw new Error('Carte utilisateur introuvable pour la désactivation')
+    const dialogPrototype = window.HTMLDialogElement?.prototype
+    const originalShowModal = dialogPrototype?.showModal
+    const originalClose = dialogPrototype?.close
+    if (dialogPrototype) {
+      dialogPrototype.showModal = function showModal() {
+        this.setAttribute('open', 'true')
+      }
+      dialogPrototype.close = function close() {
+        this.removeAttribute('open')
+      }
     }
-    const disableButton = within(userCard).getByRole('button', { name: 'Désactiver' })
-    await user.click(disableButton)
 
-    expect(confirmSpy).toHaveBeenCalled()
-    expect(mockedDisableShopUser).toHaveBeenCalledWith(testShop.id, existingUser.id)
-    expect(await screen.findByText('Utilisateur désactivé.')).toBeInTheDocument()
-    await waitFor(() => {
-      expect(screen.queryByText('Bruno Caron')).not.toBeInTheDocument()
-    })
+    try {
+      await renderAdminPage()
 
-    confirmSpy.mockRestore()
+      const user = userEvent.setup()
+      await openUsersTab(user)
+
+      await waitFor(() => {
+        expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id)
+      })
+
+      const userCard = (await screen.findAllByTestId('user-card')).find(
+        (card) => card.getAttribute('data-user-id') === existingUser.id,
+      ) as HTMLElement | undefined
+      expect(userCard).toBeDefined()
+      if (!userCard) {
+        throw new Error('Carte utilisateur introuvable pour la désactivation')
+      }
+      const disableButton = within(userCard).getByRole('button', { name: 'Désactiver' })
+      await user.click(disableButton)
+
+      const confirmationDialog = await screen.findByRole('dialog', {
+        name: `Désactiver ${existingUser.displayName} ?`,
+      })
+      const confirmButton = within(confirmationDialog).getByRole('button', { name: 'Confirmer la désactivation' })
+      await user.click(confirmButton)
+
+      expect(mockedDisableShopUser).toHaveBeenCalledWith(testShop.id, existingUser.id)
+      expect(await screen.findByText('Utilisateur désactivé.')).toBeInTheDocument()
+      await waitFor(() => {
+        expect(screen.queryByText('Bruno Caron')).not.toBeInTheDocument()
+      })
+    } finally {
+      if (dialogPrototype) {
+        const prototypeWithOverrides = dialogPrototype as {
+          showModal?: (() => void) | undefined
+          close?: (() => void) | undefined
+        }
+        if (originalShowModal) {
+          prototypeWithOverrides.showModal = originalShowModal
+        } else {
+          delete prototypeWithOverrides.showModal
+        }
+        if (originalClose) {
+          prototypeWithOverrides.close = originalClose
+        } else {
+          delete prototypeWithOverrides.close
+        }
+      }
+    }
   })
 })
