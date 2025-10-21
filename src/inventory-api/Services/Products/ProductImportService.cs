@@ -33,6 +33,10 @@ public sealed class ProductImportService : IProductImportService
     private const string StatusFailed = "Failed";
     private const string StatusDryRun = "DryRun";
     private const string StatusSkipped = "Skipped";
+    private const string ProductImportTable = "ProductImport";
+    private const string ProductImportShopIdColumn = "ShopId";
+    private const string ProductImportFileHashColumn = "FileHashSha256";
+    private const string ProductImportRowCountColumn = "RowCount";
 
     private static readonly Regex DigitsOnlyRegex = new("[^0-9]", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Encoding StrictUtf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
@@ -132,9 +136,8 @@ public sealed class ProductImportService : IProductImportService
         {
             if (!command.DryRun)
             {
-                var lastSucceededHash = await GetLastSucceededHashAsync(transaction, shopId, cancellationToken).ConfigureAwait(false);
-                if (!string.IsNullOrEmpty(lastSucceededHash) &&
-                    string.Equals(lastSucceededHash, bufferedCsv.Sha256, StringComparison.Ordinal))
+                var alreadyProcessed = await HasImportAlreadyBeenProcessedAsync(transaction, shopId, bufferedCsv.Sha256, cancellationToken).ConfigureAwait(false);
+                if (alreadyProcessed)
                 {
                     await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
                     LogImportEvent(
@@ -148,12 +151,10 @@ public sealed class ProductImportService : IProductImportService
                         duration: TimeSpan.Zero,
                         unknownColumns: EmptyUnknownColumns,
                         shopId: shopId);
-                    _logger.LogInformation("Import produits ignoré : fichier identique au dernier import réussi.");
+                    _logger.LogInformation("Import produits ignoré : fichier déjà importé pour la boutique {ShopId}.", shopId);
                     return new ProductImportResult(ProductImportResponse.SkippedResult(), ProductImportResultType.Skipped);
                 }
             }
-
-            var hasSuccessfulImport = await HasSuccessfulImportAsync(transaction, shopId, cancellationToken).ConfigureAwait(false);
 
             var historyId = Guid.NewGuid();
             var startedAt = _clock.UtcNow;
@@ -230,8 +231,7 @@ public sealed class ProductImportService : IProductImportService
 
             if (command.DryRun)
             {
-                var preview = await ComputeUpsertPreviewAsync(parseOutcome.Rows, transaction, shopId, cancellationToken)
-                    .ConfigureAwait(false);
+                var wouldInsert = parseOutcome.Rows.Count;
 
                 await CompleteHistoryAsync(
                         historyId,
@@ -255,31 +255,30 @@ public sealed class ProductImportService : IProductImportService
                     command.Username,
                     bufferedCsv.Sha256,
                     totalLines,
-                    created: preview.Created,
-                    updated: preview.Updated,
+                    created: wouldInsert,
+                    updated: 0,
                     stopwatch.Elapsed,
                     unknownColumns,
                     shopId);
 
                 return new ProductImportResult(
-                    ProductImportResponse.DryRunResult(totalLines, preview.Created, unknownColumns, parseOutcome.ProposedGroups),
+                    ProductImportResponse.DryRunResult(totalLines, wouldInsert, unknownColumns, parseOutcome.ProposedGroups),
                     ProductImportResultType.DryRun);
             }
 
             try
             {
-                if (!command.DryRun && !hasSuccessfulImport && parseOutcome.Rows.Count > 0)
-                {
-                    await DeleteExistingProductsAsync(transaction, shopId, cancellationToken).ConfigureAwait(false);
-                }
+                await DeleteExistingProductsAsync(transaction, shopId, cancellationToken).ConfigureAwait(false);
 
-                var upsertStats = await UpsertRowsAsync(parseOutcome.Rows, transaction, shopId, cancellationToken).ConfigureAwait(false);
+                var insertStats = await InsertRowsAsync(parseOutcome.Rows, transaction, shopId, cancellationToken).ConfigureAwait(false);
+
+                await RecordSuccessfulImportAsync(transaction, shopId, bufferedCsv.Sha256, insertStats.Inserted, cancellationToken).ConfigureAwait(false);
 
                 await CompleteHistoryAsync(
                         historyId,
                         StatusSucceeded,
                         totalLines,
-                        inserted: upsertStats.Created + upsertStats.Updated,
+                        inserted: insertStats.Inserted,
                         errorCount: 0,
                         transaction,
                         cancellationToken,
@@ -297,19 +296,18 @@ public sealed class ProductImportService : IProductImportService
                     command.Username,
                     bufferedCsv.Sha256,
                     totalLines,
-                    created: upsertStats.Created,
-                    updated: upsertStats.Updated,
+                    created: insertStats.Inserted,
+                    updated: 0,
                     stopwatch.Elapsed,
                     unknownColumns,
                     shopId);
 
                 _logger.LogInformation(
-                    "Import produits terminé : {Created} créations, {Updated} mises à jour.",
-                    upsertStats.Created,
-                    upsertStats.Updated);
+                    "Import produits terminé : {Inserted} insertions.",
+                    insertStats.Inserted);
 
                 return new ProductImportResult(
-                    ProductImportResponse.Success(totalLines, upsertStats.Created, upsertStats.Updated, unknownColumns, parseOutcome.ProposedGroups),
+                    ProductImportResponse.Success(totalLines, insertStats.Inserted, 0, unknownColumns, parseOutcome.ProposedGroups),
                     ProductImportResultType.Succeeded);
             }
             catch
@@ -500,18 +498,6 @@ public sealed class ProductImportService : IProductImportService
         return combined == 0 ? GlobalAdvisoryLockKey : combined;
     }
 
-    private async Task<string?> GetLastSucceededHashAsync(NpgsqlTransaction transaction, Guid shopId, CancellationToken cancellationToken)
-    {
-        const string sql =
-            "SELECT \"FileSha256\" FROM \"ProductImportHistory\" " +
-            "WHERE \"Status\" = @Status AND \"FileSha256\" IS NOT NULL AND \"ShopId\" = @ShopId " +
-            "ORDER BY \"StartedAt\" DESC LIMIT 1;";
-
-        return await _connection.QueryFirstOrDefaultAsync<string?>(
-                new CommandDefinition(sql, new { Status = StatusSucceeded, ShopId = shopId }, transaction: transaction, cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
-    }
-
     private async Task InsertHistoryStartedAsync(
         Guid historyId,
         DateTimeOffset startedAt,
@@ -537,19 +523,6 @@ public sealed class ProductImportService : IProductImportService
 
         await _connection.ExecuteAsync(
                 new CommandDefinition(sql, parameters, transaction: transaction, cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
-    }
-
-    private async Task<bool> HasSuccessfulImportAsync(NpgsqlTransaction transaction, Guid shopId, CancellationToken cancellationToken)
-    {
-        const string sql =
-            "SELECT EXISTS (" +
-            "SELECT 1 FROM \"ProductImportHistory\" " +
-            "WHERE \"Status\" = @StatusSucceeded AND \"ShopId\" = @ShopId" +
-            ");";
-
-        return await _connection.ExecuteScalarAsync<bool>(
-                new CommandDefinition(sql, new { StatusSucceeded, ShopId = shopId }, transaction: transaction, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
     }
 
@@ -601,7 +574,47 @@ public sealed class ProductImportService : IProductImportService
             .ConfigureAwait(false);
     }
 
-    private async Task<UpsertStatistics> UpsertRowsAsync(
+    private async Task<bool> HasImportAlreadyBeenProcessedAsync(
+        NpgsqlTransaction transaction,
+        Guid shopId,
+        string fileHash,
+        CancellationToken cancellationToken)
+    {
+        var sql = $"SELECT EXISTS (SELECT 1 FROM \"{ProductImportTable}\" WHERE \"{ProductImportShopIdColumn}\" = @ShopId AND \"{ProductImportFileHashColumn}\" = @FileHash);";
+
+        return await _connection.ExecuteScalarAsync<bool>(
+                new CommandDefinition(sql, new { ShopId = shopId, FileHash = fileHash }, transaction: transaction, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+    }
+
+    private async Task RecordSuccessfulImportAsync(
+        NpgsqlTransaction transaction,
+        Guid shopId,
+        string fileHash,
+        int rowCount,
+        CancellationToken cancellationToken)
+    {
+        var sql =
+            $"INSERT INTO \"{ProductImportTable}\" (\"Id\", \"{ProductImportShopIdColumn}\", \"FileName\", \"{ProductImportFileHashColumn}\", \"{ProductImportRowCountColumn}\", \"ImportedAtUtc\") " +
+            "VALUES (@Id, @ShopId, @FileName, @FileHash, @RowCount, @ImportedAtUtc) " +
+            $"ON CONFLICT (\"{ProductImportShopIdColumn}\", \"{ProductImportFileHashColumn}\") DO NOTHING;";
+
+        var parameters = new
+        {
+            Id = Guid.NewGuid(),
+            ShopId = shopId,
+            FileName = "import.csv",
+            FileHash = fileHash,
+            RowCount = rowCount,
+            ImportedAtUtc = _clock.UtcNow
+        };
+
+        await _connection.ExecuteAsync(
+                new CommandDefinition(sql, parameters, transaction: transaction, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+    }
+
+    private async Task<ImportStatistics> InsertRowsAsync(
         IReadOnlyList<ProductCsvRow> rows,
         NpgsqlTransaction transaction,
         Guid shopId,
@@ -609,153 +622,95 @@ public sealed class ProductImportService : IProductImportService
     {
         if (rows.Count == 0)
         {
-            return UpsertStatistics.Empty;
+            return ImportStatistics.Empty;
         }
-
-        var now = _clock.UtcNow;
-        var created = 0;
-        var updated = 0;
-        var groupCache = new Dictionary<GroupKey, long?>(GroupKeyComparer.Instance);
 
         if (transaction.Connection is not NpgsqlConnection npgsqlConnection)
         {
-            throw new InvalidOperationException("Une connexion Npgsql est requise pour l'UPSERT produit.");
+            throw new InvalidOperationException("Une connexion Npgsql est requise pour insérer des produits.");
         }
 
-        const string sql = """
-INSERT INTO "Product" ("ShopId", "Sku", "Name", "Ean", "GroupId", "Attributes", "CodeDigits", "CreatedAtUtc")
-VALUES (@shopId, @sku, @name, @ean, @gid, @attrs, @digits, @created)
-ON CONFLICT ("ShopId", (LOWER("Sku")))
-DO UPDATE SET
-    "Name" = EXCLUDED."Name",
-    "Ean" = EXCLUDED."Ean",
-    "GroupId" = EXCLUDED."GroupId",
-    "Attributes" = COALESCE("Product"."Attributes", '{}'::jsonb) || EXCLUDED."Attributes",
-    "CodeDigits" = EXCLUDED."CodeDigits"
-RETURNING (xmax = 0) AS inserted;
-""";
+        var now = _clock.UtcNow;
+        var inserted = 0;
+        var groupCache = new Dictionary<GroupKey, long?>(GroupKeyComparer.Instance);
 
-        await using var command = new NpgsqlCommand(sql, npgsqlConnection, transaction);
+        const string sql = "COPY \"Product\" (\"ShopId\", \"Sku\", \"Name\", \"Ean\", \"GroupId\", \"Attributes\", \"CodeDigits\", \"CreatedAtUtc\") FROM STDIN (FORMAT BINARY);";
 
-        var shopIdParameter = command.Parameters.Add("shopId", NpgsqlDbType.Uuid);
-        var skuParameter = command.Parameters.Add("sku", NpgsqlDbType.Text);
-        var nameParameter = command.Parameters.Add("name", NpgsqlDbType.Text);
-        var eanParameter = command.Parameters.Add("ean", NpgsqlDbType.Text);
-        var groupParameter = command.Parameters.Add("gid", NpgsqlDbType.Bigint);
-        var attributesParameter = command.Parameters.Add("attrs", NpgsqlDbType.Jsonb);
-        var digitsParameter = command.Parameters.Add("digits", NpgsqlDbType.Text);
-        var createdParameter = command.Parameters.Add("created", NpgsqlDbType.TimestampTz);
-
-        shopIdParameter.Value = shopId;
-        skuParameter.Value = string.Empty;
-        nameParameter.Value = string.Empty;
-        eanParameter.Value = DBNull.Value;
-        groupParameter.Value = DBNull.Value;
-        attributesParameter.Value = "{}";
-        digitsParameter.Value = DBNull.Value;
-        createdParameter.Value = now;
-
-        await command.PrepareAsync(cancellationToken).ConfigureAwait(false);
+        await using var importer = await npgsqlConnection.BeginBinaryImportAsync(sql, cancellationToken).ConfigureAwait(false);
 
         foreach (var row in rows)
         {
-            var sku = (row.Sku ?? string.Empty).Trim();
-            var ean = string.IsNullOrWhiteSpace(row.Ean) ? null : row.Ean.Trim();
-            var name = (row.Name ?? string.Empty).Trim();
-            var group = NormalizeOptional(row.Group);
-            var subGroup = NormalizeOptional(row.SubGroup);
+            cancellationToken.ThrowIfCancellationRequested();
 
+            var sku = (row.Sku ?? string.Empty).Trim();
             if (string.IsNullOrEmpty(sku))
             {
                 continue;
             }
 
-            if (string.IsNullOrEmpty(name))
-            {
-                name = sku;
-            }
+            var name = string.IsNullOrWhiteSpace(row.Name) ? sku : row.Name.Trim();
+            var normalizedEan = NormalizeEan(row.Ean);
+            var codeDigits = BuildCodeDigits(row.Ean ?? normalizedEan);
+            var attributesJson = SerializeAttributes(row.Attributes, row.SubGroup);
+            var groupId = await ResolveGroupIdAsync(row.Group, row.SubGroup, groupCache, cancellationToken).ConfigureAwait(false);
 
-            var normalizedEan = NormalizeEan(ean);
-            var codeDigits = BuildCodeDigits(ean ?? normalizedEan);
-            var attributesJson = SerializeAttributes(row.Attributes, subGroup);
-            var groupId = await ResolveGroupIdAsync(group, subGroup, groupCache, cancellationToken)
-                .ConfigureAwait(false);
-
-            if (groupId is null && (group is not null || subGroup is not null))
+            if (groupId is null && (row.Group is not null || row.SubGroup is not null))
             {
                 _logger.LogWarning(
                     "Import: ligne ignorée (sku={Sku}, groupe={Groupe}, sousGroupe={SousGroupe}) — taxonomie introuvable",
                     sku,
-                    group,
-                    subGroup);
+                    row.Group,
+                    row.SubGroup);
                 continue;
             }
 
-            skuParameter.Value = sku;
-            nameParameter.Value = name;
-            eanParameter.Value = normalizedEan ?? (object)DBNull.Value;
-            groupParameter.Value = groupId ?? (object)DBNull.Value;
-            attributesParameter.Value = attributesJson;
-            digitsParameter.Value = codeDigits ?? (object)DBNull.Value;
-            createdParameter.Value = now;
+            await importer.StartRowAsync(cancellationToken).ConfigureAwait(false);
+            importer.Write(shopId, NpgsqlDbType.Uuid);
+            importer.Write(sku, NpgsqlDbType.Text);
+            importer.Write(name, NpgsqlDbType.Text);
 
-            var inserted = (bool)await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-
-            if (inserted)
+            if (normalizedEan is null)
             {
-                created++;
+                importer.WriteNull();
             }
             else
             {
-                updated++;
+                importer.Write(normalizedEan, NpgsqlDbType.Text);
             }
+
+            if (groupId is null)
+            {
+                importer.WriteNull();
+            }
+            else
+            {
+                importer.Write(groupId.Value, NpgsqlDbType.Bigint);
+            }
+
+            importer.Write(attributesJson, NpgsqlDbType.Jsonb);
+
+            if (codeDigits is null)
+            {
+                importer.WriteNull();
+            }
+            else
+            {
+                importer.Write(codeDigits, NpgsqlDbType.Text);
+            }
+
+            importer.Write(now, NpgsqlDbType.TimestampTz);
+
+            inserted++;
         }
 
-        return new UpsertStatistics(created, updated);
+        await importer.CompleteAsync(cancellationToken).ConfigureAwait(false);
+
+        return new ImportStatistics(inserted);
     }
 
-    private async Task<UpsertStatistics> ComputeUpsertPreviewAsync(
-        IReadOnlyList<ProductCsvRow> rows,
-        NpgsqlTransaction transaction,
-        Guid shopId,
-        CancellationToken cancellationToken)
+    private sealed record ImportStatistics(int Inserted)
     {
-        if (rows.Count == 0)
-        {
-            return UpsertStatistics.Empty;
-        }
-
-        var distinctSkus = rows
-            .Select(row => row.Sku)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
-        var lowerSkus = distinctSkus
-            .Select(static sku => sku.ToLowerInvariant())
-            .ToArray();
-
-        const string sql = "SELECT \"Sku\" FROM \"Product\" WHERE LOWER(\"Sku\") = ANY(@LowerSkus) AND \"ShopId\" = @ShopId;";
-        var existingSkus = await _connection.QueryAsync<string>(
-                new CommandDefinition(sql, new { LowerSkus = lowerSkus, ShopId = shopId }, transaction: transaction, cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
-
-        var existingSet = new HashSet<string>(existingSkus, StringComparer.OrdinalIgnoreCase);
-
-        var created = 0;
-        var updated = 0;
-        foreach (var row in rows)
-        {
-            if (existingSet.Contains(row.Sku))
-            {
-                updated++;
-            }
-            else
-            {
-                created++;
-            }
-        }
-
-        return new UpsertStatistics(created, updated);
+        public static ImportStatistics Empty { get; } = new(0);
     }
 
     private string? NormalizeEan(string? ean)

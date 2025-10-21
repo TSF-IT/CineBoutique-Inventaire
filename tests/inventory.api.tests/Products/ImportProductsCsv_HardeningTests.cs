@@ -84,7 +84,7 @@ public sealed class ImportProductsCsv_HardeningTests : IntegrationTestBase
 
         using var duplicateContent = CreateCsvContent(SampleCsvLines);
         var duplicateResponse = await client.PostAsync("/api/products/import", duplicateContent).ConfigureAwait(false);
-        await duplicateResponse.ShouldBeAsync(HttpStatusCode.NoContent, "un import identique doit être ignoré").ConfigureAwait(false);
+        await duplicateResponse.ShouldBeAsync(HttpStatusCode.OK, "un import identique doit être ignoré").ConfigureAwait(false);
 
         var payload = await duplicateResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
         payload.Should().NotBeNull();

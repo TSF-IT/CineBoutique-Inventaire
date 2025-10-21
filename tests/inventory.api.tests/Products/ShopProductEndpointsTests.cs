@@ -114,11 +114,21 @@ public sealed class ShopProductEndpointsTests : IntegrationTestBase
 
         using var duplicate = new StringContent(csv, Encoding.Latin1, "text/csv");
         var duplicateResponse = await client.PostAsync($"/api/shops/{shopId}/products/import", duplicate).ConfigureAwait(false);
-        await duplicateResponse.ShouldBeAsync(HttpStatusCode.NoContent, "un import identique doit être ignoré").ConfigureAwait(false);
+        await duplicateResponse.ShouldBeAsync(HttpStatusCode.OK, "un import identique doit être ignoré sans erreur").ConfigureAwait(false);
 
         var payload = await duplicateResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
         payload.Should().NotBeNull();
         payload!.Skipped.Should().BeTrue();
+
+        await using (var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false))
+        await using (var command = new Npgsql.NpgsqlCommand(
+                           "SELECT COUNT(*) FROM \"ProductImport\" WHERE \"ShopId\" = @shop;",
+                           connection))
+        {
+            command.Parameters.AddWithValue("shop", shopId);
+            var processed = (long)await command.ExecuteScalarAsync().ConfigureAwait(false);
+            processed.Should().Be(1, "un seul hash doit être enregistré pour la boutique");
+        }
     }
 
     [SkippableFact]

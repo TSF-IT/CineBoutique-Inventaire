@@ -327,7 +327,7 @@ WHERE p.""Sku"" = @sku;";
         using (var duplicateContent = CreateCsvContent(InitialCsvLines))
         {
             var duplicateResponse = await client.PostAsync("/api/products/import", duplicateContent).ConfigureAwait(false);
-            duplicateResponse.StatusCode.Should().Be(HttpStatusCode.NoContent, "l'import identique doit être ignoré");
+            duplicateResponse.StatusCode.Should().Be(HttpStatusCode.OK, "l'import identique doit être ignoré");
 
             var duplicatePayload = await duplicateResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
             duplicatePayload.Should().NotBeNull();

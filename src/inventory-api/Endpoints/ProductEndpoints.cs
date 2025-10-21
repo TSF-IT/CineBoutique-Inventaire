@@ -913,9 +913,7 @@ OFFSET @Offset LIMIT @Limit;
             return result.ResultType switch
             {
                 ProductImportResultType.ValidationFailed => Results.BadRequest(result.Response),
-                ProductImportResultType.Skipped => Results.Json(
-                    result.Response,
-                    statusCode: StatusCodes.Status204NoContent),
+                ProductImportResultType.Skipped => Results.Ok(result.Response),
                 _ => BuildImportSuccessResult(result.Response, isDryRun, unknownColumns)
             };
         }
