@@ -11,7 +11,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using CineBoutique.Inventory.Api.Infrastructure.Shops;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using Dapper;
@@ -112,9 +111,12 @@ public sealed class ProductImportService : IProductImportService
 
         await EnsureConnectionOpenAsync(npgsqlConnection, cancellationToken).ConfigureAwait(false);
 
-        var shopId = await ShopIdResolver
-            .ResolveAsync(npgsqlConnection, command.ShopId, cancellationToken)
-            .ConfigureAwait(false);
+        if (command.ShopId == Guid.Empty)
+        {
+            throw new InvalidOperationException("Un identifiant de boutique est requis pour lancer l'import produit.");
+        }
+
+        var shopId = command.ShopId;
 
         await using var transaction = await npgsqlConnection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 

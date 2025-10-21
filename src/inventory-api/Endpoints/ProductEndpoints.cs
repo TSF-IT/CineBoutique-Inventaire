@@ -49,10 +49,13 @@ internal static class ProductEndpoints
         app.MapGet("/api/products/{sku}/details", async (
             string sku,
             System.Data.IDbConnection connection,
+            IShopResolver shopResolver,
+            HttpContext httpContext,
             System.Threading.CancellationToken ct) =>
         {
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, ct).ConfigureAwait(false);
-            var legacyShopId = await ResolveLegacyShopIdAsync(connection, ct).ConfigureAwait(false);
+            var legacyShopId = await ResolveLegacyShopIdAsync(connection, shopResolver, httpContext, ct)
+                .ConfigureAwait(false);
             const string sql = @"
       SELECT p.""Sku"", p.""Ean"", p.""Name"",
              pg.""Label"" AS ""Group"", pgp.""Label"" AS ""SubGroup"",
@@ -71,10 +74,13 @@ internal static class ProductEndpoints
         // --- GET /api/products/count ---
         app.MapGet("/api/products/count", async (
             System.Data.IDbConnection connection,
+            IShopResolver shopResolver,
+            HttpContext httpContext,
             System.Threading.CancellationToken cancellationToken) =>
         {
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
-            var legacyShopId = await ResolveLegacyShopIdAsync(connection, cancellationToken).ConfigureAwait(false);
+            var legacyShopId = await ResolveLegacyShopIdAsync(connection, shopResolver, httpContext, cancellationToken)
+                .ConfigureAwait(false);
 
             const string sql = @"SELECT COUNT(*) FROM ""Product"" WHERE ""ShopId"" = @ShopId;";
             var total = await connection.ExecuteScalarAsync<long>(
@@ -96,6 +102,7 @@ internal static class ProductEndpoints
             string code,
             CreateProductRequest request,
             IDbConnection connection,
+            IShopResolver shopResolver,
             IAuditLogger auditLogger,
             IClock clock,
             HttpContext httpContext,
@@ -138,7 +145,8 @@ internal static class ProductEndpoints
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
-            var legacyShopId = await ResolveLegacyShopIdAsync(connection, cancellationToken).ConfigureAwait(false);
+            var legacyShopId = await ResolveLegacyShopIdAsync(connection, shopResolver, httpContext, cancellationToken)
+                .ConfigureAwait(false);
 
             // Récupère le produit par SKU (case-insensitive)
             const string fetchSql = @"SELECT ""Id"", ""Sku"", ""Name"", ""Ean""
@@ -206,6 +214,7 @@ internal static class ProductEndpoints
             Guid id,
             CreateProductRequest request,
             IDbConnection connection,
+            IShopResolver shopResolver,
             IAuditLogger auditLogger,
             IClock clock,
             HttpContext httpContext,
@@ -240,7 +249,8 @@ internal static class ProductEndpoints
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
-            var legacyShopId = await ResolveLegacyShopIdAsync(connection, cancellationToken).ConfigureAwait(false);
+            var legacyShopId = await ResolveLegacyShopIdAsync(connection, shopResolver, httpContext, cancellationToken)
+                .ConfigureAwait(false);
 
             // Vérifie l'existence
             const string existsSql = @"SELECT ""Id"", ""Sku"", ""Name"", ""Ean""
@@ -300,6 +310,7 @@ internal static class ProductEndpoints
         app.MapPost("/api/products", async (
             CreateProductRequest request,
             IDbConnection connection,
+            IShopResolver shopResolver,
             IAuditLogger auditLogger,
             IClock clock,
             HttpContext httpContext,
@@ -346,7 +357,8 @@ internal static class ProductEndpoints
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
-            var legacyShopId = await ResolveLegacyShopIdAsync(connection, cancellationToken).ConfigureAwait(false);
+            var legacyShopId = await ResolveLegacyShopIdAsync(connection, shopResolver, httpContext, cancellationToken)
+                .ConfigureAwait(false);
 
             const string insertSql = @"INSERT INTO ""Product"" (""Id"", ""ShopId"", ""Sku"", ""Name"", ""Ean"", ""CodeDigits"", ""CreatedAtUtc"")
 VALUES (@Id, @ShopId, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc)
@@ -409,6 +421,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
         app.MapPost("/api/products/import", async (
                 Microsoft.AspNetCore.Http.HttpRequest request,
                 System.Data.IDbConnection connection,
+                IShopResolver shopResolver,
                 string? dryRun,
                 Microsoft.Extensions.Options.IOptions<CineBoutique.Inventory.Api.Configuration.AppSettingsOptions> appSettings,
                 System.Threading.CancellationToken cancellationToken) =>
@@ -417,7 +430,10 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 {
                     return Results.BadRequest(new { reason = "GLOBAL_IMPORT_DISABLED" });
                 }
-                var legacyShopId = await ResolveLegacyShopIdAsync(connection, cancellationToken).ConfigureAwait(false);
+                var httpContext = request.HttpContext
+                    ?? throw new InvalidOperationException("HttpContext requis pour déterminer la boutique.");
+                var legacyShopId = await ResolveLegacyShopIdAsync(connection, shopResolver, httpContext, cancellationToken)
+                    .ConfigureAwait(false);
                 return await RunProductImportAsync(request, connection, dryRun, legacyShopId, bypassShopAdminCheck: true, cancellationToken).ConfigureAwait(false);
             })
            .RequireAuthorization();
@@ -1321,8 +1337,26 @@ LIMIT @top;";
         });
     }
 
-    private static Task<Guid> ResolveLegacyShopIdAsync(IDbConnection connection, CancellationToken cancellationToken) =>
-        ShopIdResolver.ResolveAsync(connection, Guid.Empty, cancellationToken);
+    private static async Task<Guid> ResolveLegacyShopIdAsync(
+        IDbConnection connection,
+        IShopResolver shopResolver,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentNullException.ThrowIfNull(shopResolver);
+        ArgumentNullException.ThrowIfNull(httpContext);
+
+        var resolved = shopResolver.TryGetFromUser(httpContext);
+        if (resolved.HasValue)
+        {
+            return resolved.Value;
+        }
+
+        return await shopResolver
+            .GetDefaultForBackCompatAsync(connection, cancellationToken)
+            .ConfigureAwait(false);
+    }
 
     private static bool IsCsvContentType(string? contentType)
     {
