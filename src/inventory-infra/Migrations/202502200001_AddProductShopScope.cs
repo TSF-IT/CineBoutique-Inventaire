@@ -9,7 +9,7 @@ public sealed class AddProductShopScope : Migration
     private const string ProductHistoryTable = "ProductImportHistory";
     private const string ShopIdColumn = "ShopId";
     private const string LowerSkuIndexName = "UX_Product_Shop_LowerSku";
-    private const string EanIndexName = "UX_Product_Shop_Ean_NotNull";
+    private const string ShopEanIndexName = "ix_product_shop_ean";
     private const string HistoryShopStartedIndexName = "IX_ProductImportHistory_Shop_StartedAt";
     private const string HistoryFileIndexName = "IX_ProductImportHistory_FileSha256";
 
@@ -33,7 +33,7 @@ public sealed class AddProductShopScope : Migration
         Execute.Sql("DROP INDEX IF EXISTS \"UX_Product_LowerSku\";");
         Execute.Sql("DROP INDEX IF EXISTS \"IX_Product_Sku\";");
 
-        Execute.Sql($"DROP INDEX IF EXISTS \"{EanIndexName}\";");
+        Execute.Sql($"DROP INDEX IF EXISTS \"{ShopEanIndexName}\";");
         Execute.Sql("DROP INDEX IF EXISTS \"UX_Product_Ean_NotNull\";");
         Execute.Sql("DROP INDEX IF EXISTS \"IX_Product_Ean\";");
 
@@ -43,9 +43,8 @@ ON "public"."{ProductTable}" ("{ShopIdColumn}", (LOWER("Sku")));
 """);
 
         Execute.Sql($"""
-CREATE UNIQUE INDEX IF NOT EXISTS "{EanIndexName}"
-ON "public"."{ProductTable}" ("{ShopIdColumn}", "Ean")
-WHERE "Ean" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "{ShopEanIndexName}"
+ON "public"."{ProductTable}" ("{ShopIdColumn}", "Ean");
 """);
 
         if (!Schema.Table(ProductHistoryTable).Column(ShopIdColumn).Exists())
@@ -86,9 +85,9 @@ WHERE "Ean" IS NOT NULL;
             Delete.Index(LowerSkuIndexName).OnTable(ProductTable);
         }
 
-        if (Schema.Table(ProductTable).Index(EanIndexName).Exists())
+        if (Schema.Table(ProductTable).Index(ShopEanIndexName).Exists())
         {
-            Delete.Index(EanIndexName).OnTable(ProductTable);
+            Delete.Index(ShopEanIndexName).OnTable(ProductTable);
         }
 
         if (Schema.Table(ProductTable).Column(ShopIdColumn).Exists())
