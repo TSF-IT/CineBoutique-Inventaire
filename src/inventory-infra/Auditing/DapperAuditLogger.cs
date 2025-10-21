@@ -39,6 +39,8 @@ public sealed class DapperAuditLogger : IAuditLogger
 
     public async Task LogAsync(AuditEntry entry, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(entry);
+
         try
         {
             var qualifiedTable = GetQualifiedTable();
