@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   createLocation,
@@ -20,7 +20,7 @@ import type { ShopUser } from '@/types/user'
 import { useShop } from '@/state/ShopContext'
 
 type FeedbackState = { type: 'success' | 'error'; message: string } | null
-type AdminSection = 'locations' | 'users'
+type AdminSection = 'locations' | 'users' | 'catalog'
 
 const ADMIN_SECTIONS: { id: AdminSection; label: string; description: string }[] = [
   {
@@ -32,6 +32,11 @@ const ADMIN_SECTIONS: { id: AdminSection; label: string; description: string }[]
     id: 'users',
     label: 'Utilisateurs',
     description: 'Créez, mettez à jour ou désactivez les comptes des personnes autorisées à inventorier.',
+  },
+  {
+    id: 'catalog',
+    label: 'Catalogue produits (CSV)',
+    description: 'Importez ou simulez un import CSV pour mettre à jour le catalogue de la boutique.',
   },
 ]
 
@@ -85,6 +90,265 @@ const SectionSwitcher = ({ activeSection, onChange }: SectionSwitcherProps) => (
     </div>
   </Card>
 )
+
+type ImportSummary = {
+  total: number
+  inserted: number
+  updated: number
+  errorCount: number
+  unknownColumns: string[]
+}
+
+type CatalogImportFeedback =
+  | { type: 'success'; summary: ImportSummary; isDryRun: boolean }
+  | { type: 'info'; message: string }
+  | { type: 'error'; message: string; details?: string[] }
+
+const CatalogImportPanel = ({ description }: { description: string }) => {
+  const { shop } = useShop()
+  const [file, setFile] = useState<File | null>(null)
+  const [dryRun, setDryRun] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [feedback, setFeedback] = useState<CatalogImportFeedback | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0] ?? null
+    setFile(selectedFile)
+  }
+
+  const resetFileInput = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+    setFile(null)
+  }
+
+  const toInteger = (value: unknown) => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return Math.trunc(value)
+    }
+    if (typeof value === 'string') {
+      const parsed = Number.parseInt(value, 10)
+      return Number.isNaN(parsed) ? 0 : parsed
+    }
+    return 0
+  }
+
+  const toStringList = (value: unknown) => {
+    if (!Array.isArray(value)) {
+      return []
+    }
+    return value
+      .map((item) => (typeof item === 'string' ? item.trim() : ''))
+      .filter((item): item is string => item.length > 0)
+  }
+
+  const parseJson = (text: string) => {
+    try {
+      return JSON.parse(text) as Record<string, unknown>
+    } catch {
+      return null
+    }
+  }
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setFeedback(null)
+
+    if (!shop?.id) {
+      setFeedback({ type: 'error', message: 'Boutique introuvable. Veuillez recharger la page.' })
+      return
+    }
+
+    if (!file) {
+      setFeedback({ type: 'error', message: "Sélectionnez un fichier CSV avant de lancer l'import." })
+      return
+    }
+
+    setSubmitting(true)
+    try {
+      const fd = new FormData()
+      fd.set('file', file)
+
+      const url = `/api/shops/${shop.id}/products/import?dryRun=${dryRun}`
+      const response = await fetch(url, { method: 'POST', body: fd })
+      const rawText = await response.text()
+      const payload = rawText ? parseJson(rawText) : null
+      const record = (payload ?? {}) as Record<string, unknown>
+
+      if (response.status === 200) {
+        const summary: ImportSummary = {
+          total: toInteger(record.total),
+          inserted: toInteger(record.inserted),
+          updated: toInteger(record.updated),
+          errorCount: toInteger(record.errorCount),
+          unknownColumns: toStringList(record.unknownColumns),
+        }
+        setFeedback({ type: 'success', summary, isDryRun: dryRun })
+        resetFileInput()
+        return
+      }
+
+      if (response.status === 204) {
+        setFeedback({ type: 'info', message: 'Aucun changement (fichier déjà importé).' })
+        resetFileInput()
+        return
+      }
+
+      if (response.status === 423) {
+        setFeedback({ type: 'error', message: 'Un import est déjà en cours.' })
+        return
+      }
+
+      if (response.status === 413) {
+        setFeedback({ type: 'error', message: 'Fichier trop volumineux (25 MiB max).' })
+        return
+      }
+
+      if (response.status === 400) {
+        const aggregatedDetails = [
+          ...toStringList(record.errors),
+          ...toStringList(record.errorMessages),
+          ...toStringList(record.details),
+        ]
+        const uniqueDetails = Array.from(new Set(aggregatedDetails))
+        const message =
+          typeof record.message === 'string'
+            ? record.message
+            : typeof record.error === 'string'
+              ? record.error
+              : rawText && rawText.trim().length > 0
+                ? rawText
+                : 'Le fichier CSV est invalide.'
+        setFeedback({
+          type: 'error',
+          message,
+          details: uniqueDetails.length > 0 ? uniqueDetails : undefined,
+        })
+        return
+      }
+
+      const fallbackMessage =
+        (typeof record.message === 'string' && record.message) ||
+        (typeof record.error === 'string' && record.error) ||
+        (rawText && rawText.trim().length > 0 ? rawText : `Erreur inattendue (${response.status}).`)
+      setFeedback({ type: 'error', message: fallbackMessage })
+    } catch (error) {
+      setFeedback({
+        type: 'error',
+        message: "L'import a échoué. Vérifiez votre connexion et réessayez.",
+      })
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4 rounded-lg border bg-white shadow-sm p-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Catalogue produits (CSV)</h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400">{description}</p>
+        </div>
+      </div>
+      <form className="flex flex-col gap-4" onSubmit={handleSubmit} encType="multipart/form-data">
+        <Input
+          ref={fileInputRef}
+          name="file"
+          type="file"
+          accept=".csv,text/csv"
+          label="Fichier CSV"
+          onChange={handleFileChange}
+          className="text-sm file:mr-3 file:cursor-pointer file:rounded-xl file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
+        />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <label className="flex items-center gap-3 text-sm font-medium text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              name="dryRun"
+              checked={dryRun}
+              onChange={(event) => setDryRun(event.target.checked)}
+              className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-600"
+            />
+            Simulation (dry-run)
+          </label>
+          <Button
+            type="submit"
+            disabled={submitting || !file}
+            className="w-full sm:w-auto"
+          >
+            {submitting ? 'Import en cours…' : 'Importer le CSV'}
+          </Button>
+        </div>
+      </form>
+      {feedback && (
+        <div
+          role={feedback.type === 'error' ? 'alert' : 'status'}
+          className={clsx(
+            'rounded-lg border p-4 text-sm',
+            feedback.type === 'success' && 'border-emerald-200 bg-emerald-50 text-emerald-800',
+            feedback.type === 'info' && 'border-slate-200 bg-slate-50 text-slate-700',
+            feedback.type === 'error' && 'border-red-200 bg-red-50 text-red-700',
+          )}
+        >
+          {feedback.type === 'success' ? (
+            <div className="space-y-3">
+              <p className="font-medium">
+                {feedback.isDryRun ? 'Simulation réalisée avec succès.' : 'Import terminé avec succès.'}
+              </p>
+              <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                <div>
+                  <dt className="font-medium text-slate-700">Total</dt>
+                  <dd className="text-slate-600">{feedback.summary.total}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-slate-700">Insérés</dt>
+                  <dd className="text-slate-600">{feedback.summary.inserted}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-slate-700">Mis à jour</dt>
+                  <dd className="text-slate-600">{feedback.summary.updated}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-slate-700">Erreurs détectées</dt>
+                  <dd className="text-slate-600">{feedback.summary.errorCount}</dd>
+                </div>
+              </dl>
+              {feedback.summary.unknownColumns.length > 0 && (
+                <div className="space-y-2">
+                  <p className="font-medium text-slate-700">Colonnes inconnues</p>
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
+                    {feedback.summary.unknownColumns.map((column) => (
+                      <li key={column} className="max-w-full truncate" title={column}>
+                        {column}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          ) : feedback.type === 'info' ? (
+            <p className="font-medium">{feedback.message}</p>
+          ) : (
+            <div className="space-y-2">
+              <p className="font-medium">{feedback.message}</p>
+              {feedback.details && feedback.details.length > 0 && (
+                <ul className="list-disc space-y-1 pl-5 text-sm">
+                  {feedback.details.map((detail) => (
+                    <li key={detail} className="max-w-full break-words">
+                      {detail}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 type LocationListItemProps = {
   location: Location
@@ -787,8 +1051,10 @@ export const AdminLocationsPage = () => {
       <SectionSwitcher activeSection={activeSection} onChange={setActiveSection} />
       {activeSection === 'locations' ? (
         <LocationsPanel description={activeDefinition.description} />
-      ) : (
+      ) : activeSection === 'users' ? (
         <UsersPanel description={activeDefinition.description} isActive={activeSection === 'users'} />
+      ) : (
+        <CatalogImportPanel description={activeDefinition.description} />
       )}
     </div>
   )
