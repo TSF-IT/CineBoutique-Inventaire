@@ -577,235 +577,8 @@ ORDER BY COALESCE(NULLIF(p."Sku", ''), p."Ean"), p."Ean", pr."RunId";
                 });
             }
 
-            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
-
-            var columnsState = await DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
-            var locationOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
-
-            var activeRunsDistinctColumns = columnsState.HasOwnerUserId
-                ? "cr.\"LocationId\", cr.\"CountType\", cr.\"OwnerUserId\""
-                : columnsState.HasOperatorDisplayName
-                    ? "cr.\"LocationId\", cr.\"CountType\", cr.\"OperatorDisplayName\""
-                    : "cr.\"LocationId\", cr.\"CountType\"";
-
-            var activeRunsOrderByColumns = columnsState.HasOwnerUserId
-                ? "cr.\"LocationId\", cr.\"CountType\", cr.\"OwnerUserId\", cr.\"StartedAtUtc\" DESC"
-                : columnsState.HasOperatorDisplayName
-                    ? "cr.\"LocationId\", cr.\"CountType\", cr.\"OperatorDisplayName\", cr.\"StartedAtUtc\" DESC"
-                    : "cr.\"LocationId\", cr.\"CountType\", cr.\"StartedAtUtc\" DESC";
-
-            var sql = $@"WITH active_runs AS (
-    SELECT DISTINCT ON ({activeRunsDistinctColumns})
-        cr.""LocationId"",
-        cr.""Id""            AS ""ActiveRunId"",
-        cr.""CountType""     AS ""ActiveCountType"",
-        cr.""StartedAtUtc""  AS ""ActiveStartedAtUtc"",
-        -- si tu as la détection conditionnelle de la colonne:
-        {locationOperatorSql.Projection} AS ""BusyBy""
-    FROM ""CountingRun"" cr
-{AppendJoinClause(locationOperatorSql.JoinClause)}
-    WHERE cr.""CompletedAtUtc"" IS NULL
-      AND (@CountType IS NULL OR cr.""CountType"" = @CountType)
-    ORDER BY {activeRunsOrderByColumns}
-)
-SELECT
-    l.""Id"",
-    l.""Code"",
-    l.""Label"",
-    (ar.""ActiveRunId"" IS NOT NULL) AS ""IsBusy"",
-    ar.""BusyBy"",
-    CASE
-        WHEN ar.""ActiveRunId"" IS NULL THEN NULL
-        WHEN ar.""ActiveRunId""::text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' THEN ar.""ActiveRunId""
-        ELSE NULL
-    END AS ""ActiveRunId"",
-    ar.""ActiveCountType"",
-    ar.""ActiveStartedAtUtc""
-FROM ""Location"" l
-LEFT JOIN active_runs ar ON l.""Id"" = ar.""LocationId""
-WHERE l.""ShopId"" = @ShopId
-ORDER BY l.""Code"" ASC;";
-
-            var sqlParameters = new
-            {
-                CountType = countType,
-                ShopId = parsedShopId,
-            };
-
-            var locations = (await connection
-                    .QueryAsync<LocationListItemDto>(new CommandDefinition(sql, sqlParameters, cancellationToken: cancellationToken))
-                    .ConfigureAwait(false)).ToList();
-
-            if (locations.Count == 0)
-            {
-                return Results.Ok(Array.Empty<LocationListItemDto>());
-            }
-
-            var locationIds = locations.Select(location => location.Id).ToArray();
-
-            var openRunsOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
-
-            var openRunsSql = $@"SELECT
-    cr.""LocationId"",
-    cr.""CountType"",
-    cr.""Id""          AS ""RunId"",
-    cr.""StartedAtUtc"",
-    cr.""CompletedAtUtc"",
-    {openRunsOperatorSql.OwnerDisplayProjection} AS ""OwnerDisplayName"",
-    {openRunsOperatorSql.OperatorDisplayProjection} AS ""OperatorDisplayName"",
-    {openRunsOperatorSql.OwnerUserIdProjection} AS ""OwnerUserId""
-FROM ""CountingRun"" cr
-{AppendJoinClause(openRunsOperatorSql.JoinClause)}
-WHERE cr.""CompletedAtUtc"" IS NULL
-  AND cr.""LocationId"" = ANY(@LocationIds::uuid[])
-ORDER BY cr.""LocationId"", cr.""CountType"", cr.""StartedAtUtc"" DESC;";
-
-            var completedRunsOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
-
-            var completedRunsSql = $@"SELECT DISTINCT ON (cr.""LocationId"", cr.""CountType"")
-    cr.""LocationId"",
-    cr.""CountType"",
-    cr.""Id""           AS ""RunId"",
-    cr.""StartedAtUtc"",
-    cr.""CompletedAtUtc"",
-    {completedRunsOperatorSql.OwnerDisplayProjection} AS ""OwnerDisplayName"",
-    {completedRunsOperatorSql.OperatorDisplayProjection} AS ""OperatorDisplayName"",
-    {completedRunsOperatorSql.OwnerUserIdProjection} AS ""OwnerUserId""
-FROM ""CountingRun"" cr
-{AppendJoinClause(completedRunsOperatorSql.JoinClause)}
-WHERE cr.""CompletedAtUtc"" IS NOT NULL
-  AND cr.""LocationId"" = ANY(@LocationIds::uuid[])
-ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
-
-            var openRuns = await connection
-                .QueryAsync<LocationCountStatusRow>(new CommandDefinition(openRunsSql, new { LocationIds = locationIds }, cancellationToken: cancellationToken))
+            var locations = await LoadLocationsAsync(connection, parsedShopId, countType, null, cancellationToken)
                 .ConfigureAwait(false);
-
-            var completedRuns = await connection
-                .QueryAsync<LocationCountStatusRow>(new CommandDefinition(completedRunsSql, new { LocationIds = locationIds }, cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
-
-            var openLookup = openRuns.ToLookup(row => (row.LocationId, row.CountType));
-            var completedLookup = completedRuns.ToLookup(row => (row.LocationId, row.CountType));
-
-            static IEnumerable<short> DiscoverCountTypes(IEnumerable<LocationCountStatusRow> runs)
-                => runs
-                    .Select(row => row.CountType)
-                    .Where(countTypeValue => countTypeValue > 0)
-                    .Distinct();
-
-            var discoveredCountTypes = DiscoverCountTypes(openRuns).Concat(DiscoverCountTypes(completedRuns));
-
-            var defaultCountTypes = new short[] { 1, 2 };
-
-            if (countType is { } requested)
-            {
-                defaultCountTypes = defaultCountTypes.Concat(new[] { (short)requested }).ToArray();
-            }
-
-            var targetCountTypes = defaultCountTypes
-                .Concat(discoveredCountTypes)
-                .Distinct()
-                .OrderBy(value => value)
-                .ToArray();
-
-            static string? NormalizeDisplayName(string? value) =>
-                string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-
-            static Guid? NormalizeUserId(Guid? value) =>
-                value is { } guid && guid != Guid.Empty ? guid : null;
-
-            static DateTimeOffset? ConvertToUtcTimestamp(DateTime? value)
-                => value.HasValue ? TimeUtil.ToUtcOffset(value.Value) : (DateTimeOffset?)null;
-
-            foreach (var location in locations)
-            {
-                var statuses = new List<LocationCountStatusDto>(targetCountTypes.Length);
-
-                foreach (var type in targetCountTypes)
-                {
-                    var status = new LocationCountStatusDto
-                    {
-                        CountType = type,
-                        Status = LocationCountStatus.NotStarted,
-                        RunId = null,
-                        OwnerDisplayName = null,
-                        OwnerUserId = null,
-                        StartedAtUtc = null,
-                        CompletedAtUtc = null
-                    };
-
-                    var open = openLookup[(location.Id, type)].FirstOrDefault();
-                    if (open is not null)
-                    {
-                        status.Status = LocationCountStatus.InProgress;
-                        status.RunId = EndpointUtilities.SanitizeRunId(open.RunId);
-                        status.OwnerDisplayName = NormalizeDisplayName(open.OwnerDisplayName);
-                        status.OwnerUserId = NormalizeUserId(open.OwnerUserId);
-                        status.StartedAtUtc = ConvertToUtcTimestamp(open.StartedAtUtc);
-                        status.CompletedAtUtc = ConvertToUtcTimestamp(open.CompletedAtUtc);
-                    }
-                    else
-                    {
-                        var completed = completedLookup[(location.Id, type)].FirstOrDefault();
-                        if (completed is not null)
-                        {
-                            status.Status = LocationCountStatus.Completed;
-                            status.RunId = EndpointUtilities.SanitizeRunId(completed.RunId);
-                            status.OwnerDisplayName = NormalizeDisplayName(completed.OwnerDisplayName);
-                            status.OwnerUserId = NormalizeUserId(completed.OwnerUserId);
-                            status.StartedAtUtc = ConvertToUtcTimestamp(completed.StartedAtUtc);
-                            status.CompletedAtUtc = ConvertToUtcTimestamp(completed.CompletedAtUtc);
-                        }
-                    }
-
-                    statuses.Add(status);
-                }
-
-                location.CountStatuses = statuses.Count > 0
-                    ? statuses
-                    : Array.Empty<LocationCountStatusDto>();
-
-                var openRunsForLocation = openRuns
-                    .Where(r => r.LocationId == location.Id)
-                    .ToList();
-
-                // Y a-t-il un run ouvert correspondant au filtre éventuel ?
-                if (countType is { } requestedType)
-                {
-                    var runsForRequestedType = openRunsForLocation
-                        .Where(r => r.CountType == requestedType)
-                        .ToList();
-
-                    location.IsBusy = runsForRequestedType.Any();
-
-                    var mostRecent = runsForRequestedType
-                        .OrderByDescending(r => r.StartedAtUtc)
-                        .FirstOrDefault();
-
-                    location.ActiveRunId = EndpointUtilities.SanitizeRunId(mostRecent?.RunId);
-                    location.ActiveCountType = mostRecent?.CountType;
-                    location.ActiveStartedAtUtc = TimeUtil.ToUtcOffset(mostRecent?.StartedAtUtc);
-                    var normalizedBusy = NormalizeDisplayName(mostRecent?.OwnerDisplayName)
-                        ?? NormalizeDisplayName(mostRecent?.OperatorDisplayName);
-                    location.BusyBy = normalizedBusy;
-                }
-                else
-                {
-                    location.IsBusy = openRunsForLocation.Count != 0;
-
-                    var mostRecent = openRunsForLocation
-                        .OrderByDescending(r => r.StartedAtUtc)
-                        .FirstOrDefault();
-
-                    location.ActiveRunId = EndpointUtilities.SanitizeRunId(mostRecent?.RunId);
-                    location.ActiveCountType = mostRecent?.CountType;
-                    location.ActiveStartedAtUtc = TimeUtil.ToUtcOffset(mostRecent?.StartedAtUtc);
-                    var normalizedBusy = NormalizeDisplayName(mostRecent?.OwnerDisplayName)
-                        ?? NormalizeDisplayName(mostRecent?.OperatorDisplayName);
-                    location.BusyBy = normalizedBusy;
-                }
-            }
 
             return Results.Ok(locations);
         })
@@ -842,6 +615,554 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
             }
             return op;
         });
+
+        app.MapPost(
+                "/api/locations",
+                async (
+                    string? shopId,
+                    CreateLocationRequest? request,
+                    IValidator<CreateLocationRequest> validator,
+                    IDbConnection connection,
+                    CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(shopId))
+            {
+                return Results.Problem(
+                    detail: "ShopId requis",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            if (!Guid.TryParse(shopId, out var parsedShopId))
+            {
+                return Results.Problem(
+                    detail: "ShopId invalide",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            if (request is null)
+            {
+                return EndpointUtilities.Problem(
+                    "Requête invalide",
+                    "Le corps de la requête est requis.",
+                    StatusCodes.Status400BadRequest);
+            }
+
+            var validationResult = await validator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!validationResult.IsValid)
+            {
+                return EndpointUtilities.ValidationProblem(validationResult);
+            }
+
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+            const string shopExistsSql = "SELECT EXISTS (SELECT 1 FROM \"Shop\" WHERE \"Id\" = @ShopId);";
+            var shopExists = await connection
+                .ExecuteScalarAsync<bool>(
+                    new CommandDefinition(shopExistsSql, new { ShopId = parsedShopId }, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (!shopExists)
+            {
+                return EndpointUtilities.Problem(
+                    "Ressource introuvable",
+                    "La boutique spécifiée est introuvable.",
+                    StatusCodes.Status404NotFound);
+            }
+
+            var normalizedCode = request.Code?.Trim().ToUpperInvariant() ?? string.Empty;
+            var sanitizedLabel = request.Label?.Trim() ?? string.Empty;
+
+            const string duplicateSql = @"SELECT ""Id"" FROM ""Location"" WHERE ""ShopId"" = @ShopId AND UPPER(""Code"") = @Code LIMIT 1;";
+            var existingLocationId = await connection
+                .ExecuteScalarAsync<Guid?>(
+                    new CommandDefinition(duplicateSql, new { ShopId = parsedShopId, Code = normalizedCode }, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (existingLocationId.HasValue)
+            {
+                return EndpointUtilities.Problem(
+                    "Conflit",
+                    $"Une zone avec le code '{normalizedCode}' existe déjà pour cette boutique.",
+                    StatusCodes.Status409Conflict);
+            }
+
+            const string insertSql = @"INSERT INTO ""Location"" (""Id"", ""ShopId"", ""Code"", ""Label"") VALUES (@Id, @ShopId, @Code, @Label);";
+            var id = Guid.NewGuid();
+
+            await connection
+                .ExecuteAsync(
+                    new CommandDefinition(
+                        insertSql,
+                        new
+                        {
+                            Id = id,
+                            ShopId = parsedShopId,
+                            Code = normalizedCode,
+                            Label = sanitizedLabel
+                        },
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            var created = await LoadLocationAsync(connection, parsedShopId, id, cancellationToken).ConfigureAwait(false)
+                ?? new LocationListItemDto
+                {
+                    Id = id,
+                    Code = normalizedCode,
+                    Label = sanitizedLabel,
+                    IsBusy = false,
+                    BusyBy = null,
+                    ActiveRunId = null,
+                    ActiveCountType = null,
+                    ActiveStartedAtUtc = null,
+                    CountStatuses = Array.Empty<LocationCountStatusDto>()
+                };
+
+            return Results.Created($"/api/locations/{id}", created);
+        })
+        .RequireAuthorization("Admin")
+        .WithName("CreateLocation")
+        .WithTags("Locations")
+        .Produces<LocationListItemDto>(StatusCodes.Status201Created)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status409Conflict)
+        .WithOpenApi(op =>
+        {
+            op.Summary = "Crée une nouvelle zone";
+            op.Description = "Ajoute une zone à la boutique spécifiée en garantissant l'unicité du code.";
+            return op;
+        });
+
+        app.MapPut(
+                "/api/locations/{locationId:guid}",
+                async (
+                    Guid locationId,
+                    string? shopId,
+                    UpdateLocationRequest? request,
+                    IValidator<UpdateLocationRequest> validator,
+                    IDbConnection connection,
+                    CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(shopId))
+            {
+                return Results.Problem(
+                    detail: "ShopId requis",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            if (!Guid.TryParse(shopId, out var parsedShopId))
+            {
+                return Results.Problem(
+                    detail: "ShopId invalide",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            if (request is null)
+            {
+                return EndpointUtilities.Problem(
+                    "Requête invalide",
+                    "Le corps de la requête est requis.",
+                    StatusCodes.Status400BadRequest);
+            }
+
+            var validationResult = await validator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!validationResult.IsValid)
+            {
+                return EndpointUtilities.ValidationProblem(validationResult);
+            }
+
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+            const string shopExistsSql = "SELECT EXISTS (SELECT 1 FROM \"Shop\" WHERE \"Id\" = @ShopId);";
+            var shopExists = await connection
+                .ExecuteScalarAsync<bool>(
+                    new CommandDefinition(shopExistsSql, new { ShopId = parsedShopId }, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (!shopExists)
+            {
+                return EndpointUtilities.Problem(
+                    "Ressource introuvable",
+                    "La boutique spécifiée est introuvable.",
+                    StatusCodes.Status404NotFound);
+            }
+
+            const string selectLocationSql = @"SELECT ""Id"", ""ShopId"", ""Code"", ""Label"" FROM ""Location"" WHERE ""Id"" = @LocationId AND ""ShopId"" = @ShopId LIMIT 1;";
+            var existing = await connection
+                .QuerySingleOrDefaultAsync<LocationMetadataRow>(
+                    new CommandDefinition(selectLocationSql, new { LocationId = locationId, ShopId = parsedShopId }, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (existing is null)
+            {
+                return EndpointUtilities.Problem(
+                    "Ressource introuvable",
+                    "La zone demandée est introuvable.",
+                    StatusCodes.Status404NotFound);
+            }
+
+            var normalizedCode = request.Code?.Trim().ToUpperInvariant() ?? string.Empty;
+            var sanitizedLabel = request.Label?.Trim() ?? string.Empty;
+
+            if (!string.Equals(existing.Code, normalizedCode, StringComparison.OrdinalIgnoreCase))
+            {
+                const string duplicateSql = @"SELECT ""Id"" FROM ""Location"" WHERE ""ShopId"" = @ShopId AND UPPER(""Code"") = @Code AND ""Id"" <> @LocationId LIMIT 1;";
+                var conflictId = await connection
+                    .ExecuteScalarAsync<Guid?>(
+                        new CommandDefinition(
+                            duplicateSql,
+                            new
+                            {
+                                ShopId = parsedShopId,
+                                Code = normalizedCode,
+                                LocationId = locationId
+                            },
+                            cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+
+                if (conflictId.HasValue)
+                {
+                    return EndpointUtilities.Problem(
+                        "Conflit",
+                        $"Une zone avec le code '{normalizedCode}' existe déjà pour cette boutique.",
+                        StatusCodes.Status409Conflict);
+                }
+            }
+
+            const string updateSql = @"UPDATE ""Location"" SET ""Code"" = @Code, ""Label"" = @Label WHERE ""Id"" = @LocationId AND ""ShopId"" = @ShopId;";
+            var affectedRows = await connection
+                .ExecuteAsync(
+                    new CommandDefinition(
+                        updateSql,
+                        new
+                        {
+                            Code = normalizedCode,
+                            Label = sanitizedLabel,
+                            LocationId = locationId,
+                            ShopId = parsedShopId
+                        },
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (affectedRows == 0)
+            {
+                return EndpointUtilities.Problem(
+                    "Ressource introuvable",
+                    "La zone demandée est introuvable.",
+                    StatusCodes.Status404NotFound);
+            }
+
+            var updated = await LoadLocationAsync(connection, parsedShopId, locationId, cancellationToken).ConfigureAwait(false)
+                ?? new LocationListItemDto
+                {
+                    Id = locationId,
+                    Code = normalizedCode,
+                    Label = sanitizedLabel,
+                    IsBusy = false,
+                    BusyBy = null,
+                    ActiveRunId = null,
+                    ActiveCountType = null,
+                    ActiveStartedAtUtc = null,
+                    CountStatuses = Array.Empty<LocationCountStatusDto>()
+                };
+
+            return Results.Ok(updated);
+        })
+        .RequireAuthorization("Admin")
+        .WithName("UpdateLocation")
+        .WithTags("Locations")
+        .Produces<LocationListItemDto>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status409Conflict)
+        .WithOpenApi(op =>
+        {
+            op.Summary = "Met à jour une zone";
+            op.Description = "Modifie le code et le libellé d'une zone existante en appliquant les contrôles de duplication.";
+            return op;
+        });
+    }
+
+    private static async Task<IReadOnlyList<LocationListItemDto>> LoadLocationsAsync(
+        IDbConnection connection,
+        Guid shopId,
+        int? countType,
+        IReadOnlyCollection<Guid>? filterLocationIds,
+        CancellationToken cancellationToken)
+    {
+        var normalizedIds = filterLocationIds?
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToArray();
+
+        await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+        var columnsState = await DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
+        var locationOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
+
+        var activeRunsDistinctColumns = columnsState.HasOwnerUserId
+            ? "cr.\"LocationId\", cr.\"CountType\", cr.\"OwnerUserId\""
+            : columnsState.HasOperatorDisplayName
+                ? "cr.\"LocationId\", cr.\"CountType\", cr.\"OperatorDisplayName\""
+                : "cr.\"LocationId\", cr.\"CountType\"";
+
+        var activeRunsOrderByColumns = columnsState.HasOwnerUserId
+            ? "cr.\"LocationId\", cr.\"CountType\", cr.\"OwnerUserId\", cr.\"StartedAtUtc\" DESC"
+            : columnsState.HasOperatorDisplayName
+                ? "cr.\"LocationId\", cr.\"CountType\", cr.\"OperatorDisplayName\", cr.\"StartedAtUtc\" DESC"
+                : "cr.\"LocationId\", cr.\"CountType\", cr.\"StartedAtUtc\" DESC";
+
+        var activeRunsFilterClause = normalizedIds is { Length: > 0 }
+            ? "  AND cr.\"LocationId\" = ANY(@LocationIds::uuid[])"
+            : string.Empty;
+
+        var locationFilterClause = normalizedIds is { Length: > 0 }
+            ? " AND l.\"Id\" = ANY(@LocationIds::uuid[])"
+            : string.Empty;
+
+        var sql = $@"WITH active_runs AS (
+    SELECT DISTINCT ON ({activeRunsDistinctColumns})
+        cr.""LocationId"",
+        cr.""Id""            AS ""ActiveRunId"",
+        cr.""CountType""     AS ""ActiveCountType"",
+        cr.""StartedAtUtc""  AS ""ActiveStartedAtUtc"",
+        {locationOperatorSql.Projection} AS ""BusyBy""
+    FROM ""CountingRun"" cr
+{AppendJoinClause(locationOperatorSql.JoinClause)}
+    WHERE cr.""CompletedAtUtc"" IS NULL
+      AND (@CountType IS NULL OR cr.""CountType"" = @CountType){activeRunsFilterClause}
+    ORDER BY {activeRunsOrderByColumns}
+)
+SELECT
+    l.""Id"",
+    l.""Code"",
+    l.""Label"",
+    (ar.""ActiveRunId"" IS NOT NULL) AS ""IsBusy"",
+    ar.""BusyBy"",
+    CASE
+        WHEN ar.""ActiveRunId"" IS NULL THEN NULL
+        WHEN ar.""ActiveRunId""::text ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' THEN ar.""ActiveRunId""
+        ELSE NULL
+    END AS ""ActiveRunId"",
+    ar.""ActiveCountType"",
+    ar.""ActiveStartedAtUtc""
+FROM ""Location"" l
+LEFT JOIN active_runs ar ON l.""Id"" = ar.""LocationId""
+WHERE l.""ShopId"" = @ShopId{locationFilterClause}
+ORDER BY l.""Code"" ASC;";
+
+        var parameters = new
+        {
+            CountType = countType,
+            ShopId = shopId,
+            LocationIds = normalizedIds ?? Array.Empty<Guid>()
+        };
+
+        var command = new CommandDefinition(sql, parameters, cancellationToken: cancellationToken);
+
+        var locations = (await connection
+                .QueryAsync<LocationListItemDto>(command)
+                .ConfigureAwait(false)).ToList();
+
+        if (locations.Count == 0)
+        {
+            return Array.Empty<LocationListItemDto>();
+        }
+
+        await PopulateLocationStatusesAsync(connection, columnsState, locations, countType, cancellationToken)
+            .ConfigureAwait(false);
+
+        return locations;
+    }
+
+    private static async Task<LocationListItemDto?> LoadLocationAsync(
+        IDbConnection connection,
+        Guid shopId,
+        Guid locationId,
+        CancellationToken cancellationToken)
+    {
+        var locations = await LoadLocationsAsync(connection, shopId, null, new[] { locationId }, cancellationToken)
+            .ConfigureAwait(false);
+
+        return locations.FirstOrDefault();
+    }
+
+    private static async Task PopulateLocationStatusesAsync(
+        IDbConnection connection,
+        OperatorColumnsState columnsState,
+        IList<LocationListItemDto> locations,
+        int? countType,
+        CancellationToken cancellationToken)
+    {
+        if (locations.Count == 0)
+        {
+            return;
+        }
+
+        var locationIds = locations.Select(location => location.Id).ToArray();
+
+        var openRunsOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
+        var openRunsSql = $@"SELECT
+    cr.""LocationId"",
+    cr.""CountType"",
+    cr.""Id""          AS ""RunId"",
+    cr.""StartedAtUtc"",
+    cr.""CompletedAtUtc"",
+    {openRunsOperatorSql.OwnerDisplayProjection} AS ""OwnerDisplayName"",
+    {openRunsOperatorSql.OperatorDisplayProjection} AS ""OperatorDisplayName"",
+    {openRunsOperatorSql.OwnerUserIdProjection} AS ""OwnerUserId""
+FROM ""CountingRun"" cr
+{AppendJoinClause(openRunsOperatorSql.JoinClause)}
+WHERE cr.""CompletedAtUtc"" IS NULL
+  AND cr.""LocationId"" = ANY(@LocationIds::uuid[])
+ORDER BY cr.""LocationId"", cr.""CountType"", cr.""StartedAtUtc"" DESC;";
+
+        var completedRunsOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
+        var completedRunsSql = $@"SELECT DISTINCT ON (cr.""LocationId"", cr.""CountType"")
+    cr.""LocationId"",
+    cr.""CountType"",
+    cr.""Id""           AS ""RunId"",
+    cr.""StartedAtUtc"",
+    cr.""CompletedAtUtc"",
+    {completedRunsOperatorSql.OwnerDisplayProjection} AS ""OwnerDisplayName"",
+    {completedRunsOperatorSql.OperatorDisplayProjection} AS ""OperatorDisplayName"",
+    {completedRunsOperatorSql.OwnerUserIdProjection} AS ""OwnerUserId""
+FROM ""CountingRun"" cr
+{AppendJoinClause(completedRunsOperatorSql.JoinClause)}
+WHERE cr.""CompletedAtUtc"" IS NOT NULL
+  AND cr.""LocationId"" = ANY(@LocationIds::uuid[])
+ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
+
+        var openRuns = await connection
+            .QueryAsync<LocationCountStatusRow>(
+                new CommandDefinition(openRunsSql, new { LocationIds = locationIds }, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        var completedRuns = await connection
+            .QueryAsync<LocationCountStatusRow>(
+                new CommandDefinition(completedRunsSql, new { LocationIds = locationIds }, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        var openLookup = openRuns.ToLookup(row => (row.LocationId, row.CountType));
+        var completedLookup = completedRuns.ToLookup(row => (row.LocationId, row.CountType));
+
+        static IEnumerable<short> DiscoverCountTypes(IEnumerable<LocationCountStatusRow> runs)
+            => runs
+                .Select(row => row.CountType)
+                .Where(countTypeValue => countTypeValue > 0)
+                .Distinct();
+
+        var discoveredCountTypes = DiscoverCountTypes(openRuns).Concat(DiscoverCountTypes(completedRuns));
+
+        var defaultCountTypes = new short[] { 1, 2 };
+
+        if (countType is { } requested)
+        {
+            defaultCountTypes = defaultCountTypes.Concat(new[] { (short)requested }).ToArray();
+        }
+
+        var targetCountTypes = defaultCountTypes
+            .Concat(discoveredCountTypes)
+            .Distinct()
+            .OrderBy(value => value)
+            .ToArray();
+
+        static string? NormalizeDisplayName(string? value)
+            => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+        static Guid? NormalizeUserId(Guid? value)
+            => value is { } guid && guid != Guid.Empty ? guid : null;
+
+        static DateTimeOffset? ConvertToUtcTimestamp(DateTime? value)
+            => value.HasValue ? TimeUtil.ToUtcOffset(value.Value) : (DateTimeOffset?)null;
+
+        foreach (var location in locations)
+        {
+            var statuses = new List<LocationCountStatusDto>(targetCountTypes.Length);
+
+            foreach (var type in targetCountTypes)
+            {
+                var status = new LocationCountStatusDto
+                {
+                    CountType = type,
+                    Status = LocationCountStatus.NotStarted,
+                    RunId = null,
+                    OwnerDisplayName = null,
+                    OwnerUserId = null,
+                    StartedAtUtc = null,
+                    CompletedAtUtc = null
+                };
+
+                var open = openLookup[(location.Id, type)].FirstOrDefault();
+                if (open is not null)
+                {
+                    status.Status = LocationCountStatus.InProgress;
+                    status.RunId = EndpointUtilities.SanitizeRunId(open.RunId);
+                    status.OwnerDisplayName = NormalizeDisplayName(open.OwnerDisplayName);
+                    status.OwnerUserId = NormalizeUserId(open.OwnerUserId);
+                    status.StartedAtUtc = ConvertToUtcTimestamp(open.StartedAtUtc);
+                    status.CompletedAtUtc = ConvertToUtcTimestamp(open.CompletedAtUtc);
+                }
+                else
+                {
+                    var completed = completedLookup[(location.Id, type)].FirstOrDefault();
+                    if (completed is not null)
+                    {
+                        status.Status = LocationCountStatus.Completed;
+                        status.RunId = EndpointUtilities.SanitizeRunId(completed.RunId);
+                        status.OwnerDisplayName = NormalizeDisplayName(completed.OwnerDisplayName);
+                        status.OwnerUserId = NormalizeUserId(completed.OwnerUserId);
+                        status.StartedAtUtc = ConvertToUtcTimestamp(completed.StartedAtUtc);
+                        status.CompletedAtUtc = ConvertToUtcTimestamp(completed.CompletedAtUtc);
+                    }
+                }
+
+                statuses.Add(status);
+            }
+
+            location.CountStatuses = statuses.Count > 0
+                ? statuses
+                : Array.Empty<LocationCountStatusDto>();
+
+            var openRunsForLocation = openRuns
+                .Where(r => r.LocationId == location.Id)
+                .ToList();
+
+            if (countType is { } requestedType)
+            {
+                var runsForRequestedType = openRunsForLocation
+                    .Where(r => r.CountType == requestedType)
+                    .ToList();
+
+                location.IsBusy = runsForRequestedType.Any();
+
+                var mostRecent = runsForRequestedType
+                    .OrderByDescending(r => r.StartedAtUtc)
+                    .FirstOrDefault();
+
+                location.ActiveRunId = EndpointUtilities.SanitizeRunId(mostRecent?.RunId);
+                location.ActiveCountType = mostRecent?.CountType;
+                location.ActiveStartedAtUtc = TimeUtil.ToUtcOffset(mostRecent?.StartedAtUtc);
+                var normalizedBusy = NormalizeDisplayName(mostRecent?.OwnerDisplayName)
+                    ?? NormalizeDisplayName(mostRecent?.OperatorDisplayName);
+                location.BusyBy = normalizedBusy;
+            }
+            else
+            {
+                location.IsBusy = openRunsForLocation.Count != 0;
+
+                var mostRecent = openRunsForLocation
+                    .OrderByDescending(r => r.StartedAtUtc)
+                    .FirstOrDefault();
+
+                location.ActiveRunId = EndpointUtilities.SanitizeRunId(mostRecent?.RunId);
+                location.ActiveCountType = mostRecent?.CountType;
+                location.ActiveStartedAtUtc = TimeUtil.ToUtcOffset(mostRecent?.StartedAtUtc);
+                var normalizedBusy = NormalizeDisplayName(mostRecent?.OwnerDisplayName)
+                    ?? NormalizeDisplayName(mostRecent?.OperatorDisplayName);
+                location.BusyBy = normalizedBusy;
+            }
+        }
     }
 
     private static void MapStartEndpoint(IEndpointRouteBuilder app)
