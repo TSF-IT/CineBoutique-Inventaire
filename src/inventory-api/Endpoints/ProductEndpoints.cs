@@ -214,7 +214,7 @@ internal static class ProductEndpoints
         {
             if (request is null)
             {
-                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(CultureInfo.InvariantCulture), "corps null", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "corps null", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le corps de la requête est requis." });
             }
 
@@ -224,19 +224,19 @@ internal static class ProductEndpoints
 
             if (string.IsNullOrWhiteSpace(sanitizedName))
             {
-                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(CultureInfo.InvariantCulture), "sans nom", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "sans nom", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le nom du produit est requis." });
             }
 
             if (sanitizedName.Length > 256)
             {
-                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(CultureInfo.InvariantCulture), "nom trop long", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "nom trop long", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le nom du produit ne peut pas dépasser 256 caractères." });
             }
 
             if (sanitizedEan is { Length: > 0 } && (sanitizedEan.Length is < 8 or > 13 || !sanitizedEan.All(char.IsDigit)))
             {
-                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(CultureInfo.InvariantCulture), "EAN invalide", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "EAN invalide", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "L'EAN doit contenir entre 8 et 13 chiffres." });
             }
 
@@ -250,7 +250,7 @@ internal static class ProductEndpoints
 
             if (existing is null)
             {
-                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(CultureInfo.InvariantCulture), "inexistant", "products.update.notfound", cancellationToken).ConfigureAwait(false);
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "inexistant", "products.update.notfound", cancellationToken).ConfigureAwait(false);
                 return Results.NotFound(new { message = $"Aucun produit avec l'Id '{id}'." });
             }
 
@@ -269,13 +269,13 @@ internal static class ProductEndpoints
             {
                 if (string.Equals(ex.ConstraintName, EanNotNullConstraintName, StringComparison.Ordinal))
                 {
-                    await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(CultureInfo.InvariantCulture), $"EAN déjà utilisé ({sanitizedEan})", "products.update.conflict", cancellationToken).ConfigureAwait(false);
+                    await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), $"EAN déjà utilisé ({sanitizedEan})", "products.update.conflict", cancellationToken).ConfigureAwait(false);
                     return Results.Conflict(new { message = "Cet EAN est déjà utilisé." });
                 }
 
                 if (string.Equals(ex.ConstraintName, LowerSkuConstraintName, StringComparison.Ordinal))
                 {
-                    await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString(CultureInfo.InvariantCulture), "SKU déjà utilisé", "products.update.conflict", cancellationToken).ConfigureAwait(false);
+                    await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "SKU déjà utilisé", "products.update.conflict", cancellationToken).ConfigureAwait(false);
                     return Results.Conflict(new { message = "Ce SKU est déjà utilisé." });
                 }
 
