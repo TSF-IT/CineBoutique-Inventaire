@@ -14,11 +14,11 @@ using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Services.Products;
 using CineBoutique.Inventory.Infrastructure.Database;
-using Dapper;
+using Dapper; // Requis pour CommandDefinition et les extensions Dapper.
 using FluentValidation.Results;
 using CsvHelper;
 using CsvHelper.Configuration;
-using Npgsql;
+using Npgsql; // Requis pour PostgresException et PostgresErrorCodes dans les endpoints.
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
