@@ -911,45 +911,48 @@ export const InventorySessionPage = () => {
         ref={logsDialogRef}
         aria-modal="true"
         aria-labelledby="session-log-title"
-        className="max-w-2xl rounded-2xl border border-slate-300 bg-white p-6 text-slate-900 shadow-xl backdrop:bg-black/40 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+        aria-describedby="session-log-description"
+        className="px-4"
       >
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <p id="session-log-title" className="text-lg font-semibold">
-              Journal de session
-            </p>
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              Historique des scans, ajouts et ajustements réalisés pendant ce comptage.
-            </p>
+        <div className="cb-card w-full max-w-2xl p-6 shadow-xl">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p id="session-log-title" className="text-lg font-semibold">
+                Journal de session
+              </p>
+              <p id="session-log-description" className="text-sm text-slate-600 dark:text-slate-300">
+                Historique des scans, ajouts et ajustements réalisés pendant ce comptage.
+              </p>
+            </div>
+            <Button type="button" variant="ghost" onClick={handleCloseLogsDialog}>
+              Fermer
+            </Button>
           </div>
-          <Button type="button" variant="ghost" onClick={handleCloseLogsDialog}>
-            Fermer
-          </Button>
+          <div className="mt-4 max-h-96 overflow-y-auto">
+            {logs.length === 0 ? (
+              <p className="text-sm text-slate-600 dark:text-slate-400">Aucun évènement enregistré pour l’instant.</p>
+            ) : (
+              <ul className="space-y-3" data-testid="logs-list">
+                {logs.map((entry) => (
+                  <li
+                    key={entry.id}
+                    className="rounded-xl border border-slate-200 bg-white p-3 text-sm dark:border-slate-600 dark:bg-slate-900/60"
+                  >
+                    <p className="font-semibold text-slate-900 dark:text-white">{entry.message}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">{formatLogTimestamp(entry.timestamp)}</p>
+                    {entry.context?.ean && (
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        EAN {entry.context.ean}
+                        {typeof entry.context.quantity === 'number' ? ` • Quantité ${entry.context.quantity}` : ''}
+                      </p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <p className="mt-6 text-xs text-slate-500 dark:text-slate-400">Le journal est réinitialisé quand le comptage est terminé.</p>
         </div>
-        <div className="mt-4 max-h-96 overflow-y-auto">
-          {logs.length === 0 ? (
-            <p className="text-sm text-slate-600 dark:text-slate-400">Aucun évènement enregistré pour l’instant.</p>
-          ) : (
-            <ul className="space-y-3" data-testid="logs-list">
-              {logs.map((entry) => (
-                <li
-                  key={entry.id}
-                  className="rounded-xl border border-slate-200 bg-white p-3 text-sm dark:border-slate-600 dark:bg-slate-900/60"
-                >
-                  <p className="font-semibold text-slate-900 dark:text-white">{entry.message}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">{formatLogTimestamp(entry.timestamp)}</p>
-                  {entry.context?.ean && (
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
-                      EAN {entry.context.ean}
-                      {typeof entry.context.quantity === 'number' ? ` • Quantité ${entry.context.quantity}` : ''}
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <p className="mt-6 text-xs text-slate-500 dark:text-slate-400">Le journal est réinitialisé quand le comptage est terminé.</p>
       </dialog>
 
       <Card className="space-y-4">
@@ -1060,44 +1063,55 @@ export const InventorySessionPage = () => {
       <dialog
         ref={completionConfirmationDialogRef}
         aria-modal="true"
-        className="max-w-lg rounded-2xl border border-slate-300 bg-white p-6 text-slate-900 shadow-xl backdrop:bg-black/40 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+        aria-labelledby="completion-confirmation-title"
+        aria-describedby="completion-confirmation-description"
+        className="px-4"
       >
-        <div className="space-y-4">
-          <p className="text-lg font-semibold">Confirmer la clôture du comptage</p>
-          <p className="text-sm text-slate-600 dark:text-slate-300">
-            Cette action est définitive&nbsp;: une fois validé, ce comptage ne pourra plus être modifié. Êtes-vous certain de vouloir terminer ce comptage&nbsp;?
-          </p>
-        </div>
-        <div className="mt-6 flex justify-end gap-3">
-          <Button type="button" variant="secondary" onClick={handleCancelCompletionConfirmation}>
-            Annuler
-          </Button>
-          <Button
-            ref={completionConfirmButtonRef}
-            type="button"
-            onClick={handleConfirmCompletionConfirmation}
-            data-testid="btn-confirm-complete"
-          >
-            Confirmer la clôture
-          </Button>
+        <div className="cb-card w-full max-w-lg p-6 shadow-xl">
+          <div className="space-y-4">
+            <p id="completion-confirmation-title" className="text-lg font-semibold">
+              Confirmer la clôture du comptage
+            </p>
+            <p id="completion-confirmation-description" className="text-sm text-slate-600 dark:text-slate-300">
+              Cette action est définitive&nbsp;: une fois validé, ce comptage ne pourra plus être modifié. Êtes-vous certain de vouloir terminer ce comptage&nbsp;?
+            </p>
+          </div>
+          <div className="mt-6 flex justify-end gap-3">
+            <Button type="button" variant="secondary" onClick={handleCancelCompletionConfirmation}>
+              Annuler
+            </Button>
+            <Button
+              ref={completionConfirmButtonRef}
+              type="button"
+              onClick={handleConfirmCompletionConfirmation}
+              data-testid="btn-confirm-complete"
+            >
+              Confirmer la clôture
+            </Button>
+          </div>
         </div>
       </dialog>
       <dialog
         ref={completionDialogRef}
         id="complete-inventory-modal"
         aria-modal="true"
-        className="rounded-2xl border border-slate-300 bg-white p-6 text-slate-900 shadow-xl backdrop:bg-black/40 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+        aria-labelledby="completion-success-title"
+        className="px-4"
       >
-        <p className="text-lg font-semibold">Le comptage a été enregistré avec succès.</p>
-        <div className="mt-6 flex justify-end">
-          <Button
-            ref={completionOkButtonRef}
-            type="button"
-            onClick={handleCompletionModalOk}
-            data-testid="btn-complete-ok"
-          >
-            OK
-          </Button>
+        <div className="cb-card w-full max-w-lg p-6 shadow-xl">
+          <p id="completion-success-title" className="text-lg font-semibold">
+            Le comptage a été enregistré avec succès.
+          </p>
+          <div className="mt-6 flex justify-end">
+            <Button
+              ref={completionOkButtonRef}
+              type="button"
+              onClick={handleCompletionModalOk}
+              data-testid="btn-complete-ok"
+            >
+              OK
+            </Button>
+          </div>
         </div>
       </dialog>
       <ConflictZoneModal

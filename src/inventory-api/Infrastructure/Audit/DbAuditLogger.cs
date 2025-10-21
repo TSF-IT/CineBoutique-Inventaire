@@ -40,7 +40,10 @@ public sealed class DbAuditLogger : IAuditLogger
                 return;
             }
 
-            var operatorContext = EndpointUtilities.GetOperatorContext(_httpContextAccessor.HttpContext);
+            var httpContext = _httpContextAccessor.HttpContext;
+            ArgumentNullException.ThrowIfNull(httpContext);
+
+            var operatorContext = EndpointUtilities.GetOperatorContext(httpContext!);
             var composedActor = EndpointUtilities.ComposeAuditActor(actor, operatorContext);
             var normalizedActor = string.IsNullOrWhiteSpace(composedActor) ? "anonymous" : composedActor!;
             var trimmedCategory = string.IsNullOrWhiteSpace(category) ? null : category.Trim();

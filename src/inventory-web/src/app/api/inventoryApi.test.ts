@@ -279,3 +279,60 @@ describe('releaseInventoryRun', () => {
   })
 })
 
+describe('fetchProductByEan', () => {
+  const defaultEan = '0123456789012'
+
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    vi.doUnmock('@/lib/api/http')
+    vi.restoreAllMocks()
+  })
+
+  it('retourne le produit lorsque la recherche confirme un code identique', async () => {
+    const httpMock = vi
+      .fn()
+      .mockResolvedValueOnce([{ sku: 'SKU-1', code: defaultEan, name: 'Produit existant' }])
+      .mockResolvedValueOnce({ ean: defaultEan, name: 'Produit existant' })
+    mockHttpModule(httpMock)
+
+    const { fetchProductByEan } = await import('./inventoryApi')
+
+    await expect(fetchProductByEan(defaultEan)).resolves.toMatchObject({ name: 'Produit existant' })
+
+    const [searchUrl] = (httpMock.mock.calls[0] ?? []) as [string]
+    const [detailsUrl] = (httpMock.mock.calls[1] ?? []) as [string]
+
+    expect(searchUrl).toContain('/api/products/search')
+    expect(searchUrl).toContain(`code=${encodeURIComponent(defaultEan)}`)
+    expect(searchUrl).toContain('limit=5')
+    expect(detailsUrl).toBe(`/api/products/${encodeURIComponent(defaultEan)}`)
+  })
+
+  it('rejette une erreur HTTP 404 sans déclencher la requête de détail quand aucun produit ne correspond', async () => {
+    const httpMock = vi.fn().mockResolvedValueOnce([])
+    mockHttpModule(httpMock)
+
+    const { fetchProductByEan } = await import('./inventoryApi')
+
+    await expect(fetchProductByEan(defaultEan)).rejects.toMatchObject({ status: 404 })
+    expect(httpMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('bascule sur la requête directe quand la recherche échoue', async () => {
+    const httpMock = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('network failure'))
+      .mockResolvedValueOnce({ ean: defaultEan, name: 'Produit existant' })
+    mockHttpModule(httpMock)
+
+    const { fetchProductByEan } = await import('./inventoryApi')
+
+    await expect(fetchProductByEan(defaultEan)).resolves.toMatchObject({ name: 'Produit existant' })
+    expect(httpMock).toHaveBeenCalledTimes(2)
+  })
+})
+

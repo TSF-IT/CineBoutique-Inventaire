@@ -18,16 +18,16 @@ public sealed class LegacyOperatorNameWriteGuardMiddleware
 
     public LegacyOperatorNameWriteGuardMiddleware(RequestDelegate next, ILogger<LegacyOperatorNameWriteGuardMiddleware> logger)
     {
-        _next = next ?? throw new ArgumentNullException(nameof(next));
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        ArgumentNullException.ThrowIfNull(next);
+        ArgumentNullException.ThrowIfNull(logger);
+
+        _next = next;
+        _logger = logger;
     }
 
     public async Task InvokeAsync(HttpContext context)
     {
-        if (context is null)
-        {
-            throw new ArgumentNullException(nameof(context));
-        }
+        ArgumentNullException.ThrowIfNull(context);
 
         var request = context.Request;
         if (ShouldInspect(request) && await ContainsLegacyOperatorNameAsync(request).ConfigureAwait(false))
@@ -53,10 +53,7 @@ public sealed class LegacyOperatorNameWriteGuardMiddleware
 
     private static bool ShouldInspect(HttpRequest request)
     {
-        if (request is null)
-        {
-            throw new ArgumentNullException(nameof(request));
-        }
+        ArgumentNullException.ThrowIfNull(request);
 
         if (!GuardedMethods.Contains(request.Method, StringComparer.OrdinalIgnoreCase))
         {

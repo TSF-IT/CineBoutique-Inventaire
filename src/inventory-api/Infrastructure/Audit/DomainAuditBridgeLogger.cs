@@ -2,7 +2,9 @@ using System;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using CsvHelper;
 using Microsoft.Extensions.Logging;
+using Npgsql;
 using DomainAuditEntry = CineBoutique.Inventory.Domain.Auditing.AuditEntry;
 using IDomainAuditLogger = CineBoutique.Inventory.Domain.Auditing.IAuditLogger;
 using IApiAuditLogger = CineBoutique.Inventory.Api.Infrastructure.Audit.IAuditLogger;
@@ -45,10 +47,27 @@ public sealed class DomainAuditBridgeLogger : IDomainAuditLogger
                 cancellationToken: cancellationToken
             ).ConfigureAwait(false);
         }
+        catch (OperationCanceledException ex) when (cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(ex, "Failed to bridge domain audit event {EventType} for {EntityName} {EntityId}",
+                entry.EventType, entry.EntityName, entry.EntityId);
+            throw;
+        }
+        catch (CsvHelperException ex)
+        {
+            _logger.LogWarning(ex, "Failed to bridge domain audit event {EventType} for {EntityName} {EntityId}",
+                entry.EventType, entry.EntityName, entry.EntityId);
+        }
+        catch (NpgsqlException ex)
+        {
+            _logger.LogWarning(ex, "Failed to bridge domain audit event {EventType} for {EntityName} {EntityId}",
+                entry.EventType, entry.EntityName, entry.EntityId);
+        }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to bridge domain audit event {EventType} for {EntityName} {EntityId}",
                 entry.EventType, entry.EntityName, entry.EntityId);
+            throw;
         }
     }
 }

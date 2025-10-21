@@ -58,5 +58,4 @@ public sealed class SoftOperatorMiddleware
         return string.IsNullOrWhiteSpace(candidate) ? null : candidate.Trim();
     }
 
-    public sealed record OperatorContext(Guid OperatorId, string? OperatorName, string? SessionId);
 }

@@ -172,7 +172,7 @@ WHERE LOWER(table_name) = LOWER(@TableName)
         return string.IsNullOrWhiteSpace(name) ? null : name.Trim();
     }
 
-    public static SoftOperatorMiddleware.OperatorContext? GetOperatorContext(HttpContext context)
+    public static OperatorContext? GetOperatorContext(HttpContext context)
     {
         if (context is null)
         {
@@ -184,7 +184,7 @@ WHERE LOWER(table_name) = LOWER(@TableName)
             return null;
         }
 
-        return value as SoftOperatorMiddleware.OperatorContext;
+        return value as OperatorContext;
     }
 
     public static string? GetAuditActor(HttpContext context)
@@ -208,7 +208,7 @@ WHERE LOWER(table_name) = LOWER(@TableName)
     public static string FormatActorLabel(string? userName) =>
         FormatActorLabel(userName, operatorContext: null);
 
-    public static string FormatActorLabel(string? userName, SoftOperatorMiddleware.OperatorContext? operatorContext)
+    public static string FormatActorLabel(string? userName, OperatorContext? operatorContext)
     {
         if (operatorContext is not null)
         {
@@ -224,7 +224,7 @@ WHERE LOWER(table_name) = LOWER(@TableName)
             : $"L'utilisateur {userName.Trim()}";
     }
 
-    internal static string? ComposeAuditActor(string? userName, SoftOperatorMiddleware.OperatorContext? operatorContext)
+    internal static string? ComposeAuditActor(string? userName, OperatorContext? operatorContext)
     {
         var hasUser = !string.IsNullOrWhiteSpace(userName);
         var operatorActor = operatorContext is null
@@ -246,7 +246,7 @@ WHERE LOWER(table_name) = LOWER(@TableName)
             : userName?.Trim();
     }
 
-    private static string? BuildOperatorActorLabel(SoftOperatorMiddleware.OperatorContext context)
+    private static string? BuildOperatorActorLabel(OperatorContext context)
     {
         var operatorLabel = context.OperatorId.ToString("D");
 

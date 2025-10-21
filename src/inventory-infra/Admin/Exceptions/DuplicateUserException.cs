@@ -1,8 +1,10 @@
 using System;
 
-namespace CineBoutique.Inventory.Infrastructure.Admin;
+namespace CineBoutique.Inventory.Infrastructure.Admin.Exceptions;
 
 public sealed class DuplicateUserException : Exception
 {
+    public DuplicateUserException() { }
     public DuplicateUserException(string message) : base(message) { }
+    public DuplicateUserException(string message, Exception innerException) : base(message, innerException) { }
 }
