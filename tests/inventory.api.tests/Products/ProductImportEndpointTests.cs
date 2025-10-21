@@ -33,7 +33,7 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
 
         await Fixture.ResetAndSeedAsync(async seeder =>
         {
-            var shopId = await seeder.GetAnyShopIdAsync().ConfigureAwait(false);
+            var shopId = await seeder.GetOrCreateAnyShopIdAsync().ConfigureAwait(false);
             await seeder.CreateProductAsync("OLD-001", "Ancien produit", "1111111111111", shopId).ConfigureAwait(false);
         }).ConfigureAwait(false);
 
@@ -86,7 +86,7 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
 
         await Fixture.ResetAndSeedAsync(async seeder =>
         {
-            var shopId = await seeder.GetAnyShopIdAsync().ConfigureAwait(false);
+            var shopId = await seeder.GetOrCreateAnyShopIdAsync().ConfigureAwait(false);
             await seeder.CreateProductAsync("LEGACY", "Produit existant", "999", shopId).ConfigureAwait(false);
         }).ConfigureAwait(false);
 

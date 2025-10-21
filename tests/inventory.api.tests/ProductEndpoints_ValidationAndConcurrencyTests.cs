@@ -269,7 +269,7 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
 
         await Fixture.ResetAndSeedAsync(async seeder =>
         {
-            var shopId = await seeder.GetAnyShopIdAsync().ConfigureAwait(false);
+            var shopId = await seeder.GetOrCreateAnyShopIdAsync().ConfigureAwait(false);
             await seeder.CreateProductAsync("SKU-UPDATE-INVALID", "Produit initial", shopId: shopId).ConfigureAwait(false);
         }).ConfigureAwait(false);
         var client = CreateClient();

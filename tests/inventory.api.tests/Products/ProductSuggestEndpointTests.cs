@@ -111,6 +111,8 @@ public sealed class ProductSuggestEndpointTests : IntegrationTestBase
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask);
 
+        var shopId = await Fixture.Seeder.GetOrCreateAnyShopIdAsync().ConfigureAwait(false);
+
         await using (var connection = await Fixture.OpenConnectionAsync())
         {
             var gid = await connection.ExecuteScalarAsync<long>(@"
@@ -133,11 +135,11 @@ public sealed class ProductSuggestEndpointTests : IntegrationTestBase
               limit 1;") is not null;
 
             // Construit l’UPSERT sans ON CONFLICT, et n’utilise les timestamps que s’ils existent
-            var updateSet = "\"Name\"='Café Grains 1kg', \"Ean\"='321000000001', \"GroupId\"=@gid";
+            var updateSet = "\"Name\"='Café Grains 1kg', \"Ean\"='321000000001', \"GroupId\"=@gid, \"ShopId\"=@shopId";
             if (hasUpdated) updateSet += ", \"UpdatedAtUtc\" = NOW() AT TIME ZONE 'UTC'";
 
-            var insertCols = new List<string> { "\"Sku\"", "\"Name\"", "\"Ean\"", "\"GroupId\"" };
-            var insertVals = new List<string> { "'CB-0001'", "'Café Grains 1kg'", "'321000000001'", "@gid" };
+            var insertCols = new List<string> { "\"ShopId\"", "\"Sku\"", "\"Name\"", "\"Ean\"", "\"GroupId\"" };
+            var insertVals = new List<string> { "@shopId", "'CB-0001'", "'Café Grains 1kg'", "'321000000001'", "@gid" };
             if (hasCreated) { insertCols.Add("\"CreatedAtUtc\""); insertVals.Add("NOW() AT TIME ZONE 'UTC'"); }
             if (hasUpdated) { insertCols.Add("\"UpdatedAtUtc\""); insertVals.Add("NOW() AT TIME ZONE 'UTC'"); }
 
@@ -152,7 +154,7 @@ public sealed class ProductSuggestEndpointTests : IntegrationTestBase
             SELECT {string.Join(", ", insertVals)}
             WHERE NOT EXISTS (SELECT 1 FROM upsert);";
 
-            await connection.ExecuteAsync(upsertSql, new { gid });
+            await connection.ExecuteAsync(upsertSql, new { gid, shopId });
         }
 
         var r1 = await _f.Client.GetAsync("/api/products/suggest?q=321000000001&limit=5");

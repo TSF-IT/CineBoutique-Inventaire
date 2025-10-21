@@ -43,22 +43,45 @@ public sealed class TestDataSeeder
         return id;
     }
 
-    public async Task<Guid> GetAnyShopIdAsync()
+    [Obsolete("Utiliser GetOrCreateAnyShopIdAsync à la place.")]
+    public Task<Guid> GetAnyShopIdAsync() => GetOrCreateAnyShopIdAsync();
+
+    public async Task<Guid> GetOrCreateAnyShopIdAsync()
     {
-        const string sql = "SELECT \"Id\" FROM \"Shop\" ORDER BY \"Name\" LIMIT 1;";
+        const string selectSql = "SELECT \"Id\" FROM \"Shop\" ORDER BY \"Name\" LIMIT 1;";
 
         var connection = _dataSource.CreateConnection();
         await connection.OpenAsync().ConfigureAwait(false);
         try
         {
-            using var command = new NpgsqlCommand(sql, connection);
-            var result = await command.ExecuteScalarAsync().ConfigureAwait(false);
-            if (result is Guid guid)
+            using (var selectCommand = new NpgsqlCommand(selectSql, connection))
             {
-                return guid;
+                var result = await selectCommand.ExecuteScalarAsync().ConfigureAwait(false);
+                if (result is Guid existingId)
+                {
+                    return existingId;
+                }
             }
 
-            throw new InvalidOperationException("Aucune boutique n'est disponible dans la base de tests.");
+            const string insertSql =
+                "INSERT INTO \"Shop\" (\"Id\", \"Name\") VALUES (gen_random_uuid(), 'Legacy') RETURNING \"Id\";";
+            using (var insertCommand = new NpgsqlCommand(insertSql, connection))
+            {
+                var inserted = await insertCommand.ExecuteScalarAsync().ConfigureAwait(false);
+                if (inserted is Guid insertedId)
+                {
+                    return insertedId;
+                }
+            }
+
+            using var fallbackCommand = new NpgsqlCommand(selectSql, connection);
+            var fallback = await fallbackCommand.ExecuteScalarAsync().ConfigureAwait(false);
+            if (fallback is Guid fallbackId)
+            {
+                return fallbackId;
+            }
+
+            throw new InvalidOperationException("Impossible de récupérer ou créer une boutique de test.");
         }
         finally
         {

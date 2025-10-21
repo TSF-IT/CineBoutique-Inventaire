@@ -81,7 +81,8 @@ public sealed class ProductImportFlexTests : IClassFixture<TestApiFactory>
 
     using var verifyScope = await _f.WithDbAsync(async conn =>
     {
-      await _f.UpsertProductAsync(conn, "CB-0001", "Café Grains", "3210000000013", null).ConfigureAwait(false);
+      var shopId = await _f.GetOrCreateAnyShopIdAsync().ConfigureAwait(false);
+      await _f.UpsertProductAsync(conn, shopId, "CB-0001", "Café Grains", "3210000000013", null).ConfigureAwait(false);
       const string seedAttributes = @"
 UPDATE ""Product""
 SET ""Attributes"" = CAST(@attrs AS jsonb)

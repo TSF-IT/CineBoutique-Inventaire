@@ -141,11 +141,13 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
     private async Task InsertProductAsync(string sku, string name, string? ean, string? codeDigits, string? rawCode = null)
     {
         var id = Guid.NewGuid();
+        var shopId = await Fixture.Seeder.GetOrCreateAnyShopIdAsync().ConfigureAwait(false);
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
 
         var columns = new List<string>
         {
             "\"Id\"",
+            "\"ShopId\"",
             "\"Sku\"",
             "\"Name\"",
             "\"Ean\"",
@@ -156,6 +158,7 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
         var values = new List<string>
         {
             "@Id",
+            "@ShopId",
             "@Sku",
             "@Name",
             "@Ean",
@@ -166,8 +169,10 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
         var supportsRawCode = await SupportsRawCodeColumnAsync(connection).ConfigureAwait(false);
         if (supportsRawCode)
         {
-            columns.Insert(4, "\"Code\"");
-            values.Insert(4, "@Code");
+            var codeDigitsIndex = columns.IndexOf("\"CodeDigits\"");
+            var insertIndex = codeDigitsIndex >= 0 ? codeDigitsIndex : columns.Count - 1;
+            columns.Insert(insertIndex, "\"Code\"");
+            values.Insert(insertIndex, "@Code");
         }
 
         var sql = $"INSERT INTO \"Product\" ({string.Join(", ", columns)}) VALUES ({string.Join(", ", values)});";
@@ -177,6 +182,7 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
             Parameters =
             {
                 new("Id", id),
+                new("ShopId", shopId),
                 new("Sku", sku),
                 new("Name", name),
                 new("Ean", (object?)ean ?? DBNull.Value),

@@ -16,8 +16,9 @@ public class ProductSuggestTests : IClassFixture<TestApiFactory>
 
     using var scope = await _f.WithDbAsync(async conn =>
     {
-        // --- Helpers locaux d’Arrange (sans ON CONFLICT) ---
-        static async System.Threading.Tasks.Task<long> UpsertGroupAsync(
+        var shopId = await _f.GetOrCreateAnyShopIdAsync().ConfigureAwait(false);
+
+        async System.Threading.Tasks.Task<long> UpsertGroupAsync(
             System.Data.IDbConnection c, string code, string label)
         {
             const string sql = @"
@@ -35,7 +36,7 @@ public class ProductSuggestTests : IClassFixture<TestApiFactory>
                 .ConfigureAwait(false);
         }
 
-        static async System.Threading.Tasks.Task UpsertProductAsync(
+        async System.Threading.Tasks.Task UpsertProductAsync(
             System.Data.IDbConnection c, string sku, string name, string ean, long gid)
         {
             // Détecte dynamiquement la présence des colonnes de timestamps pour éviter 42703/23502
@@ -47,10 +48,10 @@ public class ProductSuggestTests : IClassFixture<TestApiFactory>
             var hasUpdated = await Dapper.SqlMapper.ExecuteScalarAsync<object>(c, q, new { col = "UpdatedAtUtc" })
                                 .ConfigureAwait(false) is not null;
 
-            var updateSet = "\"Name\"=@name, \"Ean\"=@ean, \"GroupId\"=@gid"
+            var updateSet = "\"Name\"=@name, \"Ean\"=@ean, \"GroupId\"=@gid, \"ShopId\"=@shopId"
                           + (hasUpdated ? ", \"UpdatedAtUtc\" = NOW() AT TIME ZONE 'UTC'" : "");
-            var insertCols = new System.Collections.Generic.List<string> { "\"Sku\"", "\"Name\"", "\"Ean\"", "\"GroupId\"" };
-            var insertVals = new System.Collections.Generic.List<string> { "@sku", "@name", "@ean", "@gid" };
+            var insertCols = new System.Collections.Generic.List<string> { "\"ShopId\"", "\"Sku\"", "\"Name\"", "\"Ean\"", "\"GroupId\"" };
+            var insertVals = new System.Collections.Generic.List<string> { "@shopId", "@sku", "@name", "@ean", "@gid" };
             if (hasCreated) { insertCols.Add("\"CreatedAtUtc\""); insertVals.Add("NOW() AT TIME ZONE 'UTC'"); }
             if (hasUpdated) { insertCols.Add("\"UpdatedAtUtc\""); insertVals.Add("NOW() AT TIME ZONE 'UTC'"); }
 
@@ -65,7 +66,7 @@ public class ProductSuggestTests : IClassFixture<TestApiFactory>
         SELECT {string.Join(", ", insertVals)}
         WHERE NOT EXISTS (SELECT 1 FROM upsert);";
 
-            await Dapper.SqlMapper.ExecuteAsync(c, sql, new { sku, name, ean, gid }).ConfigureAwait(false);
+            await Dapper.SqlMapper.ExecuteAsync(c, sql, new { sku, name, ean, gid, shopId }).ConfigureAwait(false);
         }
 
         // --- Arrange concret (équivalent fonctionnel, sans ON CONFLICT) ---
