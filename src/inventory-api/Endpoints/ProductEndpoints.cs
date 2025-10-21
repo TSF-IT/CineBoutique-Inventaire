@@ -1253,6 +1253,14 @@ LIMIT @top;";
             var off = (p - 1) * ps;
             var filter = string.IsNullOrWhiteSpace(q) ? null : q.Trim();
             var sort = (sortBy ?? "sku").Trim().ToLowerInvariant();
+            sort = sort switch
+            {
+                "ean"    => "ean",
+                "name"   => "name",
+                "descr"  => "descr",
+                "digits" => "digits",
+                _         => "sku"
+            };
             var dir  = string.Equals(sortDir, "desc", System.StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
 
             const string whereClause = """
