@@ -16,7 +16,7 @@ public sealed class DapperAuditLogger : IAuditLogger
     private readonly ILogger<DapperAuditLogger> _logger;
     private readonly AuditOptions? _options;
 
-    public sealed class AuditOptions
+    internal sealed class AuditOptions
     {
         public string? Schema { get; init; }
         public string? Table  { get; init; }
