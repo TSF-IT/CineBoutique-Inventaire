@@ -1,5 +1,6 @@
 // Modifications : déplacement des endpoints produits depuis Program.cs avec mutualisation des helpers locaux.
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Data;
@@ -7,6 +8,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Security.Cryptography;
 using System.Threading;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Shops;
@@ -30,6 +32,8 @@ namespace CineBoutique.Inventory.Api.Endpoints;
 internal static class ProductEndpoints
 {
     private const string LowerSkuConstraintName = "UX_Product_Shop_LowerSku";
+    private const string LegacyGlobalImportLockName = "product_import_global";
+    private static readonly long LegacyGlobalImportLockKey = CreateLegacyGlobalImportLockKey(LegacyGlobalImportLockName);
     private sealed class ProductLookupLogger
     {
     }
@@ -430,11 +434,36 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 {
                     return Results.BadRequest(new { reason = "GLOBAL_IMPORT_DISABLED" });
                 }
+
+                await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
                 var httpContext = request.HttpContext
                     ?? throw new InvalidOperationException("HttpContext requis pour déterminer la boutique.");
+
                 var legacyShopId = await ResolveLegacyShopIdAsync(connection, shopResolver, httpContext, cancellationToken)
                     .ConfigureAwait(false);
-                return await RunProductImportAsync(request, connection, dryRun, legacyShopId, bypassShopAdminCheck: true, cancellationToken).ConfigureAwait(false);
+
+                var acquired = await TryAcquireLegacyImportLockAsync(connection, cancellationToken).ConfigureAwait(false);
+                if (!acquired)
+                {
+                    return Results.Json(new { reason = "import_in_progress" }, statusCode: StatusCodes.Status423Locked);
+                }
+
+                try
+                {
+                    return await RunProductImportAsync(
+                            request,
+                            connection,
+                            dryRun,
+                            legacyShopId,
+                            bypassShopAdminCheck: true,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                finally
+                {
+                    await ReleaseLegacyImportLockAsync(connection, cancellationToken).ConfigureAwait(false);
+                }
             })
            .RequireAuthorization();
     }
@@ -943,6 +972,35 @@ OFFSET @Offset LIMIT @Limit;
             }
         }
                     
+    }
+
+
+    private static long CreateLegacyGlobalImportLockKey(string lockName)
+    {
+        using var sha256 = SHA256.Create();
+        var hash = sha256.ComputeHash(Encoding.UTF8.GetBytes(lockName));
+        return BinaryPrimitives.ReadInt64LittleEndian(hash);
+    }
+
+    private static async Task<bool> TryAcquireLegacyImportLockAsync(IDbConnection connection, CancellationToken cancellationToken)
+    {
+        const string sql = "SELECT pg_try_advisory_lock(@Key);";
+        return await connection.ExecuteScalarAsync<bool>(
+                new CommandDefinition(sql, new { Key = LegacyGlobalImportLockKey }, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+    }
+
+    private static async Task ReleaseLegacyImportLockAsync(IDbConnection connection, CancellationToken cancellationToken)
+    {
+        if (connection.State != ConnectionState.Open)
+        {
+            return;
+        }
+
+        const string sql = "SELECT pg_advisory_unlock(@Key);";
+        await connection.ExecuteScalarAsync<bool>(
+                new CommandDefinition(sql, new { Key = LegacyGlobalImportLockKey }, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
     }
 
 
