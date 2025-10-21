@@ -13,22 +13,22 @@ public sealed class ProductGroupRepository : IProductGroupRepository
 
     public ProductGroupRepository(NpgsqlConnection conn) => _conn = conn ?? throw new ArgumentNullException(nameof(conn));
 
-    public async Task<long?> EnsureGroupAsync(string? group, string? subGroup, CancellationToken ct)
+    public async Task<long?> EnsureGroupAsync(string? group, string? subGroup, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(group) && string.IsNullOrWhiteSpace(subGroup))
         {
             return null;
         }
 
-        await EnsureConnectionOpenAsync(ct).ConfigureAwait(false);
+        await EnsureConnectionOpenAsync(cancellationToken).ConfigureAwait(false);
 
         var parentId = string.IsNullOrWhiteSpace(group)
             ? (long?)null
-            : await UpsertAsync(group!, null, ct).ConfigureAwait(false);
+            : await UpsertAsync(group!, null, cancellationToken).ConfigureAwait(false);
 
         return string.IsNullOrWhiteSpace(subGroup)
             ? parentId
-            : await UpsertAsync(subGroup!, parentId, ct).ConfigureAwait(false);
+            : await UpsertAsync(subGroup!, parentId, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<long> UpsertAsync(string label, long? parentId, CancellationToken ct)
