@@ -19,7 +19,7 @@ const DEV_BACKEND_ORIGIN =
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-export default defineConfig(({ command, mode }) => {
+export default defineConfig(({ command }) => {
   const isBuild = command === 'build'
 
   return {
@@ -100,11 +100,11 @@ export default defineConfig(({ command, mode }) => {
     resolve: {
       alias: [
         { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },
-        ...(mode === 'development'
+        ...(command === 'serve'
           ? [
               {
                 find: 'react-window',
-                replacement: path.resolve(__dirname, './src/shims/react-window.tsx'),
+                replacement: path.resolve(__dirname, 'src/shims/react-window.tsx'),
               },
             ]
           : []),
