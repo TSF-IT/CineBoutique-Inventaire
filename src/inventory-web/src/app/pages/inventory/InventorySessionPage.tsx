@@ -1020,7 +1020,7 @@ export const InventorySessionPage = () => {
         aria-describedby="session-log-description"
         className="px-4"
       >
-        <div className="cb-card w-full max-w-2xl p-6 shadow-xl">
+        <Card className="w-full max-w-2xl shadow-elev-2">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p id="session-log-title" className="text-lg font-semibold">
@@ -1058,7 +1058,7 @@ export const InventorySessionPage = () => {
             )}
           </div>
           <p className="mt-6 text-xs text-slate-500 dark:text-slate-400">Le journal est réinitialisé quand le comptage est terminé.</p>
-        </div>
+        </Card>
       </dialog>
 
       <Card className="space-y-4">
@@ -1173,7 +1173,7 @@ export const InventorySessionPage = () => {
         aria-describedby="completion-confirmation-description"
         className="px-4"
       >
-        <div className="cb-card w-full max-w-lg p-6 shadow-xl">
+        <Card className="w-full max-w-lg shadow-elev-2">
           <div className="space-y-4">
             <p id="completion-confirmation-title" className="text-lg font-semibold">
               Confirmer la clôture du comptage
@@ -1195,7 +1195,7 @@ export const InventorySessionPage = () => {
               Confirmer la clôture
             </Button>
           </div>
-        </div>
+        </Card>
       </dialog>
       <dialog
         ref={completionDialogRef}
@@ -1204,7 +1204,7 @@ export const InventorySessionPage = () => {
         aria-labelledby="completion-success-title"
         className="px-4"
       >
-        <div className="cb-card w-full max-w-lg p-6 shadow-xl">
+        <Card className="w-full max-w-lg shadow-elev-2">
           <p id="completion-success-title" className="text-lg font-semibold">
             Le comptage a été enregistré avec succès.
           </p>
@@ -1218,7 +1218,7 @@ export const InventorySessionPage = () => {
               OK
             </Button>
           </div>
-        </div>
+        </Card>
       </dialog>
       <ConflictZoneModal
         open={Boolean(conflictZoneSummary) && conflictModalOpen}

@@ -654,7 +654,7 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
         aria-describedby={disableDialogDescriptionId}
         className="px-4"
       >
-        <div className="cb-card w-full max-w-lg p-6 shadow-xl">
+        <Card className="w-full max-w-lg shadow-elev-2">
           <div className="space-y-4">
             <p id={disableDialogTitleId} className="text-lg font-semibold">
               {`Désactiver ${user.displayName} ?`}
@@ -677,7 +677,7 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
               Confirmer la désactivation
             </Button>
           </div>
-        </div>
+        </Card>
       </dialog>
     </div>
   )
