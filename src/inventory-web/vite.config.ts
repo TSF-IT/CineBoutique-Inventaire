@@ -1,6 +1,7 @@
 import { defineConfig, configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import path from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 
 const ICON_192_BASE64 =
@@ -16,7 +17,9 @@ const ICON_180_BASE64 =
 const DEV_BACKEND_ORIGIN =
   (process.env.DEV_BACKEND_ORIGIN ?? 'http://localhost:8080').trim()
 
-export default defineConfig(({ command }) => {
+const __dirname = fileURLToPath(new URL('.', import.meta.url))
+
+export default defineConfig(({ command, mode }) => {
   const isBuild = command === 'build'
 
   return {
@@ -95,7 +98,17 @@ export default defineConfig(({ command }) => {
       },
     },
     resolve: {
-      alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+      alias: [
+        { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },
+        ...(mode === 'development'
+          ? [
+              {
+                find: 'react-window',
+                replacement: path.resolve(__dirname, 'src/shims/react-window.ts'),
+              },
+            ]
+          : []),
+      ],
     },
     build: {
       sourcemap: false,
