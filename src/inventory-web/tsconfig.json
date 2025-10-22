@@ -3,14 +3,10 @@
     "target": "ES2022",
     "module": "ESNext",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "moduleResolution": "bundler",
+    "moduleResolution": "Bundler",
     "strict": true,
 
     "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"],
-      "react-window": ["src/shims/react-window"]
-    },
 
     "jsx": "react-jsx",
     "types": ["vite/client", "react", "react-dom", "vitest/globals", "@testing-library/jest-dom"],
