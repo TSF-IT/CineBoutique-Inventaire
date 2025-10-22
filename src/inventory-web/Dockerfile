@@ -5,16 +5,18 @@ ARG BASE_REG=public.ecr.aws/docker/library
 FROM ${BASE_REG}/node:22-alpine AS build
 WORKDIR /repo
 
-# Copier lock + manifest RACINE
-COPY package*.json ./
+# Vérif context : on exige les manifestes à la racine du repo
+COPY package.json ./package.json
+COPY package-lock.json* ./package-lock.json
 
-# Installer à la racine d’après le lockfile racine
+# Si quelqu’un a lancé le build depuis src/inventory-web, on le détecte et on stoppe
+RUN test -f package.json && grep -q "\"workspaces\"" package.json || (echo "ERROR: Build context must be REPO ROOT (workspaces required)" && exit 1)
+
 RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund
 
-# Copier le workspace web depuis le repo
+# Copier le workspace web depuis la racine du repo
 COPY src/inventory-web ./src/inventory-web
 
-# Builder le workspace web
 RUN npm -w src/inventory-web run build
 
 # ---------- RUNTIME ----------
