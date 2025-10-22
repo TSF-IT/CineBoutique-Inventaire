@@ -118,15 +118,10 @@ jobs:
           cache-dependency-path: |
             src/inventory-web/package-lock.json
 
-      - name: Install web deps (ci with fallback to install)
+      - name: Install web deps
         run: |
           npm --version
-          # Si lock présent, on tente ci; en cas d’échec (déphasage), fallback install
-          if [ -f src/inventory-web/package-lock.json ]; then
-            npm ci --prefix src/inventory-web || npm install --prefix src/inventory-web
-          else
-            npm install --prefix src/inventory-web
-          fi
+          npm ci --prefix src/inventory-web
 
       - name: Typecheck web
         run: npm run typecheck --prefix src/inventory-web

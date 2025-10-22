@@ -31,7 +31,7 @@
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.9.4",
     "react-swipeable": "^7.0.2",
-    "react-window": "^1.8.9",
+    "react-window": "1.8.11",
     "zod": "^4.1.12"
   },
   "devDependencies": {
@@ -44,7 +44,7 @@
     "@types/node": "^24.8.1",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
-    "@types/react-window": "^1.8.5",
+    "@types/react-window": "1.8.8",
     "@vite-pwa/assets-generator": "^1.0.2",
     "@vitejs/plugin-react": "^5.0.4",
     "@vitest/coverage-v8": "^3.2.4",
