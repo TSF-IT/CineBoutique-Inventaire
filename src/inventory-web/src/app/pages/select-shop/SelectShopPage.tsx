@@ -24,9 +24,10 @@ type RedirectState = {
   redirectTo?: string
 } | null
 
-const ENTITY_BUTTON_BASE_CLASSES = clsx(
-  'w-full rounded-lg border bg-white hover:bg-gray-50 text-gray-900 shadow-sm px-4 py-3 focus-visible:ring-2 focus-visible:ring-sky-500 ring-offset-2 focus:outline-none',
-  'flex h-full flex-col items-start justify-between gap-3 text-left text-base transition dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-900/80 dark:focus-visible:ring-sky-400 dark:ring-offset-slate-900',
+const ENTITY_TILE_BASE_CLASSES = clsx(
+  'flex h-full w-full flex-col items-start justify-between gap-3 rounded-xl border border-[var(--stroke)] bg-[var(--surface)] px-4 py-3 text-left text-base text-[var(--text-strong)] shadow-none transition will-change-transform',
+  'hover:-translate-y-[1px] hover:shadow-elev-1 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500',
+  'disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none disabled:focus-visible:outline-none',
 )
 
 export const SelectShopPage = () => {
@@ -411,12 +412,8 @@ export const SelectShopPage = () => {
                         disabled={isDisabled}
                         onClick={() => handleEntitySelection(card)}
                         className={clsx(
-                          ENTITY_BUTTON_BASE_CLASSES,
-                          isSelected
-                            ? 'border-sky-500 ring-1 ring-sky-200 dark:border-sky-500 dark:ring-sky-500/40'
-                            : 'border-slate-200/80 dark:border-slate-700',
-                          isDisabled &&
-                            'cursor-not-allowed opacity-60 hover:bg-white focus-visible:ring-0 focus-visible:ring-offset-0 dark:hover:bg-slate-900',
+                          ENTITY_TILE_BASE_CLASSES,
+                          isSelected && 'border-primary-500 ring-2 ring-primary-500/30',
                         )}
                       >
                         <span className="text-lg font-semibold">
