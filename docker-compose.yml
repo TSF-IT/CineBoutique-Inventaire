@@ -46,7 +46,7 @@ services:
 
   web:
     build:
-      context: .
+      context: ../..                      # ← RACINE du repo
       dockerfile: src/inventory-web/Dockerfile
       args:
         BASE_REG: public.ecr.aws/docker/library
