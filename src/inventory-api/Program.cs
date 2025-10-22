@@ -99,6 +99,7 @@ builder.Services.AddTransient<InventoryDataSeeder>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<IShopResolver, DefaultShopResolver>();
+builder.Services.Configure<AppSettingsOptions>(builder.Configuration.GetSection("AppSettings"));
 
 builder.Services
     .AddAuthentication(options =>

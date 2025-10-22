@@ -10,6 +10,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
@@ -23,6 +24,7 @@ using Npgsql; // Requis pour PostgresException et PostgresErrorCodes dans les en
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
 
@@ -39,6 +41,9 @@ internal static class ProductEndpoints
     public static IEndpointRouteBuilder MapProductEndpoints(this IEndpointRouteBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
+
+        var appSettings = app.ServiceProvider.GetRequiredService<IOptions<AppSettingsOptions>>().Value;
+        var catalogEndpointsPublic = appSettings.CatalogEndpointsPublic;
 
         MapCreateProductEndpoint(app);
         MapSearchProductsEndpoint(app);
@@ -67,7 +72,7 @@ internal static class ProductEndpoints
         })
         .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
 
-        app.MapGet("/api/products/count", async (
+        ApplyCatalogVisibility(app.MapGet("/api/products/count", async (
             System.Data.IDbConnection connection,
             CineBoutique.Inventory.Api.Infrastructure.Shops.IShopResolver shopResolver,
             Microsoft.AspNetCore.Http.HttpContext httpContext,
@@ -124,12 +129,11 @@ internal static class ProductEndpoints
                 // Table Product absente -> 0
                 return Results.Ok(new { total = 0L });
             }
-        })
-        .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
+        }), catalogEndpointsPublic);
 
-        MapShopScopedProductEndpoints(app);
+        MapShopScopedProductEndpoints(app, catalogEndpointsPublic);
 
-        app.MapGet("/api/products/suggest", async (
+        ApplyCatalogVisibility(app.MapGet("/api/products/suggest", async (
             string q,
             int? limit,
             System.Data.IDbConnection connection,
@@ -258,12 +262,11 @@ LIMIT @top;";
             ).ConfigureAwait(false);
 
             return Results.Ok(suggestions);
-        })
+        }), catalogEndpointsPublic)
         .WithName("SuggestProducts")
         .WithTags("Produits")
         .Produces(StatusCodes.Status200OK)
-        .Produces(StatusCodes.Status400BadRequest)
-        .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
+        .Produces(StatusCodes.Status400BadRequest);
 
         return app;
     }
@@ -1222,7 +1225,16 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
         await auditLogger.LogAsync(message, userName, category, cancellationToken).ConfigureAwait(false);
     }
 
-    private static void MapShopScopedProductEndpoints(Microsoft.AspNetCore.Routing.IEndpointRouteBuilder app)
+    private static RouteHandlerBuilder ApplyCatalogVisibility(RouteHandlerBuilder builder, bool catalogEndpointsPublic)
+    {
+        ArgumentNullException.ThrowIfNull(builder);
+
+        return catalogEndpointsPublic
+            ? builder.AllowAnonymous()
+            : builder.RequireAuthorization();
+    }
+
+    private static void MapShopScopedProductEndpoints(Microsoft.AspNetCore.Routing.IEndpointRouteBuilder app, bool catalogEndpointsPublic)
     {
         // IMPORT CSV PAR BOUTIQUE (écrase ou merge selon service d'import)
         app.MapPost("/api/shops/{shopId:guid}/products/import", async (
@@ -1289,7 +1301,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
         }).RequireAuthorization();
 
         // LISTE PAGINÉE/Tri/Filtre
-        app.MapGet("/api/shops/{shopId:guid}/products", async (
+        ApplyCatalogVisibility(app.MapGet("/api/shops/{shopId:guid}/products", async (
             System.Guid shopId,
             int? page,
             int? pageSize,
@@ -1360,10 +1372,9 @@ LIMIT @Limit OFFSET @Offset;
                 sortDir = dir,
                 q = filter
             });
-        })
-        .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
+        }), catalogEndpointsPublic);
 
-        app.MapGet("/api/shops/{shopId:guid}/products/export", async (
+        ApplyCatalogVisibility(app.MapGet("/api/shops/{shopId:guid}/products/export", async (
             System.Guid shopId,
             System.Data.IDbConnection connection,
             System.Threading.CancellationToken ct) =>
@@ -1397,11 +1408,10 @@ LIMIT @Limit OFFSET @Offset;
 
             var bytes = System.Text.Encoding.Latin1.GetBytes(sb.ToString());
             return Results.File(bytes, "text/csv; charset=ISO-8859-1", $"products_{shopId}.csv");
-        })
-        .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
+        }), catalogEndpointsPublic);
 
         // COMPTEUR PAR BOUTIQUE (+ présence de catalogue)
-        app.MapGet("/api/shops/{shopId:guid}/products/count", async (
+        ApplyCatalogVisibility(app.MapGet("/api/shops/{shopId:guid}/products/count", async (
             System.Guid shopId,
             System.Data.IDbConnection connection,
             System.Threading.CancellationToken ct) =>
@@ -1427,7 +1437,6 @@ LIMIT @Limit OFFSET @Offset;
             }
 
             return Results.Ok(new { count, hasCatalog });
-        })
-        .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
+        }), catalogEndpointsPublic);
     }
 }
