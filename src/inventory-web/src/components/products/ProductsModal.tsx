@@ -1,6 +1,6 @@
 import React from 'react';
-import { FixedSizeList, ListChildComponentProps } from 'react-window';
-import type { FixedSizeList as FixedSizeListComponent } from 'react-window';
+import { FixedSizeList as VirtualList } from 'react-window';
+import type { FixedSizeList as FixedSizeListComponent, ListChildComponentProps } from 'react-window';
 
 const ROW_HEIGHT = 44;
 const HEADER_HEIGHT = 44;
@@ -177,8 +177,33 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
                 <tr><td className="p-4 text-sm text-gray-500" colSpan={5}>Chargement…</td></tr>
               </tbody>
             </table>
-          ) : items.length > 0 ? (
-            <FixedSizeList
+          ) : items.length === 0 ? (
+            <table className="min-w-full table-fixed border-collapse">
+              {header}
+              <tbody>
+                <tr><td className="p-4 text-sm text-gray-500" colSpan={5}>Aucun résultat</td></tr>
+              </tbody>
+            </table>
+          ) : items.length < 200 ? (
+            <table className="min-w-full table-fixed border-collapse">
+              {header}
+              <tbody>
+                {items.map((product, index) => (
+                  <tr
+                    key={itemKey(index, items)}
+                    className="border-t text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    <td className="p-2 truncate" title={product.sku}>{product.sku}</td>
+                    <td className="p-2 truncate" title={product.ean ?? undefined}>{product.ean ?? ''}</td>
+                    <td className="p-2 truncate" title={product.name}>{product.name}</td>
+                    <td className="p-2 truncate" title={product.description ?? undefined}>{product.description ?? ''}</td>
+                    <td className="p-2 truncate" title={product.codeDigits ?? undefined}>{product.codeDigits ?? ''}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <VirtualList
               ref={listRef}
               height={listHeight}
               width="100%"
@@ -190,14 +215,7 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
               innerElementType={VirtualizedInnerElement}
             >
               {ProductRow}
-            </FixedSizeList>
-          ) : (
-            <table className="min-w-full table-fixed border-collapse">
-              {header}
-              <tbody>
-                <tr><td className="p-4 text-sm text-gray-500" colSpan={5}>Aucun résultat</td></tr>
-              </tbody>
-            </table>
+            </VirtualList>
           )}
         </div>
 

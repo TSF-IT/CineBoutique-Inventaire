@@ -1,4 +1,9 @@
 {
+  "name": "CineBoutique-Inventaire",
+  "private": true,
+  "workspaces": [
+    "src/inventory-web"
+  ],
   "devDependencies": {
     "@types/node": "^24.8.1"
   },

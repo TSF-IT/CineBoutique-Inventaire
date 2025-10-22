@@ -111,6 +111,27 @@ jobs:
             --results-directory "test-results/dotnet" \
             --collect:"XPlat Code Coverage;Format=cobertura"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          # On met en cache le lockfile RACINE (monorepo)
+          cache-dependency-path: package-lock.json
+
+      # ⚠️ Installer les deps du MONOREPO d'après le lock racine
+      - name: Install workspace deps (root)
+        run: |
+          npm --version
+          npm ci || npm install
+
+      # ✅ Typecheck dans le workspace 'src/inventory-web'
+      - name: Typecheck web
+        run: npm -w src/inventory-web run typecheck
+
+      # ✅ Build dans le workspace 'src/inventory-web'
+      - name: Build web
+        run: npm -w src/inventory-web run build
+
       - name: ReportGenerator (HTML)
         run: |
           # Installer l'outil et l'ajouter au PATH
