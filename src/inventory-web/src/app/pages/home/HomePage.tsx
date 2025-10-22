@@ -452,7 +452,7 @@ export const HomePage = () => {
       <div className="flex flex-col gap-4">
         <a
           href="/shops"
-          className="inline-block rounded-md border border-[var(--stroke)] bg-[var(--surface)] px-3 py-2 hover:shadow-elev-1"
+          className="focus-ring inline-flex items-center gap-1 tile px-3 py-2 text-sm font-medium text-[var(--text-strong)] transition hover:shadow-elev-1"
         >
           ← Retour au choix des boutiques
         </a>
