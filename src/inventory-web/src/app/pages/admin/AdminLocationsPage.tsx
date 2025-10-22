@@ -44,7 +44,7 @@ const ADMIN_SECTIONS: AdminSectionDefinition[] = [
     id: 'catalog',
     label: 'Produits',
     ariaLabel: 'Importer un catalogue de produits (CSV)',
-    description: 'Importez ou simulez un import CSV pour mettre à jour le catalogue de la boutique.',
+    description: 'Importez un fichier CSV pour mettre à jour le catalogue de la boutique.',
   },
 ]
 
@@ -109,14 +109,12 @@ type ImportSummary = {
 }
 
 type CatalogImportFeedback =
-  | { type: 'success'; summary: ImportSummary; isDryRun: boolean }
-  | { type: 'info'; message: string }
+  | { type: 'success'; summary: ImportSummary; importedCount: number }
   | { type: 'error'; message: string; details?: string[] }
 
 const CatalogImportPanel = ({ description }: { description: string }) => {
   const { shop } = useShop()
   const [file, setFile] = useState<File | null>(null)
-  const [dryRun, setDryRun] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [feedback, setFeedback] = useState<CatalogImportFeedback | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -180,7 +178,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
       const fd = new FormData()
       fd.set('file', file)
 
-      const url = `/api/shops/${shop.id}/products/import?dryRun=${dryRun}`
+      const url = `/api/shops/${shop.id}/products/import`
       const response = await fetch(url, { method: 'POST', body: fd })
       const rawText = await response.text()
       const payload = rawText ? parseJson(rawText) : null
@@ -194,13 +192,23 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
           errorCount: toInteger(record.errorCount),
           unknownColumns: toStringList(record.unknownColumns),
         }
-        setFeedback({ type: 'success', summary, isDryRun: dryRun })
+        const importedCount = Math.max(toInteger(record.importedCount), 0)
+        const normalizedImportedCount =
+          importedCount > 0 ? importedCount : Math.max(summary.inserted + summary.updated, 0)
+        setFeedback({ type: 'success', summary, importedCount: normalizedImportedCount })
         resetFileInput()
         return
       }
 
       if (response.status === 204) {
-        setFeedback({ type: 'info', message: 'Aucun changement (fichier déjà importé).' })
+        const emptySummary: ImportSummary = {
+          total: 0,
+          inserted: 0,
+          updated: 0,
+          errorCount: 0,
+          unknownColumns: [],
+        }
+        setFeedback({ type: 'success', summary: emptySummary, importedCount: 0 })
         resetFileInput()
         return
       }
@@ -271,17 +279,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
           onChange={handleFileChange}
           className="text-sm file:mr-3 file:cursor-pointer file:rounded-xl file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
         />
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <label className="flex items-center gap-3 text-sm font-medium text-slate-700 dark:text-slate-200">
-            <input
-              type="checkbox"
-              name="dryRun"
-              checked={dryRun}
-              onChange={(event) => setDryRun(event.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-600"
-            />
-            Simulation (dry-run)
-          </label>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
           <Button
             type="submit"
             disabled={submitting || !file}
@@ -297,15 +295,12 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
           className={clsx(
             'rounded-lg border p-4 text-sm',
             feedback.type === 'success' && 'border-emerald-200 bg-emerald-50 text-emerald-800',
-            feedback.type === 'info' && 'border-slate-200 bg-slate-50 text-slate-700',
             feedback.type === 'error' && 'border-red-200 bg-red-50 text-red-700',
           )}
         >
           {feedback.type === 'success' ? (
             <div className="space-y-3">
-              <p className="font-medium">
-                {feedback.isDryRun ? 'Simulation réalisée avec succès.' : 'Import terminé avec succès.'}
-              </p>
+              <p className="font-medium">{`Import réussi — ${feedback.importedCount} produits chargés.`}</p>
               <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                 <div>
                   <dt className="font-medium text-slate-700">Total</dt>
@@ -337,8 +332,6 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
                 </div>
               )}
             </div>
-          ) : feedback.type === 'info' ? (
-            <p className="font-medium">{feedback.message}</p>
           ) : (
             <div className="space-y-2">
               <p className="font-medium">{feedback.message}</p>
