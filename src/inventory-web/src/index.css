@@ -29,17 +29,22 @@ html {
 
 :root {
   color-scheme: light;
+  --surface: #fff;
+  --surface-muted: #f6f8fb;
+  --text-strong: #121826;
+  --text-muted: #5b6471;
+  --stroke: #e7eaf0;
   --cb-background: #f4f7ff;
   --cb-background-gradient: radial-gradient(140% 100% at 0% 0%, rgba(129, 140, 248, 0.18), transparent 55%),
     radial-gradient(120% 120% at 80% 0%, rgba(45, 212, 191, 0.14), transparent 55%),
     #f4f7ff;
-  --cb-text: #0f172a;
-  --cb-muted: #475569;
-  --cb-surface: rgba(255, 255, 255, 0.82);
-  --cb-surface-strong: #ffffff;
-  --cb-surface-soft: rgba(255, 255, 255, 0.68);
-  --cb-border: rgba(148, 163, 184, 0.18);
-  --cb-border-strong: rgba(148, 163, 184, 0.3);
+  --cb-text: var(--text-strong);
+  --cb-muted: var(--text-muted);
+  --cb-surface: var(--surface);
+  --cb-surface-strong: var(--surface);
+  --cb-surface-soft: var(--surface-muted);
+  --cb-border: var(--stroke);
+  --cb-border-strong: var(--stroke);
   --cb-card-shadow: 0 40px 90px -45px rgba(15, 23, 42, 0.38);
   --cb-card-shadow-soft: 0 28px 80px -55px rgba(15, 23, 42, 0.3);
   --cb-backdrop: rgba(15, 23, 42, 0.4);
@@ -49,19 +54,25 @@ html {
   --cb-toggle-knob-dark: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(30, 41, 59, 0.9));
 }
 
+:root[data-theme='dark'],
 :root.dark {
   color-scheme: dark;
+  --surface: #0e1420;
+  --surface-muted: #121b2b;
+  --text-strong: #f5f7fa;
+  --text-muted: #aeb8c7;
+  --stroke: #1e2a3c;
   --cb-background: #050816;
   --cb-background-gradient: radial-gradient(130% 120% at 0% 0%, rgba(99, 102, 241, 0.32), transparent 55%),
     radial-gradient(120% 100% at 100% 0%, rgba(20, 184, 166, 0.22), transparent 60%),
     linear-gradient(180deg, #050816 0%, #0b1223 100%);
-  --cb-text: #f8fafc;
-  --cb-muted: #cbd5f5;
-  --cb-surface: rgba(11, 19, 38, 0.82);
-  --cb-surface-strong: rgba(15, 23, 42, 0.94);
-  --cb-surface-soft: rgba(30, 41, 59, 0.62);
-  --cb-border: rgba(148, 163, 184, 0.25);
-  --cb-border-strong: rgba(148, 163, 184, 0.32);
+  --cb-text: var(--text-strong);
+  --cb-muted: var(--text-muted);
+  --cb-surface: var(--surface);
+  --cb-surface-strong: var(--surface);
+  --cb-surface-soft: var(--surface-muted);
+  --cb-border: var(--stroke);
+  --cb-border-strong: var(--stroke);
   --cb-card-shadow: 0 40px 90px -40px rgba(2, 6, 23, 0.75);
   --cb-card-shadow-soft: 0 32px 90px -55px rgba(15, 23, 42, 0.7);
   --cb-backdrop: rgba(2, 6, 23, 0.7);
@@ -132,6 +143,11 @@ dialog::backdrop {
   backdrop-filter: blur(6px);
 }
 
+.shadow-wrap {
+  position: relative;
+  overflow: visible;
+}
+
 @layer components {
   .cb-surface-panel {
     border-radius: 2.25rem;
@@ -141,16 +157,6 @@ dialog::backdrop {
     box-shadow: var(--cb-card-shadow);
     -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
-  }
-
-  .cb-card {
-    border-radius: 1.75rem;
-    background: var(--cb-surface-strong);
-    color: var(--cb-text);
-    border: 1px solid var(--cb-border-strong);
-    box-shadow: var(--cb-card-shadow-soft);
-    -webkit-backdrop-filter: blur(16px);
-    backdrop-filter: blur(16px);
   }
 
   .cb-text-muted {
