@@ -1255,7 +1255,6 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
                 // dryRun (bool)
                 bool isDryRun = false;
-                if (!string.IsNullOrWhiteSpace(dryRun) && bool.TryParse(dryRun, out var b)) isDryRun = b;
 
                 // 25 MiB
                 const long maxCsvSizeBytes = 25L * 1024L * 1024L;
@@ -1294,7 +1293,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 return result.ResultType switch
                 {
                     CineBoutique.Inventory.Api.Models.ProductImportResultType.ValidationFailed => Results.BadRequest(result.Response),
-                    CineBoutique.Inventory.Api.Models.ProductImportResultType.Skipped          => Results.StatusCode(StatusCodes.Status204NoContent),
+                    CineBoutique.Inventory.Api.Models.ProductImportResultType.Succeeded       => Results.Ok(new { importedCount = result.Response.Inserted }),
                     _                                                                          => Results.Ok(result.Response)
                 };
             }

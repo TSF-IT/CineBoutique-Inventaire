@@ -122,7 +122,9 @@ public sealed class ProductImportService : IProductImportService
 
         try
         {
-            if (!command.DryRun)
+            var isShopScoped = command.ShopId.HasValue;
+
+            if (!isShopScoped && !command.DryRun)
             {
                 var lastSucceededHash = await GetLastSucceededHashAsync(transaction, cancellationToken).ConfigureAwait(false);
                 if (!string.IsNullOrEmpty(lastSucceededHash) &&
@@ -144,7 +146,9 @@ public sealed class ProductImportService : IProductImportService
                 }
             }
 
-            var hasSuccessfulImport = await HasSuccessfulImportAsync(transaction, cancellationToken).ConfigureAwait(false);
+            var hasSuccessfulImport = isShopScoped
+                ? false
+                : await HasSuccessfulImportAsync(transaction, cancellationToken).ConfigureAwait(false);
 
             var historyId = Guid.NewGuid();
             var startedAt = _clock.UtcNow;
@@ -215,6 +219,20 @@ public sealed class ProductImportService : IProductImportService
                 return new ProductImportResult(
                     ProductImportResponse.Failure(totalLines, parseOutcome.Errors, unknownColumns, parseOutcome.ProposedGroups),
                     ProductImportResultType.ValidationFailed);
+            }
+
+            if (isShopScoped)
+            {
+                return await ImportShopCatalogueAsync(
+                        command,
+                        command.ShopId.GetValueOrDefault(),
+                        historyId,
+                        parseOutcome,
+                        bufferedCsv,
+                        transaction,
+                        stopwatch,
+                        cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             if (command.DryRun)
@@ -727,6 +745,262 @@ RETURNING (xmax = 0) AS inserted;
         return new UpsertStatistics(created, updated);
     }
 
+    private async Task<ProductImportResult> ImportShopCatalogueAsync(
+        ProductImportCommand command,
+        Guid shopId,
+        Guid historyId,
+        ProductCsvParseOutcome parseOutcome,
+        BufferedCsv bufferedCsv,
+        NpgsqlTransaction transaction,
+        Stopwatch stopwatch,
+        CancellationToken cancellationToken)
+    {
+        var totalLines = parseOutcome.TotalLines;
+        var unknownColumns = parseOutcome.UnknownColumns;
+
+        try
+        {
+            await DeleteProductsForShopAsync(shopId, transaction, cancellationToken).ConfigureAwait(false);
+
+            var inserted = await BulkInsertRowsForShopAsync(
+                    shopId,
+                    parseOutcome.Rows,
+                    transaction,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            await CompleteHistoryAsync(
+                    historyId,
+                    StatusSucceeded,
+                    totalLines,
+                    inserted,
+                    errorCount: 0,
+                    transaction,
+                    elapsed: stopwatch.Elapsed,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+            _metrics.IncrementSucceeded(false);
+            _metrics.ObserveDuration(stopwatch.Elapsed, false);
+
+            LogImportEvent(
+                "ImportCompleted",
+                StatusSucceeded,
+                command.Username,
+                bufferedCsv.Sha256,
+                totalLines,
+                created: inserted,
+                updated: 0,
+                stopwatch.Elapsed,
+                unknownColumns);
+
+            ApiLog.ImportStep(
+                _logger,
+                $"Import produits boutique {shopId} terminé : {inserted} créations.");
+
+            return new ProductImportResult(
+                ProductImportResponse.Success(totalLines, inserted, updated: 0, unknownColumns, parseOutcome.ProposedGroups),
+                ProductImportResultType.Succeeded);
+        }
+        catch
+        {
+            await transaction.RollbackAsync("before_import", cancellationToken).ConfigureAwait(false);
+
+            await CompleteHistoryAsync(
+                    historyId,
+                    StatusFailed,
+                    totalLines,
+                    inserted: 0,
+                    errorCount: 0,
+                    transaction,
+                    elapsed: stopwatch.Elapsed,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+            _metrics.IncrementFailed();
+            _metrics.ObserveDuration(stopwatch.Elapsed, false);
+
+            LogImportEvent(
+                "ImportCompleted",
+                StatusFailed,
+                command.Username,
+                bufferedCsv.Sha256,
+                totalLines,
+                created: 0,
+                updated: 0,
+                stopwatch.Elapsed,
+                unknownColumns);
+
+            throw;
+        }
+    }
+
+    private async Task DeleteProductsForShopAsync(
+        Guid shopId,
+        NpgsqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        const string sql = "DELETE FROM \"Product\" WHERE \"ShopId\" = @ShopId;";
+
+        await _connection.ExecuteAsync(
+                new CommandDefinition(sql, new { ShopId = shopId }, transaction: transaction, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+    }
+
+    private async Task<int> BulkInsertRowsForShopAsync(
+        Guid shopId,
+        IReadOnlyList<ProductCsvRow> rows,
+        NpgsqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        if (rows.Count == 0)
+        {
+            return 0;
+        }
+
+        var metadata = await GetProductTableMetadataAsync(transaction, cancellationToken).ConfigureAwait(false);
+
+        var columnNames = new List<string>
+        {
+            "\"ShopId\"",
+            "\"Sku\"",
+            "\"Name\"",
+            "\"Ean\"",
+            "\"GroupId\"",
+            "\"Attributes\"",
+            "\"CodeDigits\"",
+            "\"CreatedAtUtc\""
+        };
+
+        var valueTokens = new List<string>
+        {
+            "@ShopId",
+            "@Sku",
+            "@Name",
+            "@Ean",
+            "@GroupId",
+            "CAST(@Attributes AS jsonb)",
+            "@CodeDigits",
+            "@CreatedAtUtc"
+        };
+
+        if (metadata.HasDescription)
+        {
+            columnNames.Add("\"Description\"");
+            valueTokens.Add("@Description");
+        }
+
+        if (metadata.HasStatus)
+        {
+            columnNames.Add("\"Status\"");
+            valueTokens.Add("@Status");
+        }
+
+        if (metadata.HasUpdatedAtUtc)
+        {
+            columnNames.Add("\"UpdatedAtUtc\"");
+            valueTokens.Add("@UpdatedAtUtc");
+        }
+
+        var insertSql = $"INSERT INTO \"Product\" ({string.Join(", ", columnNames)}) VALUES ({string.Join(", ", valueTokens)});";
+
+        var now = _clock.UtcNow;
+        var inserted = 0;
+        var groupCache = new Dictionary<GroupKey, long?>(GroupKeyComparer.Instance);
+
+        foreach (var chunk in rows.Chunk(512))
+        {
+            var payload = new List<object>(chunk.Length);
+
+            foreach (var row in chunk)
+            {
+                var sku = (row.Sku ?? string.Empty).Trim();
+                if (string.IsNullOrEmpty(sku))
+                {
+                    continue;
+                }
+
+                var name = string.IsNullOrWhiteSpace(row.Name) ? sku : row.Name.Trim();
+                var rawEan = string.IsNullOrWhiteSpace(row.Ean) ? null : row.Ean.Trim();
+                var normalizedEan = NormalizeEan(rawEan);
+                var codeDigits = BuildCodeDigits(rawEan ?? normalizedEan);
+                var groupId = await ResolveGroupIdAsync(row.Group, row.SubGroup, groupCache, cancellationToken)
+                    .ConfigureAwait(false);
+                var attributesJson = SerializeAttributes(row.Attributes, row.SubGroup);
+
+                string? description = null;
+                if (metadata.HasDescription && row.Attributes.TryGetValue("description", out var rawDescription))
+                {
+                    description = rawDescription switch
+                    {
+                        null => null,
+                        string s when string.IsNullOrWhiteSpace(s) => null,
+                        string s => s.Trim(),
+                        _ => rawDescription.ToString()
+                    };
+                }
+
+                payload.Add(new
+                {
+                    ShopId = shopId,
+                    Sku = sku,
+                    Name = name,
+                    Ean = normalizedEan,
+                    GroupId = groupId,
+                    Attributes = attributesJson,
+                    CodeDigits = codeDigits,
+                    CreatedAtUtc = now,
+                    Description = description,
+                    Status = metadata.HasStatus ? "published" : null,
+                    UpdatedAtUtc = metadata.HasUpdatedAtUtc ? now : (DateTimeOffset?)null
+                });
+            }
+
+            if (payload.Count == 0)
+            {
+                continue;
+            }
+
+            inserted += await _connection.ExecuteAsync(
+                    new CommandDefinition(insertSql, payload, transaction: transaction, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+        }
+
+        return inserted;
+    }
+
+    private async Task<ProductTableColumnMetadata> GetProductTableMetadataAsync(
+        NpgsqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+SELECT column_name
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'Product'
+  AND column_name = ANY(@Columns);
+""";
+
+        var existingColumns = await _connection.QueryAsync<string>(
+                new CommandDefinition(
+                    sql,
+                    new { Columns = new[] { "Description", "Status", "UpdatedAtUtc" } },
+                    transaction: transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        var columnSet = new HashSet<string>(existingColumns, StringComparer.OrdinalIgnoreCase);
+
+        return new ProductTableColumnMetadata(
+            columnSet.Contains("Description"),
+            columnSet.Contains("Status"),
+            columnSet.Contains("UpdatedAtUtc"));
+    }
+
     private string? NormalizeEan(string? ean)
     {
         if (string.IsNullOrWhiteSpace(ean))
@@ -1144,6 +1418,8 @@ RETURNING (xmax = 0) AS inserted;
             return HashCode.Combine(groupHash, subGroupHash);
         }
     }
+
+    private sealed record ProductTableColumnMetadata(bool HasDescription, bool HasStatus, bool HasUpdatedAtUtc);
 
     private sealed record UpsertStatistics(int Created, int Updated)
     {
