@@ -1,11 +1,32 @@
 import React from 'react';
-import { FixedSizeList as VirtualList } from 'react-window';
-import type { FixedSizeList as FixedSizeListComponent, ListChildComponentProps } from 'react-window';
+
+// VirtualList lazy-loaded : si la lib n'est pas installée, on garde null et on tombera en fallback
+type VList = React.ComponentType<any> | null;
+
+function useVirtualList(): VList {
+  const [V, setV] = React.useState<VList>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        // @ts-ignore: import volontairement ignoré par Vite pour éviter l'analyse si le module n'est pas installé
+        const mod = await import(/* @vite-ignore */ 'react-window');
+        if (!cancelled && mod?.FixedSizeList) {
+          setV(mod.FixedSizeList as React.ComponentType<any>);
+        }
+      } catch {
+        // module absent -> rester en null (fallback non virtualisé)
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  return V;
+}
 
 const ROW_HEIGHT = 44;
 const HEADER_HEIGHT = 44;
-const DEFAULT_VIEWPORT_HEIGHT = 800;
-
 type Item = { id: string; sku: string; name: string; ean?: string | null; description?: string | null; codeDigits?: string | null };
 type Response = {
   items: Item[]; page: number; pageSize: number; total: number; totalPages: number;
@@ -14,34 +35,6 @@ type Response = {
 
 type Props = { open: boolean; onClose: () => void; shopId: string };
 
-const VirtualizedInnerElement = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
-  function VirtualizedInnerElement({ style, ...rest }, ref) {
-    return (
-      <tbody
-        {...rest}
-        ref={ref}
-        style={{ ...style, position: 'relative', display: 'block', width: '100%' }}
-      />
-    );
-  }
-);
-
-const ProductRow = ({ index, style, data }: ListChildComponentProps<Item[]>) => {
-  const product = data[index];
-  return (
-    <tr
-      style={{ ...style, display: 'table', tableLayout: 'fixed', width: '100%' }}
-      className="border-t text-sm text-gray-700 hover:bg-gray-50"
-    >
-      <td className="p-2 truncate" title={product.sku}>{product.sku}</td>
-      <td className="p-2 truncate" title={product.ean ?? undefined}>{product.ean ?? ''}</td>
-      <td className="p-2 truncate" title={product.name}>{product.name}</td>
-      <td className="p-2 truncate" title={product.description ?? undefined}>{product.description ?? ''}</td>
-      <td className="p-2 truncate" title={product.codeDigits ?? undefined}>{product.codeDigits ?? ''}</td>
-    </tr>
-  );
-};
-
 export function ProductsModal({ open, onClose, shopId }: Props) {
   const [q, setQ] = React.useState('');
   const [page, setPage] = React.useState(1);
@@ -49,10 +42,8 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
   const [sortDir, setSortDir] = React.useState<'asc'|'desc'>('asc');
   const [data, setData] = React.useState<Response | null>(null);
   const [loading, setLoading] = React.useState(false);
-  const [viewportHeight, setViewportHeight] = React.useState(
-    () => (typeof window === 'undefined' ? DEFAULT_VIEWPORT_HEIGHT : window.innerHeight)
-  );
-  const listRef = React.useRef<FixedSizeListComponent<Item[]> | null>(null);
+  const listRef = React.useRef<{ scrollToItem?: (index: number) => void } | null>(null);
+  const VirtualList = useVirtualList();
 
   React.useEffect(() => {
     if (!open) return;
@@ -78,21 +69,13 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
     return () => { abort = true; };
   }, [open, shopId, page, sortBy, sortDir, q]);
 
-  React.useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const onResize = () => setViewportHeight(window.innerHeight);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
   const setSort = React.useCallback((col: typeof sortBy) => {
     if (sortBy === col) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortBy(col); setSortDir('asc'); }
   }, [sortBy]);
 
   React.useEffect(() => {
-    if (!listRef.current) return;
-    listRef.current.scrollToItem(0);
+    listRef.current?.scrollToItem?.(0);
   }, [page, sortBy, sortDir, q, data?.items]);
 
   const header = React.useMemo(() => (
@@ -119,36 +102,7 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
   if (!open) return null;
 
   const items = data?.items ?? [];
-  const maxModalHeight = Math.max(Math.floor(viewportHeight * 0.7), HEADER_HEIGHT + ROW_HEIGHT);
-  const maxBodyHeight = Math.max(maxModalHeight - HEADER_HEIGHT, ROW_HEIGHT);
-  const totalBodyHeight = items.length * ROW_HEIGHT;
-  const effectiveBodyHeight = items.length > 0
-    ? Math.min(totalBodyHeight, maxBodyHeight)
-    : Math.min(ROW_HEIGHT, maxBodyHeight);
-  const listHeight = HEADER_HEIGHT + effectiveBodyHeight;
-
-  const outerElementType = React.useMemo(() => {
-    const Header = header;
-    return React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
-      function VirtualizedOuter({ style, className, children, ...rest }, ref) {
-        const combinedClassName = ['overflow-y-auto overflow-x-hidden', className].filter(Boolean).join(' ');
-        return (
-          <div
-            {...rest}
-            ref={ref}
-            style={{ ...style, width: '100%' }}
-            className={combinedClassName}
-          >
-            <table className="min-w-full table-fixed border-collapse">
-              {Header}
-              {children}
-            </table>
-          </div>
-        );
-      }
-    );
-  }, [header]);
-
+  const canVirtualize = !!VirtualList && (data?.items?.length ?? 0) >= 200;
   const itemKey = React.useCallback((index: number, products: Item[]) => products[index]?.id ?? index, []);
 
   return (
@@ -184,7 +138,7 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
                 <tr><td className="p-4 text-sm text-gray-500" colSpan={5}>Aucun résultat</td></tr>
               </tbody>
             </table>
-          ) : items.length < 200 ? (
+          ) : !canVirtualize ? (
             <table className="min-w-full table-fixed border-collapse">
               {header}
               <tbody>
@@ -203,19 +157,35 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
               </tbody>
             </table>
           ) : (
-            <VirtualList
-              ref={listRef}
-              height={listHeight}
-              width="100%"
-              itemCount={items.length}
-              itemSize={ROW_HEIGHT}
-              itemData={items}
-              itemKey={itemKey}
-              outerElementType={outerElementType}
-              innerElementType={VirtualizedInnerElement}
-            >
-              {ProductRow}
-            </VirtualList>
+            <>
+              <div className="sticky top-0 bg-white">
+                <table className="min-w-full table-fixed border-collapse">
+                  {header}
+                </table>
+              </div>
+              {VirtualList ? (
+                <VirtualList
+                  ref={listRef as React.Ref<any>}
+                  height={Math.min(440, Math.max(220, (data?.items?.length ?? 0) * ROW_HEIGHT))}
+                  itemCount={data!.items.length}
+                  itemSize={ROW_HEIGHT}
+                  width="100%"
+                >
+                  {({ index, style }: { index: number; style: React.CSSProperties }) => {
+                    const p = data!.items[index];
+                    return (
+                      <div style={style} className="border-t text-sm grid grid-cols-5">
+                        <div className="p-2">{p.sku}</div>
+                        <div className="p-2">{p.ean ?? ''}</div>
+                        <div className="p-2">{p.name}</div>
+                        <div className="p-2">{p.description ?? ''}</div>
+                        <div className="p-2">{p.codeDigits ?? ''}</div>
+                      </div>
+                    );
+                  }}
+                </VirtualList>
+              ) : null}
+            </>
           )}
         </div>
 
