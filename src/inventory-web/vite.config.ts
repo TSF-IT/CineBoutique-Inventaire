@@ -104,7 +104,7 @@ export default defineConfig(({ command, mode }) => {
           ? [
               {
                 find: 'react-window',
-                replacement: path.resolve(__dirname, 'src/shims/react-window.tsx'),
+                replacement: path.resolve(__dirname, './src/shims/react-window.tsx'),
               },
             ]
           : []),
