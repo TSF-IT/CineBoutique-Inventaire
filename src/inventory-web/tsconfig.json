@@ -1,20 +1,7 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "moduleResolution": "Bundler",
-    "strict": true,
-
-    "baseUrl": ".",
-
-    "jsx": "react-jsx",
-    "types": ["vite/client", "react", "react-dom", "vitest/globals", "@testing-library/jest-dom"],
-
-    "skipLibCheck": true,
-    "allowSyntheticDefaultImports": true,
-    "isolatedModules": true,
-    "noEmit": true
-  },
-  "include": ["./src"]
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
 }

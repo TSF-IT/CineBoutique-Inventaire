@@ -28,7 +28,7 @@ export const ThemeProvider: React.FC<React.PropsWithChildren> = ({ children }) =
       return undefined
     }
 
-    return listenSystemThemeChanges((nextTheme) => {
+    return listenSystemThemeChanges((nextTheme: string) => {
       setThemeState(nextTheme)
     })
   }, [hasUserPreference])
@@ -39,7 +39,7 @@ export const ThemeProvider: React.FC<React.PropsWithChildren> = ({ children }) =
   }, [])
 
   const toggleTheme = useCallback(() => {
-    setThemeState((current) => {
+    setThemeState((current: string) => {
       const next = current === 'dark' ? 'light' : 'dark'
       setHasUserPreference(true)
       return next

@@ -1,7 +1,7 @@
 import { defineConfig, configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
-import path from 'node:path'
+import path from 'path'
 import { fileURLToPath, URL } from 'node:url'
 
 const ICON_192_BASE64 =
@@ -99,7 +99,7 @@ export default defineConfig(({ command }) => {
     },
     resolve: {
       alias: [
-        { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },
+        { find: '@', replacement: path.resolve(__dirname, 'src') },
         ...(command === 'serve'
           ? [
               {
