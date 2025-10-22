@@ -76,7 +76,8 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
   if (!open) return null;
 
   const items = data?.items ?? [];
-  const canVirtualize = (data?.items?.length ?? 0) >= 200;
+  const itemCount = items.length;
+  const canVirtualize = itemCount >= 200;
   const itemKey = React.useCallback((index: number, products: Item[]) => products[index]?.id ?? index, []);
 
   return (
@@ -112,7 +113,29 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
                 <tr><td className="p-4 text-sm text-gray-500" colSpan={5}>Aucun résultat</td></tr>
               </tbody>
             </table>
-          ) : !canVirtualize ? (
+          ) : canVirtualize ? (
+            <VirtualList
+              ref={listRef as React.Ref<any>}
+              height={Math.min(440, Math.max(220, itemCount * ROW_HEIGHT))}
+              itemCount={itemCount}
+              itemSize={ROW_HEIGHT}
+              width="100%"
+              className="border-t"
+            >
+              {({ index, style }: { index: number; style: React.CSSProperties }) => {
+                const product = items[index];
+                return (
+                  <div style={style} className="text-sm grid grid-cols-5">
+                    <div className="p-2">{product.sku}</div>
+                    <div className="p-2">{product.ean ?? ''}</div>
+                    <div className="p-2">{product.name}</div>
+                    <div className="p-2">{product.description ?? ''}</div>
+                    <div className="p-2">{product.codeDigits ?? ''}</div>
+                  </div>
+                );
+              }}
+            </VirtualList>
+          ) : (
             <table className="min-w-full table-fixed border-collapse">
               {header}
               <tbody>
@@ -130,28 +153,6 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
                 ))}
               </tbody>
             </table>
-          ) : (
-            <VirtualList
-              ref={listRef as React.Ref<any>}
-              height={Math.min(440, Math.max(220, (data?.items?.length ?? 0) * ROW_HEIGHT))}
-              itemCount={data!.items.length}
-              itemSize={ROW_HEIGHT}
-              width="100%"
-              className="border-t"
-            >
-              {({ index, style }: { index: number; style: React.CSSProperties }) => {
-                const p = data!.items[index];
-                return (
-                  <div style={style} className="text-sm grid grid-cols-5">
-                    <div className="p-2">{p.sku}</div>
-                    <div className="p-2">{p.ean ?? ''}</div>
-                    <div className="p-2">{p.name}</div>
-                    <div className="p-2">{p.description ?? ''}</div>
-                    <div className="p-2">{p.codeDigits ?? ''}</div>
-                  </div>
-                );
-              }}
-            </VirtualList>
           )}
         </div>
 
