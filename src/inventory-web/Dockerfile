@@ -5,13 +5,13 @@ ARG BASE_REG=public.ecr.aws/docker/library
 FROM ${BASE_REG}/node:22-alpine AS build
 WORKDIR /repo
 
-# Copier le lock racine et package.json racine
+# Copier lock + manifest RACINE
 COPY package*.json ./
 
 # Installer à la racine d’après le lockfile racine
 RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund
 
-# Copier le workspace web
+# Copier le workspace web depuis le repo
 COPY src/inventory-web ./src/inventory-web
 
 # Builder le workspace web
