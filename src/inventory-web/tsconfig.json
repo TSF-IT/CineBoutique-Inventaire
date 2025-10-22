@@ -6,9 +6,10 @@
     "moduleResolution": "bundler",
     "strict": true,
 
-    "baseUrl": "./src",
+    "baseUrl": ".",
     "paths": {
-      "@/*": ["*"]
+      "@/*": ["src/*"],
+      "react-window": ["src/shims/react-window"]
     },
 
     "jsx": "react-jsx",
