@@ -18,6 +18,7 @@ import type { LocationSummary } from '@/types/summary'
 import type { HttpError } from '@/lib/api/http'
 import { useShop } from '@/state/ShopContext'
 import { BackToShopSelectionLink } from '@/app/components/BackToShopSelectionLink'
+import { resolveEntityIdForShop } from '@/app/pages/select-shop/entities'
 import { useInventory } from '../../contexts/InventoryContext'
 import { ProductsCountCard } from '@/components/products/ProductsCountCard'
 import { ProductsModal } from '@/components/products/ProductsModal'
@@ -156,6 +157,7 @@ const isRunOwnedByUser = (
 export const HomePage = () => {
   const navigate = useNavigate()
   const { shop, setShop, isLoaded } = useShop()
+  const entityId = shop ? resolveEntityIdForShop(shop) : null
   const shopId = shop?.id ?? null
   const {
     selectedUser,
@@ -448,7 +450,15 @@ export const HomePage = () => {
   const shopDisplayName = shop?.name?.trim()
 
   return (
-    <Page headerAction={<BackToShopSelectionLink onClick={handleChangeShop} className="sm:self-start" />}>
+    <Page
+      headerAction={
+        <BackToShopSelectionLink
+          to={entityId ? `/entities/${entityId}/users` : '/select-user'}
+          onClick={handleChangeShop}
+          className="sm:self-start"
+        />
+      }
+    >
       <div className="flex flex-col gap-4">
         <a
           href="/shops"

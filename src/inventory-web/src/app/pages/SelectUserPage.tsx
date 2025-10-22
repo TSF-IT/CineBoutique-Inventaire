@@ -166,6 +166,8 @@ export default function SelectUserPage() {
       className="px-4 py-6 sm:px-6"
       headerAction={
         <BackToShopSelectionLink
+          label="Retour au choix d’entité"
+          to="/entities"
           state={shopSelectionState}
         />
       }

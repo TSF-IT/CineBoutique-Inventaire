@@ -4,6 +4,7 @@ import type { LinkProps } from 'react-router-dom'
 
 type BackToShopSelectionLinkProps = {
   label?: string
+  to?: LinkProps['to']
   state?: LinkProps['state']
   onClick?: LinkProps['onClick']
   className?: string
@@ -14,12 +15,13 @@ const baseClasses =
 
 export const BackToShopSelectionLink = ({
   label = "Retour au choix d’utilisateur",
+  to = '/select-user',
   state,
   onClick,
   className,
 }: BackToShopSelectionLinkProps) => (
   <Link
-    to="/select-user"
+    to={to}
     state={state}
     onClick={onClick}
     className={clsx(baseClasses, className)}
