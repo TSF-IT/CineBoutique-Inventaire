@@ -3,9 +3,9 @@ import React from 'react'
 type Props = {
   shopId: string
   onOpen?: () => void
-}
+} & React.ComponentProps<'button'>
 
-export function ProductsCountCard({ shopId, onOpen }: Props) {
+export function ProductsCountCard({ shopId, onOpen, onClick, className, ...rest }: Props) {
   const [state, setState] = React.useState<{ count: number; hasCatalog: boolean } | null>(null)
   const [loading, setLoading] = React.useState(true)
 
@@ -44,14 +44,25 @@ export function ProductsCountCard({ shopId, onOpen }: Props) {
     )
   }
 
-  const click = typeof onOpen === 'function' ? onOpen : undefined
+  const handleClick = React.useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      if (typeof onClick === 'function') {
+        onClick(event)
+      }
+      if (!event.defaultPrevented && typeof onOpen === 'function') {
+        onOpen()
+      }
+    },
+    [onClick, onOpen]
+  )
 
   return (
     <button
       type="button"
-      onClick={click}
-      className={`${common} hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-sky-500 focus:outline-none ring-offset-2`}
+      onClick={handleClick}
+      className={`${common} hover:bg-gray-50 focus-visible:ring-2 focus-visible:ring-sky-500 focus:outline-none ring-offset-2 ${className ?? ''}`}
       aria-label="Ouvrir le catalogue produits"
+      {...rest}
     >
       {loading ? (
         <div className="h-5 w-24 animate-pulse rounded bg-gray-200" />
