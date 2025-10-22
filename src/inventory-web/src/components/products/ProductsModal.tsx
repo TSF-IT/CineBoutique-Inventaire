@@ -1,32 +1,7 @@
 import React from 'react';
-
-// VirtualList lazy-loaded : si la lib n'est pas installée, on garde null et on tombera en fallback
-type VList = React.ComponentType<any> | null;
-
-function useVirtualList(): VList {
-  const [V, setV] = React.useState<VList>(null);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        // @ts-ignore: import volontairement ignoré par Vite pour éviter l'analyse si le module n'est pas installé
-        const mod = await import(/* @vite-ignore */ 'react-window');
-        if (!cancelled && mod?.FixedSizeList) {
-          setV(mod.FixedSizeList as React.ComponentType<any>);
-        }
-      } catch {
-        // module absent -> rester en null (fallback non virtualisé)
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
-
-  return V;
-}
+import { FixedSizeList as VirtualList } from 'react-window';
 
 const ROW_HEIGHT = 44;
-const HEADER_HEIGHT = 44;
 type Item = { id: string; sku: string; name: string; ean?: string | null; description?: string | null; codeDigits?: string | null };
 type Response = {
   items: Item[]; page: number; pageSize: number; total: number; totalPages: number;
@@ -43,7 +18,6 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
   const [data, setData] = React.useState<Response | null>(null);
   const [loading, setLoading] = React.useState(false);
   const listRef = React.useRef<{ scrollToItem?: (index: number) => void } | null>(null);
-  const VirtualList = useVirtualList();
 
   React.useEffect(() => {
     if (!open) return;
@@ -102,7 +76,7 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
   if (!open) return null;
 
   const items = data?.items ?? [];
-  const canVirtualize = !!VirtualList && (data?.items?.length ?? 0) >= 200;
+  const canVirtualize = (data?.items?.length ?? 0) >= 200;
   const itemKey = React.useCallback((index: number, products: Item[]) => products[index]?.id ?? index, []);
 
   return (
@@ -163,28 +137,27 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
                   {header}
                 </table>
               </div>
-              {VirtualList ? (
-                <VirtualList
-                  ref={listRef as React.Ref<any>}
-                  height={Math.min(440, Math.max(220, (data?.items?.length ?? 0) * ROW_HEIGHT))}
-                  itemCount={data!.items.length}
-                  itemSize={ROW_HEIGHT}
-                  width="100%"
-                >
-                  {({ index, style }: { index: number; style: React.CSSProperties }) => {
-                    const p = data!.items[index];
-                    return (
-                      <div style={style} className="border-t text-sm grid grid-cols-5">
-                        <div className="p-2">{p.sku}</div>
-                        <div className="p-2">{p.ean ?? ''}</div>
-                        <div className="p-2">{p.name}</div>
-                        <div className="p-2">{p.description ?? ''}</div>
-                        <div className="p-2">{p.codeDigits ?? ''}</div>
-                      </div>
-                    );
-                  }}
-                </VirtualList>
-              ) : null}
+              <VirtualList
+                ref={listRef as React.Ref<any>}
+                height={Math.min(440, Math.max(220, (data?.items?.length ?? 0) * ROW_HEIGHT))}
+                itemCount={data!.items.length}
+                itemSize={ROW_HEIGHT}
+                width="100%"
+                className="border-t"
+              >
+                {({ index, style }: { index: number; style: React.CSSProperties }) => {
+                  const p = data!.items[index];
+                  return (
+                    <div style={style} className="text-sm grid grid-cols-5">
+                      <div className="p-2">{p.sku}</div>
+                      <div className="p-2">{p.ean ?? ''}</div>
+                      <div className="p-2">{p.name}</div>
+                      <div className="p-2">{p.description ?? ''}</div>
+                      <div className="p-2">{p.codeDigits ?? ''}</div>
+                    </div>
+                  );
+                }}
+              </VirtualList>
             </>
           )}
         </div>
