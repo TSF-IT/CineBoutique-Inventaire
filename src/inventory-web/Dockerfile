@@ -7,7 +7,11 @@ RUN npm i -g npm@11.6.2 && npm -v
 
 # Dépendances
 COPY package*.json ./
-RUN npm ci --no-audit --no-fund
+RUN if [ -f package-lock.json ]; then \
+      echo "Found lockfile -> npm ci" && npm ci --no-audit --no-fund ; \
+    else \
+      echo "No lockfile -> npm install" && npm install --no-audit --no-fund ; \
+    fi
 
 # Sources
 COPY . .
