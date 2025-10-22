@@ -2,7 +2,7 @@ import { defineConfig, configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import path from 'path'
-import { fileURLToPath, URL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 
 const ICON_192_BASE64 =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAYAAABS3GwHAAACGklEQVR4nO3TMQHAIADAsDEDnHjAvz+QwdFEQZ+Oufb5IOp/HQAvGYA0A5BmANIMQJoBSDMAaQYgzQCkGYA0A5BmANIMQJoBSDMAaQYgzQCkGYA0A5BmANIMQJoBSDMAaQYgzQCkGYA0A5BmANIMQJoBSDMAaQYgzQCkGYA0A5BmANIMQJoBSDMAaQYgzQCkGYA0A5BmANIMQJoBSDMAaRfM9ALP7cf7tAAAAABJRU5ErkJggg=='
@@ -21,6 +21,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig(({ command }) => {
   const isBuild = command === 'build'
+  const aliases = [{ find: '@', replacement: path.resolve(__dirname, 'src') }]
+
+  if (command === 'serve') {
+    aliases.push({
+      find: 'react-window',
+      replacement: path.resolve(__dirname, 'src/shims/react-window.tsx'),
+    })
+  }
 
   return {
     plugins: [
@@ -98,17 +106,7 @@ export default defineConfig(({ command }) => {
       },
     },
     resolve: {
-      alias: [
-        { find: '@', replacement: path.resolve(__dirname, 'src') },
-        ...(command === 'serve'
-          ? [
-              {
-                find: 'react-window',
-                replacement: path.resolve(__dirname, 'src/shims/react-window.tsx'),
-              },
-            ]
-          : []),
-      ],
+      alias: aliases,
     },
     build: {
       sourcemap: false,

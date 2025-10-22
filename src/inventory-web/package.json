@@ -16,7 +16,7 @@
     "pwa:build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.node.json",
     "pwa:preview": "vite preview --https",
     "check:health": "node -e \"fetch('http://localhost:5173/api/healthz').then(r=>r.text()).then(console.log).catch(e=>{console.error(e);process.exit(1)})\"",
     "test": "vitest run",

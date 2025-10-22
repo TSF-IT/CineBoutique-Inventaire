@@ -18,6 +18,10 @@ export const ThemeProvider: React.FC<React.PropsWithChildren> = ({ children }) =
   const [theme, setThemeState] = useState<Theme>(() => resolveInitialTheme())
   const [hasUserPreference, setHasUserPreference] = useState<boolean>(() => getStoredTheme() !== null)
 
+  const applyTheme = useCallback((nextTheme: Theme) => {
+    setThemeState(nextTheme)
+  }, [])
+
   useEffect(() => {
     persistTheme(theme)
     applyThemeClass(theme)
@@ -28,23 +32,23 @@ export const ThemeProvider: React.FC<React.PropsWithChildren> = ({ children }) =
       return undefined
     }
 
-    return listenSystemThemeChanges((nextTheme: string) => {
-      setThemeState(nextTheme)
-    })
-  }, [hasUserPreference])
+    return listenSystemThemeChanges(applyTheme)
+  }, [applyTheme, hasUserPreference])
 
   const setTheme = useCallback((next: Theme) => {
     setHasUserPreference(true)
     setThemeState(next)
   }, [])
 
-  const toggleTheme = useCallback(() => {
-    setThemeState((current: string) => {
-      const next = current === 'dark' ? 'light' : 'dark'
-      setHasUserPreference(true)
-      return next
-    })
+  const updateTheme = useCallback((current: Theme) => {
+    const next = current === 'dark' ? 'light' : 'dark'
+    setHasUserPreference(true)
+    return next
   }, [])
+
+  const toggleTheme = useCallback(() => {
+    setThemeState(updateTheme)
+  }, [updateTheme])
 
   const value = useMemo<ThemeContextValue>(() => ({
     theme,
