@@ -131,34 +131,27 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
               </tbody>
             </table>
           ) : (
-            <>
-              <div className="sticky top-0 bg-white">
-                <table className="min-w-full table-fixed border-collapse">
-                  {header}
-                </table>
-              </div>
-              <VirtualList
-                ref={listRef as React.Ref<any>}
-                height={Math.min(440, Math.max(220, (data?.items?.length ?? 0) * ROW_HEIGHT))}
-                itemCount={data!.items.length}
-                itemSize={ROW_HEIGHT}
-                width="100%"
-                className="border-t"
-              >
-                {({ index, style }: { index: number; style: React.CSSProperties }) => {
-                  const p = data!.items[index];
-                  return (
-                    <div style={style} className="text-sm grid grid-cols-5">
-                      <div className="p-2">{p.sku}</div>
-                      <div className="p-2">{p.ean ?? ''}</div>
-                      <div className="p-2">{p.name}</div>
-                      <div className="p-2">{p.description ?? ''}</div>
-                      <div className="p-2">{p.codeDigits ?? ''}</div>
-                    </div>
-                  );
-                }}
-              </VirtualList>
-            </>
+            <VirtualList
+              ref={listRef as React.Ref<any>}
+              height={Math.min(440, Math.max(220, (data?.items?.length ?? 0) * ROW_HEIGHT))}
+              itemCount={data!.items.length}
+              itemSize={ROW_HEIGHT}
+              width="100%"
+              className="border-t"
+            >
+              {({ index, style }: { index: number; style: React.CSSProperties }) => {
+                const p = data!.items[index];
+                return (
+                  <div style={style} className="text-sm grid grid-cols-5">
+                    <div className="p-2">{p.sku}</div>
+                    <div className="p-2">{p.ean ?? ''}</div>
+                    <div className="p-2">{p.name}</div>
+                    <div className="p-2">{p.description ?? ''}</div>
+                    <div className="p-2">{p.codeDigits ?? ''}</div>
+                  </div>
+                );
+              }}
+            </VirtualList>
           )}
         </div>
 
