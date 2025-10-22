@@ -1,11 +1,6 @@
 import React from 'react';
+import { FixedSizeList as VirtualList } from 'react-window';
 import type { FixedSizeList as FixedSizeListComponent, ListChildComponentProps } from 'react-window';
-
-let FixedSizeListRef: any = null;
-try {
-  // @ts-ignore - resolved at runtime after install
-  FixedSizeListRef = require('react-window').FixedSizeList;
-} catch {}
 
 const ROW_HEIGHT = 44;
 const HEADER_HEIGHT = 44;
@@ -124,7 +119,6 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
   if (!open) return null;
 
   const items = data?.items ?? [];
-  const VirtualList = FixedSizeListRef as FixedSizeListComponent<Item[]> | null;
   const maxModalHeight = Math.max(Math.floor(viewportHeight * 0.7), HEADER_HEIGHT + ROW_HEIGHT);
   const maxBodyHeight = Math.max(maxModalHeight - HEADER_HEIGHT, ROW_HEIGHT);
   const totalBodyHeight = items.length * ROW_HEIGHT;
@@ -190,7 +184,7 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
                 <tr><td className="p-4 text-sm text-gray-500" colSpan={5}>Aucun résultat</td></tr>
               </tbody>
             </table>
-          ) : !VirtualList || items.length < 200 ? (
+          ) : items.length < 200 ? (
             <table className="min-w-full table-fixed border-collapse">
               {header}
               <tbody>
