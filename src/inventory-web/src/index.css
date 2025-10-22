@@ -132,6 +132,11 @@ dialog::backdrop {
   backdrop-filter: blur(6px);
 }
 
+.shadow-wrap {
+  position: relative;
+  overflow: visible;
+}
+
 @layer components {
   .cb-surface-panel {
     border-radius: 2.25rem;
