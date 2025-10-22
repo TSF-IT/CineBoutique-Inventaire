@@ -17,6 +17,12 @@ const config = {
         textMuted: 'var(--text-muted)',
         stroke: 'var(--stroke)',
         primary: '#6366f1',
+        product: {
+          50: '#ECF9F8',
+          200: '#B6E6E1',
+          600: '#138D83',
+          700: '#0F766E',
+        },
       },
     },
   },
