@@ -1363,6 +1363,43 @@ LIMIT @Limit OFFSET @Offset;
         })
         .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
 
+        app.MapGet("/api/shops/{shopId:guid}/products/export", async (
+            System.Guid shopId,
+            System.Data.IDbConnection connection,
+            System.Threading.CancellationToken ct) =>
+        {
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, ct).ConfigureAwait(false);
+
+            const string sql = """
+    SELECT "Sku","Ean","Name","Description","CodeDigits"
+    FROM "Product"
+    WHERE "ShopId"=@ShopId
+    ORDER BY "Sku";
+    """;
+
+            var rows = await connection.QueryAsync(
+                new Dapper.CommandDefinition(sql, new { ShopId = shopId }, cancellationToken: ct)
+            ).ConfigureAwait(false);
+
+            // Construire CSV ; séparateur ; ; latin1
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("sku;ean;name;description;codeDigits");
+            foreach (dynamic r in rows)
+            {
+                string esc(string? s) => (s ?? string.Empty).Replace("\"", "\"\"");
+                sb.Append('"').Append(esc((string)r.Sku)).Append('"').Append(';')
+                  .Append('"').Append(esc((string?)r.Ean)).Append('"').Append(';')
+                  .Append('"').Append(esc((string)r.Name)).Append('"').Append(';')
+                  .Append('"').Append(esc((string?)r.Description)).Append('"').Append(';')
+                  .Append('"').Append(esc((string?)r.CodeDigits)).Append('"')
+                  .AppendLine();
+            }
+
+            var bytes = System.Text.Encoding.Latin1.GetBytes(sb.ToString());
+            return Results.File(bytes, "text/csv; charset=ISO-8859-1", $"products_{shopId}.csv");
+        })
+        .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
+
         // COMPTEUR PAR BOUTIQUE (+ présence de catalogue)
         app.MapGet("/api/shops/{shopId:guid}/products/count", async (
             System.Guid shopId,
