@@ -22,7 +22,14 @@ import { useShop } from '@/state/ShopContext'
 type FeedbackState = { type: 'success' | 'error'; message: string } | null
 type AdminSection = 'locations' | 'users' | 'catalog'
 
-const ADMIN_SECTIONS: { id: AdminSection; label: string; description: string }[] = [
+type AdminSectionDefinition = {
+  id: AdminSection
+  label: string
+  description: string
+  ariaLabel?: string
+}
+
+const ADMIN_SECTIONS: AdminSectionDefinition[] = [
   {
     id: 'locations',
     label: 'Zones',
@@ -35,7 +42,8 @@ const ADMIN_SECTIONS: { id: AdminSection; label: string; description: string }[]
   },
   {
     id: 'catalog',
-    label: 'Catalogue produits (CSV)',
+    label: 'Produits',
+    ariaLabel: 'Importer un catalogue de produits (CSV)',
     description: 'Importez ou simulez un import CSV pour mettre à jour le catalogue de la boutique.',
   },
 ]
@@ -66,13 +74,14 @@ const SectionSwitcher = ({ activeSection, onChange }: SectionSwitcherProps) => (
         aria-label="Choix de la section d'administration"
         className="inline-grid w-full min-w-[200px] grid-cols-2 gap-1 rounded-full bg-slate-100 p-1 text-sm font-semibold text-slate-600 shadow-inner dark:bg-slate-800 dark:text-slate-300 sm:w-auto"
       >
-        {ADMIN_SECTIONS.map(({ id, label }) => {
+        {ADMIN_SECTIONS.map(({ id, label, ariaLabel }) => {
           const isActive = id === activeSection
           return (
             <button
               key={id}
               type="button"
               role="tab"
+              aria-label={ariaLabel}
               aria-selected={isActive}
               className={clsx(
                 'rounded-full px-4 py-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400',
