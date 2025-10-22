@@ -1,6 +1,8 @@
+# syntax=docker/dockerfile:1.6
+ARG BASE_REG=public.ecr.aws/docker/library
+
 # ---------- BUILD ----------
-# Paramètre: registre des images "library" (par défaut: ECR public, évite Docker Hub)
-FROM node:22-alpine AS build
+FROM ${BASE_REG}/node:22-alpine AS build
 WORKDIR /repo
 
 # Copier le lock racine et package.json racine
@@ -16,7 +18,6 @@ COPY src/inventory-web ./src/inventory-web
 RUN npm -w src/inventory-web run build
 
 # ---------- RUNTIME ----------
-ARG BASE_REG=public.ecr.aws/docker/library
 FROM ${BASE_REG}/nginx:1.28-alpine
 
 # OpenSSL pour générer le certificat au démarrage
