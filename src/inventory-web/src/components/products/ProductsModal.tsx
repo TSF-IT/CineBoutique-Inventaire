@@ -1,4 +1,10 @@
 import React from 'react';
+import { FixedSizeList, ListChildComponentProps } from 'react-window';
+import type { FixedSizeList as FixedSizeListComponent } from 'react-window';
+
+const ROW_HEIGHT = 44;
+const HEADER_HEIGHT = 44;
+const DEFAULT_VIEWPORT_HEIGHT = 800;
 
 type Item = { id: string; sku: string; name: string; ean?: string | null; description?: string | null; codeDigits?: string | null };
 type Response = {
@@ -8,6 +14,34 @@ type Response = {
 
 type Props = { open: boolean; onClose: () => void; shopId: string };
 
+const VirtualizedInnerElement = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
+  function VirtualizedInnerElement({ style, ...rest }, ref) {
+    return (
+      <tbody
+        {...rest}
+        ref={ref}
+        style={{ ...style, position: 'relative', display: 'block', width: '100%' }}
+      />
+    );
+  }
+);
+
+const ProductRow = ({ index, style, data }: ListChildComponentProps<Item[]>) => {
+  const product = data[index];
+  return (
+    <tr
+      style={{ ...style, display: 'table', tableLayout: 'fixed', width: '100%' }}
+      className="border-t text-sm text-gray-700 hover:bg-gray-50"
+    >
+      <td className="p-2 truncate" title={product.sku}>{product.sku}</td>
+      <td className="p-2 truncate" title={product.ean ?? undefined}>{product.ean ?? ''}</td>
+      <td className="p-2 truncate" title={product.name}>{product.name}</td>
+      <td className="p-2 truncate" title={product.description ?? undefined}>{product.description ?? ''}</td>
+      <td className="p-2 truncate" title={product.codeDigits ?? undefined}>{product.codeDigits ?? ''}</td>
+    </tr>
+  );
+};
+
 export function ProductsModal({ open, onClose, shopId }: Props) {
   const [q, setQ] = React.useState('');
   const [page, setPage] = React.useState(1);
@@ -15,6 +49,10 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
   const [sortDir, setSortDir] = React.useState<'asc'|'desc'>('asc');
   const [data, setData] = React.useState<Response | null>(null);
   const [loading, setLoading] = React.useState(false);
+  const [viewportHeight, setViewportHeight] = React.useState(
+    () => (typeof window === 'undefined' ? DEFAULT_VIEWPORT_HEIGHT : window.innerHeight)
+  );
+  const listRef = React.useRef<FixedSizeListComponent<Item[]> | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
@@ -40,12 +78,78 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
     return () => { abort = true; };
   }, [open, shopId, page, sortBy, sortDir, q]);
 
-  const setSort = (col: typeof sortBy) => {
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const onResize = () => setViewportHeight(window.innerHeight);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const setSort = React.useCallback((col: typeof sortBy) => {
     if (sortBy === col) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
     else { setSortBy(col); setSortDir('asc'); }
-  };
+  }, [sortBy]);
+
+  React.useEffect(() => {
+    if (!listRef.current) return;
+    listRef.current.scrollToItem(0);
+  }, [page, sortBy, sortDir, q, data?.items]);
+
+  const header = React.useMemo(() => (
+    <thead className="sticky top-0 bg-white">
+      <tr className="text-left text-sm text-gray-600">
+        {([['sku', 'SKU'], ['ean', 'EAN'], ['name', 'Nom'], ['descr', 'Description'], ['digits', 'Digits']] as const).map(([key, label]) => (
+          <th
+            key={key}
+            className="cursor-pointer p-2 font-medium text-gray-900"
+            onClick={() => setSort(key)}
+          >
+            <span className="inline-flex items-center gap-1">
+              {label}
+              {sortBy === key ? (
+                <span aria-hidden="true">{sortDir === 'asc' ? '↑' : '↓'}</span>
+              ) : null}
+            </span>
+          </th>
+        ))}
+      </tr>
+    </thead>
+  ), [setSort, sortBy, sortDir]);
 
   if (!open) return null;
+
+  const items = data?.items ?? [];
+  const maxModalHeight = Math.max(Math.floor(viewportHeight * 0.7), HEADER_HEIGHT + ROW_HEIGHT);
+  const maxBodyHeight = Math.max(maxModalHeight - HEADER_HEIGHT, ROW_HEIGHT);
+  const totalBodyHeight = items.length * ROW_HEIGHT;
+  const effectiveBodyHeight = items.length > 0
+    ? Math.min(totalBodyHeight, maxBodyHeight)
+    : Math.min(ROW_HEIGHT, maxBodyHeight);
+  const listHeight = HEADER_HEIGHT + effectiveBodyHeight;
+
+  const outerElementType = React.useMemo(() => {
+    const Header = header;
+    return React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+      function VirtualizedOuter({ style, className, children, ...rest }, ref) {
+        const combinedClassName = ['overflow-y-auto overflow-x-hidden', className].filter(Boolean).join(' ');
+        return (
+          <div
+            {...rest}
+            ref={ref}
+            style={{ ...style, width: '100%' }}
+            className={combinedClassName}
+          >
+            <table className="min-w-full table-fixed border-collapse">
+              {Header}
+              {children}
+            </table>
+          </div>
+        );
+      }
+    );
+  }, [header]);
+
+  const itemKey = React.useCallback((index: number, products: Item[]) => products[index]?.id ?? index, []);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40" role="dialog" aria-modal="true">
@@ -65,35 +169,36 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
           </button>
         </div>
 
-        <div className="max-h-[70vh] overflow-y-auto overflow-x-hidden">
-          <table className="min-w-full table-fixed border-collapse">
-            <thead className="sticky top-0 bg-white">
-              <tr className="text-left text-sm text-gray-600">
-                <th className="cursor-pointer p-2 font-medium text-gray-900" onClick={() => setSort('sku')}>SKU</th>
-                <th className="cursor-pointer p-2 font-medium text-gray-900" onClick={() => setSort('ean')}>EAN</th>
-                <th className="cursor-pointer p-2 font-medium text-gray-900" onClick={() => setSort('name')}>Nom</th>
-                <th className="cursor-pointer p-2 font-medium text-gray-900" onClick={() => setSort('descr')}>Description</th>
-                <th className="cursor-pointer p-2 font-medium text-gray-900" onClick={() => setSort('digits')}>Digits</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading && (!data || data.items.length === 0) ? (
+        <div className="max-h-[70vh] overflow-x-hidden">
+          {loading && (!data || items.length === 0) ? (
+            <table className="min-w-full table-fixed border-collapse">
+              {header}
+              <tbody>
                 <tr><td className="p-4 text-sm text-gray-500" colSpan={5}>Chargement…</td></tr>
-              ) : data && data.items.length > 0 ? (
-                data.items.map((p) => (
-                  <tr key={p.id} className="border-t text-sm text-gray-700 hover:bg-gray-50">
-                    <td className="p-2 truncate" title={p.sku}>{p.sku}</td>
-                    <td className="p-2 truncate" title={p.ean ?? undefined}>{p.ean ?? ''}</td>
-                    <td className="p-2 truncate" title={p.name}>{p.name}</td>
-                    <td className="p-2 truncate" title={p.description ?? undefined}>{p.description ?? ''}</td>
-                    <td className="p-2 truncate" title={p.codeDigits ?? undefined}>{p.codeDigits ?? ''}</td>
-                  </tr>
-                ))
-              ) : (
+              </tbody>
+            </table>
+          ) : items.length > 0 ? (
+            <FixedSizeList
+              ref={listRef}
+              height={listHeight}
+              width="100%"
+              itemCount={items.length}
+              itemSize={ROW_HEIGHT}
+              itemData={items}
+              itemKey={itemKey}
+              outerElementType={outerElementType}
+              innerElementType={VirtualizedInnerElement}
+            >
+              {ProductRow}
+            </FixedSizeList>
+          ) : (
+            <table className="min-w-full table-fixed border-collapse">
+              {header}
+              <tbody>
                 <tr><td className="p-4 text-sm text-gray-500" colSpan={5}>Aucun résultat</td></tr>
-              )}
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          )}
         </div>
 
         <div className="flex items-center justify-between border-t p-3 text-sm text-gray-600">
