@@ -1,0 +1,21 @@
+.card {
+  border-radius: 24px;
+  background: var(--surface);
+  border: 1px solid var(--stroke);
+  box-shadow: var(--tw-shadow, 0 0 #0000);
+}
+
+.card--elev1 {
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 4px 12px rgba(16, 24, 40, 0.06);
+}
+
+.tile {
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--stroke);
+}
+
+.focus-ring:focus-visible {
+  outline: 2px solid theme(colors.primary.500);
+  outline-offset: 2px;
+}

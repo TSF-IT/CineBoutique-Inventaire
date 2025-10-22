@@ -25,9 +25,8 @@ type RedirectState = {
 } | null
 
 const ENTITY_TILE_BASE_CLASSES = clsx(
-  'flex h-full w-full flex-col items-start justify-between gap-3 rounded-xl border border-[var(--stroke)] bg-[var(--surface)] px-4 py-3 text-left text-base text-[var(--text-strong)] shadow-none transition will-change-transform',
-  'hover:-translate-y-[1px] hover:shadow-elev-1 focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500',
-  'disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none disabled:focus-visible:outline-none',
+  'tile focus-ring flex h-full w-full flex-col items-start justify-between gap-3 px-4 py-3 text-left text-base text-[var(--text-strong)] transition will-change-transform',
+  'hover:-translate-y-[1px] hover:shadow-elev-1 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none disabled:hover:translate-y-0 disabled:hover:shadow-none',
 )
 
 export const SelectShopPage = () => {
@@ -370,7 +369,7 @@ export const SelectShopPage = () => {
         )}
 
         {isRedirecting && (
-          <div className="rounded-2xl border border-slate-200 bg-white/80 p-6 text-center shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60">
+          <div className="card card--elev1 p-6 text-center">
             <LoadingIndicator label="Redirection en cours…" />
             <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">
               Merci de patienter pendant la redirection vers l’identification.
@@ -446,7 +445,7 @@ export const SelectShopPage = () => {
               {selectedEntity && (
                 <section
                   aria-labelledby={`${labelId}-shops`}
-                  className="space-y-3 rounded-2xl border border-slate-200/80 bg-white/70 p-4 shadow-sm backdrop-blur-sm dark:border-slate-700/60 dark:bg-slate-900/40"
+                  className="card card--elev1 space-y-3 p-4 backdrop-blur-sm"
                 >
                   <div className="space-y-1">
                     <h2 id={`${labelId}-shops`} className="text-lg font-semibold text-slate-900 dark:text-slate-100">
@@ -466,10 +465,10 @@ export const SelectShopPage = () => {
                               type="button"
                               onClick={() => handleShopSelection(shopOption)}
                               className={clsx(
-                                'flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+                                'tile focus-ring flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium transition hover:shadow-elev-1',
                                 isActive
-                                  ? 'border-brand-500 bg-brand-500/10 text-brand-900 shadow-sm focus-visible:ring-brand-200 focus-visible:ring-offset-white dark:border-brand-400 dark:bg-brand-400/20 dark:text-brand-50 dark:focus-visible:ring-brand-300 dark:focus-visible:ring-offset-slate-900'
-                                  : 'border-slate-200 bg-white/70 text-slate-900 hover:border-brand-300 hover:bg-brand-50/30 focus-visible:ring-brand-200 focus-visible:ring-offset-white dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:hover:border-brand-400 dark:hover:bg-brand-400/10 dark:focus-visible:ring-brand-300 dark:focus-visible:ring-offset-slate-900',
+                                  ? 'border-brand-500 bg-brand-500/10 text-brand-900 shadow-sm dark:border-brand-400 dark:bg-brand-400/20 dark:text-brand-50'
+                                  : 'text-slate-900 hover:border-brand-300 hover:bg-brand-50/30 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:hover:border-brand-400 dark:hover:bg-brand-400/10',
                               )}
                             >
                               <span className="flex-1 truncate">{shopOption.name}</span>
