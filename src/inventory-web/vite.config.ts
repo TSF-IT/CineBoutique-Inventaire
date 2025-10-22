@@ -17,7 +17,7 @@ const ICON_180_BASE64 =
 const DEV_BACKEND_ORIGIN =
   (process.env.DEV_BACKEND_ORIGIN ?? 'http://localhost:8080').trim()
 
-const __dirname = fileURLToPath(new URL('.', import.meta.url))
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig(({ command, mode }) => {
   const isBuild = command === 'build'
