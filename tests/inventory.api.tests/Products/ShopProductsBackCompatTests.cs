@@ -31,9 +31,11 @@ public sealed class ShopProductsBackCompatTests : IntegrationTestBase
             await seeder.CreateProductAsync(shopId, sku, "Produit legacy").ConfigureAwait(false);
         }).ConfigureAwait(false);
 
-        await using (var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false))
+        try
         {
-            const string dropShopScopeSql = """
+            await using (var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false))
+            {
+                const string dropShopScopeSql = """
 DO $$
 BEGIN
     IF to_regclass('public."UX_Product_Shop_LowerSku"') IS NOT NULL THEN
@@ -66,23 +68,28 @@ BEGIN
 END $$;
 """;
 
-            await using var command = new NpgsqlCommand(dropShopScopeSql, connection);
-            await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+                await using var command = new NpgsqlCommand(dropShopScopeSql, connection);
+                await command.ExecuteNonQueryAsync().ConfigureAwait(false);
+            }
+
+            var client = CreateClient();
+            var response = await client.GetAsync(
+                client.CreateRelativeUri($"/api/shops/{shopId}/products?page=1&pageSize=10&sortBy=sku")
+            ).ConfigureAwait(false);
+
+            await response.ShouldBeAsync(HttpStatusCode.OK, "la liste des produits doit rester accessible sans colonne ShopId").ConfigureAwait(false);
+
+            var payload = await response.Content.ReadFromJsonAsync<ProductListResponse>().ConfigureAwait(false);
+
+            payload.Should().NotBeNull();
+            payload!.Items.Should().NotBeNull();
+            payload.Items.Should().NotBeEmpty();
+            payload.Items.Should().Contain(item => string.Equals(item.Sku, sku, StringComparison.Ordinal));
         }
-
-        var client = CreateClient();
-        var response = await client.GetAsync(
-            client.CreateRelativeUri($"/api/shops/{shopId}/products?page=1&pageSize=10&sortBy=sku")
-        ).ConfigureAwait(false);
-
-        await response.ShouldBeAsync(HttpStatusCode.OK, "la liste des produits doit rester accessible sans colonne ShopId").ConfigureAwait(false);
-
-        var payload = await response.Content.ReadFromJsonAsync<ProductListResponse>().ConfigureAwait(false);
-
-        payload.Should().NotBeNull();
-        payload!.Items.Should().NotBeNull();
-        payload.Items.Should().NotBeEmpty();
-        payload.Items.Should().Contain(item => string.Equals(item.Sku, sku, StringComparison.Ordinal));
+        finally
+        {
+            await Fixture.DbResetAsync().ConfigureAwait(false);
+        }
     }
 
     private sealed class ProductListResponse

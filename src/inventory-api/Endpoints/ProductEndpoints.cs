@@ -976,22 +976,13 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
             var dir  = string.Equals(sortDir, "desc", System.StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
 
-            var filterConditions = new System.Collections.Generic.List<string>
+            var baseFilterConditions = new[]
             {
                 "COALESCE(\"Sku\",'') ILIKE '%'||@Filter||'%'",
                 "COALESCE(\"Ean\",'') ILIKE '%'||@Filter||'%'",
                 "COALESCE(\"Description\",'') ILIKE '%'||@Filter||'%'",
                 "COALESCE(\"Name\",'') ILIKE '%'||@Filter||'%'"
             };
-
-            if (hasCodeDigits)
-            {
-                filterConditions.Add("COALESCE(\"CodeDigits\",'') ILIKE '%'||@Filter||'%'");
-            }
-
-            var whereClause = BuildProductFilterWhereClause(hasShopScope, filterConditions);
-            var orderByClause = BuildProductOrderByClause(dir, hasCodeDigits);
-            var codeDigitsSelect = hasCodeDigits ? "\"CodeDigits\"" : "NULL::text AS \"CodeDigits\"";
 
             static Microsoft.AspNetCore.Http.IResult BuildPagedResult(
                 long totalCount,
@@ -1019,30 +1010,43 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 });
             }
 
-            var countParameters = new Dapper.DynamicParameters();
-            countParameters.Add("Filter", filter);
-            if (hasShopScope)
+            async Task<Microsoft.AspNetCore.Http.IResult> ExecuteListingAsync(bool includeShopScope, bool includeCodeDigits)
             {
-                countParameters.Add("ShopId", shopId);
-            }
+                var filterConditions = new System.Collections.Generic.List<string>(baseFilterConditions.Length + 1);
+                filterConditions.AddRange(baseFilterConditions);
+                if (includeCodeDigits)
+                {
+                    filterConditions.Insert(2, "COALESCE(\"CodeDigits\",'') ILIKE '%'||@Filter||'%'");
+                }
 
-            var dataParameters = new Dapper.DynamicParameters();
-            dataParameters.Add("Filter", filter);
-            dataParameters.Add("Sort", sort);
-            dataParameters.Add("Limit", ps);
-            dataParameters.Add("Offset", off);
-            if (hasShopScope)
-            {
-                dataParameters.Add("ShopId", shopId);
-            }
+                var whereClause = BuildProductFilterWhereClause(includeShopScope, filterConditions);
+                var orderByClause = BuildProductOrderByClause(dir, includeCodeDigits);
+                var codeDigitsSelect = includeCodeDigits ? "\"CodeDigits\"" : "NULL::text AS \"CodeDigits\"";
 
-            var countSql = $"""
+                var countParameters = new Dapper.DynamicParameters();
+                countParameters.Add("Filter", filter);
+                if (includeShopScope)
+                {
+                    countParameters.Add("ShopId", shopId);
+                }
+
+                var dataParameters = new Dapper.DynamicParameters();
+                dataParameters.Add("Filter", filter);
+                dataParameters.Add("Sort", sort);
+                dataParameters.Add("Limit", ps);
+                dataParameters.Add("Offset", off);
+                if (includeShopScope)
+                {
+                    dataParameters.Add("ShopId", shopId);
+                }
+
+                var countSql = $"""
 SELECT COUNT(*)
 FROM "Product"
 {whereClause}
 """;
 
-            var dataSql = $"""
+                var dataSql = $"""
 SELECT "Id","Sku","Name","Ean","Description",{codeDigitsSelect}
 FROM "Product"
 {whereClause}
@@ -1050,13 +1054,56 @@ FROM "Product"
 LIMIT @Limit OFFSET @Offset
 """;
 
-            var total = await connection.ExecuteScalarAsync<long>(
-                new Dapper.CommandDefinition(countSql, countParameters, cancellationToken: ct)).ConfigureAwait(false);
+                var total = await connection.ExecuteScalarAsync<long>(
+                    new Dapper.CommandDefinition(countSql, countParameters, cancellationToken: ct)).ConfigureAwait(false);
 
-            var data = await connection.QueryAsync(
-                new Dapper.CommandDefinition(dataSql, dataParameters, cancellationToken: ct)).ConfigureAwait(false);
+                var data = await connection.QueryAsync(
+                    new Dapper.CommandDefinition(dataSql, dataParameters, cancellationToken: ct)).ConfigureAwait(false);
 
-            return BuildPagedResult(total, data, p, ps, sort, dir, filter);
+                return BuildPagedResult(total, data, p, ps, sort, dir, filter);
+            }
+
+            try
+            {
+                return await ExecuteListingAsync(hasShopScope, hasCodeDigits).ConfigureAwait(false);
+            }
+            catch (PostgresException ex) when (IsLegacyProductSchemaError(ex))
+            {
+                var fallbackShopScope = hasShopScope;
+                var fallbackCodeDigits = hasCodeDigits;
+
+                if (string.Equals(ex.ColumnName, "ShopId", StringComparison.OrdinalIgnoreCase))
+                {
+                    fallbackShopScope = false;
+                }
+                else if (string.Equals(ex.ColumnName, "CodeDigits", StringComparison.OrdinalIgnoreCase))
+                {
+                    fallbackCodeDigits = false;
+                }
+                else
+                {
+                    if (fallbackShopScope)
+                    {
+                        fallbackShopScope = await EndpointUtilities
+                            .ColumnExistsAsync(connection, "Product", "ShopId", ct)
+                            .ConfigureAwait(false);
+                    }
+
+                    if (fallbackCodeDigits)
+                    {
+                        fallbackCodeDigits = await EndpointUtilities
+                            .ColumnExistsAsync(connection, "Product", "CodeDigits", ct)
+                            .ConfigureAwait(false);
+                    }
+                }
+
+                if (fallbackShopScope == hasShopScope && fallbackCodeDigits == hasCodeDigits)
+                {
+                    throw;
+                }
+
+                return await ExecuteListingAsync(fallbackShopScope, fallbackCodeDigits).ConfigureAwait(false);
+            }
         }), catalogEndpointsPublic);
 
         ApplyCatalogVisibility(app.MapGet("/api/shops/{shopId:guid}/products/export", async (
@@ -1185,5 +1232,11 @@ LIMIT @Limit OFFSET @Offset
         builder.AppendLine("  \"Sku\" ASC");
 
         return builder.ToString();
+    }
+
+    private static bool IsLegacyProductSchemaError(PostgresException ex)
+    {
+        ArgumentNullException.ThrowIfNull(ex);
+        return ex.SqlState is PostgresErrorCodes.UndefinedColumn or PostgresErrorCodes.UndefinedTable;
     }
 }
