@@ -15,7 +15,16 @@
   border: 1px solid var(--stroke);
 }
 
+.focus-ring {
+  transition: box-shadow 150ms ease, border-color 150ms ease;
+}
+
 .focus-ring:focus-visible {
-  outline: 2px solid theme(colors.primary.500);
-  outline-offset: 2px;
+  outline: none;
+  border-color: var(--focus-ring-border, theme(colors.primary.500));
+  box-shadow: var(
+      --focus-ring-shadow,
+      0 12px 32px -16px rgba(99, 102, 241, 0.45),
+      0 0 0 3px rgba(99, 102, 241, 0.45)
+    );
 }
