@@ -32,21 +32,9 @@ export function ProductsCountCard({ shopId, onOpen, onClick, className, ...rest 
   const count = state?.count ?? 0
   const hasData = count > 0
   const baseCardClasses =
-    'flex w-full flex-col gap-3 rounded-xl border border-product-700/20 bg-product-50/70 p-5 text-left shadow-elev-1 transition dark:border-product-700/40 dark:bg-product-50/10 dark:text-product-200'
-
-  if (!hasData) {
-    return (
-      <div className={clsx(baseCardClasses, 'cursor-default', className)}>
-        {loading ? (
-          <div className="h-5 w-24 animate-pulse rounded bg-product-200/60" />
-        ) : (
-          <p className="text-sm text-product-700 dark:text-product-200/80">
-            Aucun produit chargé pour cette boutique
-          </p>
-        )}
-      </div>
-    )
-  }
+    'flex w-full flex-col gap-3 rounded-xl border p-5 text-left shadow-elev-1 transition'
+  const defaultToneClasses =
+    'border-product-300 bg-product-50/80 dark:border-product-500/40 dark:bg-product-500/10'
 
   const handleClick = React.useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -60,37 +48,56 @@ export function ProductsCountCard({ shopId, onOpen, onClick, className, ...rest 
     [onClick, onOpen]
   )
 
+  if (!hasData) {
+    return (
+      <div className={clsx(baseCardClasses, defaultToneClasses, 'cursor-default', className)}>
+        {loading ? (
+          <>
+            <div className="h-4 w-32 animate-pulse rounded bg-product-200/50" />
+            <div className="h-10 w-24 animate-pulse rounded bg-product-200/60" />
+          </>
+        ) : (
+          <p className="text-sm text-product-700/80 dark:text-product-200/80">
+            Aucun produit chargé pour cette boutique
+          </p>
+        )}
+      </div>
+    )
+  }
+
   return (
     <button
       type="button"
       onClick={handleClick}
       className={clsx(
         baseCardClasses,
-        'hover:shadow-elev-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-product-600/70',
+        defaultToneClasses,
+        'cursor-pointer hover:shadow-elev-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-product-500 focus-visible:ring-offset-2',
         className,
       )}
       aria-label="Ouvrir le catalogue produits"
       {...rest}
     >
       {loading ? (
-        <div className="h-5 w-24 animate-pulse rounded bg-product-200/60" />
+        <>
+          <div className="h-4 w-32 animate-pulse rounded bg-product-200/50" />
+          <div className="h-10 w-24 animate-pulse rounded bg-product-200/60" />
+        </>
       ) : (
         <>
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-bold text-product-700 dark:text-product-200">Catalogue produits</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm uppercase text-product-700 dark:text-product-200">Catalogue produits</p>
             {state?.hasCatalog && (
-              <span className="inline-flex items-center rounded-full bg-product-200 px-2 py-0.5 text-xs font-semibold text-product-700 dark:bg-product-700/30 dark:text-product-200">
+              <span className="inline-flex items-center rounded-full bg-product-200 px-2 py-0.5 text-xs font-semibold text-product-700 dark:bg-product-500/30 dark:text-product-100">
                 Catalogue importé
               </span>
             )}
           </div>
-          <div className="flex items-baseline gap-2 text-product-700 dark:text-product-200">
-            <span className="text-3xl font-bold">{count}</span>
-            <span className="text-sm font-bold uppercase tracking-wide">produits</span>
-          </div>
-          <span className="inline-flex w-fit items-center rounded-md bg-product-600 px-3 py-2 text-sm font-semibold text-white transition hover:brightness-110">
-            Voir le catalogue
-          </span>
+          <p className="mt-2 text-4xl font-semibold text-product-800 dark:text-product-100">{count}</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-product-700/80 dark:text-product-200/80">
+            Produits référencés
+          </p>
+          <p className="mt-1 text-xs text-product-700/70 dark:text-product-200/70">Touchez pour voir le catalogue</p>
         </>
       )}
     </button>
