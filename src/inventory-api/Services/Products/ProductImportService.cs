@@ -98,6 +98,13 @@ public sealed class ProductImportService : IProductImportService
         ArgumentNullException.ThrowIfNull(command);
         ArgumentNullException.ThrowIfNull(command.CsvStream);
 
+        if (command.ShopId == Guid.Empty)
+        {
+            throw new ArgumentException("Shop identifier is required for product imports.", nameof(command));
+        }
+
+        var shopId = command.ShopId;
+
         var bufferedCsv = await BufferStreamAsync(command.CsvStream, cancellationToken).ConfigureAwait(false);
         await using var bufferedStream = bufferedCsv.Stream;
 
@@ -124,7 +131,7 @@ public sealed class ProductImportService : IProductImportService
             var historyId = Guid.NewGuid();
             var startedAt = _clock.UtcNow;
 
-            await InsertHistoryStartedAsync(historyId, startedAt, command.Username, bufferedCsv.Sha256, transaction, cancellationToken)
+            await InsertHistoryStartedAsync(historyId, shopId, startedAt, command.Username, bufferedCsv.Sha256, transaction, cancellationToken)
                 .ConfigureAwait(false);
 
             await transaction.SaveAsync("before_import", cancellationToken).ConfigureAwait(false);
@@ -194,7 +201,7 @@ public sealed class ProductImportService : IProductImportService
 
             if (command.DryRun)
             {
-                var preview = await ComputeUpsertPreviewAsync(parseOutcome.Rows, transaction, cancellationToken)
+                var preview = await ComputeUpsertPreviewAsync(parseOutcome.Rows, shopId, transaction, cancellationToken)
                     .ConfigureAwait(false);
 
                 await CompleteHistoryAsync(
@@ -235,13 +242,13 @@ public sealed class ProductImportService : IProductImportService
 
                 if (!command.DryRun && command.Mode == ProductImportMode.ReplaceCatalogue)
                 {
-                    preloadedAttributes = await LoadExistingAttributesBySkuAsync(parseOutcome.Rows, transaction, cancellationToken)
+                    preloadedAttributes = await LoadExistingAttributesBySkuAsync(parseOutcome.Rows, shopId, transaction, cancellationToken)
                         .ConfigureAwait(false);
 
-                    await DeleteExistingProductsAsync(transaction, cancellationToken).ConfigureAwait(false);
+                    await DeleteExistingProductsAsync(shopId, transaction, cancellationToken).ConfigureAwait(false);
                 }
 
-                var upsertStats = await UpsertRowsAsync(parseOutcome.Rows, transaction, cancellationToken, preloadedAttributes)
+                var upsertStats = await UpsertRowsAsync(parseOutcome.Rows, shopId, transaction, cancellationToken, preloadedAttributes)
                     .ConfigureAwait(false);
 
                 await CompleteHistoryAsync(
@@ -447,6 +454,7 @@ public sealed class ProductImportService : IProductImportService
 
     private async Task InsertHistoryStartedAsync(
         Guid historyId,
+        Guid shopId,
         DateTimeOffset startedAt,
         string? username,
         string fileSha256,
@@ -454,12 +462,13 @@ public sealed class ProductImportService : IProductImportService
         CancellationToken cancellationToken)
     {
         const string sql =
-            "INSERT INTO \"ProductImportHistory\" (\"Id\", \"StartedAt\", \"Username\", \"FileSha256\", \"TotalLines\", \"Inserted\", \"ErrorCount\", \"Status\") " +
-            "VALUES (@Id, @StartedAt, @Username, @FileSha256, 0, 0, 0, @Status);";
+            "INSERT INTO \"ProductImportHistory\" (\"Id\", \"ShopId\", \"StartedAt\", \"Username\", \"FileSha256\", \"TotalLines\", \"Inserted\", \"ErrorCount\", \"Status\") " +
+            "VALUES (@Id, @ShopId, @StartedAt, @Username, @FileSha256, 0, 0, 0, @Status);";
 
         var parameters = new
         {
             Id = historyId,
+            ShopId = shopId,
             StartedAt = startedAt,
             Username = username,
             FileSha256 = fileSha256,
@@ -471,17 +480,18 @@ public sealed class ProductImportService : IProductImportService
             .ConfigureAwait(false);
     }
 
-    private async Task DeleteExistingProductsAsync(NpgsqlTransaction transaction, CancellationToken cancellationToken)
+    private async Task DeleteExistingProductsAsync(Guid shopId, NpgsqlTransaction transaction, CancellationToken cancellationToken)
     {
-        const string sql = "DELETE FROM \"Product\";";
+        const string sql = "DELETE FROM \"Product\" WHERE \"ShopId\" = @ShopId;";
 
         await _connection.ExecuteAsync(
-                new CommandDefinition(sql, transaction: transaction, cancellationToken: cancellationToken))
+                new CommandDefinition(sql, new { ShopId = shopId }, transaction: transaction, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
     }
 
     private async Task<Dictionary<string, string>> LoadExistingAttributesBySkuAsync(
         IReadOnlyList<ProductCsvRow> rows,
+        Guid shopId,
         NpgsqlTransaction transaction,
         CancellationToken cancellationToken)
     {
@@ -506,10 +516,10 @@ public sealed class ProductImportService : IProductImportService
 
         const string existingAttrsSql =
             "SELECT \"Sku\", COALESCE(CAST(\"Attributes\" AS text), '{}') AS attrs " +
-            "FROM \"Product\" WHERE LOWER(\"Sku\") = ANY(@LowerSkus);";
+            "FROM \"Product\" WHERE \"ShopId\" = @ShopId AND LOWER(\"Sku\") = ANY(@LowerSkus);";
 
         var existingRows = await _connection.QueryAsync<(string Sku, string Attrs)>(
-                new CommandDefinition(existingAttrsSql, new { LowerSkus = lowerSkus }, transaction: transaction, cancellationToken: cancellationToken))
+                new CommandDefinition(existingAttrsSql, new { ShopId = shopId, LowerSkus = lowerSkus }, transaction: transaction, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
         foreach (var (skuValue, attrs) in existingRows)
@@ -561,6 +571,7 @@ public sealed class ProductImportService : IProductImportService
 
     private async Task<UpsertStatistics> UpsertRowsAsync(
         IReadOnlyList<ProductCsvRow> rows,
+        Guid shopId,
         NpgsqlTransaction transaction,
         CancellationToken cancellationToken,
         Dictionary<string, string>? preloadedAttributesBySku)
@@ -576,7 +587,7 @@ public sealed class ProductImportService : IProductImportService
         var groupCache = new Dictionary<GroupKey, long?>(GroupKeyComparer.Instance);
 
         var existingAttributesBySku = preloadedAttributesBySku
-            ?? await LoadExistingAttributesBySkuAsync(rows, transaction, cancellationToken).ConfigureAwait(false);
+            ?? await LoadExistingAttributesBySkuAsync(rows, shopId, transaction, cancellationToken).ConfigureAwait(false);
 
         if (transaction.Connection is not NpgsqlConnection npgsqlConnection)
         {
@@ -584,9 +595,9 @@ public sealed class ProductImportService : IProductImportService
         }
 
         const string sql = """
-INSERT INTO "Product" ("Sku", "Name", "Ean", "GroupId", "Attributes", "CodeDigits", "CreatedAtUtc")
-VALUES (@sku, @name, @ean, @gid, @attrs, @digits, @created)
-ON CONFLICT ((LOWER("Sku")))
+INSERT INTO "Product" ("ShopId", "Sku", "Name", "Ean", "GroupId", "Attributes", "CodeDigits", "CreatedAtUtc")
+VALUES (@shopId, @sku, @name, @ean, @gid, @attrs, @digits, @created)
+ON CONFLICT ("ShopId", LOWER("Sku"))
 DO UPDATE SET
     "Name" = EXCLUDED."Name",
     "Ean" = EXCLUDED."Ean",
@@ -598,6 +609,7 @@ RETURNING (xmax = 0) AS inserted;
 
         await using var command = new NpgsqlCommand(sql, npgsqlConnection, transaction);
 
+        var shopParameter = command.Parameters.Add("shopId", NpgsqlDbType.Uuid);
         var skuParameter = command.Parameters.Add("sku", NpgsqlDbType.Text);
         var nameParameter = command.Parameters.Add("name", NpgsqlDbType.Text);
         var eanParameter = command.Parameters.Add("ean", NpgsqlDbType.Text);
@@ -606,6 +618,7 @@ RETURNING (xmax = 0) AS inserted;
         var digitsParameter = command.Parameters.Add("digits", NpgsqlDbType.Text);
         var createdParameter = command.Parameters.Add("created", NpgsqlDbType.TimestampTz);
 
+        shopParameter.Value = shopId;
         skuParameter.Value = string.Empty;
         nameParameter.Value = string.Empty;
         eanParameter.Value = DBNull.Value;
@@ -688,6 +701,7 @@ RETURNING (xmax = 0) AS inserted;
 
     private async Task<UpsertStatistics> ComputeUpsertPreviewAsync(
         IReadOnlyList<ProductCsvRow> rows,
+        Guid shopId,
         NpgsqlTransaction transaction,
         CancellationToken cancellationToken)
     {
@@ -705,9 +719,9 @@ RETURNING (xmax = 0) AS inserted;
             .Select(static sku => sku.ToLowerInvariant())
             .ToArray();
 
-        const string sql = "SELECT \"Sku\" FROM \"Product\" WHERE LOWER(\"Sku\") = ANY(@LowerSkus);";
+        const string sql = "SELECT \"Sku\" FROM \"Product\" WHERE \"ShopId\" = @ShopId AND LOWER(\"Sku\") = ANY(@LowerSkus);";
         var existingSkus = await _connection.QueryAsync<string>(
-                new CommandDefinition(sql, new { LowerSkus = lowerSkus }, transaction: transaction, cancellationToken: cancellationToken))
+                new CommandDefinition(sql, new { ShopId = shopId, LowerSkus = lowerSkus }, transaction: transaction, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
         var existingSet = new HashSet<string>(existingSkus, StringComparer.OrdinalIgnoreCase);
