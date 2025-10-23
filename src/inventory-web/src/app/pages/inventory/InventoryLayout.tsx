@@ -82,7 +82,7 @@ export const InventoryLayout = () => {
   const activeIndex = stepIndexByPath[location.pathname] ?? 0
 
   return (
-    <Page className="gap-8" showHomeLink>
+    <Page className="gap-8" showHomeLink homeLinkTo="/select-user">
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
