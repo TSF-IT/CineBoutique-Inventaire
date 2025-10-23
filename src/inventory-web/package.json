@@ -64,8 +64,7 @@
     "typescript-eslint": "^8.46.1",
     "vite": "^7.1.10",
     "vite-plugin-pwa": "^1.1.0",
-    "vitest": "^3.2.4",
-    "workbox-window": "latest"
+    "vitest": "^3.2.4"
   },
   "overrides": {
     "magic-string": "^0.30.10",
