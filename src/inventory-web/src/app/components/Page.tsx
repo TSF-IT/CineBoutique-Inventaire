@@ -1,8 +1,17 @@
-import type { HTMLAttributes, ReactNode } from 'react'
+import type { HTMLAttributes, ReactNode, TouchEvent as ReactTouchEvent } from 'react'
 import clsx from 'clsx'
 import { Link } from 'react-router-dom'
 import { ThemeToggle } from './ThemeToggle'
 import { PageShell } from './PageShell'
+import { useSwipeBackNavigation } from '../hooks/useSwipeBackNavigation'
+
+type TouchHandler = ((event: ReactTouchEvent) => void) | undefined
+
+const composeTouchHandlers = (fromProps: TouchHandler, fromSwipe: TouchHandler) =>
+  (event: ReactTouchEvent) => {
+    fromProps?.(event)
+    fromSwipe?.(event)
+  }
 
 type PageProps = HTMLAttributes<HTMLDivElement> & {
   showHomeLink?: boolean
@@ -21,38 +30,61 @@ export const Page = ({
   headerAction,
   mobileNav,
   ...rest
-}: PageProps) => (
-  <PageShell
-    {...rest}
-    mainClassName={clsx(
-      'page-content cb-surface-panel flex w-full flex-col gap-6 px-4 py-6 text-base sm:px-8 sm:py-10',
-      className,
-    )}
-    nav={mobileNav}
-    header={
-      <div className="page-header flex w-full items-center gap-3">
-        {(showHomeLink || headerAction) && (
-          <div className="flex items-center gap-3">
-            {showHomeLink && (
-              <Link
-                to={homeLinkTo}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[var(--cb-border-strong)] bg-[var(--cb-surface-soft)] px-3 py-2 text-sm font-semibold text-brand-600 shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--cb-surface-strong)] dark:text-brand-200"
-                data-testid="btn-go-home"
-                aria-label="Revenir à l’accueil"
-              >
-                <span aria-hidden="true">←</span>
-                <span className="sr-only">{homeLinkLabel}</span>
-              </Link>
-            )}
-            {headerAction}
+}: PageProps) => {
+  const swipeHandlers = useSwipeBackNavigation({ enabled: showHomeLink, to: homeLinkTo })
+
+  const {
+    onTouchStart: propsTouchStart,
+    onTouchMove: propsTouchMove,
+    onTouchEnd: propsTouchEnd,
+    onTouchCancel: propsTouchCancel,
+    ...restProps
+  } = rest
+
+  const {
+    onTouchStart: swipeTouchStart,
+    onTouchMove: swipeTouchMove,
+    onTouchEnd: swipeTouchEnd,
+    onTouchCancel: swipeTouchCancel,
+  } = swipeHandlers
+
+  return (
+    <PageShell
+      {...restProps}
+      onTouchStart={composeTouchHandlers(propsTouchStart, swipeTouchStart)}
+      onTouchMove={composeTouchHandlers(propsTouchMove, swipeTouchMove)}
+      onTouchEnd={composeTouchHandlers(propsTouchEnd, swipeTouchEnd)}
+      onTouchCancel={composeTouchHandlers(propsTouchCancel, swipeTouchCancel)}
+      mainClassName={clsx(
+        'page-content cb-surface-panel flex w-full flex-col gap-6 px-4 py-6 text-base sm:px-8 sm:py-10',
+        className,
+      )}
+      nav={mobileNav}
+      header={
+        <div className="page-header flex w-full items-center gap-3">
+          {(showHomeLink || headerAction) && (
+            <div className="flex items-center gap-3">
+              {showHomeLink && (
+                <Link
+                  to={homeLinkTo}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[var(--cb-border-strong)] bg-[var(--cb-surface-soft)] px-3 py-2 text-sm font-semibold text-brand-600 shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--cb-surface-strong)] dark:text-brand-200"
+                  data-testid="btn-go-home"
+                  aria-label="Revenir à l’accueil"
+                >
+                  <span aria-hidden="true">←</span>
+                  <span className="sr-only">{homeLinkLabel}</span>
+                </Link>
+              )}
+              {headerAction}
+            </div>
+          )}
+          <div className="ml-auto">
+            <ThemeToggle />
           </div>
-        )}
-        <div className="ml-auto">
-          <ThemeToggle />
         </div>
-      </div>
-    }
-  >
-    {children}
-  </PageShell>
-)
+      }
+    >
+      {children}
+    </PageShell>
+  )
+}
