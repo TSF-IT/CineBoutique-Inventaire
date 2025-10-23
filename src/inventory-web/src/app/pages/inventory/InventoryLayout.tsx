@@ -36,14 +36,14 @@ export const InventoryLayout = () => {
     const path = location.pathname
     if (path === '/inventory/location') {
       if (!selectedUser) {
-        navigate('/select-shop', { replace: true })
+        navigate('/select-user', { replace: true, state: { redirectTo: path } })
       }
       return
     }
 
     if (path === '/inventory/count-type') {
       if (!selectedUser) {
-        navigate('/select-shop', { replace: true })
+        navigate('/select-user', { replace: true, state: { redirectTo: path } })
         return
       }
 
@@ -55,7 +55,7 @@ export const InventoryLayout = () => {
 
     if (path === '/inventory/session' || path === '/inventory/scan-camera') {
       if (!selectedUser) {
-        navigate('/select-shop', { replace: true })
+        navigate('/select-user', { replace: true, state: { redirectTo: path } })
         return
       }
 
