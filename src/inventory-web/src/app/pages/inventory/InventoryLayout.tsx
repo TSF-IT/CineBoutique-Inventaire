@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Stepper } from '../../components/Stepper'
 import { Page } from '../../components/Page'
+import { InventorySummaryInfo } from '../../components/InventorySummaryInfo'
 import { useInventory } from '../../contexts/InventoryContext'
 import { useShop } from '@/state/ShopContext'
 
@@ -92,11 +93,13 @@ export const InventoryLayout = () => {
             <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Assistant d&apos;inventaire</h1>
           </div>
           <div className="flex flex-col items-end gap-3 sm:flex-row sm:items-center">
-            <div className="hidden text-right text-xs text-slate-500 dark:text-slate-400 sm:block">
-              <p>Utilisateur : {selectedUser?.displayName ?? '–'}</p>
-              <p>Zone : {selectedLocation?.label ?? '–'}</p>
-              <p>Comptage : {countType ?? '–'}</p>
-            </div>
+            <InventorySummaryInfo
+              className="sm:text-[0.8rem]"
+              testId="inventory-summary-info"
+              userName={selectedUser?.displayName}
+              locationLabel={selectedLocation?.label}
+              countLabel={countType}
+            />
           </div>
         </div>
         <div ref={stepperContainerRef}>

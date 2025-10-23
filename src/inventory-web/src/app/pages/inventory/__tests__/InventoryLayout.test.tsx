@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { useLayoutEffect } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { InventoryLayout } from '../InventoryLayout'
 import { InventoryProvider, useInventory } from '../../../contexts/InventoryContext'
 import { ShopProvider, useShop } from '@/state/ShopContext'
+import type { Location } from '../../../types/inventory'
 import { ThemeProvider } from '@/theme/ThemeProvider'
 import type { Shop } from '@/types/shop'
 import type { ShopUser } from '@/types/user'
@@ -22,11 +23,25 @@ const user: ShopUser = {
   disabled: false,
 }
 
+const location: Location = {
+  id: 'location-test',
+  code: 'Z01',
+  label: 'Zone test',
+  isBusy: false,
+  busyBy: null,
+  activeRunId: null,
+  activeCountType: null,
+  activeStartedAtUtc: null,
+  countStatuses: [],
+}
+
 const InventoryStateInitializer = ({ children }: { children: ReactNode }) => {
-  const { setSelectedUser } = useInventory()
+  const { setSelectedUser, setLocation, setCountType } = useInventory()
   useLayoutEffect(() => {
     setSelectedUser(user)
-  }, [setSelectedUser])
+    setLocation(location)
+    setCountType(2)
+  }, [setCountType, setLocation, setSelectedUser])
 
   return <>{children}</>
 }
@@ -70,5 +85,37 @@ describe('InventoryLayout', () => {
 
     const homeLink = screen.getByTestId('btn-go-home')
     expect(homeLink).toHaveAttribute('href', '/select-user')
+  })
+
+  it('affiche le récapitulatif utilisateur, zone et comptage', () => {
+    window.localStorage.setItem(SHOP_STORAGE_KEY, JSON.stringify(shop))
+
+    render(
+      <ThemeProvider>
+        <MemoryRouter initialEntries={['/inventory/location']}>
+          <ShopProvider>
+            <ShopInitializer shop={shop} />
+            <InventoryProvider>
+              <InventoryStateInitializer>
+                <Routes>
+                  <Route path="/inventory" element={<InventoryLayout />}>
+                    <Route path="location" element={<div data-testid="inventory-location-step" />} />
+                  </Route>
+                </Routes>
+              </InventoryStateInitializer>
+            </InventoryProvider>
+          </ShopProvider>
+        </MemoryRouter>
+      </ThemeProvider>,
+    )
+
+    const summary = screen.getByTestId('inventory-summary-info')
+    expect(summary).toBeInTheDocument()
+    expect(within(summary).getByText(/Utilisateur/i)).toBeInTheDocument()
+    expect(within(summary).getByText('Utilisateur Test')).toBeInTheDocument()
+    expect(within(summary).getByText(/Zone/i)).toBeInTheDocument()
+    expect(within(summary).getByText('Zone test')).toBeInTheDocument()
+    expect(within(summary).getByText(/Comptage/i)).toBeInTheDocument()
+    expect(within(summary).getByText('2')).toBeInTheDocument()
   })
 })
