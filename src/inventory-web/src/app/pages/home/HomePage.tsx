@@ -162,6 +162,8 @@ export const HomePage = () => {
   const shopId = shop?.id ?? null
   const {
     selectedUser,
+    countType,
+    location: selectedLocation,
     sessionId,
     setLocation,
     setCountType,
@@ -462,18 +464,30 @@ export const HomePage = () => {
   )
 
   const shopDisplayName = shop?.name?.trim()
+  const currentYear = new Date().getFullYear()
 
   return (
     <Page headerAction={<BackToShopSelectionLink onClick={handleChangeShop} className="sm:self-start" />}>
       <section className="flex flex-col gap-4">
-        <p className="mt-3 font-semibold uppercase tracking-[.12em] text-[var(--text-muted)]">
-          {shopDisplayName ?? 'CinéBoutique'}
-        </p>
-        <h1 className="text-4xl font-black leading-tight text-slate-900 dark:text-white sm:text-5xl">Inventaire</h1>
-        <p className="max-w-xl text-base text-slate-600 dark:text-slate-300">
-          Lancez un comptage en quelques gestes, scannez les produits depuis la caméra ou une douchette Bluetooth et
-          assurez un suivi fiable de vos zones.
-        </p>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex-1">
+            <p className="mt-3 font-semibold uppercase tracking-[.12em] text-[var(--text-muted)]">
+              {shopDisplayName ?? 'CinéBoutique'}
+            </p>
+            <h1 className="text-4xl font-black leading-tight text-slate-900 dark:text-white sm:text-5xl">
+              Inventaire {currentYear}
+            </h1>
+            <p className="max-w-xl text-base text-slate-600 dark:text-slate-300">
+              Lancez un comptage en quelques gestes, scannez les produits depuis la caméra ou une douchette Bluetooth
+              et assurez un suivi fiable de vos zones.
+            </p>
+          </div>
+          <div className="hidden text-right text-xs text-slate-500 dark:text-slate-400 sm:block">
+            <p>Utilisateur : {selectedUser?.displayName ?? '–'}</p>
+            <p>Zone : {selectedLocation?.label ?? '–'}</p>
+            <p>Comptage : {countType ?? '–'}</p>
+          </div>
+        </div>
       </section>
 
       <Card className="flex flex-col gap-4">
