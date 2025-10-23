@@ -36,8 +36,8 @@ const ADMIN_SECTIONS: { id: AdminSection; label: string; description: string }[]
   },
   {
     id: 'catalog',
-    label: 'Catalogue produits (CSV)',
-    description: 'Importez le fichier CSV annuel pour mettre à jour le catalogue de la boutique.',
+    label: 'Produits',
+    description: 'Importez ou simulez un import CSV pour mettre à jour le catalogue de la boutique.',
   },
 ]
 
@@ -65,7 +65,7 @@ const SectionSwitcher = ({ activeSection, onChange }: SectionSwitcherProps) => (
       <div
         role="tablist"
         aria-label="Choix de la section d'administration"
-        className="inline-grid w-full min-w-[200px] grid-cols-2 gap-1 rounded-full bg-slate-100 p-1 text-sm font-semibold text-slate-600 shadow-inner dark:bg-slate-800 dark:text-slate-300 sm:w-auto"
+        className="inline-grid w-full min-w-[200px] grid-flow-col auto-cols-fr gap-1 rounded-full bg-slate-100 p-0.5 text-sm font-semibold text-slate-600 shadow-inner dark:bg-slate-800 dark:text-slate-300 sm:w-auto"
       >
         {ADMIN_SECTIONS.map(({ id, label }) => {
           const isActive = id === activeSection
@@ -76,7 +76,7 @@ const SectionSwitcher = ({ activeSection, onChange }: SectionSwitcherProps) => (
               role="tab"
               aria-selected={isActive}
               className={clsx(
-                'rounded-full px-4 py-2 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400',
+                'rounded-full px-3 py-1.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400',
                 isActive
                   ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
                   : 'hover:text-slate-900 dark:hover:text-white',
