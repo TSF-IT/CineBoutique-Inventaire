@@ -117,12 +117,11 @@ export const AppRoutes = () => {
               path="/scan"
               element={<ProductScanSearch onPick={(sku) => console.log('picked', sku)} />}
             />
-          </Route>
-          {/* Admin: à toi de voir si ça doit aussi exiger un user */}
-          <Route path="/admin" element={<AdminLayout />}>
-            <Route index element={<AdminLocationsPage />} />
-            <Route path="products" element={<AdminProductsPage />} />
-            <Route path="/admin/import" element={<ProductImportPage />} />
+            <Route path="/admin" element={<AdminLayout />}>
+              <Route index element={<AdminLocationsPage />} />
+              <Route path="products" element={<AdminProductsPage />} />
+              <Route path="/admin/import" element={<ProductImportPage />} />
+            </Route>
           </Route>
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />

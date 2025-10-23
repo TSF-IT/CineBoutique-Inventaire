@@ -76,12 +76,20 @@ const createUseInventoryValue = (overrides: Partial<UseInventoryValue> = {}): Us
 
 const useInventoryMock = vi.hoisted(() => vi.fn(() => createUseInventoryValue()))
 
+const fetchShopUsersMock = vi.hoisted(() =>
+  vi.fn<(shopId: string) => Promise<ShopUser[]>>(async () => [defaultInventoryUser]),
+)
+
 vi.mock('@/state/ShopContext', () => ({
   useShop: () => useShopMock(),
 }))
 
 vi.mock('@/app/contexts/InventoryContext', () => ({
   useInventory: () => useInventoryMock(),
+}))
+
+vi.mock('@/app/api/shopUsers', () => ({
+  fetchShopUsers: fetchShopUsersMock,
 }))
 
 vi.mock('@/app/pages/home/HomePage', () => ({
@@ -133,6 +141,8 @@ describe('AppRoutes', () => {
     useInventoryMock.mockReset()
     useInventoryMock.mockReturnValue(createUseInventoryValue())
     sessionStorage.clear()
+    fetchShopUsersMock.mockReset()
+    fetchShopUsersMock.mockImplementation(async () => [defaultInventoryUser])
   })
 
   it('redirige vers la page de sélection quand aucune boutique n’est définie', async () => {
@@ -162,7 +172,17 @@ describe('AppRoutes', () => {
         isLoaded: true,
       }),
     )
-    sessionStorage.setItem(`${SELECTED_USER_STORAGE_PREFIX}.${shop.id}`, JSON.stringify({ userId: 'user-1' }))
+    sessionStorage.setItem(
+      `${SELECTED_USER_STORAGE_PREFIX}.${shop.id}`,
+      JSON.stringify({
+        userId: defaultInventoryUser.id,
+        displayName: defaultInventoryUser.displayName,
+        login: defaultInventoryUser.login,
+        shopId: shop.id,
+        isAdmin: defaultInventoryUser.isAdmin,
+        disabled: defaultInventoryUser.disabled,
+      }),
+    )
 
     const seenPaths: string[] = []
 
@@ -235,7 +255,14 @@ describe('AppRoutes', () => {
     )
     sessionStorage.setItem(
       `${SELECTED_USER_STORAGE_PREFIX}.${shop.id}`,
-      JSON.stringify({ userId: defaultInventoryUser.id }),
+      JSON.stringify({
+        userId: defaultInventoryUser.id,
+        displayName: defaultInventoryUser.displayName,
+        login: defaultInventoryUser.login,
+        shopId: shop.id,
+        isAdmin: defaultInventoryUser.isAdmin,
+        disabled: defaultInventoryUser.disabled,
+      }),
     )
     useInventoryMock.mockReturnValue(
       createUseInventoryValue({
