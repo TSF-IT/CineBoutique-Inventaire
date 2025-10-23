@@ -10,6 +10,8 @@ import { ThemeProvider } from '@/theme/ThemeProvider'
 import type { Shop } from '@/types/shop'
 import type { ShopUser } from '@/types/user'
 import { SHOP_STORAGE_KEY } from '@/lib/shopStorage'
+import type { Location } from '../../../types/inventory'
+import { CountType } from '../../../types/inventory'
 
 const shop: Shop = { id: 'shop-test', name: 'Boutique test', kind: 'boutique' }
 
@@ -22,11 +24,35 @@ const user: ShopUser = {
   disabled: false,
 }
 
-const InventoryStateInitializer = ({ children }: { children: ReactNode }) => {
-  const { setSelectedUser } = useInventory()
+const baseLocation: Location = {
+  id: '00000000-0000-0000-0000-000000000001',
+  code: 'Z1',
+  label: 'Zone test',
+  isBusy: false,
+  busyBy: null,
+  activeRunId: null,
+  activeCountType: null,
+  activeStartedAtUtc: null,
+  countStatuses: [],
+}
+
+const InventoryStateInitializer = ({
+  children,
+  location = null,
+  countType = null,
+}: {
+  children: ReactNode
+  location?: Location | null
+  countType?: CountType | null
+}) => {
+  const { setSelectedUser, setLocation, setCountType } = useInventory()
   useLayoutEffect(() => {
     setSelectedUser(user)
-  }, [setSelectedUser])
+    if (location) {
+      setLocation(location)
+    }
+    setCountType(countType)
+  }, [countType, location, setCountType, setLocation, setSelectedUser])
 
   return <>{children}</>
 }
@@ -46,19 +72,39 @@ afterEach(() => {
 })
 
 describe('InventoryLayout', () => {
-  it('pointe le lien de retour vers la sélection utilisateur', () => {
+  it.each<{
+    path: string
+    expectedHref: string
+    initializerProps?: { location?: Location | null; countType?: CountType | null }
+  }>([
+    { path: '/inventory/location', expectedHref: '/' },
+    { path: '/inventory/count-type', expectedHref: '/inventory/location', initializerProps: { location: baseLocation } },
+    {
+      path: '/inventory/session',
+      expectedHref: '/inventory/count-type',
+      initializerProps: { location: baseLocation, countType: CountType.Count1 },
+    },
+    {
+      path: '/inventory/scan-camera',
+      expectedHref: '/inventory/session',
+      initializerProps: { location: baseLocation, countType: CountType.Count1 },
+    },
+  ])('pointe le lien de retour attendu pour %s', ({ path, expectedHref, initializerProps }) => {
     window.localStorage.setItem(SHOP_STORAGE_KEY, JSON.stringify(shop))
 
     render(
       <ThemeProvider>
-        <MemoryRouter initialEntries={['/inventory/location']}>
+        <MemoryRouter initialEntries={[path]}>
           <ShopProvider>
             <ShopInitializer shop={shop} />
             <InventoryProvider>
-              <InventoryStateInitializer>
+              <InventoryStateInitializer {...initializerProps}>
                 <Routes>
                   <Route path="/inventory" element={<InventoryLayout />}>
                     <Route path="location" element={<div data-testid="inventory-location-step" />} />
+                    <Route path="count-type" element={<div data-testid="inventory-count-type-step" />} />
+                    <Route path="session" element={<div data-testid="inventory-session-step" />} />
+                    <Route path="scan-camera" element={<div data-testid="inventory-scan-step" />} />
                   </Route>
                 </Routes>
               </InventoryStateInitializer>
@@ -69,6 +115,6 @@ describe('InventoryLayout', () => {
     )
 
     const homeLink = screen.getByTestId('btn-go-home')
-    expect(homeLink).toHaveAttribute('href', '/select-user')
+    expect(homeLink).toHaveAttribute('href', expectedHref)
   })
 })

@@ -14,6 +14,15 @@ const stepIndexByPath: Record<string, number> = {
   '/inventory/scan-camera': 2,
 }
 
+const homeLinkConfigByPath: Record<string, { to: string; label: string }> = {
+  '/inventory/location': { to: '/', label: 'Retour à la page principale' },
+  '/inventory/count-type': { to: '/inventory/location', label: 'Retour à la sélection de la zone' },
+  '/inventory/session': { to: '/inventory/count-type', label: 'Retour à la sélection du comptage' },
+  '/inventory/scan-camera': { to: '/inventory/session', label: 'Retour à l’écran de comptage' },
+}
+
+const defaultHomeLink = { to: '/select-user', label: 'Retour à l’accueil' } as const
+
 export const InventoryLayout = () => {
   const location = useLocation()
   const navigate = useNavigate()
@@ -80,9 +89,15 @@ export const InventoryLayout = () => {
   }, [location.pathname])
 
   const activeIndex = stepIndexByPath[location.pathname] ?? 0
+  const homeLinkConfig = homeLinkConfigByPath[location.pathname] ?? defaultHomeLink
 
   return (
-    <Page className="gap-8" showHomeLink homeLinkTo="/select-user">
+    <Page
+      className="gap-8"
+      showHomeLink
+      homeLinkTo={homeLinkConfig.to}
+      homeLinkLabel={homeLinkConfig.label}
+    >
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
