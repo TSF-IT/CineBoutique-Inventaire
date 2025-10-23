@@ -201,16 +201,16 @@ describe('HomePage', () => {
 
       const runningButton = screen.getByRole('button', { name: /Comptages en cours/i })
       expect(within(runningButton).getByText('1')).toBeInTheDocument()
-      expect(within(runningButton).getByText(/Touchez pour voir le détail/i)).toBeInTheDocument()
+      expect(within(runningButton).getByText(/Touchez ou cliquez pour voir le détail/i)).toBeInTheDocument()
 
       const conflictsCard = screen.getByText('Conflits').closest('div')
       expect(conflictsCard).not.toBeNull()
       if (conflictsCard) {
         expect(within(conflictsCard).getByText('2')).toBeInTheDocument()
-        expect(within(conflictsCard).getByText(/Touchez une zone pour voir le détail/i)).toBeInTheDocument()
+        expect(within(conflictsCard).getByText(/Touchez ou cliquez sur une zone pour voir le détail/i)).toBeInTheDocument()
       }
 
-      expect(screen.getByText(/Progression\s*:\s*2\s*\/\s*4/)).toBeInTheDocument()
+      expect(screen.getByText('2 / 4')).toBeInTheDocument()
     })
 
     expect(screen.getByRole('button', { name: 'Débuter un comptage' })).toBeInTheDocument()
@@ -236,7 +236,7 @@ describe('HomePage', () => {
 
     expect(await screen.findByText('Aucun comptage en cours')).toBeInTheDocument()
     expect(await screen.findByText('Aucun conflit')).toBeInTheDocument()
-    expect(await screen.findByText(/Progression\s*:\s*0\s*\/\s*0/)).toBeInTheDocument()
+    expect(await screen.findByText('Aucun comptage terminé')).toBeInTheDocument()
     expect(await screen.findByText('Aucun comptage en cours pour cette boutique.')).toBeInTheDocument()
   })
 })
