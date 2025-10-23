@@ -1,23 +1,40 @@
-import React from 'react';
-import { FixedSizeList as VirtualList } from 'react-window';
+import React from "react";
+import { FixedSizeList as VirtualList } from "react-window";
 
 const ROW_HEIGHT = 44;
-type Item = { id: string; sku: string; name: string; ean?: string | null; description?: string | null; codeDigits?: string | null };
+type Item = {
+  id: string;
+  sku: string;
+  name: string;
+  ean?: string | null;
+  description?: string | null;
+  codeDigits?: string | null;
+};
 type Response = {
-  items: Item[]; page: number; pageSize: number; total: number; totalPages: number;
-  sortBy: string; sortDir: 'asc'|'desc'; q?: string | null;
+  items: Item[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  sortBy: string;
+  sortDir: "asc" | "desc";
+  q?: string | null;
 };
 
 type Props = { open: boolean; onClose: () => void; shopId: string };
 
 export function ProductsModal({ open, onClose, shopId }: Props) {
-  const [q, setQ] = React.useState('');
+  const [q, setQ] = React.useState("");
   const [page, setPage] = React.useState(1);
-  const [sortBy, setSortBy] = React.useState<'sku'|'ean'|'name'|'descr'|'digits'>('sku');
-  const [sortDir, setSortDir] = React.useState<'asc'|'desc'>('asc');
+  const [sortBy, setSortBy] = React.useState<
+    "sku" | "ean" | "name" | "descr" | "digits"
+  >("sku");
+  const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
   const [data, setData] = React.useState<Response | null>(null);
   const [loading, setLoading] = React.useState(false);
-  const listRef = React.useRef<{ scrollToItem?: (index: number) => void } | null>(null);
+  const listRef = React.useRef<{
+    scrollToItem?: (index: number) => void;
+  } | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
@@ -28,67 +45,100 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
       pageSize: String(50),
       q: q.trim(),
       sortBy,
-      sortDir
+      sortDir,
     });
     (async () => {
       try {
-        const res = await fetch(`/api/shops/${shopId}/products?` + params.toString());
-        if (!res.ok) throw new Error('fetch failed');
+        const res = await fetch(
+          `/api/shops/${shopId}/products?` + params.toString()
+        );
+        if (!res.ok) throw new Error("fetch failed");
         const json = await res.json();
         if (!abort) setData(json);
       } finally {
         if (!abort) setLoading(false);
       }
     })();
-    return () => { abort = true; };
+    return () => {
+      abort = true;
+    };
   }, [open, shopId, page, sortBy, sortDir, q]);
 
-  const setSort = React.useCallback((col: typeof sortBy) => {
-    if (sortBy === col) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
-    else { setSortBy(col); setSortDir('asc'); }
-  }, [sortBy]);
+  const setSort = React.useCallback(
+    (col: typeof sortBy) => {
+      if (sortBy === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      else {
+        setSortBy(col);
+        setSortDir("asc");
+      }
+    },
+    [sortBy]
+  );
 
   React.useEffect(() => {
     listRef.current?.scrollToItem?.(0);
   }, [page, sortBy, sortDir, q, data?.items]);
 
-  const header = React.useMemo(() => (
-    <thead className="sticky top-0 bg-white">
-      <tr className="text-left text-sm text-gray-600">
-        {([['sku', 'SKU'], ['ean', 'EAN'], ['name', 'Nom'], ['descr', 'Description'], ['digits', 'Digits']] as const).map(([key, label]) => (
-          <th
-            key={key}
-            className="cursor-pointer p-2 font-medium text-gray-900"
-            onClick={() => setSort(key)}
-          >
-            <span className="inline-flex items-center gap-1">
-              {label}
-              {sortBy === key ? (
-                <span aria-hidden="true">{sortDir === 'asc' ? '↑' : '↓'}</span>
-              ) : null}
-            </span>
-          </th>
-        ))}
-      </tr>
-    </thead>
-  ), [setSort, sortBy, sortDir]);
-
-  if (!open) return null;
+  const header = React.useMemo(
+    () => (
+      <thead className="sticky top-0 bg-white">
+        <tr className="text-left text-sm text-gray-600">
+          {(
+            [
+              ["sku", "SKU"],
+              ["ean", "EAN"],
+              ["name", "Nom"],
+              ["descr", "Description"],
+              ["digits", "Digits"],
+            ] as const
+          ).map(([key, label]) => (
+            <th
+              key={key}
+              className="cursor-pointer p-2 font-medium text-gray-900"
+              onClick={() => setSort(key)}
+            >
+              <span className="inline-flex items-center gap-1">
+                {label}
+                {sortBy === key ? (
+                  <span aria-hidden="true">
+                    {sortDir === "asc" ? "↑" : "↓"}
+                  </span>
+                ) : null}
+              </span>
+            </th>
+          ))}
+        </tr>
+      </thead>
+    ),
+    [setSort, sortBy, sortDir]
+  );
 
   const items = data?.items ?? [];
   const itemCount = items.length;
   const canVirtualize = itemCount >= 200;
-  const itemKey = React.useCallback((index: number, products: Item[]) => products[index]?.id ?? index, []);
+  const itemKey = React.useCallback(
+    (index: number, products: Item[]) => products[index]?.id ?? index,
+    []
+  );
+
+  if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/40" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-50 bg-black/40"
+      role="dialog"
+      aria-modal="true"
+    >
       <div className="absolute inset-x-0 bottom-0 top-8 mx-auto max-w-4xl rounded-t-xl bg-white shadow-lg">
         <div className="sticky top-0 flex items-center justify-between border-b bg-white p-3">
           <input
             placeholder="Rechercher (SKU / EAN / description)"
             className="w-full max-w-sm rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
             value={q}
-            onChange={e => { setPage(1); setQ(e.target.value); }}
+            onChange={(e) => {
+              setPage(1);
+              setQ(e.target.value);
+            }}
           />
           <button
             onClick={onClose}
@@ -103,14 +153,22 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
             <table className="min-w-full table-fixed border-collapse">
               {header}
               <tbody>
-                <tr><td className="p-4 text-sm text-gray-500" colSpan={5}>Chargement…</td></tr>
+                <tr>
+                  <td className="p-4 text-sm text-gray-500" colSpan={5}>
+                    Chargement…
+                  </td>
+                </tr>
               </tbody>
             </table>
           ) : items.length === 0 ? (
             <table className="min-w-full table-fixed border-collapse">
               {header}
               <tbody>
-                <tr><td className="p-4 text-sm text-gray-500" colSpan={5}>Aucun résultat</td></tr>
+                <tr>
+                  <td className="p-4 text-sm text-gray-500" colSpan={5}>
+                    Aucun résultat
+                  </td>
+                </tr>
               </tbody>
             </table>
           ) : canVirtualize ? (
@@ -122,15 +180,21 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
               width="100%"
               className="border-t"
             >
-              {({ index, style }: { index: number; style: React.CSSProperties }) => {
+              {({
+                index,
+                style,
+              }: {
+                index: number;
+                style: React.CSSProperties;
+              }) => {
                 const product = items[index];
                 return (
                   <div style={style} className="text-sm grid grid-cols-5">
                     <div className="p-2">{product.sku}</div>
-                    <div className="p-2">{product.ean ?? ''}</div>
+                    <div className="p-2">{product.ean ?? ""}</div>
                     <div className="p-2">{product.name}</div>
-                    <div className="p-2">{product.description ?? ''}</div>
-                    <div className="p-2">{product.codeDigits ?? ''}</div>
+                    <div className="p-2">{product.description ?? ""}</div>
+                    <div className="p-2">{product.codeDigits ?? ""}</div>
                   </div>
                 );
               }}
@@ -144,11 +208,30 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
                     key={itemKey(index, items)}
                     className="border-t text-sm text-gray-700 hover:bg-gray-50"
                   >
-                    <td className="p-2 truncate" title={product.sku}>{product.sku}</td>
-                    <td className="p-2 truncate" title={product.ean ?? undefined}>{product.ean ?? ''}</td>
-                    <td className="p-2 truncate" title={product.name}>{product.name}</td>
-                    <td className="p-2 truncate" title={product.description ?? undefined}>{product.description ?? ''}</td>
-                    <td className="p-2 truncate" title={product.codeDigits ?? undefined}>{product.codeDigits ?? ''}</td>
+                    <td className="p-2 truncate" title={product.sku}>
+                      {product.sku}
+                    </td>
+                    <td
+                      className="p-2 truncate"
+                      title={product.ean ?? undefined}
+                    >
+                      {product.ean ?? ""}
+                    </td>
+                    <td className="p-2 truncate" title={product.name}>
+                      {product.name}
+                    </td>
+                    <td
+                      className="p-2 truncate"
+                      title={product.description ?? undefined}
+                    >
+                      {product.description ?? ""}
+                    </td>
+                    <td
+                      className="p-2 truncate"
+                      title={product.codeDigits ?? undefined}
+                    >
+                      {product.codeDigits ?? ""}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -158,19 +241,27 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
 
         <div className="flex items-center justify-between border-t p-3 text-sm text-gray-600">
           <div>
-            {data ? <>Page {data.page} / {data.totalPages} — {data.total} éléments</> : '—'}
+            {data ? (
+              <>
+                Page {data.page} / {data.totalPages} — {data.total} éléments
+              </>
+            ) : (
+              "—"
+            )}
           </div>
           <div className="flex gap-2">
             <button
               disabled={!data || data.page <= 1}
-              onClick={() => setPage(p => Math.max(1, p - 1))}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
               className="rounded border border-gray-300 px-3 py-1 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Préc.
             </button>
             <button
-              disabled={!data || (data.totalPages === 0) || (data.page >= data.totalPages)}
-              onClick={() => setPage(p => p + 1)}
+              disabled={
+                !data || data.totalPages === 0 || data.page >= data.totalPages
+              }
+              onClick={() => setPage((p) => p + 1)}
               className="rounded border border-gray-300 px-3 py-1 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Suiv.
