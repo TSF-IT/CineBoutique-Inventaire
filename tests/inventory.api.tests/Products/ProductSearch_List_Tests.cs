@@ -142,10 +142,12 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
     {
         var id = Guid.NewGuid();
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
+        var shopId = await Fixture.Seeder.GetDefaultShopIdAsync().ConfigureAwait(false);
 
         var columns = new List<string>
         {
             "\"Id\"",
+            "\"ShopId\"",
             "\"Sku\"",
             "\"Name\"",
             "\"Ean\"",
@@ -156,6 +158,7 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
         var values = new List<string>
         {
             "@Id",
+            "@ShopId",
             "@Sku",
             "@Name",
             "@Ean",
@@ -177,6 +180,7 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
             Parameters =
             {
                 new("Id", id),
+                new("ShopId", shopId),
                 new("Sku", sku),
                 new("Name", name),
                 new("Ean", (object?)ean ?? DBNull.Value),

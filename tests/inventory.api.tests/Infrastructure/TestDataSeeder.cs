@@ -13,13 +13,16 @@ public sealed class TestDataSeeder
         _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
     }
 
-    public async Task<Guid> CreateShopAsync(string name)
+    private const string DefaultTestShopName = "Boutique Tests";
+
+    public async Task<Guid> CreateShopAsync(string name, string kind = "boutique")
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(kind);
 
         var id = Guid.NewGuid();
 
-        const string sql = "INSERT INTO \"Shop\" (\"Id\", \"Name\") VALUES (@id, @name);";
+        const string sql = "INSERT INTO \"Shop\" (\"Id\", \"Name\", \"Kind\") VALUES (@id, @name, @kind);";
 
         var connection = _dataSource.CreateConnection();
         await connection.OpenAsync().ConfigureAwait(false);
@@ -30,7 +33,8 @@ public sealed class TestDataSeeder
                 Parameters =
                 {
                     new("id", id),
-                    new("name", name)
+                    new("name", name),
+                    new("kind", kind)
                 }
             };
 
@@ -125,7 +129,7 @@ public sealed class TestDataSeeder
 
     public async Task<Guid> GetDefaultShopIdAsync()
     {
-        const string sql = "SELECT \"Id\" FROM \"Shop\" ORDER BY \"Name\" LIMIT 1;";
+        const string sql = "SELECT \"Id\" FROM \"Shop\" ORDER BY LOWER(\"Name\"), \"Id\" LIMIT 1;";
 
         await using var connection = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
         await using var command = new NpgsqlCommand(sql, connection);
@@ -136,7 +140,7 @@ public sealed class TestDataSeeder
             return id;
         }
 
-        throw new InvalidOperationException("Aucun shop n'est disponible dans la base de tests.");
+        return await CreateShopAsync(DefaultTestShopName).ConfigureAwait(false);
     }
 
     public async Task<Guid> CreateProductAsync(Guid shopId, string sku, string name, string? ean = null)

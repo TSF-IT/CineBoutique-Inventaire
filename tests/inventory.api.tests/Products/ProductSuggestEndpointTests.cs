@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -110,6 +111,7 @@ public sealed class ProductSuggestEndpointTests : IntegrationTestBase
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask);
+        var shopId = await Fixture.Seeder.GetDefaultShopIdAsync().ConfigureAwait(false);
 
         await using (var connection = await Fixture.OpenConnectionAsync())
         {
@@ -136,8 +138,8 @@ public sealed class ProductSuggestEndpointTests : IntegrationTestBase
             var updateSet = "\"Name\"='Café Grains 1kg', \"Ean\"='321000000001', \"GroupId\"=@gid";
             if (hasUpdated) updateSet += ", \"UpdatedAtUtc\" = NOW() AT TIME ZONE 'UTC'";
 
-            var insertCols = new List<string> { "\"Sku\"", "\"Name\"", "\"Ean\"", "\"GroupId\"" };
-            var insertVals = new List<string> { "'CB-0001'", "'Café Grains 1kg'", "'321000000001'", "@gid" };
+            var insertCols = new List<string> { "\"ShopId\"", "\"Sku\"", "\"Name\"", "\"Ean\"", "\"GroupId\"" };
+            var insertVals = new List<string> { "@shopId", "'CB-0001'", "'Café Grains 1kg'", "'321000000001'", "@gid" };
             if (hasCreated) { insertCols.Add("\"CreatedAtUtc\""); insertVals.Add("NOW() AT TIME ZONE 'UTC'"); }
             if (hasUpdated) { insertCols.Add("\"UpdatedAtUtc\""); insertVals.Add("NOW() AT TIME ZONE 'UTC'"); }
 
@@ -145,14 +147,14 @@ public sealed class ProductSuggestEndpointTests : IntegrationTestBase
             WITH upsert AS (
               UPDATE ""Product""
               SET {updateSet}
-              WHERE ""Sku"" = 'CB-0001'
+              WHERE ""Sku"" = 'CB-0001' AND ""ShopId"" = @shopId
               RETURNING ""Sku""
             )
             INSERT INTO ""Product"" ({string.Join(", ", insertCols)})
             SELECT {string.Join(", ", insertVals)}
             WHERE NOT EXISTS (SELECT 1 FROM upsert);";
 
-            await connection.ExecuteAsync(upsertSql, new { gid });
+            await connection.ExecuteAsync(upsertSql, new { gid, shopId });
         }
 
         var r1 = await _f.Client.GetAsync("/api/products/suggest?q=321000000001&limit=5");
