@@ -32,7 +32,6 @@ public sealed class ProductImportService : IProductImportService
     private const string StatusSucceeded = "Succeeded";
     private const string StatusFailed = "Failed";
     private const string StatusDryRun = "DryRun";
-    private const string StatusSkipped = "Skipped";
 
     private static readonly Regex DigitsOnlyRegex = new("[^0-9]", RegexOptions.Compiled | RegexOptions.CultureInvariant);
     private static readonly Encoding StrictUtf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
@@ -122,30 +121,6 @@ public sealed class ProductImportService : IProductImportService
 
         try
         {
-            if (!command.DryRun)
-            {
-                var lastSucceededHash = await GetLastSucceededHashAsync(transaction, cancellationToken).ConfigureAwait(false);
-                if (!string.IsNullOrEmpty(lastSucceededHash) &&
-                    string.Equals(lastSucceededHash, bufferedCsv.Sha256, StringComparison.Ordinal))
-                {
-                    await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
-                    LogImportEvent(
-                        "ImportCompleted",
-                        StatusSkipped,
-                        command.Username,
-                        bufferedCsv.Sha256,
-                        total: 0,
-                        created: 0,
-                        updated: 0,
-                        duration: TimeSpan.Zero,
-                        unknownColumns: EmptyUnknownColumns);
-                    ApiLog.ImportStep(_logger, "Import produits ignoré : fichier identique au dernier import réussi.");
-                    return new ProductImportResult(ProductImportResponse.SkippedResult(), ProductImportResultType.Skipped);
-                }
-            }
-
-            var hasSuccessfulImport = await HasSuccessfulImportAsync(transaction, cancellationToken).ConfigureAwait(false);
-
             var historyId = Guid.NewGuid();
             var startedAt = _clock.UtcNow;
 
@@ -256,7 +231,7 @@ public sealed class ProductImportService : IProductImportService
 
             try
             {
-                if (!command.DryRun && !hasSuccessfulImport && parseOutcome.Rows.Count > 0)
+                if (!command.DryRun)
                 {
                     await DeleteExistingProductsAsync(transaction, cancellationToken).ConfigureAwait(false);
                 }
@@ -464,18 +439,6 @@ public sealed class ProductImportService : IProductImportService
             .ConfigureAwait(false);
     }
 
-    private async Task<string?> GetLastSucceededHashAsync(NpgsqlTransaction transaction, CancellationToken cancellationToken)
-    {
-        const string sql =
-            "SELECT \"FileSha256\" FROM \"ProductImportHistory\" " +
-            "WHERE \"Status\" = @Status AND \"FileSha256\" IS NOT NULL " +
-            "ORDER BY \"StartedAt\" DESC LIMIT 1;";
-
-        return await _connection.QueryFirstOrDefaultAsync<string?>(
-                new CommandDefinition(sql, new { Status = StatusSucceeded }, transaction: transaction, cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
-    }
-
     private async Task InsertHistoryStartedAsync(
         Guid historyId,
         DateTimeOffset startedAt,
@@ -499,19 +462,6 @@ public sealed class ProductImportService : IProductImportService
 
         await _connection.ExecuteAsync(
                 new CommandDefinition(sql, parameters, transaction: transaction, cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
-    }
-
-    private async Task<bool> HasSuccessfulImportAsync(NpgsqlTransaction transaction, CancellationToken cancellationToken)
-    {
-        const string sql =
-            "SELECT EXISTS (" +
-            "SELECT 1 FROM \"ProductImportHistory\" " +
-            "WHERE \"Status\" = @StatusSucceeded" +
-            ");";
-
-        return await _connection.ExecuteScalarAsync<bool>(
-                new CommandDefinition(sql, new { StatusSucceeded }, transaction: transaction, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
     }
 
