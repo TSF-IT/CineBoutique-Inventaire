@@ -23,7 +23,13 @@ public sealed class ProductImportFlexTests : IClassFixture<TestApiFactory>
   {
     Skip.If(!_f.IsAvailable, _f.SkipReason ?? "Backend d'intégration indisponible.");
 
-    using var dryRunScope = await _f.WithDbAsync(_ => Task.CompletedTask);
+    var shopId = Guid.NewGuid();
+    using var dryRunScope = await _f.WithDbAsync(async conn =>
+    {
+      await conn.ExecuteAsync(
+        "INSERT INTO \"Shop\" (\"Id\",\"Name\",\"Kind\") VALUES (@Id,@Name,@Kind) ON CONFLICT (\"Id\") DO NOTHING;",
+        new { Id = shopId, Name = "Boutique Flex", Kind = "boutique" }).ConfigureAwait(false);
+    });
 
     var client = _f.Client;
     client.DefaultRequestHeaders.Remove("X-Admin");
@@ -35,7 +41,7 @@ public sealed class ProductImportFlexTests : IClassFixture<TestApiFactory>
       .ToString();
 
     using var content = new StringContent(csv, Encoding.UTF8, "text/csv");
-    var response = await client.PostAsync("/api/products/import?dryRun=true", content).ConfigureAwait(false);
+    var response = await client.PostAsync(BuildImportUri(shopId, "dryRun=true"), content).ConfigureAwait(false);
 
     Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -51,8 +57,13 @@ public sealed class ProductImportFlexTests : IClassFixture<TestApiFactory>
     Skip.If(!_f.IsAvailable, _f.SkipReason ?? "Backend d'intégration indisponible.");
 
     // --- Arrange taxonomie : on crée/maj le groupe "Cafe" et le sous-groupe "Grains"
+    var shopId = Guid.NewGuid();
+
     using (var seedScope = await _f.WithDbAsync(async conn =>
     {
+        await conn.ExecuteAsync(
+          "INSERT INTO \"Shop\" (\"Id\",\"Name\",\"Kind\") VALUES (@Id,@Name,@Kind) ON CONFLICT (\"Id\") DO NOTHING;",
+          new { Id = shopId, Name = "Boutique Flex", Kind = "boutique" }).ConfigureAwait(false);
         // parent: "Cafe"
         var parentId = await conn.ExecuteScalarAsync<long>(@"
       WITH upsert AS (
@@ -81,6 +92,9 @@ public sealed class ProductImportFlexTests : IClassFixture<TestApiFactory>
 
     using var verifyScope = await _f.WithDbAsync(async conn =>
     {
+      await conn.ExecuteAsync(
+        "INSERT INTO \"Shop\" (\"Id\",\"Name\",\"Kind\") VALUES (@Id,@Name,@Kind) ON CONFLICT (\"Id\") DO NOTHING;",
+        new { Id = shopId, Name = "Boutique Flex", Kind = "boutique" }).ConfigureAwait(false);
       await _f.UpsertProductAsync(conn, "CB-0001", "Café Grains", "3210000000013", null).ConfigureAwait(false);
       const string seedAttributes = @"
 UPDATE ""Product""
@@ -104,12 +118,12 @@ WHERE ""Sku"" = @sku;";
       .ToString();
 
     using var content1 = new StringContent(csv1, Encoding.UTF8, "text/csv");
-    var response1 = await client.PostAsync("/api/products/import", content1).ConfigureAwait(false);
+    var response1 = await client.PostAsync(BuildImportUri(shopId), content1).ConfigureAwait(false);
     Assert.Equal(HttpStatusCode.OK, response1.StatusCode);
     response1.Dispose();
 
     using var content2 = new StringContent(csv2, Encoding.UTF8, "text/csv");
-    var response = await client.PostAsync("/api/products/import", content2).ConfigureAwait(false);
+    var response = await client.PostAsync(BuildImportUri(shopId), content2).ConfigureAwait(false);
 
     Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
@@ -134,4 +148,9 @@ WHERE ""Sku"" = @sku;";
       Assert.Contains("Colombie", js, System.StringComparison.OrdinalIgnoreCase);
     });
   }
+
+  private static string BuildImportUri(Guid shopId, string? query = null)
+    => string.IsNullOrWhiteSpace(query)
+      ? $"/api/shops/{shopId:D}/products/import"
+      : $"/api/shops/{shopId:D}/products/import?{query}";
 }

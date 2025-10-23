@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Fixtures;
@@ -12,6 +13,7 @@ using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Api.Tests.Infra;
 using FluentAssertions;
 using Npgsql;
+using Microsoft.AspNetCore.Http;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests.Products;
@@ -30,8 +32,10 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
+        Guid shopId = Guid.Empty;
         await Fixture.ResetAndSeedAsync(async seeder =>
         {
+            shopId = await seeder.CreateShopAsync("Boutique QA").ConfigureAwait(false);
             await seeder.CreateProductAsync("OLD-001", "Ancien produit", "1111111111111").ConfigureAwait(false);
         }).ConfigureAwait(false);
 
@@ -43,7 +47,7 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
                   "\"ABC-987654\";\"SKU-200\";\"Steelbook limité\"\n";
 
         using var content = new StringContent(csv, Encoding.Latin1, "text/csv");
-        var response = await client.PostAsync("/api/products/import", content).ConfigureAwait(false);
+        var response = await client.PostAsync(BuildImportUri(shopId), content).ConfigureAwait(false);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
@@ -82,8 +86,10 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
+        Guid shopId = Guid.Empty;
         await Fixture.ResetAndSeedAsync(async seeder =>
         {
+            shopId = await seeder.CreateShopAsync("Boutique QA").ConfigureAwait(false);
             await seeder.CreateProductAsync("LEGACY", "Produit existant", "999").ConfigureAwait(false);
         }).ConfigureAwait(false);
 
@@ -95,7 +101,7 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
                   "\"CODE-2\";\"SKU-900\";\"Produit B\"\n";
 
         using var content = new StringContent(csv, Encoding.UTF8, "text/csv");
-        var response = await client.PostAsync("/api/products/import", content).ConfigureAwait(false);
+        var response = await client.PostAsync(BuildImportUri(shopId), content).ConfigureAwait(false);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
@@ -116,4 +122,31 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
         var remaining = (long)await command.ExecuteScalarAsync().ConfigureAwait(false);
         remaining.Should().Be(1);
     }
+
+    [SkippableFact]
+    public async Task ImportProducts_GlobalEndpoint_ReturnsGone()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
+
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            await seeder.CreateShopAsync("Boutique QA").ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add("X-Admin", "true");
+
+        using var content = new StringContent("sku;name\nSKU;Produit", Encoding.UTF8, "text/csv");
+        var response = await client.PostAsync("/api/products/import", content).ConfigureAwait(false);
+
+        response.StatusCode.Should().Be((HttpStatusCode)StatusCodes.Status410Gone);
+
+        var payload = await response.Content.ReadFromJsonAsync<JsonDocument>().ConfigureAwait(false);
+        payload.Should().NotBeNull();
+        payload!.RootElement.TryGetProperty("reason", out var reason).Should().BeTrue();
+        reason.GetString().Should().Be("GLOBAL_IMPORT_DEPRECATED");
+    }
+
+    private static string BuildImportUri(Guid shopId)
+        => $"/api/shops/{shopId:D}/products/import";
 }

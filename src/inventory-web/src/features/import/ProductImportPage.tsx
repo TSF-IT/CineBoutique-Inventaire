@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
+import { useShop } from "@/state/ShopContext";
 import { mapRowFromCsv, normalizeKey, KNOWN_KEYS } from "./csvMapping";
 
 type ErrorItem = { Reason: string; Message?: string; Field?: string };
@@ -32,6 +33,7 @@ function parseCsvSemicolon(text: string, maxRows = 10): { headers: string[]; row
 }
 
 export function ProductImportPage() {
+  const { shop } = useShop();
   const [file, setFile] = useState<File | null>(null);
   const [busyDryRun, setBusyDryRun] = useState(false);
   const [busyImport, setBusyImport] = useState(false);
@@ -42,7 +44,10 @@ export function ProductImportPage() {
   const [mappedPreview, setMappedPreview] = useState<{ headers: string[]; rows: ReturnType<typeof mapRowFromCsv>[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const canActions = useMemo(() => !!file && !busyDryRun && !busyImport, [file, busyDryRun, busyImport]);
+  const canActions = useMemo(
+    () => !!file && !busyDryRun && !busyImport && !!shop?.id,
+    [file, busyDryRun, busyImport, shop?.id],
+  );
   const unknowns = useMemo(() => {
     const arr = dryRunRes?.unknownColumns ?? dryRunRes?.UnknownColumns ?? [];
     return Array.isArray(arr) ? arr : [];
@@ -108,7 +113,12 @@ export function ProductImportPage() {
     const form = new FormData();
     form.append("file", file, file.name);
     const q = new URLSearchParams({ dryRun: String(dryRun) }).toString();
-    const res = await fetch(`/api/products/import?${q}`, { method: "POST", body: form });
+    if (!shop?.id) {
+      throw new Error("Aucune boutique sélectionnée.");
+    }
+
+    const endpoint = `/api/shops/${shop.id}/products/import`;
+    const res = await fetch(`${endpoint}?${q}`, { method: "POST", body: form });
     const text = await res.text();
     let payload: any = null;
     try { payload = text ? JSON.parse(text) : null; } catch { /* corps non JSON */ }

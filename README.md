@@ -212,19 +212,20 @@ curl -s "http://localhost:8080/api/products/search?code=0001&limit=5" | jq
 
 ### Import CSV du catalogue produits
 
-L'endpoint `POST /api/products/import` remplace l'intégralité du catalogue produit.
+L'endpoint `POST /api/shops/{shopId}/products/import` remplace le catalogue produit de la boutique ciblée. L'ancienne route globale (`POST /api/products/import`) renvoie désormais `410 Gone` avec le motif `GLOBAL_IMPORT_DEPRECATED`.
 
 - Format attendu : fichier CSV encodé en `latin-1` avec séparateur `;` et en-têtes `barcode_rfid;item;descr`.
-- Idempotence : l'import est ignoré (`204 No Content`) si le fichier a déjà été appliqué.
+- Idempotence : l'import est ignoré (`204 No Content`) si le fichier a déjà été appliqué sur la boutique.
 - Paramètre `dryRun=true|false` (par défaut `false`) pour valider le fichier sans rien écrire ; la réponse contient `dryRun: true` et les compteurs calculés.
 - Verrouillage optimiste : une exécution en cours renvoie `423 Locked` avec `{ "reason": "import_in_progress" }`.
 - Taille maximale : 25 Mio. Un fichier plus volumineux renvoie `413 Payload Too Large`.
 
 ```bash
+SHOP_ID="<guid-de-votre-boutique>"
 curl -X POST \
      -H "Authorization: Bearer <token-admin>" \
      -F "file=@./catalogue.csv;type=text/csv" \
-     http://localhost:8080/api/products/import | jq
+     "http://localhost:8080/api/shops/${SHOP_ID}/products/import" | jq
 ```
 
 ```json
@@ -243,7 +244,7 @@ curl -X POST \
 curl -s -X POST \
      -H "Authorization: Bearer <token-admin>" \
      -H "Content-Type: text/csv; charset=ISO-8859-1" \
-     "http://localhost:8080/api/products/import?dryRun=true" \
+     "http://localhost:8080/api/shops/${SHOP_ID}/products/import?dryRun=true" \
      --data-binary @./catalogue.csv | jq
 ```
 
