@@ -105,8 +105,7 @@ public sealed class LocationsEndpointsTests : IntegrationTestBase
         response.StatusCode.Should().Be(HttpStatusCode.NotFound);
         var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>().ConfigureAwait(false);
         problem.Should().NotBeNull();
-        problem!.Detail.Should().NotBeNullOrWhiteSpace();
-        problem.Detail!.Should().Contain("introuvable");
+        problem!.Detail.Should().Be("Impossible de trouver cette zone pour la boutique demandée.");
     }
 
     [SkippableFact]
