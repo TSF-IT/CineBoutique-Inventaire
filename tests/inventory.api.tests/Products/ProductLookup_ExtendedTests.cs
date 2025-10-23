@@ -102,8 +102,13 @@ public sealed class ProductLookup_ExtendedTests : IntegrationTestBase
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
-        await InsertProductAsync("LKP-AMB-001", "EAN principal", "5905954595389", "5905954595389").ConfigureAwait(false);
-        await InsertProductAsync("LKP-AMB-002", "EAN doublon espaces", "5905954595389 ", "5905954595389").ConfigureAwait(false);
+        var primaryShopId = await Fixture.Seeder.GetDefaultShopIdAsync().ConfigureAwait(false);
+        var secondaryShopId = await Fixture.Seeder.CreateShopAsync($"Boutique Ambiguë {Guid.NewGuid():N}").ConfigureAwait(false);
+
+        await InsertProductAsync("LKP-AMB-001", "EAN principal", "5905954595389", "5905954595389", primaryShopId)
+            .ConfigureAwait(false);
+        await InsertProductAsync("LKP-AMB-002", "EAN doublon espaces", "5905954595389 ", "5905954595389", secondaryShopId)
+            .ConfigureAwait(false);
 
         var client = CreateClient();
         var getResponse = await client.GetAsync(
@@ -132,12 +137,12 @@ public sealed class ProductLookup_ExtendedTests : IntegrationTestBase
         await getResponse.ShouldBeAsync(HttpStatusCode.NotFound, "un code inconnu doit remonter 404").ConfigureAwait(false);
     }
 
-    private async Task InsertProductAsync(string sku, string name, string? ean, string? codeDigits)
+    private async Task InsertProductAsync(string sku, string name, string? ean, string? codeDigits, Guid? shopId = null)
     {
         var id = Guid.NewGuid();
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
 
-        var shopId = await Fixture.Seeder.GetDefaultShopIdAsync().ConfigureAwait(false);
+        var effectiveShopId = shopId ?? await Fixture.Seeder.GetDefaultShopIdAsync().ConfigureAwait(false);
 
         const string sql = """
 INSERT INTO "Product" ("Id", "ShopId", "Sku", "Name", "Ean", "CodeDigits", "CreatedAtUtc")
@@ -149,7 +154,7 @@ VALUES (@Id, @ShopId, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc);
             Parameters =
             {
                 new("Id", id),
-                new("ShopId", shopId),
+                new("ShopId", effectiveShopId),
                 new("Sku", sku),
                 new("Name", name),
                 new("Ean", (object?)ean ?? DBNull.Value),

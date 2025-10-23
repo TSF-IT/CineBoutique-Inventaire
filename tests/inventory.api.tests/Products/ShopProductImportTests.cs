@@ -175,7 +175,8 @@ public sealed class ShopProductImportTests : IntegrationTestBase
             dryRunPayload.Should().NotBeNull();
             dryRunPayload!.DryRun.Should().BeTrue();
             dryRunPayload.Inserted.Should().Be(0);
-            dryRunPayload.WouldInsert.Should().Be(3);
+            // Le CSV de test contient deux lignes de données : la prévisualisation doit refléter ces deux insertions.
+            dryRunPayload.WouldInsert.Should().Be(2);
         }
 
         await using var verifyConnection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
