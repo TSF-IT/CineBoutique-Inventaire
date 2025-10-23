@@ -1,63 +1,49 @@
-import type { HTMLAttributes, ReactNode, TouchEvent as ReactTouchEvent } from 'react'
-import clsx from 'clsx'
-import { Link } from 'react-router-dom'
-import { ThemeToggle } from './ThemeToggle'
-import { PageShell } from './PageShell'
-import { useSwipeBackNavigation } from '../hooks/useSwipeBackNavigation'
-
-type TouchHandler = ((event: ReactTouchEvent) => void) | undefined
-
-const composeTouchHandlers = (fromProps: TouchHandler, fromSwipe: TouchHandler) =>
-  (event: ReactTouchEvent) => {
-    fromProps?.(event)
-    fromSwipe?.(event)
-  }
+import type { HTMLAttributes, ReactNode } from "react";
+import clsx from "clsx";
+import { Link } from "react-router-dom";
+import { ThemeToggle } from "./ThemeToggle";
+import { PageShell } from "./PageShell";
+import { useSwipeBackNavigation } from "../hooks/useSwipeBackNavigation";
 
 type PageProps = HTMLAttributes<HTMLDivElement> & {
-  showHomeLink?: boolean
-  homeLinkLabel?: string
-  homeLinkTo?: string
-  headerAction?: ReactNode
-  mobileNav?: ReactNode
-}
+  showHomeLink?: boolean;
+  homeLinkLabel?: string;
+  homeLinkTo?: string;
+  headerAction?: ReactNode;
+  mobileNav?: ReactNode;
+};
 
 export const Page = ({
   className,
   children,
   showHomeLink = false,
-  homeLinkLabel = 'Retour à l’accueil',
-  homeLinkTo = '/',
+  homeLinkLabel = "Retour à l’accueil",
+  homeLinkTo = "/",
   headerAction,
   mobileNav,
   ...rest
 }: PageProps) => {
-  const swipeHandlers = useSwipeBackNavigation({ enabled: showHomeLink, to: homeLinkTo })
+  const swipeHandlers = useSwipeBackNavigation({
+    enabled: showHomeLink,
+    to: homeLinkTo,
+  });
 
-  const {
-    onTouchStart: propsTouchStart,
-    onTouchMove: propsTouchMove,
-    onTouchEnd: propsTouchEnd,
-    onTouchCancel: propsTouchCancel,
-    ...restProps
-  } = rest
-
-  const {
-    onTouchStart: swipeTouchStart,
-    onTouchMove: swipeTouchMove,
-    onTouchEnd: swipeTouchEnd,
-    onTouchCancel: swipeTouchCancel,
-  } = swipeHandlers
+  // On filtre simplement les props onTouch* si elles existent
+  // (elles ne sont plus utilisées depuis react-swipeable v7)
+  const { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel, ...restProps } =
+    rest;
+  void onTouchStart;
+  void onTouchMove;
+  void onTouchEnd;
+  void onTouchCancel;
 
   return (
     <PageShell
       {...restProps}
-      onTouchStart={composeTouchHandlers(propsTouchStart, swipeTouchStart)}
-      onTouchMove={composeTouchHandlers(propsTouchMove, swipeTouchMove)}
-      onTouchEnd={composeTouchHandlers(propsTouchEnd, swipeTouchEnd)}
-      onTouchCancel={composeTouchHandlers(propsTouchCancel, swipeTouchCancel)}
+      {...swipeHandlers}
       mainClassName={clsx(
-        'page-content cb-surface-panel flex w-full flex-col gap-6 px-4 py-6 text-base sm:px-8 sm:py-10',
-        className,
+        "page-content cb-surface-panel flex w-full flex-col gap-6 px-4 py-6 text-base sm:px-8 sm:py-10",
+        className
       )}
       nav={mobileNav}
       header={
@@ -86,5 +72,5 @@ export const Page = ({
     >
       {children}
     </PageShell>
-  )
-}
+  );
+};

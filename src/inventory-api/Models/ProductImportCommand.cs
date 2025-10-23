@@ -4,6 +4,7 @@ using System.IO;
 
 public enum ProductImportMode
 {
+    Merge,
     ReplaceCatalogue
 }
 
