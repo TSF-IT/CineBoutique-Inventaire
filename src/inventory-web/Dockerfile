@@ -5,26 +5,31 @@ ARG BASE_REG=public.ecr.aws/docker/library
 FROM ${BASE_REG}/node:22-alpine AS build
 WORKDIR /repo
 
-# On copie TOUT le contexte (racine du repo OU dossier web)
+# 1) Copie TOUT le contexte (racine OU dossier web)
 COPY . .
 
-# Build unique qui s'adapte au contexte :
-#  - Cas A (monorepo) : package.json racine avec "workspaces" ET dossier src/inventory-web présent
-#  - Cas B (local)    : contexte = src/inventory-web (pas de sous-dossier src/inventory-web)
+# 2) Détection explicite + logs clairs
+#    - Cas A (monorepo): /repo/package.json contient "workspaces" ET dossier src/inventory-web présent
+#    - Cas B (local app): pas de workspaces; on build dans le dossier courant
 RUN set -eux; \
+  echo "[detect] PWD=$(pwd)"; \
+  if [ -f package.json ]; then echo "[detect] found package.json at /repo"; fi; \
+  if [ -d src/inventory-web ]; then echo "[detect] found /repo/src/inventory-web"; fi; \
   if [ -f package.json ] && grep -q '"workspaces"' package.json && [ -d src/inventory-web ]; then \
-    echo "[build] Monorepo detected -> npm ci at root + workspaces build"; \
+    echo "[mode] MONOREPO"; \
     (npm ci --no-audit --no-fund || npm install --no-audit --no-fund); \
     npm -w src/inventory-web run build; \
     mkdir -p /out && mv src/inventory-web/dist /out/dist; \
   else \
-    echo "[build] Local app detected -> npm ci in current dir"; \
+    echo "[mode] LOCAL (single app)"; \
     (npm ci --no-audit --no-fund || npm install --no-audit --no-fund); \
     npm run build; \
     mkdir -p /out && mv dist /out/dist; \
-  fi
+  fi; \
+  ls -la /out/dist
 
 # ---------- RUNTIME ----------
 FROM ${BASE_REG}/nginx:1.28-alpine
 RUN apk add --no-cache openssl
 COPY --from=build /out/dist /usr/share/nginx/html
+# User-provided custom instructions

@@ -46,8 +46,8 @@ services:
 
   web:
     build:
-      context: ../..                      # ← RACINE du repo
-      dockerfile: src/inventory-web/Dockerfile
+      dockerfile: src/inventory-web/Dockerfile   # Chemin DOCKERFILE absolu depuis la racine du repo Git
+      context: .                                 # Contexte = racine du repo (si le compose est à la racine)
       args:
         BASE_REG: public.ecr.aws/docker/library
     container_name: inventory-web
