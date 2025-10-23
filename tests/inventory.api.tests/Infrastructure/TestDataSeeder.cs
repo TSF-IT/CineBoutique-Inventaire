@@ -20,30 +20,37 @@ public sealed class TestDataSeeder
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentException.ThrowIfNullOrWhiteSpace(kind);
 
-        var id = Guid.NewGuid();
+        await using var connection = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
 
-        const string sql = "INSERT INTO \"Shop\" (\"Id\", \"Name\", \"Kind\") VALUES (@id, @name, @kind);";
-
-        var connection = _dataSource.CreateConnection();
-        await connection.OpenAsync().ConfigureAwait(false);
-        try
+        const string lookupSql = "SELECT \"Id\" FROM \"Shop\" WHERE LOWER(\"Name\") = LOWER(@name) LIMIT 1;";
+        await using (var lookup = new NpgsqlCommand(lookupSql, connection)
         {
-            using var command = new NpgsqlCommand(sql, connection)
+            Parameters = { new("name", name) }
+        })
+        {
+            var existing = await lookup.ExecuteScalarAsync().ConfigureAwait(false);
+            if (existing is Guid existingId)
             {
-                Parameters =
-                {
-                    new("id", id),
-                    new("name", name),
-                    new("kind", kind)
-                }
-            };
+                return existingId;
+            }
+        }
 
-            await command.ExecuteNonQueryAsync().ConfigureAwait(false);
-        }
-        finally
+        var id = Guid.NewGuid();
+        const string insertSql = "INSERT INTO \"Shop\" (\"Id\", \"Name\", \"Kind\") VALUES (@id, @name, @kind);";
+
+        await using (var insert = new NpgsqlCommand(insertSql, connection)
         {
-            await connection.DisposeAsync().ConfigureAwait(false);
+            Parameters =
+            {
+                new("id", id),
+                new("name", name),
+                new("kind", kind)
+            }
+        })
+        {
+            await insert.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
+
         return id;
     }
 
