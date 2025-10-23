@@ -1,28 +1,44 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
-  <title id="title">Clap de cinéma</title>
-  <desc id="desc">Icône simplifiée représentant un clap de cinéma stylisé</desc>
+  <title id="title">Scan d'inventaire</title>
+  <desc id="desc">Icône représentant une caisse ouverte devant un code-barres scanné</desc>
   <defs>
     <linearGradient id="bg" x1="0%" x2="100%" y1="0%" y2="100%">
-      <stop offset="0%" stop-color="#facc15" />
-      <stop offset="100%" stop-color="#d97706" />
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#0ea5e9" />
+    </linearGradient>
+    <linearGradient id="beam" x1="0%" x2="100%" y1="0%" y2="0%">
+      <stop offset="0%" stop-color="rgba(248, 250, 252, 0.05)" />
+      <stop offset="50%" stop-color="rgba(248, 250, 252, 0.35)" />
+      <stop offset="100%" stop-color="rgba(248, 250, 252, 0.05)" />
     </linearGradient>
   </defs>
-  <rect x="4" y="14" width="56" height="46" rx="6" fill="url(#bg)" />
+  <rect x="4" y="10" width="56" height="50" rx="8" fill="url(#bg)" />
+  <g fill="#0f172a">
+    <path d="M16 20h20l4 10H20z" opacity="0.85" />
+    <path d="M16 20v18a6 6 0 0 0 6 6h12a6 6 0 0 0 6-6V30l-6-10H16z" fill="#f8fafc" opacity="0.9" />
+    <path
+      d="M18 32h16v6a4 4 0 0 1-4 4h-8a4 4 0 0 1-4-4z"
+      fill="#e2e8f0"
+      opacity="0.9"
+    />
+    <path d="M20 36h2v4h-2zm6 0h2v4h-2z" fill="#38bdf8" />
+  </g>
+  <g transform="translate(38 18)">
+    <rect x="2" y="8" width="16" height="20" rx="2" fill="#0f172a" opacity="0.85" />
+    <g fill="#f8fafc">
+      <rect x="4" y="10" width="2" height="16" />
+      <rect x="8" y="10" width="1" height="16" />
+      <rect x="11" y="10" width="1" height="16" />
+      <rect x="14" y="10" width="2" height="16" />
+    </g>
+    <rect x="0" y="6" width="20" height="4" rx="2" fill="#facc15" />
+    <rect x="-6" y="8" width="32" height="20" fill="url(#beam)" />
+  </g>
   <path
-    d="M8 14h48l-4-10H12z"
-    fill="#0f172a"
+    d="M12 18v-6a4 4 0 0 1 4-4h32a4 4 0 0 1 4 4v6"
+    fill="none"
     stroke="#0f172a"
-    stroke-linejoin="round"
-    stroke-width="2"
+    stroke-width="3"
+    stroke-linecap="round"
   />
-  <g fill="#f8fafc">
-    <rect x="12" y="32" width="40" height="6" rx="3" />
-    <rect x="18" y="44" width="28" height="6" rx="3" />
-  </g>
-  <g fill="#facc15">
-    <path d="M16 8h6l-3-6z" />
-    <path d="M28 8h6l-3-6z" />
-    <path d="M40 8h6l-3-6z" />
-    <path d="M52 8h6l-3-6z" />
-  </g>
 </svg>
