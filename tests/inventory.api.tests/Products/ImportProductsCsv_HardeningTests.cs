@@ -67,7 +67,7 @@ public sealed class ImportProductsCsv_HardeningTests : IntegrationTestBase
     }
 
     [SkippableFact]
-    public async Task ImportProductsCsv_ReimportSameFile_IsSkippedWith204()
+    public async Task ImportProductsCsv_ReimportSameFile_ReimportsCatalogue()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
@@ -84,13 +84,13 @@ public sealed class ImportProductsCsv_HardeningTests : IntegrationTestBase
 
         using var duplicateContent = CreateCsvContent(SampleCsvLines);
         var duplicateResponse = await client.PostAsync("/api/products/import", duplicateContent).ConfigureAwait(false);
-        await duplicateResponse.ShouldBeAsync(HttpStatusCode.NoContent, "un import identique doit être ignoré").ConfigureAwait(false);
+        await duplicateResponse.ShouldBeAsync(HttpStatusCode.OK, "un import identique doit remplacer les données").ConfigureAwait(false);
 
         var payload = await duplicateResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
         payload.Should().NotBeNull();
-        payload!.Skipped.Should().BeTrue();
+        payload!.Skipped.Should().BeFalse();
         payload.DryRun.Should().BeFalse();
-        payload.Inserted.Should().Be(0);
+        payload.Inserted.Should().Be(2);
         payload.Updated.Should().Be(0);
         payload.WouldInsert.Should().Be(0);
         payload.UnknownColumns.Should().BeEmpty();

@@ -85,7 +85,7 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
     }
 
     [SkippableFact]
-    public async Task ImportProductsCsv_Reimport_AddsNewRowsWithoutRemovingExisting()
+    public async Task ImportProductsCsv_Reimport_ReplacesExistingProducts()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
@@ -109,7 +109,7 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
 
         using var reimportContent = CreateCsvContent(reimportLines);
         var reimportResponse = await client.PostAsync("/api/products/import", reimportContent).ConfigureAwait(false);
-        await reimportResponse.ShouldBeAsync(HttpStatusCode.OK, "la réimportation doit insérer les nouveautés sans supprimer l'existant").ConfigureAwait(false);
+        await reimportResponse.ShouldBeAsync(HttpStatusCode.OK, "la réimportation doit remplacer le catalogue existant").ConfigureAwait(false);
 
         var reimportPayload = await reimportResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
         reimportPayload.Should().NotBeNull();
@@ -128,7 +128,12 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         await existingResponse.ShouldBeAsync(HttpStatusCode.OK, "les nouveaux produits doivent être accessibles").ConfigureAwait(false);
 
         var legacyResponse = await client.GetAsync("/api/products/A-KF63030").ConfigureAwait(false);
-        await legacyResponse.ShouldBeAsync(HttpStatusCode.OK, "les anciens produits doivent être conservés").ConfigureAwait(false);
+        await legacyResponse.ShouldBeAsync(HttpStatusCode.NotFound, "les anciens produits doivent être supprimés lors d'un remplacement").ConfigureAwait(false);
+
+        await using var verifyConnection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
+        await using var verifyCommand = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\";", verifyConnection);
+        var remaining = (long)await verifyCommand.ExecuteScalarAsync().ConfigureAwait(false);
+        remaining.Should().Be(2, "le catalogue doit contenir uniquement les produits du dernier import");
     }
 
     [SkippableFact]
@@ -309,7 +314,7 @@ WHERE p.""Sku"" = @sku;";
     }
 
     [SkippableFact]
-    public async Task ImportProductsCsv_ReimportSameFile_ReturnsSkipped()
+    public async Task ImportProductsCsv_ReimportSameFile_ReimportsCatalogue()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
@@ -327,13 +332,13 @@ WHERE p.""Sku"" = @sku;";
         using (var duplicateContent = CreateCsvContent(InitialCsvLines))
         {
             var duplicateResponse = await client.PostAsync("/api/products/import", duplicateContent).ConfigureAwait(false);
-            duplicateResponse.StatusCode.Should().Be(HttpStatusCode.NoContent, "l'import identique doit être ignoré");
+            await duplicateResponse.ShouldBeAsync(HttpStatusCode.OK, "l'import identique doit quand même remplacer le catalogue").ConfigureAwait(false);
 
             var duplicatePayload = await duplicateResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
             duplicatePayload.Should().NotBeNull();
-            duplicatePayload!.Skipped.Should().BeTrue();
+            duplicatePayload!.Skipped.Should().BeFalse();
             duplicatePayload.DryRun.Should().BeFalse();
-            duplicatePayload.Inserted.Should().Be(0);
+            duplicatePayload.Inserted.Should().Be(5);
             duplicatePayload.Updated.Should().Be(0);
             duplicatePayload.WouldInsert.Should().Be(0);
             duplicatePayload.UnknownColumns.Should().BeEmpty();
@@ -343,7 +348,7 @@ WHERE p.""Sku"" = @sku;";
         await using var verifyConnection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
         await using var verifyCommand = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\";", verifyConnection);
         var finalCount = (long)await verifyCommand.ExecuteScalarAsync().ConfigureAwait(false);
-        finalCount.Should().Be(5, "le second import ignoré ne doit pas modifier les données");
+        finalCount.Should().Be(5, "le second import doit reproduire exactement le contenu du CSV");
     }
 
     [SkippableFact]
