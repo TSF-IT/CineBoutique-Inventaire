@@ -73,12 +73,12 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
     </thead>
   ), [setSort, sortBy, sortDir]);
 
-  if (!open) return null;
-
   const items = data?.items ?? [];
   const itemCount = items.length;
   const canVirtualize = itemCount >= 200;
   const itemKey = React.useCallback((index: number, products: Item[]) => products[index]?.id ?? index, []);
+
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/40" role="dialog" aria-modal="true">
