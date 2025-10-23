@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
 import { mapRowFromCsv, normalizeKey, KNOWN_KEYS } from "./csvMapping";
+import { useShop } from "@/state/ShopContext"
 
 type ErrorItem = { Reason: string; Message?: string; Field?: string };
 type DryRunPayload = {
@@ -32,6 +33,9 @@ function parseCsvSemicolon(text: string, maxRows = 10): { headers: string[]; row
 }
 
 export function ProductImportPage() {
+  const { shop } = useShop()
+  const shopId = shop?.id?.trim() ?? ''
+  const hasShop = shopId.length > 0
   const [file, setFile] = useState<File | null>(null);
   const [busyDryRun, setBusyDryRun] = useState(false);
   const [busyImport, setBusyImport] = useState(false);
@@ -42,7 +46,7 @@ export function ProductImportPage() {
   const [mappedPreview, setMappedPreview] = useState<{ headers: string[]; rows: ReturnType<typeof mapRowFromCsv>[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const canActions = useMemo(() => !!file && !busyDryRun && !busyImport, [file, busyDryRun, busyImport]);
+  const canActions = useMemo(() => hasShop && !!file && !busyDryRun && !busyImport, [hasShop, file, busyDryRun, busyImport]);
   const unknowns = useMemo(() => {
     const arr = dryRunRes?.unknownColumns ?? dryRunRes?.UnknownColumns ?? [];
     return Array.isArray(arr) ? arr : [];
@@ -104,11 +108,12 @@ export function ProductImportPage() {
   }
 
   async function postCsv(dryRun: boolean): Promise<any> {
+    if (!hasShop) throw new Error("Sélectionnez une entité avant d'importer.")
     if (!file) throw new Error("Aucun fichier sélectionné");
     const form = new FormData();
     form.append("file", file, file.name);
     const q = new URLSearchParams({ dryRun: String(dryRun) }).toString();
-    const res = await fetch(`/api/products/import?${q}`, { method: "POST", body: form });
+    const res = await fetch(`/api/shops/${encodeURIComponent(shopId)}/products/import?${q}`, { method: "POST", body: form });
     const text = await res.text();
     let payload: any = null;
     try { payload = text ? JSON.parse(text) : null; } catch { /* corps non JSON */ }
@@ -124,6 +129,7 @@ export function ProductImportPage() {
   }
 
   async function onDryRun() {
+    if (!hasShop) { setError("Sélectionnez une entité avant de lancer un dry-run."); return; }
     if (!file) { setError("Sélectionnez un fichier CSV."); return; }
     setBusyDryRun(true); setError(null); setDryRunRes(null); setImportRes(null);
     try {
@@ -137,6 +143,7 @@ export function ProductImportPage() {
   }
 
   async function onImport() {
+    if (!hasShop) { setError("Sélectionnez une entité avant d'importer."); return; }
     if (!file) { setError("Sélectionnez un fichier CSV."); return; }
     setBusyImport(true); setError(null); setImportRes(null);
     try {
@@ -154,6 +161,11 @@ export function ProductImportPage() {
       <h2 style={{ margin: 0 }}>Import produits (CSV)</h2>
 
       <div style={{ display: "grid", gap: 8 }}>
+        {!hasShop && (
+          <div style={{ color: "#b00020" }}>
+            Sélectionnez d'abord une entité (shop) pour accéder à l'import produit.
+          </div>
+        )}
         <input
           ref={fileInputRef}
           type="file"

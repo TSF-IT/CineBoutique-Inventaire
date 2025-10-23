@@ -202,6 +202,11 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
         await DbResetAsync().ConfigureAwait(false);
         EnsureInitialized();
 
+        // Les tests supposent désormais qu'une boutique par défaut est toujours disponible
+        // (rétrocompatibilité avec les endpoints historiques). On la provisionne donc
+        // systématiquement avant d'exécuter le plan de seed spécifique au scénario.
+        _ = await Seeder.GetDefaultShopIdAsync().ConfigureAwait(false);
+
         await plan(Seeder).ConfigureAwait(false);
     }
 

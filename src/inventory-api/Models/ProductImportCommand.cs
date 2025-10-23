@@ -12,5 +12,5 @@ public sealed record ProductImportCommand(
     Stream CsvStream,
     bool DryRun,
     string? Username,
-    Guid? ShopId = null,
+    Guid ShopId,
     ProductImportMode Mode = ProductImportMode.ReplaceCatalogue);

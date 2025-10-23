@@ -13,33 +13,44 @@ public sealed class TestDataSeeder
         _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
     }
 
-    public async Task<Guid> CreateShopAsync(string name)
+    private const string DefaultTestShopName = "Boutique Tests";
+
+    public async Task<Guid> CreateShopAsync(string name, string kind = "boutique")
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentException.ThrowIfNullOrWhiteSpace(kind);
+
+        await using var connection = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
+
+        const string lookupSql = "SELECT \"Id\" FROM \"Shop\" WHERE LOWER(\"Name\") = LOWER(@name) LIMIT 1;";
+        await using (var lookup = new NpgsqlCommand(lookupSql, connection)
+        {
+            Parameters = { new("name", name) }
+        })
+        {
+            var existing = await lookup.ExecuteScalarAsync().ConfigureAwait(false);
+            if (existing is Guid existingId)
+            {
+                return existingId;
+            }
+        }
 
         var id = Guid.NewGuid();
+        const string insertSql = "INSERT INTO \"Shop\" (\"Id\", \"Name\", \"Kind\") VALUES (@id, @name, @kind);";
 
-        const string sql = "INSERT INTO \"Shop\" (\"Id\", \"Name\") VALUES (@id, @name);";
-
-        var connection = _dataSource.CreateConnection();
-        await connection.OpenAsync().ConfigureAwait(false);
-        try
+        await using (var insert = new NpgsqlCommand(insertSql, connection)
         {
-            using var command = new NpgsqlCommand(sql, connection)
+            Parameters =
             {
-                Parameters =
-                {
-                    new("id", id),
-                    new("name", name)
-                }
-            };
-
-            await command.ExecuteNonQueryAsync().ConfigureAwait(false);
-        }
-        finally
+                new("id", id),
+                new("name", name),
+                new("kind", kind)
+            }
+        })
         {
-            await connection.DisposeAsync().ConfigureAwait(false);
+            await insert.ExecuteNonQueryAsync().ConfigureAwait(false);
         }
+
         return id;
     }
 
@@ -123,15 +134,36 @@ public sealed class TestDataSeeder
         return id;
     }
 
-    public async Task<Guid> CreateProductAsync(string sku, string name, string? ean = null)
+    public async Task<Guid> GetDefaultShopIdAsync()
     {
+        const string sql = "SELECT \"Id\" FROM \"Shop\" ORDER BY LOWER(\"Name\"), \"Id\" LIMIT 1;";
+
+        await using var connection = await _dataSource.OpenConnectionAsync().ConfigureAwait(false);
+        await using var command = new NpgsqlCommand(sql, connection);
+        var result = await command.ExecuteScalarAsync().ConfigureAwait(false);
+
+        if (result is Guid id)
+        {
+            return id;
+        }
+
+        return await CreateShopAsync(DefaultTestShopName).ConfigureAwait(false);
+    }
+
+    public async Task<Guid> CreateProductAsync(Guid shopId, string sku, string name, string? ean = null)
+    {
+        if (shopId == Guid.Empty)
+        {
+            throw new ArgumentException("Shop identifier is required.", nameof(shopId));
+        }
+
         ArgumentException.ThrowIfNullOrWhiteSpace(sku);
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
         var id = Guid.NewGuid();
 
         const string sql =
-            "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"Ean\", \"CreatedAtUtc\") VALUES (@id, @sku, @name, @ean, @createdAt);";
+            "INSERT INTO \"Product\" (\"Id\", \"ShopId\", \"Sku\", \"Name\", \"Ean\", \"CreatedAtUtc\") VALUES (@id, @shopId, @sku, @name, @ean, @createdAt);";
 
         var connection = _dataSource.CreateConnection();
         await connection.OpenAsync().ConfigureAwait(false);
@@ -142,6 +174,7 @@ public sealed class TestDataSeeder
                 Parameters =
                 {
                     new("id", id),
+                    new("shopId", shopId),
                     new("sku", sku),
                     new("name", name),
                     new("ean", (object?)ean ?? DBNull.Value),
@@ -188,15 +221,20 @@ public sealed class TestDataSeeder
         }
     }
 
-    public async Task AssignProductToGroupAsync(string sku, long groupId)
+    public async Task AssignProductToGroupAsync(Guid shopId, string sku, long groupId)
     {
+        if (shopId == Guid.Empty)
+        {
+            throw new ArgumentException("Shop identifier is required.", nameof(shopId));
+        }
+
         ArgumentException.ThrowIfNullOrWhiteSpace(sku);
         if (groupId <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(groupId));
         }
 
-        const string sql = "UPDATE \"Product\" SET \"GroupId\" = @groupId WHERE \"Sku\" = @sku;";
+        const string sql = "UPDATE \"Product\" SET \"GroupId\" = @groupId WHERE \"ShopId\" = @shopId AND \"Sku\" = @sku;";
 
         var connection = _dataSource.CreateConnection();
         await connection.OpenAsync().ConfigureAwait(false);
@@ -207,6 +245,7 @@ public sealed class TestDataSeeder
                 Parameters =
                 {
                     new("groupId", groupId),
+                    new("shopId", shopId),
                     new("sku", sku)
                 }
             };
@@ -214,7 +253,7 @@ public sealed class TestDataSeeder
             var affected = await command.ExecuteNonQueryAsync().ConfigureAwait(false);
             if (affected == 0)
             {
-                throw new InvalidOperationException($"Aucun produit avec le SKU '{sku}' n'a été mis à jour.");
+                throw new InvalidOperationException($"Aucun produit avec le SKU '{sku}' n'a été mis à jour pour le shop {shopId}.");
             }
         }
         finally

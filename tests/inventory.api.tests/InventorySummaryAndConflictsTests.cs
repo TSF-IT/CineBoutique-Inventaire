@@ -117,7 +117,7 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
             locationId = await seeder.CreateLocationAsync(shopId, "LOC-CONF", "Zone Conflits").ConfigureAwait(false);
             primaryUserId = await seeder.CreateShopUserAsync(shopId, "charlie", "Charlie").ConfigureAwait(false);
             secondaryUserId = await seeder.CreateShopUserAsync(shopId, "diana", "Diana").ConfigureAwait(false);
-            await seeder.CreateProductAsync(productSku, "Produit Conflit", productEan).ConfigureAwait(false);
+            await seeder.CreateProductAsync(shopId, productSku, "Produit Conflit", productEan).ConfigureAwait(false);
         }).ConfigureAwait(false);
 
         return (shopId, locationId, primaryUserId, secondaryUserId, productEan);

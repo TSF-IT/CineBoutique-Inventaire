@@ -279,7 +279,7 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
             locationId = await seeder.CreateLocationAsync(shopId, "LOC-RUN", "Zone Inventaire").ConfigureAwait(false);
             primaryUserId = await seeder.CreateShopUserAsync(shopId, "alice", "Alice").ConfigureAwait(false);
             secondaryUserId = await seeder.CreateShopUserAsync(shopId, "bob", "Bob").ConfigureAwait(false);
-            await seeder.CreateProductAsync(productSku, "Produit Inventaire", productEan).ConfigureAwait(false);
+            await seeder.CreateProductAsync(shopId, productSku, "Produit Inventaire", productEan).ConfigureAwait(false);
         }).ConfigureAwait(false);
 
         return (shopId, locationId, primaryUserId, secondaryUserId, productSku, productEan);

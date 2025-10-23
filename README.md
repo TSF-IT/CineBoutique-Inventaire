@@ -212,7 +212,7 @@ curl -s "http://localhost:8080/api/products/search?code=0001&limit=5" | jq
 
 ### Import CSV du catalogue produits
 
-L'endpoint `POST /api/products/import` remplace l'intégralité du catalogue produit.
+L'endpoint `POST /api/shops/{shopId}/products/import` remplace l'intégralité du catalogue de l'entité ciblée.
 
 - Format attendu : fichier CSV encodé en `latin-1` avec séparateur `;` et en-têtes `barcode_rfid;item;descr`.
 - Idempotence : l'import est ignoré (`204 No Content`) si le fichier a déjà été appliqué.
@@ -224,7 +224,7 @@ L'endpoint `POST /api/products/import` remplace l'intégralité du catalogue pro
 curl -X POST \
      -H "Authorization: Bearer <token-admin>" \
      -F "file=@./catalogue.csv;type=text/csv" \
-     http://localhost:8080/api/products/import | jq
+     http://localhost:8080/api/shops/<shop-id>/products/import | jq
 ```
 
 ```json
@@ -243,7 +243,7 @@ curl -X POST \
 curl -s -X POST \
      -H "Authorization: Bearer <token-admin>" \
      -H "Content-Type: text/csv; charset=ISO-8859-1" \
-     "http://localhost:8080/api/products/import?dryRun=true" \
+     "http://localhost:8080/api/shops/<shop-id>/products/import?dryRun=true" \
      --data-binary @./catalogue.csv | jq
 ```
 

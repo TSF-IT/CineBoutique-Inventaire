@@ -91,12 +91,22 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
-        await InsertProductAsync("5905954595389", "Priorité SKU", "1111111111111", "1111111111111").ConfigureAwait(false);
-        await InsertProductAsync("AMB-RAW-001", "Correspondance brute", "5905954595389", "5905954595389", "5905954595389")
+        var primaryShopId = await Fixture.Seeder.GetDefaultShopIdAsync().ConfigureAwait(false);
+        var secondaryShopId = await Fixture.Seeder.CreateShopAsync($"Boutique Recherche {Guid.NewGuid():N}")
             .ConfigureAwait(false);
-        await InsertProductAsync("AMB-DGT-001", "Ambigu digits A", "5905954595389", "5905954595389", "5905954595389 ")
+        var tertiaryShopId = await Fixture.Seeder.CreateShopAsync($"Boutique Recherche {Guid.NewGuid():N}")
             .ConfigureAwait(false);
-        await InsertProductAsync("AMB-DGT-002", "Ambigu digits B", "5905954595389", "5905954595389", "SKU-5905954595389")
+
+        await InsertProductAsync("5905954595389", "Priorité SKU", "1111111111111", "1111111111111", shopId: primaryShopId)
+            .ConfigureAwait(false);
+        await InsertProductAsync("AMB-RAW-001", "Correspondance brute", "5905954595389", "5905954595389", "5905954595389",
+                shopId: primaryShopId)
+            .ConfigureAwait(false);
+        await InsertProductAsync("AMB-DGT-001", "Ambigu digits A", "5905954595389", "5905954595389", "5905954595389 ",
+                shopId: secondaryShopId)
+            .ConfigureAwait(false);
+        await InsertProductAsync("AMB-DGT-002", "Ambigu digits B", "5905954595389", "5905954595389", "SKU-5905954595389",
+                shopId: tertiaryShopId)
             .ConfigureAwait(false);
 
         var client = CreateClient();
@@ -138,14 +148,22 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
     private static bool? _supportsRawCodeColumn;
     private static readonly string[] expected = new[] { "AMB-DGT-001", "AMB-DGT-002" };
 
-    private async Task InsertProductAsync(string sku, string name, string? ean, string? codeDigits, string? rawCode = null)
+    private async Task InsertProductAsync(
+        string sku,
+        string name,
+        string? ean,
+        string? codeDigits,
+        string? rawCode = null,
+        Guid? shopId = null)
     {
         var id = Guid.NewGuid();
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
+        var effectiveShopId = shopId ?? await Fixture.Seeder.GetDefaultShopIdAsync().ConfigureAwait(false);
 
         var columns = new List<string>
         {
             "\"Id\"",
+            "\"ShopId\"",
             "\"Sku\"",
             "\"Name\"",
             "\"Ean\"",
@@ -156,6 +174,7 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
         var values = new List<string>
         {
             "@Id",
+            "@ShopId",
             "@Sku",
             "@Name",
             "@Ean",
@@ -177,6 +196,7 @@ public sealed class ProductSearch_List_Tests : IntegrationTestBase
             Parameters =
             {
                 new("Id", id),
+                new("ShopId", effectiveShopId),
                 new("Sku", sku),
                 new("Name", name),
                 new("Ean", (object?)ean ?? DBNull.Value),

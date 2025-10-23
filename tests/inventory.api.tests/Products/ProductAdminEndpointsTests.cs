@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -25,6 +26,7 @@ public class ProductAdminEndpointsTests : IClassFixture<TestApiFactory>
     var sku = $"ZZ-COUNT-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
     await _f.WithDbNoResetAsync(async conn =>
     {
+      var shopId = await conn.ExecuteScalarAsync<Guid>(@"SELECT ""Id"" FROM ""Shop"" ORDER BY LOWER(""Name""), ""Id"" LIMIT 1;");
       // Upsert groupe parent "Cafe"
       var parentId = await conn.ExecuteScalarAsync<long>(@"
     WITH upsert AS (
@@ -63,8 +65,8 @@ public class ProductAdminEndpointsTests : IClassFixture<TestApiFactory>
     limit 1;") is not null;
 
       // Construit l'INSERT selon les colonnes réellement présentes
-      var cols = new List<string> { "\"Sku\"", "\"Name\"", "\"Ean\"", "\"GroupId\"", "\"Attributes\"" };
-      var vals = new List<string> { "@Sku", "@Name", "@Ean", "@Gid", "'{}'::jsonb" };
+      var cols = new List<string> { "\"ShopId\"", "\"Sku\"", "\"Name\"", "\"Ean\"", "\"GroupId\"", "\"Attributes\"" };
+      var vals = new List<string> { "@ShopId", "@Sku", "@Name", "@Ean", "@Gid", "'{}'::jsonb" };
 
       if (hasCreated) { cols.Add("\"CreatedAtUtc\""); vals.Add("NOW() AT TIME ZONE 'UTC'"); }
       if (hasUpdated) { cols.Add("\"UpdatedAtUtc\""); vals.Add("NOW() AT TIME ZONE 'UTC'"); }
@@ -74,6 +76,7 @@ public class ProductAdminEndpointsTests : IClassFixture<TestApiFactory>
     VALUES ({string.Join(", ", vals)});";
 
       await conn.ExecuteAsync(insertSql, new {
+        ShopId = shopId,
         Sku = sku,
         Name = "Produit Count Test",
         Ean = "3210000999999",
