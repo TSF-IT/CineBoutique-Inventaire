@@ -231,7 +231,7 @@ public sealed class ProductImportService : IProductImportService
 
             try
             {
-                if (!command.DryRun)
+                if (!command.DryRun && command.Mode == ProductImportMode.ReplaceCatalogue)
                 {
                     await DeleteExistingProductsAsync(transaction, cancellationToken).ConfigureAwait(false);
                 }

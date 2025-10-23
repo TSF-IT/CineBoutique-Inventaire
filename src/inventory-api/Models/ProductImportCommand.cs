@@ -4,6 +4,7 @@ using System.IO;
 
 public enum ProductImportMode
 {
+    Merge,
     ReplaceCatalogue
 }
 
@@ -12,4 +13,4 @@ public sealed record ProductImportCommand(
     bool DryRun,
     string? Username,
     Guid? ShopId = null,
-    ProductImportMode Mode = ProductImportMode.ReplaceCatalogue);
+    ProductImportMode Mode = ProductImportMode.Merge);
