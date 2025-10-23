@@ -32,7 +32,7 @@ export function ProductsCountCard({ shopId, onOpen, onClick, className, ...rest 
   const count = state?.count ?? 0
   const hasData = count > 0
   const baseCardClasses =
-    'flex w-full flex-col gap-3 rounded-xl border p-5 text-left shadow-elev-1 transition'
+    'flex w-full min-h-[192px] flex-col gap-3 rounded-xl border p-5 text-left shadow-elev-1 transition'
   const defaultToneClasses =
     'border-product-200 bg-product-50/80 dark:border-product-600/35 dark:bg-product-600/15'
 
