@@ -10,7 +10,7 @@ type BackToShopSelectionLinkProps = {
 }
 
 const baseClasses =
-  'inline-flex items-center gap-2 rounded-2xl border border-transparent bg-white px-3 py-2 text-sm font-semibold text-brand-600 shadow-sm transition hover:bg-brand-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:bg-slate-900/60 dark:text-brand-200 dark:hover:bg-slate-800'
+  'inline-flex items-center justify-center gap-2 rounded-2xl border border-transparent bg-white px-3 py-2 text-sm font-semibold text-brand-600 shadow-sm transition hover:bg-brand-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 dark:bg-slate-900/60 dark:text-brand-200 dark:hover:bg-slate-800'
 
 export const BackToShopSelectionLink = ({
   label = "Retour au choix de l’entité",
@@ -26,6 +26,6 @@ export const BackToShopSelectionLink = ({
     aria-label={label}
   >
     <span aria-hidden="true">←</span>
-    <span>{label}</span>
+    <span className="sr-only">{label}</span>
   </Link>
 )
