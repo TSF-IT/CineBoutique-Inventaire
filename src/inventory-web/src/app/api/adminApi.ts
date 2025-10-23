@@ -12,7 +12,7 @@ interface LocationPayload {
 export const createLocation = async (payload: LocationPayload): Promise<Location> => {
   const data = await http(`${API_BASE}/locations`, {
     method: 'POST',
-    body: JSON.stringify(payload),
+    body: payload,
   })
   return data as Location
 }
@@ -23,7 +23,7 @@ export const updateLocation = async (
 ): Promise<Location> => {
   const data = await http(`${API_BASE}/locations/${id}`, {
     method: 'PUT',
-    body: JSON.stringify(payload),
+    body: payload,
   })
   return data as Location
 }
