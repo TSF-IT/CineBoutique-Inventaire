@@ -45,7 +45,6 @@ export const SelectShopPage = () => {
   const [selectedEntityId, setSelectedEntityId] = useState<EntityId | null>(null)
   const [selectionError, setSelectionError] = useState<string | null>(null)
   const [isRedirecting, setIsRedirecting] = useState(false)
-  const labelId = useId()
   const cardsLabelId = useId()
   const cardRefs = useRef<Array<HTMLButtonElement | null>>([])
 
@@ -246,24 +245,6 @@ export const SelectShopPage = () => {
     }
   }, [entityCards])
 
-  useEffect(() => {
-    if (status !== 'idle' || isRedirecting || entityCards.length === 0) {
-      return
-    }
-
-    const targetIndex = selectedEntityId
-      ? entityCards.findIndex((item) => item.definition.id === selectedEntityId)
-      : 0
-    const fallbackIndex = targetIndex >= 0 ? targetIndex : 0
-    const target = cardRefs.current[fallbackIndex]
-    if (target) {
-      target.focus()
-      return
-    }
-
-    focusFirstAvailableCard()
-  }, [entityCards, focusFirstAvailableCard, isRedirecting, selectedEntityId, status])
-
   const handleRetry = useCallback(() => {
     setRetryCount((count) => count + 1)
     setSelectionError(null)
@@ -462,28 +443,20 @@ export const SelectShopPage = () => {
               </fieldset>
               {selectedEntity && (
                 <section
-                  aria-labelledby={`${labelId}-shops`}
+                  aria-label={selectedEntity.definition.label}
                   className="card card--elev1 space-y-3 p-4 backdrop-blur-sm"
                 >
-                  <div className="space-y-1">
-                    <h2 id={`${labelId}-shops`} className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                      {selectedEntity.definition.label}
-                    </h2>
-                    <p className="text-sm text-slate-600 dark:text-slate-300">
-                      Choisis la boutique pour continuer vers l’identification.
-                    </p>
-                  </div>
                   {selectedEntity.matches.length > 0 ? (
-                    <ul className="grid gap-2">
+                    <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                       {selectedEntity.matches.map((shopOption) => {
                         const isActive = shopOption.id === selectedShopId
                         return (
-                          <li key={shopOption.id}>
+                          <li key={shopOption.id} className="h-full">
                             <button
                               type="button"
                               onClick={() => handleShopSelection(shopOption)}
                               className={clsx(
-                                'tile focus-ring flex w-full items-center justify-between px-4 py-3 text-left text-sm font-medium transition hover:shadow-elev-1',
+                                'tile focus-ring flex h-full w-full items-center justify-between px-4 py-3 text-left text-sm font-medium transition hover:shadow-elev-1',
                                 isActive
                                   ? 'border-brand-500 bg-brand-500/10 text-brand-900 shadow-sm dark:border-brand-400 dark:bg-brand-400/20 dark:text-brand-50'
                                   : 'text-slate-900 hover:border-brand-300 hover:bg-brand-50/30 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:hover:border-brand-400 dark:hover:bg-brand-400/10',
