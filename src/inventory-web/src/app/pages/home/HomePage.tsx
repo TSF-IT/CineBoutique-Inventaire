@@ -134,6 +134,9 @@ const createFallbackLocationFromZone = (zone: ConflictZoneSummary): Location => 
   countStatuses: [],
 })
 
+const summaryCardBaseClasses =
+  'flex w-full flex-col gap-3 rounded-xl border p-5 text-left shadow-elev-1 transition'
+
 const isRunOwnedByUser = (
   run: OpenRunSummary,
   selectedUserId: string | null,
@@ -449,24 +452,16 @@ export const HomePage = () => {
 
   return (
     <Page headerAction={<BackToShopSelectionLink onClick={handleChangeShop} className="sm:self-start" />}>
-      <div className="flex flex-col gap-4">
-        <a
-          href="/shops"
-          className="focus-ring inline-flex items-center gap-1 tile px-3 py-2 text-sm font-medium text-[var(--text-strong)] transition hover:shadow-elev-1"
-        >
-          ← Retour au choix des boutiques
-        </a>
-        <section className="flex flex-col gap-4">
-          <p className="mt-3 font-semibold uppercase tracking-[.12em] text-[var(--text-muted)]">
-            {shopDisplayName ?? 'CinéBoutique'}
-          </p>
-          <h1 className="text-4xl font-black leading-tight text-slate-900 dark:text-white sm:text-5xl">Inventaire</h1>
-          <p className="max-w-xl text-base text-slate-600 dark:text-slate-300">
-            Lancez un comptage en quelques gestes, scannez les produits depuis la caméra ou une douchette Bluetooth et
-            assurez un suivi fiable de vos zones.
-          </p>
-        </section>
-      </div>
+      <section className="flex flex-col gap-4">
+        <p className="mt-3 font-semibold uppercase tracking-[.12em] text-[var(--text-muted)]">
+          {shopDisplayName ?? 'CinéBoutique'}
+        </p>
+        <h1 className="text-4xl font-black leading-tight text-slate-900 dark:text-white sm:text-5xl">Inventaire</h1>
+        <p className="max-w-xl text-base text-slate-600 dark:text-slate-300">
+          Lancez un comptage en quelques gestes, scannez les produits depuis la caméra ou une douchette Bluetooth et
+          assurez un suivi fiable de vos zones.
+        </p>
+      </section>
 
       <Card className="flex flex-col gap-4">
         <SectionTitle>État de l’inventaire</SectionTitle>
@@ -484,9 +479,10 @@ export const HomePage = () => {
               onClick={handleOpenRunsClick}
               disabled={!canOpenOpenRunsModal}
               className={clsx(
-                'flex flex-col rounded-2xl border border-brand-300 bg-brand-100/70 p-5 text-left transition dark:border-brand-500/30 dark:bg-brand-500/10',
+                summaryCardBaseClasses,
+                'border-brand-300 bg-brand-50/80 dark:border-brand-500/40 dark:bg-brand-500/10',
                 canOpenOpenRunsModal
-                  ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2'
+                  ? 'cursor-pointer hover:shadow-elev-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2'
                   : 'cursor-default'
               )}
             >
@@ -513,10 +509,10 @@ export const HomePage = () => {
             </button>
             <div
               className={clsx(
-                'flex flex-col rounded-2xl border p-5 text-left transition',
+                summaryCardBaseClasses,
                 hasConflicts
-                  ? 'border-rose-300 bg-rose-100/70 dark:border-rose-500/40 dark:bg-rose-500/10'
-                  : 'border-emerald-300 bg-emerald-100/70 dark:border-emerald-500/30 dark:bg-emerald-500/10'
+                  ? 'border-rose-300 bg-rose-50/80 dark:border-rose-500/40 dark:bg-rose-500/10'
+                  : 'border-emerald-300 bg-emerald-50/80 dark:border-emerald-500/40 dark:bg-emerald-500/10'
               )}
             >
               <p
@@ -574,9 +570,10 @@ export const HomePage = () => {
               onClick={handleOpenCompletedRunsClick}
               disabled={!canOpenCompletedRunsModal}
               className={clsx(
-                'flex flex-col rounded-2xl border border-emerald-300 bg-emerald-100/70 p-5 text-left transition dark:border-emerald-500/40 dark:bg-emerald-500/10',
+                summaryCardBaseClasses,
+                'border-emerald-300 bg-emerald-50/80 dark:border-emerald-500/40 dark:bg-emerald-500/10',
                 canOpenCompletedRunsModal
-                  ? 'cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2'
+                  ? 'cursor-pointer hover:shadow-elev-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2'
                   : 'cursor-default'
               )}
             >
