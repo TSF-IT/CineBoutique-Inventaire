@@ -1,4 +1,4 @@
-import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
 import {
   createLocation,
@@ -11,6 +11,7 @@ import { fetchLocations } from '../../api/inventoryApi'
 import { fetchShopUsers } from '../../api/shopUsers'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
+import { FileUploadField } from '../../components/ui/FileUploadField'
 import { Card } from '../../components/Card'
 import { EmptyState } from '../../components/EmptyState'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
@@ -36,7 +37,7 @@ const ADMIN_SECTIONS: { id: AdminSection; label: string; description: string }[]
   {
     id: 'catalog',
     label: 'Catalogue produits (CSV)',
-    description: 'Importez ou simulez un import CSV pour mettre à jour le catalogue de la boutique.',
+    description: 'Importez le fichier CSV annuel pour mettre à jour le catalogue de la boutique.',
   },
 ]
 
@@ -100,21 +101,20 @@ type ImportSummary = {
 }
 
 type CatalogImportFeedback =
-  | { type: 'success'; summary: ImportSummary; isDryRun: boolean }
+  | { type: 'success'; summary: ImportSummary }
   | { type: 'info'; message: string }
   | { type: 'error'; message: string; details?: string[] }
 
 const CatalogImportPanel = ({ description }: { description: string }) => {
   const { shop } = useShop()
   const [file, setFile] = useState<File | null>(null)
-  const [dryRun, setDryRun] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [feedback, setFeedback] = useState<CatalogImportFeedback | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = event.target.files?.[0] ?? null
-    setFile(selectedFile)
+  const handleFileChange = (nextFile: File | null) => {
+    setFile(nextFile)
+    setFeedback(null)
   }
 
   const resetFileInput = () => {
@@ -171,7 +171,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
       const fd = new FormData()
       fd.set('file', file)
 
-      const url = `/api/shops/${shop.id}/products/import?dryRun=${dryRun}`
+      const url = `/api/shops/${shop.id}/products/import?dryRun=false`
       const response = await fetch(url, { method: 'POST', body: fd })
       const rawText = await response.text()
       const payload = rawText ? parseJson(rawText) : null
@@ -185,7 +185,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
           errorCount: toInteger(record.errorCount),
           unknownColumns: toStringList(record.unknownColumns),
         }
-        setFeedback({ type: 'success', summary, isDryRun: dryRun })
+        setFeedback({ type: 'success', summary })
         resetFileInput()
         return
       }
@@ -253,26 +253,17 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
         </div>
       </div>
       <form className="flex flex-col gap-4" onSubmit={handleSubmit} encType="multipart/form-data">
-        <Input
+        <FileUploadField
           ref={fileInputRef}
           name="file"
-          type="file"
-          accept=".csv,text/csv"
           label="Fichier CSV"
-          onChange={handleFileChange}
-          className="text-sm file:mr-3 file:cursor-pointer file:rounded-xl file:border-0 file:bg-slate-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:bg-slate-200"
+          accept=".csv,text/csv"
+          file={file}
+          onFileSelected={handleFileChange}
+          disabled={submitting}
+          description="Glissez-déposez votre fichier ou cliquez pour parcourir vos dossiers."
         />
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <label className="flex items-center gap-3 text-sm font-medium text-slate-700 dark:text-slate-200">
-            <input
-              type="checkbox"
-              name="dryRun"
-              checked={dryRun}
-              onChange={(event) => setDryRun(event.target.checked)}
-              className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-600"
-            />
-            Simulation (dry-run)
-          </label>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
           <Button
             type="submit"
             disabled={submitting || !file}
@@ -295,7 +286,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
           {feedback.type === 'success' ? (
             <div className="space-y-3">
               <p className="font-medium">
-                {feedback.isDryRun ? 'Simulation réalisée avec succès.' : 'Import terminé avec succès.'}
+                Import terminé avec succès.
               </p>
               <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                 <div>
