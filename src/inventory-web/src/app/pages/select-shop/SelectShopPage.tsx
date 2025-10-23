@@ -25,9 +25,12 @@ type RedirectState = {
 } | null
 
 const ENTITY_TILE_BASE_CLASSES = clsx(
-  'tile focus-ring flex h-full w-full flex-col items-start justify-between gap-3 px-4 py-3 text-left text-base text-[var(--text-strong)] transition will-change-transform',
-  'hover:-translate-y-[1px] hover:shadow-elev-1 disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none disabled:hover:translate-y-0 disabled:hover:shadow-none',
+  'tile entity-card flex h-full w-full flex-col items-start justify-between gap-3 px-4 py-3 pr-5 text-left text-base transition will-change-transform',
+  'hover:-translate-y-[1px] hover:shadow-elev-1 focus-visible:outline-none',
+  'disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none disabled:hover:translate-y-0 disabled:hover:shadow-none',
 )
+const ENTITY_TILE_IDLE_CLASSES = 'entity-card--idle'
+const ENTITY_TILE_SELECTED_CLASSES = 'entity-card--selected'
 
 export const SelectShopPage = () => {
   const { shop, setShop } = useShop()
@@ -410,11 +413,26 @@ export const SelectShopPage = () => {
                         }
                         disabled={isDisabled}
                         onClick={() => handleEntitySelection(card)}
+                        data-state={isSelected ? 'selected' : 'idle'}
                         className={clsx(
                           ENTITY_TILE_BASE_CLASSES,
-                          isSelected && 'border-primary-500 ring-2 ring-primary-500/30',
+                          isSelected ? ENTITY_TILE_SELECTED_CLASSES : ENTITY_TILE_IDLE_CLASSES,
+                          isDisabled && 'entity-card--disabled',
                         )}
                       >
+                        <span className="entity-card__indicator" aria-hidden="true">
+                          <svg
+                            className="h-3.5 w-3.5"
+                            viewBox="0 0 20 20"
+                            fill="none"
+                            xmlns="http://www.w3.org/2000/svg"
+                          >
+                            <path
+                              d="M16.707 6.293a1 1 0 0 0-1.414 0L8.5 13.086l-2.793-2.793a1 1 0 0 0-1.414 1.414l3.5 3.5a1 1 0 0 0 1.414 0l7-7a1 1 0 0 0 0-1.414Z"
+                              fill="currentColor"
+                            />
+                          </svg>
+                        </span>
                         <span className="text-lg font-semibold">
                           {card.definition.label}
                         </span>
@@ -427,8 +445,8 @@ export const SelectShopPage = () => {
                             isDisabled
                               ? 'bg-gray-100 text-gray-500 dark:bg-slate-800 dark:text-slate-400'
                               : isSelected
-                              ? 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-100'
-                              : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+                              ? 'bg-brand-500/15 text-brand-700 shadow-sm dark:bg-brand-400/20 dark:text-brand-100'
+                              : 'bg-slate-100/90 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
                           )}
                         >
                           {isDisabled
