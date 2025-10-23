@@ -93,9 +93,7 @@ const SectionSwitcher = ({ activeSection, onChange }: SectionSwitcherProps) => (
 )
 
 type ImportSummary = {
-  total: number
   inserted: number
-  updated: number
   errorCount: number
   unknownColumns: string[]
 }
@@ -178,10 +176,10 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
       const record = (payload ?? {}) as Record<string, unknown>
 
       if (response.status === 200) {
+        const insertedCount = toInteger(record.inserted)
+        const fallbackTotal = toInteger(record.total)
         const summary: ImportSummary = {
-          total: toInteger(record.total),
-          inserted: toInteger(record.inserted),
-          updated: toInteger(record.updated),
+          inserted: insertedCount > 0 ? insertedCount : fallbackTotal,
           errorCount: toInteger(record.errorCount),
           unknownColumns: toStringList(record.unknownColumns),
         }
@@ -290,16 +288,8 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
               </p>
               <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                 <div>
-                  <dt className="font-medium text-slate-700">Total</dt>
-                  <dd className="text-slate-600">{feedback.summary.total}</dd>
-                </div>
-                <div>
-                  <dt className="font-medium text-slate-700">Insérés</dt>
+                  <dt className="font-medium text-slate-700">Produits importés</dt>
                   <dd className="text-slate-600">{feedback.summary.inserted}</dd>
-                </div>
-                <div>
-                  <dt className="font-medium text-slate-700">Mis à jour</dt>
-                  <dd className="text-slate-600">{feedback.summary.updated}</dd>
                 </div>
                 <div>
                   <dt className="font-medium text-slate-700">Erreurs détectées</dt>
