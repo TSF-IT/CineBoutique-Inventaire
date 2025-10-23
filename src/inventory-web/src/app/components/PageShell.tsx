@@ -17,17 +17,25 @@ export const PageShell = ({
   style,
   ...rest
 }: PageShellProps) => {
+  const hasNav = Boolean(nav)
+
   return (
     <div
       className={clsx(
-        'page-shell safe-pads max-w-full overflow-visible min-h-dvh bg-gray-50 text-gray-900 antialiased',
-        nav && 'page-shell--with-nav',
+        'page-shell safe-pads max-w-full overflow-visible bg-gray-50 text-gray-900 antialiased',
+        hasNav && 'page-shell--with-nav',
         className,
       )}
       style={style}
       {...rest}
     >
-      <main className={clsx('layout-main cb-container min-h-dvh overflow-visible pb-24', mainClassName)}>
+      <main
+        className={clsx(
+          'layout-main cb-container overflow-visible',
+          hasNav ? 'pb-24' : 'pb-12',
+          mainClassName,
+        )}
+      >
         {header ?? null}
         {children}
       </main>
