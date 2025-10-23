@@ -21,9 +21,10 @@
     "check:health": "node -e \"fetch('http://localhost:5173/api/healthz').then(r=>r.text()).then(console.log).catch(e=>{console.error(e);process.exit(1)})\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "ci:guard": "sh -c \"rg -n --hidden --glob '!node_modules' --glob '!package.json' '(Amélie|Bruno|Elisa|Camille|David)\\b' src/inventory-web && exit 1 || true; rg -n --hidden --glob '!node_modules' --glob '!package.json' 'OperatorsContext|DEFAULT_OPERATORS' src/inventory-web && exit 1 || true\""
+    "ci:guard": "sh -c \"rg -n --hidden --glob '!node_modules' --glob '!package.json' '(Am\u00e9lie|Bruno|Elisa|Camille|David)\\b' src/inventory-web && exit 1 || true; rg -n --hidden --glob '!node_modules' --glob '!package.json' 'OperatorsContext|DEFAULT_OPERATORS' src/inventory-web && exit 1 || true\""
   },
   "dependencies": {
+    "@testing-library/jest-dom": "6.4.2",
     "@zxing/browser": "^0.1.5",
     "@zxing/library": "^0.21.3",
     "clsx": "^2.1.1",
@@ -32,7 +33,6 @@
     "react-router-dom": "^7.9.4",
     "react-swipeable": "^7.0.2",
     "react-window": "1.8.11",
-    "@testing-library/jest-dom": "6.4.2",
     "zod": "^4.1.12"
   },
   "devDependencies": {
@@ -62,19 +62,21 @@
     "tailwindcss": "^4.1.14",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.1",
-    "vite": "^7.1.10",
+    "vite": "^7.1.12",
     "vite-plugin-pwa": "^1.1.0",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "workbox-build": "^7.3.0"
   },
   "overrides": {
-    "magic-string": "^0.30.10",
-    "glob": "^9.3.5",
-    "source-map": "npm:source-map-js@^1.2.0"
+    "sourcemap-codec": "@jridgewell/sourcemap-codec@^1.5.0",
+    "source-map": "^0.7.4",
+    "magic-string": "^0.30.10"
   },
   "pnpm": {
     "overrides": {
-      "glob": "9.3.5",
-      "source-map": "npm:source-map-js@1.2.0"
+      "sourcemap-codec": "@jridgewell/sourcemap-codec@^1.5.0",
+      "source-map": "^0.7.4",
+      "magic-string": "^0.30.10"
     }
   }
 }
