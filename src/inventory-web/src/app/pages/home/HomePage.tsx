@@ -472,7 +472,11 @@ export const HomePage = () => {
         {!combinedLoading && !errorDetails && displaySummary && (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             {shopId && (
-              <ProductsCountCard shopId={shopId} onOpen={() => setShowProducts(true)} />
+              <ProductsCountCard
+                shopId={shopId}
+                onOpen={() => setShowProducts(true)}
+                className="border-product-300 bg-product-50/80 dark:border-product-500/40 dark:bg-product-500/10"
+              />
             )}
             <button
               type="button"
@@ -558,11 +562,11 @@ export const HomePage = () => {
                       </li>
                     ))}
                   </ul>
-                ) : (
-                  <p className="rounded-2xl border border-emerald-200 bg-white/60 px-4 py-3 text-xs text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200">
-                    Aucune divergence détectée.
+                ) : hasConflicts ? (
+                  <p className="rounded-2xl border border-rose-200 bg-white/60 px-4 py-3 text-xs text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
+                    Impossible d’afficher le détail des zones en conflit.
                   </p>
-                )}
+                ) : null}
               </div>
             </div>
             <button
