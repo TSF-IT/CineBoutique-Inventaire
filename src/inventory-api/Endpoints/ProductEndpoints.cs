@@ -956,37 +956,42 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             var ps = System.Math.Clamp(pageSize ?? 50, 1, 200);
             var off = (p - 1) * ps;
             var filter = string.IsNullOrWhiteSpace(q) ? null : q.Trim();
+
+            var hasShopScope = await EndpointUtilities
+                .ColumnExistsAsync(connection, "Product", "ShopId", ct)
+                .ConfigureAwait(false);
+            var hasCodeDigits = await EndpointUtilities
+                .ColumnExistsAsync(connection, "Product", "CodeDigits", ct)
+                .ConfigureAwait(false);
+
             var sort = (sortBy ?? "sku").Trim().ToLowerInvariant();
             sort = sort switch
             {
                 "ean"    => "ean",
                 "name"   => "name",
                 "descr"  => "descr",
-                "digits" => "digits",
+                "digits" => hasCodeDigits ? "digits" : "sku",
                 _         => "sku"
             };
+
             var dir  = string.Equals(sortDir, "desc", System.StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
 
-            const string whereClause = """
-WHERE "ShopId"=@ShopId AND (
-    @Filter IS NULL OR @Filter='' OR
-    COALESCE("Sku",'') ILIKE '%'||@Filter||'%' OR
-    COALESCE("Ean",'') ILIKE '%'||@Filter||'%' OR
-    COALESCE("CodeDigits",'') ILIKE '%'||@Filter||'%' OR
-    COALESCE("Description",'') ILIKE '%'||@Filter||'%' OR
-    COALESCE("Name",'') ILIKE '%'||@Filter||'%'
-)
-""";
+            var filterConditions = new System.Collections.Generic.List<string>
+            {
+                "COALESCE(\"Sku\",'') ILIKE '%'||@Filter||'%'",
+                "COALESCE(\"Ean\",'') ILIKE '%'||@Filter||'%'",
+                "COALESCE(\"Description\",'') ILIKE '%'||@Filter||'%'",
+                "COALESCE(\"Name\",'') ILIKE '%'||@Filter||'%'"
+            };
 
-            const string globalWhereClause = """
-WHERE
-    @Filter IS NULL OR @Filter='' OR
-    COALESCE("Sku",'') ILIKE '%'||@Filter||'%' OR
-    COALESCE("Ean",'') ILIKE '%'||@Filter||'%' OR
-    COALESCE("CodeDigits",'') ILIKE '%'||@Filter||'%' OR
-    COALESCE("Description",'') ILIKE '%'||@Filter||'%' OR
-    COALESCE("Name",'') ILIKE '%'||@Filter||'%'
-""";
+            if (hasCodeDigits)
+            {
+                filterConditions.Add("COALESCE(\"CodeDigits\",'') ILIKE '%'||@Filter||'%'");
+            }
+
+            var whereClause = BuildProductFilterWhereClause(hasShopScope, filterConditions);
+            var orderByClause = BuildProductOrderByClause(dir, hasCodeDigits);
+            var codeDigitsSelect = hasCodeDigits ? "\"CodeDigits\"" : "NULL::text AS \"CodeDigits\"";
 
             static Microsoft.AspNetCore.Http.IResult BuildPagedResult(
                 long totalCount,
@@ -1014,58 +1019,44 @@ WHERE
                 });
             }
 
-            try
+            var countParameters = new Dapper.DynamicParameters();
+            countParameters.Add("Filter", filter);
+            if (hasShopScope)
             {
-                var total = await connection.ExecuteScalarAsync<long>(
-                    new Dapper.CommandDefinition($$"""
+                countParameters.Add("ShopId", shopId);
+            }
+
+            var dataParameters = new Dapper.DynamicParameters();
+            dataParameters.Add("Filter", filter);
+            dataParameters.Add("Sort", sort);
+            dataParameters.Add("Limit", ps);
+            dataParameters.Add("Offset", off);
+            if (hasShopScope)
+            {
+                dataParameters.Add("ShopId", shopId);
+            }
+
+            var countSql = $"""
 SELECT COUNT(*)
 FROM "Product"
-{{whereClause}};
-""", new { ShopId = shopId, Filter = filter }, cancellationToken: ct)).ConfigureAwait(false);
+{whereClause}
+""";
 
-                var data = await connection.QueryAsync(
-                    new Dapper.CommandDefinition($$"""
-SELECT "Id","Sku","Name","Ean","Description","CodeDigits"
+            var dataSql = $"""
+SELECT "Id","Sku","Name","Ean","Description",{codeDigitsSelect}
 FROM "Product"
-{{whereClause}}
-ORDER BY
-  CASE WHEN @Sort='ean'   THEN "Ean"
-       WHEN @Sort='name'  THEN "Name"
-       WHEN @Sort='descr' THEN "Description"
-       WHEN @Sort='digits'THEN "CodeDigits"
-       ELSE "Sku" END {{dir}},
-  "Sku" ASC
-LIMIT @Limit OFFSET @Offset;
-""", new { ShopId = shopId, Filter = filter, Sort = sort, Limit = ps, Offset = off }, cancellationToken: ct)).ConfigureAwait(false);
+{whereClause}
+{orderByClause}
+LIMIT @Limit OFFSET @Offset
+""";
 
-                return BuildPagedResult(total, data, p, ps, sort, dir, filter);
-            }
-            catch (PostgresException ex) when (IsShopScopeMissing(ex))
-            {
-                var total = await connection.ExecuteScalarAsync<long>(
-                    new Dapper.CommandDefinition($$"""
-SELECT COUNT(*)
-FROM "Product"
-{{globalWhereClause}};
-""", new { Filter = filter }, cancellationToken: ct)).ConfigureAwait(false);
+            var total = await connection.ExecuteScalarAsync<long>(
+                new Dapper.CommandDefinition(countSql, countParameters, cancellationToken: ct)).ConfigureAwait(false);
 
-                var data = await connection.QueryAsync(
-                    new Dapper.CommandDefinition($$"""
-SELECT "Id","Sku","Name","Ean","Description","CodeDigits"
-FROM "Product"
-{{globalWhereClause}}
-ORDER BY
-  CASE WHEN @Sort='ean'   THEN "Ean"
-       WHEN @Sort='name'  THEN "Name"
-       WHEN @Sort='descr' THEN "Description"
-       WHEN @Sort='digits'THEN "CodeDigits"
-       ELSE "Sku" END {{dir}},
-  "Sku" ASC
-LIMIT @Limit OFFSET @Offset;
-""", new { Filter = filter, Sort = sort, Limit = ps, Offset = off }, cancellationToken: ct)).ConfigureAwait(false);
+            var data = await connection.QueryAsync(
+                new Dapper.CommandDefinition(dataSql, dataParameters, cancellationToken: ct)).ConfigureAwait(false);
 
-                return BuildPagedResult(total, data, p, ps, sort, dir, filter);
-            }
+            return BuildPagedResult(total, data, p, ps, sort, dir, filter);
         }), catalogEndpointsPublic);
 
         ApplyCatalogVisibility(app.MapGet("/api/shops/{shopId:guid}/products/export", async (
@@ -1134,9 +1125,65 @@ LIMIT @Limit OFFSET @Offset;
         }), catalogEndpointsPublic);
     }
 
-    private static bool IsShopScopeMissing(PostgresException ex)
+    private static string BuildProductFilterWhereClause(bool hasShopScope, IReadOnlyList<string> filterConditions)
     {
-        ArgumentNullException.ThrowIfNull(ex);
-        return ex.SqlState is PostgresErrorCodes.UndefinedColumn or PostgresErrorCodes.UndefinedTable;
+        ArgumentNullException.ThrowIfNull(filterConditions);
+        if (filterConditions.Count == 0)
+        {
+            throw new ArgumentException("At least one filter condition is required.", nameof(filterConditions));
+        }
+
+        var builder = new System.Text.StringBuilder();
+
+        if (hasShopScope)
+        {
+            builder.AppendLine("WHERE \"ShopId\"=@ShopId AND (");
+        }
+        else
+        {
+            builder.AppendLine("WHERE");
+        }
+
+        builder.AppendLine("    @Filter IS NULL OR @Filter='' OR");
+
+        for (var i = 0; i < filterConditions.Count; i++)
+        {
+            builder.Append("    ");
+            if (i > 0)
+            {
+                builder.Append("OR ");
+            }
+
+            builder.AppendLine(filterConditions[i]);
+        }
+
+        if (hasShopScope)
+        {
+            builder.AppendLine(")");
+        }
+
+        return builder.ToString();
+    }
+
+    private static string BuildProductOrderByClause(string direction, bool includeCodeDigits)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(direction);
+
+        var builder = new System.Text.StringBuilder();
+        builder.AppendLine("ORDER BY");
+        builder.AppendLine("  CASE WHEN @Sort='ean'   THEN \"Ean\"");
+        builder.AppendLine("       WHEN @Sort='name'  THEN \"Name\"");
+        builder.AppendLine("       WHEN @Sort='descr' THEN \"Description\"");
+
+        if (includeCodeDigits)
+        {
+            builder.AppendLine("       WHEN @Sort='digits' THEN \"CodeDigits\"");
+        }
+
+        builder.Append("       ELSE \"Sku\" END ");
+        builder.AppendLine(direction + ",");
+        builder.AppendLine("  \"Sku\" ASC");
+
+        return builder.ToString();
     }
 }
