@@ -528,6 +528,33 @@ public sealed class ProductImportService : IProductImportService
         var updated = 0;
         var groupCache = new Dictionary<GroupKey, long?>(GroupKeyComparer.Instance);
 
+        var existingAttributesBySku = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (rows.Count > 0)
+        {
+            var lowerSkus = rows
+                .Select(static row => row.Sku)
+                .Where(static sku => !string.IsNullOrWhiteSpace(sku))
+                .Select(static sku => sku.Trim().ToLowerInvariant())
+                .Distinct()
+                .ToArray();
+
+            if (lowerSkus.Length > 0)
+            {
+                const string existingAttrsSql =
+                    "SELECT \"Sku\", COALESCE(CAST(\"Attributes\" AS text), '{}') AS attrs " +
+                    "FROM \"Product\" WHERE LOWER(\"Sku\") = ANY(@LowerSkus);";
+
+                var existingRows = await _connection.QueryAsync<(string Sku, string Attrs)>(
+                        new CommandDefinition(existingAttrsSql, new { LowerSkus = lowerSkus }, transaction: transaction, cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+
+                foreach (var (skuValue, attrs) in existingRows)
+                {
+                    existingAttributesBySku[skuValue] = attrs;
+                }
+            }
+        }
+
         if (transaction.Connection is not NpgsqlConnection npgsqlConnection)
         {
             throw new InvalidOperationException("Une connexion Npgsql est requise pour l'UPSERT produit.");
@@ -586,7 +613,9 @@ RETURNING (xmax = 0) AS inserted;
 
             var normalizedEan = NormalizeEan(ean);
             var codeDigits = BuildCodeDigits(ean ?? normalizedEan);
-            var attributesJson = SerializeAttributes(row.Attributes, subGroup);
+            existingAttributesBySku.TryGetValue(sku, out var existingAttrsJson);
+            var attributesJson = SerializeAttributes(row.Attributes, subGroup, existingAttrsJson);
+            existingAttributesBySku[sku] = attributesJson;
             var groupId = await ResolveGroupIdAsync(group, subGroup, groupCache, cancellationToken)
                 .ConfigureAwait(false);
 
@@ -705,14 +734,17 @@ RETURNING (xmax = 0) AS inserted;
         return digits.Length == 0 ? null : digits;
     }
 
-    private static string SerializeAttributes(IReadOnlyDictionary<string, object?> attributes, string? subGroup)
+    private static string SerializeAttributes(
+        IReadOnlyDictionary<string, object?> attributes,
+        string? subGroup,
+        string? existingAttributesJson)
     {
-        if (attributes.Count == 0 && string.IsNullOrEmpty(subGroup))
-        {
-            return "{}";
-        }
-
         var payload = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(existingAttributesJson))
+        {
+            MergeExistingAttributes(existingAttributesJson!, payload);
+        }
 
         foreach (var kvp in attributes)
         {
@@ -724,7 +756,49 @@ RETURNING (xmax = 0) AS inserted;
             payload["originalSousGroupe"] = subGroup;
         }
 
+        if (payload.Count == 0)
+        {
+            return "{}";
+        }
+
         return JsonSerializer.Serialize(payload, JsonSerializerOptions);
+    }
+
+    private static void MergeExistingAttributes(string existingAttributesJson, IDictionary<string, object?> payload)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(existingAttributesJson);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return;
+            }
+
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                payload[property.Name] = ConvertJsonElement(property.Value);
+            }
+        }
+        catch (JsonException)
+        {
+            // Ignore invalid JSON stored in Attributes to avoid breaking imports.
+        }
+    }
+
+    private static object? ConvertJsonElement(JsonElement element)
+    {
+        return element.ValueKind switch
+        {
+            JsonValueKind.Null => null,
+            JsonValueKind.String => element.GetString(),
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.Number when element.TryGetInt64(out var longValue) => longValue,
+            JsonValueKind.Number when element.TryGetDecimal(out var decimalValue) => decimalValue,
+            JsonValueKind.Number => element.GetDouble(),
+            JsonValueKind.Array or JsonValueKind.Object => JsonSerializer.Deserialize<object?>(element.GetRawText(), JsonSerializerOptions),
+            _ => element.GetRawText()
+        };
     }
 
     private async Task<long?> ResolveGroupIdAsync(
