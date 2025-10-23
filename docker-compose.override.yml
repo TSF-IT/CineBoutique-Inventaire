@@ -2,11 +2,16 @@ services:
   api:
     ports:
       - "8080:8080"
+
   web:
     build:
-      context: ./src/inventory-web
+      context: .
+      dockerfile: Dockerfile.inventory-web
+      args:
+        BASE_REG: public.ecr.aws/docker/library
     depends_on:
       - api
+
   db:
     ports:
       - "5432:5432"
