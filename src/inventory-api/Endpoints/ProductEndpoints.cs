@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Data;
+using System.Data.Common;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -1286,16 +1287,30 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 }
 
                 var user = EndpointUtilities.GetAuthenticatedUserName(request.HttpContext);
-                var importService = request.HttpContext.RequestServices.GetRequiredService<CineBoutique.Inventory.Api.Services.Products.IProductImportService>();
-                var cmd = new CineBoutique.Inventory.Api.Models.ProductImportCommand(csvStream, isDryRun, user, shopId, CineBoutique.Inventory.Api.Models.ProductImportMode.ReplaceCatalogue);
-                var result = await importService.ImportAsync(cmd, ct).ConfigureAwait(false);
+                var loggerFactory = request.HttpContext.RequestServices.GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>();
+                var logger = loggerFactory.CreateLogger("InventoryApi.ShopProductImport");
 
-                return result.ResultType switch
+                try
                 {
-                    CineBoutique.Inventory.Api.Models.ProductImportResultType.ValidationFailed => Results.BadRequest(result.Response),
-                    CineBoutique.Inventory.Api.Models.ProductImportResultType.Succeeded       => Results.Ok(new { importedCount = result.Response.Inserted }),
-                    _                                                                          => Results.Ok(result.Response)
-                };
+                    var importService = request.HttpContext.RequestServices.GetRequiredService<CineBoutique.Inventory.Api.Services.Products.IProductImportService>();
+                    var cmd = new CineBoutique.Inventory.Api.Models.ProductImportCommand(csvStream, isDryRun, user, shopId, CineBoutique.Inventory.Api.Models.ProductImportMode.ReplaceCatalogue);
+                    var result = await importService.ImportAsync(cmd, ct).ConfigureAwait(false);
+
+                    return result.ResultType switch
+                    {
+                        CineBoutique.Inventory.Api.Models.ProductImportResultType.ValidationFailed => Results.BadRequest(result.Response),
+                        CineBoutique.Inventory.Api.Models.ProductImportResultType.Succeeded       => Results.Ok(new { importedCount = result.Response.Inserted }),
+                        _                                                                          => Results.Ok(result.Response)
+                    };
+                }
+                catch (DbException ex)
+                {
+                    logger.LogError(ex, "Shop product import failed for {ShopId}", shopId);
+                    return Results.Problem(
+                        title: "Import error",
+                        detail: ex.Message,
+                        statusCode: StatusCodes.Status400BadRequest);
+                }
             }
         }).RequireAuthorization();
 
