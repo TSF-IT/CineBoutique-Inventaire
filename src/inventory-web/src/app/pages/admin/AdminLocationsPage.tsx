@@ -243,7 +243,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
   }
 
   return (
-    <div className="flex flex-col gap-4 rounded-lg border bg-white shadow-sm p-4">
+    <Card className="flex flex-col gap-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Catalogue produits (CSV)</h2>
@@ -327,7 +327,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
           )}
         </div>
       )}
-    </div>
+    </Card>
   )
 }
 
