@@ -13,4 +13,4 @@ public sealed record ProductImportCommand(
     bool DryRun,
     string? Username,
     Guid? ShopId = null,
-    ProductImportMode Mode = ProductImportMode.Merge);
+    ProductImportMode Mode = ProductImportMode.ReplaceCatalogue);

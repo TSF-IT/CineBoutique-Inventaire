@@ -231,12 +231,18 @@ public sealed class ProductImportService : IProductImportService
 
             try
             {
+                Dictionary<string, string>? preloadedAttributes = null;
+
                 if (!command.DryRun && command.Mode == ProductImportMode.ReplaceCatalogue)
                 {
+                    preloadedAttributes = await LoadExistingAttributesBySkuAsync(parseOutcome.Rows, transaction, cancellationToken)
+                        .ConfigureAwait(false);
+
                     await DeleteExistingProductsAsync(transaction, cancellationToken).ConfigureAwait(false);
                 }
 
-                var upsertStats = await UpsertRowsAsync(parseOutcome.Rows, transaction, cancellationToken).ConfigureAwait(false);
+                var upsertStats = await UpsertRowsAsync(parseOutcome.Rows, transaction, cancellationToken, preloadedAttributes)
+                    .ConfigureAwait(false);
 
                 await CompleteHistoryAsync(
                         historyId,
@@ -474,6 +480,46 @@ public sealed class ProductImportService : IProductImportService
             .ConfigureAwait(false);
     }
 
+    private async Task<Dictionary<string, string>> LoadExistingAttributesBySkuAsync(
+        IReadOnlyList<ProductCsvRow> rows,
+        NpgsqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var existingAttributesBySku = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        if (rows.Count == 0)
+        {
+            return existingAttributesBySku;
+        }
+
+        var lowerSkus = rows
+            .Select(static row => row.Sku)
+            .Where(static sku => !string.IsNullOrWhiteSpace(sku))
+            .Select(static sku => sku!.Trim().ToLowerInvariant())
+            .Distinct()
+            .ToArray();
+
+        if (lowerSkus.Length == 0)
+        {
+            return existingAttributesBySku;
+        }
+
+        const string existingAttrsSql =
+            "SELECT \"Sku\", COALESCE(CAST(\"Attributes\" AS text), '{}') AS attrs " +
+            "FROM \"Product\" WHERE LOWER(\"Sku\") = ANY(@LowerSkus);";
+
+        var existingRows = await _connection.QueryAsync<(string Sku, string Attrs)>(
+                new CommandDefinition(existingAttrsSql, new { LowerSkus = lowerSkus }, transaction: transaction, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        foreach (var (skuValue, attrs) in existingRows)
+        {
+            existingAttributesBySku[skuValue] = attrs;
+        }
+
+        return existingAttributesBySku;
+    }
+
     private async Task CompleteHistoryAsync(
         Guid historyId,
         string status,
@@ -516,7 +562,8 @@ public sealed class ProductImportService : IProductImportService
     private async Task<UpsertStatistics> UpsertRowsAsync(
         IReadOnlyList<ProductCsvRow> rows,
         NpgsqlTransaction transaction,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Dictionary<string, string>? preloadedAttributesBySku)
     {
         if (rows.Count == 0)
         {
@@ -528,32 +575,8 @@ public sealed class ProductImportService : IProductImportService
         var updated = 0;
         var groupCache = new Dictionary<GroupKey, long?>(GroupKeyComparer.Instance);
 
-        var existingAttributesBySku = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (rows.Count > 0)
-        {
-            var lowerSkus = rows
-                .Select(static row => row.Sku)
-                .Where(static sku => !string.IsNullOrWhiteSpace(sku))
-                .Select(static sku => sku.Trim().ToLowerInvariant())
-                .Distinct()
-                .ToArray();
-
-            if (lowerSkus.Length > 0)
-            {
-                const string existingAttrsSql =
-                    "SELECT \"Sku\", COALESCE(CAST(\"Attributes\" AS text), '{}') AS attrs " +
-                    "FROM \"Product\" WHERE LOWER(\"Sku\") = ANY(@LowerSkus);";
-
-                var existingRows = await _connection.QueryAsync<(string Sku, string Attrs)>(
-                        new CommandDefinition(existingAttrsSql, new { LowerSkus = lowerSkus }, transaction: transaction, cancellationToken: cancellationToken))
-                    .ConfigureAwait(false);
-
-                foreach (var (skuValue, attrs) in existingRows)
-                {
-                    existingAttributesBySku[skuValue] = attrs;
-                }
-            }
-        }
+        var existingAttributesBySku = preloadedAttributesBySku
+            ?? await LoadExistingAttributesBySkuAsync(rows, transaction, cancellationToken).ConfigureAwait(false);
 
         if (transaction.Connection is not NpgsqlConnection npgsqlConnection)
         {
