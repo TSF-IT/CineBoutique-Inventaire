@@ -332,6 +332,19 @@ export const HomePage = () => {
   const totalExpected = useMemo(() => locations.length * 2, [locations.length])
   const hasOpenRuns = openRunsCount > 0
   const hasConflicts = conflictCount > 0
+  const completedRunsLabel = useMemo(() => {
+    if (completedRuns <= 0) {
+      return 'Aucun comptage terminé'
+    }
+
+    const plural = completedRuns > 1 ? 'comptages terminés' : 'comptage terminé'
+    if (totalExpected > 0) {
+      return `${completedRuns} ${plural} sur ${totalExpected}`
+    }
+
+    return `${completedRuns} ${plural}`
+  }, [completedRuns, totalExpected])
+  const hasCompletedRuns = completedRuns > 0
   const canOpenOpenRunsModal = openRunDetails.length > 0
   const canOpenCompletedRunsModal = completedRunDetails.length > 0
   const canOpenConflicts = hasConflicts && conflictZones.length > 0
@@ -585,19 +598,16 @@ export const HomePage = () => {
               <p
                 className={clsx(
                   'mt-2 font-semibold',
-                  completedRuns > 0
+                  hasCompletedRuns
                     ? 'text-4xl text-emerald-800 dark:text-emerald-100'
                     : 'text-lg text-emerald-700 dark:text-emerald-200'
                 )}
               >
-                {completedRuns > 0 ? completedRuns : 'Aucun comptage terminé'}
+                {completedRunsLabel}
               </p>
               {canOpenCompletedRunsModal && (
                 <p className="mt-1 text-xs text-emerald-700/80 dark:text-emerald-200/80">Touchez pour voir le détail</p>
               )}
-              <p className="mt-3 text-xs text-emerald-700/80 dark:text-emerald-200/70">
-                Progression : {completedRuns} / {totalExpected || 0}
-              </p>
             </button>
           </div>
         )}

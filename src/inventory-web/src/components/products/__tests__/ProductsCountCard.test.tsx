@@ -36,9 +36,8 @@ describe('ProductsCountCard', () => {
 
     render(<ProductsCountCard shopId={shopId} onClick={() => {}} />)
 
-    await waitFor(() =>
-      expect(screen.getByText('Aucun produit chargé pour cette boutique')).toBeInTheDocument()
-    )
+    await waitFor(() => expect(screen.getByText('Catalogue produits')).toBeInTheDocument())
+    expect(screen.getByText('Aucun produit dans le catalogue')).toBeInTheDocument()
 
     expect(screen.queryByRole('button', { name: 'Ouvrir le catalogue produits' })).not.toBeInTheDocument()
   })

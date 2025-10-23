@@ -54,12 +54,19 @@ export function ProductsCountCard({ shopId, onOpen, onClick, className, ...rest 
         {loading ? (
           <>
             <div className="h-4 w-32 animate-pulse rounded bg-product-200/50" />
-            <div className="h-10 w-24 animate-pulse rounded bg-product-200/60" />
+            <div className="h-10 w-40 animate-pulse rounded bg-product-200/60" />
+            <div className="h-3 w-48 animate-pulse rounded bg-product-200/40" />
           </>
         ) : (
-          <p className="text-sm text-product-700/80 dark:text-product-200/80">
-            Aucun produit chargé pour cette boutique
-          </p>
+          <>
+            <p className="text-sm uppercase text-product-700 dark:text-product-200">Catalogue produits</p>
+            <p className="mt-2 text-lg font-semibold text-product-800 dark:text-product-100">
+              Aucun produit dans le catalogue
+            </p>
+            <p className="mt-1 text-xs text-product-700/80 dark:text-product-200/80">
+              Importez votre catalogue pour consulter vos références ici.
+            </p>
+          </>
         )}
       </div>
     )
