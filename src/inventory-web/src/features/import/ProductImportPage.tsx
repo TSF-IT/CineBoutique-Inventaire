@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState } from "react";
+import { useShop } from "@/state/ShopContext";
 import { mapRowFromCsv, normalizeKey, KNOWN_KEYS } from "./csvMapping";
 
 type ErrorItem = { Reason: string; Message?: string; Field?: string };
@@ -32,6 +33,7 @@ function parseCsvSemicolon(text: string, maxRows = 10): { headers: string[]; row
 }
 
 export function ProductImportPage() {
+  const { shop, isLoaded } = useShop();
   const [file, setFile] = useState<File | null>(null);
   const [busyDryRun, setBusyDryRun] = useState(false);
   const [busyImport, setBusyImport] = useState(false);
@@ -42,7 +44,21 @@ export function ProductImportPage() {
   const [mappedPreview, setMappedPreview] = useState<{ headers: string[]; rows: ReturnType<typeof mapRowFromCsv>[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const canActions = useMemo(() => !!file && !busyDryRun && !busyImport, [file, busyDryRun, busyImport]);
+  if (!isLoaded) {
+    return <section>Chargement de la boutique…</section>;
+  }
+
+  const hasShop = Boolean(shop?.id);
+  if (!hasShop) {
+    return (
+      <section style={{ display: "grid", gap: 12, maxWidth: 900 }}>
+        <h2 style={{ margin: 0 }}>Import produits (CSV)</h2>
+        <p>Sélectionnez une boutique pour importer un catalogue.</p>
+      </section>
+    );
+  }
+
+  const canActions = useMemo(() => !!file && !busyDryRun && !busyImport && hasShop, [file, busyDryRun, busyImport, hasShop]);
   const unknowns = useMemo(() => {
     const arr = dryRunRes?.unknownColumns ?? dryRunRes?.UnknownColumns ?? [];
     return Array.isArray(arr) ? arr : [];
@@ -105,10 +121,12 @@ export function ProductImportPage() {
 
   async function postCsv(dryRun: boolean): Promise<any> {
     if (!file) throw new Error("Aucun fichier sélectionné");
+    if (!shop?.id) throw new Error("Sélectionnez une boutique avant d'importer un catalogue.");
     const form = new FormData();
     form.append("file", file, file.name);
     const q = new URLSearchParams({ dryRun: String(dryRun) }).toString();
-    const res = await fetch(`/api/products/import?${q}`, { method: "POST", body: form });
+    const endpoint = `/api/shops/${shop.id}/products/import`;
+    const res = await fetch(`${endpoint}?${q}`, { method: "POST", body: form });
     const text = await res.text();
     let payload: any = null;
     try { payload = text ? JSON.parse(text) : null; } catch { /* corps non JSON */ }

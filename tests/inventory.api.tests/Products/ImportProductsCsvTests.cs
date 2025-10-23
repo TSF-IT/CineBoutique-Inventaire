@@ -43,13 +43,13 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
-        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+        var shopId = await ResetAndCreateShopAsync("Boutique Import CSV - Happy Path").ConfigureAwait(false);
 
         var client = CreateClient();
         client.DefaultRequestHeaders.Add("X-Admin", "true");
 
         using var content = CreateCsvContent(InitialCsvLines);
-        var response = await client.PostAsync("/api/products/import", content).ConfigureAwait(false);
+        var response = await client.PostAsync($"/api/shops/{shopId}/products/import", content).ConfigureAwait(false);
         await response.ShouldBeAsync(HttpStatusCode.OK, "l'import CSV doit réussir").ConfigureAwait(false);
 
         var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
@@ -89,14 +89,14 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
-        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+        var shopId = await ResetAndCreateShopAsync("Boutique Import CSV - Reimport").ConfigureAwait(false);
 
         var client = CreateClient();
         client.DefaultRequestHeaders.Add("X-Admin", "true");
 
         using (var initialContent = CreateCsvContent(InitialCsvLines))
         {
-            var initialResponse = await client.PostAsync("/api/products/import", initialContent).ConfigureAwait(false);
+            var initialResponse = await client.PostAsync($"/api/shops/{shopId}/products/import", initialContent).ConfigureAwait(false);
             await initialResponse.ShouldBeAsync(HttpStatusCode.OK, "le premier import prépare le scénario de réimport").ConfigureAwait(false);
         }
 
@@ -108,7 +108,7 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         };
 
         using var reimportContent = CreateCsvContent(reimportLines);
-        var reimportResponse = await client.PostAsync("/api/products/import", reimportContent).ConfigureAwait(false);
+        var reimportResponse = await client.PostAsync($"/api/shops/{shopId}/products/import", reimportContent).ConfigureAwait(false);
         await reimportResponse.ShouldBeAsync(HttpStatusCode.OK, "la réimportation doit insérer les nouveautés sans supprimer l'existant").ConfigureAwait(false);
 
         var reimportPayload = await reimportResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
@@ -136,7 +136,7 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
-        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+        var shopId = await ResetAndCreateShopAsync("Boutique Import CSV - Authorization").ConfigureAwait(false);
 
         var csv = new System.Text.StringBuilder()
             .AppendLine("barcode_rfid;sku;name")
@@ -150,7 +150,7 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         form.Add(file, "file", "import-allow.csv");
 
         var client = CreateClient();
-        var res = await client.PostAsync("/api/products/import?dryRun=true", form).ConfigureAwait(false);
+        var res = await client.PostAsync($"/api/shops/{shopId}/products/import?dryRun=true", form).ConfigureAwait(false);
 
         res.StatusCode.Should().Be(System.Net.HttpStatusCode.OK);
 
@@ -167,14 +167,14 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
-        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+        var shopId = await ResetAndCreateShopAsync("Boutique Import CSV - DryRun").ConfigureAwait(false);
 
         var client = CreateClient();
         client.DefaultRequestHeaders.Add("X-Admin", "true");
 
         using (var dryRunContent = CreateCsvContent(InitialCsvLines))
         {
-            var dryRunResponse = await client.PostAsync("/api/products/import?dryRun=true", dryRunContent).ConfigureAwait(false);
+            var dryRunResponse = await client.PostAsync($"/api/shops/{shopId}/products/import?dryRun=true", dryRunContent).ConfigureAwait(false);
             await dryRunResponse.ShouldBeAsync(HttpStatusCode.OK, "un dryRun doit réussir sans modifier les données").ConfigureAwait(false);
 
             var dryRunPayload = await dryRunResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
@@ -191,13 +191,14 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         }
 
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
-        await using var countCommand = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\";", connection);
+        await using var countCommand = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\" WHERE \"ShopId\" = @shopId;", connection);
+        countCommand.Parameters.AddWithValue("shopId", shopId);
         var count = (long)await countCommand.ExecuteScalarAsync().ConfigureAwait(false);
         count.Should().Be(0, "un dryRun ne doit pas insérer de données");
 
         using (var actualContent = CreateCsvContent(InitialCsvLines))
         {
-            var actualResponse = await client.PostAsync("/api/products/import", actualContent).ConfigureAwait(false);
+            var actualResponse = await client.PostAsync($"/api/shops/{shopId}/products/import", actualContent).ConfigureAwait(false);
             await actualResponse.ShouldBeAsync(HttpStatusCode.OK, "l'import réel suivant un dryRun doit fonctionner").ConfigureAwait(false);
 
             var actualPayload = await actualResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
@@ -212,7 +213,8 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         }
 
         await using var finalConnection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
-        await using var finalCommand = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\";", finalConnection);
+        await using var finalCommand = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\" WHERE \"ShopId\" = @shopId;", finalConnection);
+        finalCommand.Parameters.AddWithValue("shopId", shopId);
         var finalDryRunCount = (long)await finalCommand.ExecuteScalarAsync().ConfigureAwait(false);
         finalDryRunCount.Should().Be(5, "l'import réel doit insérer les lignes attendues");
     }
@@ -222,7 +224,7 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
-        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+        var shopId = await ResetAndCreateShopAsync("Boutique Import CSV - DryRun Columns").ConfigureAwait(false);
 
         var client = CreateClient();
         client.DefaultRequestHeaders.Add("X-Admin", "true");
@@ -234,7 +236,7 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         };
 
         using var content = CreateCsvContent(csvLines);
-        var response = await client.PostAsync("/api/products/import?dryRun=true", content).ConfigureAwait(false);
+        var response = await client.PostAsync($"/api/shops/{shopId}/products/import?dryRun=true", content).ConfigureAwait(false);
         await response.ShouldBeAsync(HttpStatusCode.OK, "le dryRun doit réussir").ConfigureAwait(false);
 
         var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
@@ -248,7 +250,8 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         payload.ProposedGroups.Should().ContainSingle(group => group.Groupe == "Boissons" && group.SousGroupe == "Cafés doux");
 
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
-        await using var command = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\";", connection);
+        await using var command = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\" WHERE \"ShopId\" = @shopId;", connection);
+        command.Parameters.AddWithValue("shopId", shopId);
         var count = (long)await command.ExecuteScalarAsync().ConfigureAwait(false);
         count.Should().Be(0, "un dryRun ne doit produire aucune écriture");
     }
@@ -258,7 +261,7 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
-        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+        var shopId = await ResetAndCreateShopAsync("Boutique Import CSV - Attributes").ConfigureAwait(false);
 
         var client = CreateClient();
         client.DefaultRequestHeaders.Add("X-Admin", "true");
@@ -270,7 +273,7 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
         };
 
         using var content = CreateCsvContent(csvLines);
-        var response = await client.PostAsync("/api/products/import", content).ConfigureAwait(false);
+        var response = await client.PostAsync($"/api/shops/{shopId}/products/import", content).ConfigureAwait(false);
         await response.ShouldBeAsync(HttpStatusCode.OK, "l'import doit réussir").ConfigureAwait(false);
 
         var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
@@ -290,11 +293,15 @@ public sealed class ImportProductsCsvTests : IntegrationTestBase
     pg.""Label"" AS ""SubGroupLabel""
 FROM ""Product"" p
 LEFT JOIN ""ProductGroup"" pg ON pg.""Id"" = p.""GroupId""
-WHERE p.""Sku"" = @sku;";
+WHERE p.""ShopId"" = @shopId AND p.""Sku"" = @sku;";
 
         await using var command = new NpgsqlCommand(sql, connection)
         {
-            Parameters = { new("sku", "LAT-REAL") }
+            Parameters =
+            {
+                new("shopId", shopId),
+                new("sku", "LAT-REAL")
+            }
         };
 
         await using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
@@ -313,20 +320,20 @@ WHERE p.""Sku"" = @sku;";
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
-        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+        var shopId = await ResetAndCreateShopAsync("Boutique Import CSV - Skip").ConfigureAwait(false);
 
         var client = CreateClient();
         client.DefaultRequestHeaders.Add("X-Admin", "true");
 
         using (var initialContent = CreateCsvContent(InitialCsvLines))
         {
-            var initialResponse = await client.PostAsync("/api/products/import", initialContent).ConfigureAwait(false);
+            var initialResponse = await client.PostAsync($"/api/shops/{shopId}/products/import", initialContent).ConfigureAwait(false);
             await initialResponse.ShouldBeAsync(HttpStatusCode.OK, "le premier import doit réussir").ConfigureAwait(false);
         }
 
         using (var duplicateContent = CreateCsvContent(InitialCsvLines))
         {
-            var duplicateResponse = await client.PostAsync("/api/products/import", duplicateContent).ConfigureAwait(false);
+            var duplicateResponse = await client.PostAsync($"/api/shops/{shopId}/products/import", duplicateContent).ConfigureAwait(false);
             duplicateResponse.StatusCode.Should().Be(HttpStatusCode.NoContent, "l'import identique doit être ignoré");
 
             var duplicatePayload = await duplicateResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
@@ -341,7 +348,8 @@ WHERE p.""Sku"" = @sku;";
         }
 
         await using var verifyConnection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
-        await using var verifyCommand = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\";", verifyConnection);
+        await using var verifyCommand = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\" WHERE \"ShopId\" = @shopId;", verifyConnection);
+        verifyCommand.Parameters.AddWithValue("shopId", shopId);
         var finalCount = (long)await verifyCommand.ExecuteScalarAsync().ConfigureAwait(false);
         finalCount.Should().Be(5, "le second import ignoré ne doit pas modifier les données");
     }
@@ -351,7 +359,7 @@ WHERE p.""Sku"" = @sku;";
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
-        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+        var shopId = await ResetAndCreateShopAsync("Boutique Import CSV - Size Limit").ConfigureAwait(false);
 
         var client = CreateClient();
         client.DefaultRequestHeaders.Add("X-Admin", "true");
@@ -360,7 +368,7 @@ WHERE p.""Sku"" = @sku;";
         content.Headers.ContentType = new MediaTypeHeaderValue("text/csv");
         content.Headers.ContentLength = (25L * 1024L * 1024L) + 1;
 
-        var response = await client.PostAsync("/api/products/import", content).ConfigureAwait(false);
+        var response = await client.PostAsync($"/api/shops/{shopId}/products/import", content).ConfigureAwait(false);
         response.StatusCode.Should().Be((HttpStatusCode)StatusCodes.Status413PayloadTooLarge);
     }
 
@@ -369,19 +377,30 @@ WHERE p.""Sku"" = @sku;";
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
-        await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
+        var shopId = await ResetAndCreateShopAsync("Boutique Import CSV - DryRun Param").ConfigureAwait(false);
 
         var client = CreateClient();
         client.DefaultRequestHeaders.Add("X-Admin", "true");
 
         using var content = CreateCsvContent(InitialCsvLines);
-        var response = await client.PostAsync("/api/products/import?dryRun=notabool", content).ConfigureAwait(false);
+        var response = await client.PostAsync($"/api/shops/{shopId}/products/import?dryRun=notabool", content).ConfigureAwait(false);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
         payload.Should().NotBeNull();
         payload!.Errors.Should().Contain(error => error.Reason == "INVALID_DRY_RUN");
         payload.UnknownColumns.Should().BeEmpty();
+    }
+
+    private async Task<Guid> ResetAndCreateShopAsync(string name)
+    {
+        Guid shopId = Guid.Empty;
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.CreateShopAsync(name).ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        return shopId;
     }
 
     private static StringContent CreateCsvContent(string[] lines)

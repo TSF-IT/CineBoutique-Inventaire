@@ -99,6 +99,13 @@ public sealed class ProductImportService : IProductImportService
         ArgumentNullException.ThrowIfNull(command);
         ArgumentNullException.ThrowIfNull(command.CsvStream);
 
+        if (command.ShopId == Guid.Empty)
+        {
+            throw new ArgumentException("Le ShopId de l'import produit est requis.", nameof(command));
+        }
+
+        var shopId = command.ShopId;
+
         var bufferedCsv = await BufferStreamAsync(command.CsvStream, cancellationToken).ConfigureAwait(false);
         await using var bufferedStream = bufferedCsv.Stream;
 
@@ -124,7 +131,7 @@ public sealed class ProductImportService : IProductImportService
         {
             if (!command.DryRun)
             {
-                var lastSucceededHash = await GetLastSucceededHashAsync(transaction, cancellationToken).ConfigureAwait(false);
+                var lastSucceededHash = await GetLastSucceededHashAsync(transaction, shopId, cancellationToken).ConfigureAwait(false);
                 if (!string.IsNullOrEmpty(lastSucceededHash) &&
                     string.Equals(lastSucceededHash, bufferedCsv.Sha256, StringComparison.Ordinal))
                 {
@@ -138,18 +145,19 @@ public sealed class ProductImportService : IProductImportService
                         created: 0,
                         updated: 0,
                         duration: TimeSpan.Zero,
-                        unknownColumns: EmptyUnknownColumns);
+                        unknownColumns: EmptyUnknownColumns,
+                        shopId: shopId);
                     ApiLog.ImportStep(_logger, "Import produits ignoré : fichier identique au dernier import réussi.");
                     return new ProductImportResult(ProductImportResponse.SkippedResult(), ProductImportResultType.Skipped);
                 }
             }
 
-            var hasSuccessfulImport = await HasSuccessfulImportAsync(transaction, cancellationToken).ConfigureAwait(false);
+            var hasSuccessfulImport = await HasSuccessfulImportAsync(transaction, shopId, cancellationToken).ConfigureAwait(false);
 
             var historyId = Guid.NewGuid();
             var startedAt = _clock.UtcNow;
 
-            await InsertHistoryStartedAsync(historyId, startedAt, command.Username, bufferedCsv.Sha256, transaction, cancellationToken)
+            await InsertHistoryStartedAsync(historyId, shopId, startedAt, command.Username, bufferedCsv.Sha256, transaction, cancellationToken)
                 .ConfigureAwait(false);
 
             await transaction.SaveAsync("before_import", cancellationToken).ConfigureAwait(false);
@@ -181,7 +189,8 @@ public sealed class ProductImportService : IProductImportService
                 created: 0,
                 updated: 0,
                 duration: TimeSpan.Zero,
-                unknownColumns: unknownColumns);
+                unknownColumns: unknownColumns,
+                shopId: shopId);
 
             if (errorCount > 0)
             {
@@ -210,7 +219,8 @@ public sealed class ProductImportService : IProductImportService
                     created: 0,
                     updated: 0,
                     stopwatch.Elapsed,
-                    unknownColumns);
+                    unknownColumns,
+                    shopId);
 
                 return new ProductImportResult(
                     ProductImportResponse.Failure(totalLines, parseOutcome.Errors, unknownColumns, parseOutcome.ProposedGroups),
@@ -219,7 +229,7 @@ public sealed class ProductImportService : IProductImportService
 
             if (command.DryRun)
             {
-                var preview = await ComputeUpsertPreviewAsync(parseOutcome.Rows, transaction, cancellationToken)
+                var preview = await ComputeUpsertPreviewAsync(parseOutcome.Rows, shopId, transaction, cancellationToken)
                     .ConfigureAwait(false);
 
                 await CompleteHistoryAsync(
@@ -247,7 +257,8 @@ public sealed class ProductImportService : IProductImportService
                     created: preview.Created,
                     updated: preview.Updated,
                     stopwatch.Elapsed,
-                    unknownColumns);
+                    unknownColumns,
+                    shopId);
 
                 return new ProductImportResult(
                     ProductImportResponse.DryRunResult(totalLines, preview.Created, unknownColumns, parseOutcome.ProposedGroups),
@@ -258,10 +269,10 @@ public sealed class ProductImportService : IProductImportService
             {
                 if (!command.DryRun && !hasSuccessfulImport && parseOutcome.Rows.Count > 0)
                 {
-                    await DeleteExistingProductsAsync(transaction, cancellationToken).ConfigureAwait(false);
+                    await DeleteExistingProductsAsync(shopId, transaction, cancellationToken).ConfigureAwait(false);
                 }
 
-                var upsertStats = await UpsertRowsAsync(parseOutcome.Rows, transaction, cancellationToken).ConfigureAwait(false);
+                var upsertStats = await UpsertRowsAsync(parseOutcome.Rows, shopId, transaction, cancellationToken).ConfigureAwait(false);
 
                 await CompleteHistoryAsync(
                         historyId,
@@ -288,7 +299,8 @@ public sealed class ProductImportService : IProductImportService
                     created: upsertStats.Created,
                     updated: upsertStats.Updated,
                     stopwatch.Elapsed,
-                    unknownColumns);
+                    unknownColumns,
+                    shopId);
 
                 ApiLog.ImportStep(
                     _logger,
@@ -327,7 +339,8 @@ public sealed class ProductImportService : IProductImportService
                     created: 0,
                     updated: 0,
                     stopwatch.Elapsed,
-                    unknownColumns);
+                    unknownColumns,
+                    shopId);
 
                 throw;
             }
@@ -350,12 +363,14 @@ public sealed class ProductImportService : IProductImportService
         int created,
         int updated,
         TimeSpan duration,
-        IReadOnlyCollection<string>? unknownColumns)
+        IReadOnlyCollection<string>? unknownColumns,
+        Guid shopId)
     {
         var payload = new
         {
             Username = username,
             FileSha256 = fileSha256,
+            ShopId = shopId,
             Total = total,
             Created = created,
             Updated = updated,
@@ -464,20 +479,28 @@ public sealed class ProductImportService : IProductImportService
             .ConfigureAwait(false);
     }
 
-    private async Task<string?> GetLastSucceededHashAsync(NpgsqlTransaction transaction, CancellationToken cancellationToken)
+    private async Task<string?> GetLastSucceededHashAsync(NpgsqlTransaction transaction, Guid shopId, CancellationToken cancellationToken)
     {
         const string sql =
             "SELECT \"FileSha256\" FROM \"ProductImportHistory\" " +
-            "WHERE \"Status\" = @Status AND \"FileSha256\" IS NOT NULL " +
+            "WHERE \"Status\" = @Status AND \"FileSha256\" IS NOT NULL AND \"ShopId\" = @ShopId " +
             "ORDER BY \"StartedAt\" DESC LIMIT 1;";
 
-        return await _connection.QueryFirstOrDefaultAsync<string?>(
-                new CommandDefinition(sql, new { Status = StatusSucceeded }, transaction: transaction, cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
+        try
+        {
+            return await _connection.QueryFirstOrDefaultAsync<string?>(
+                    new CommandDefinition(sql, new { Status = StatusSucceeded, ShopId = shopId }, transaction: transaction, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedColumn)
+        {
+            throw new InvalidOperationException("La colonne ShopId est requise dans ProductImportHistory. Appliquez les dernières migrations de base de données.", ex);
+        }
     }
 
     private async Task InsertHistoryStartedAsync(
         Guid historyId,
+        Guid shopId,
         DateTimeOffset startedAt,
         string? username,
         string fileSha256,
@@ -485,42 +508,57 @@ public sealed class ProductImportService : IProductImportService
         CancellationToken cancellationToken)
     {
         const string sql =
-            "INSERT INTO \"ProductImportHistory\" (\"Id\", \"StartedAt\", \"Username\", \"FileSha256\", \"TotalLines\", \"Inserted\", \"ErrorCount\", \"Status\") " +
-            "VALUES (@Id, @StartedAt, @Username, @FileSha256, 0, 0, 0, @Status);";
+            "INSERT INTO \"ProductImportHistory\" (\"Id\", \"ShopId\", \"StartedAt\", \"Username\", \"FileSha256\", \"TotalLines\", \"Inserted\", \"ErrorCount\", \"Status\") " +
+            "VALUES (@Id, @ShopId, @StartedAt, @Username, @FileSha256, 0, 0, 0, @Status);";
 
         var parameters = new
         {
             Id = historyId,
+            ShopId = shopId,
             StartedAt = startedAt,
             Username = username,
             FileSha256 = fileSha256,
             Status = StatusStarted
         };
 
-        await _connection.ExecuteAsync(
-                new CommandDefinition(sql, parameters, transaction: transaction, cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
+        try
+        {
+            await _connection.ExecuteAsync(
+                    new CommandDefinition(sql, parameters, transaction: transaction, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedColumn)
+        {
+            throw new InvalidOperationException("La colonne ShopId est requise dans ProductImportHistory. Appliquez les dernières migrations de base de données.", ex);
+        }
     }
 
-    private async Task<bool> HasSuccessfulImportAsync(NpgsqlTransaction transaction, CancellationToken cancellationToken)
+    private async Task<bool> HasSuccessfulImportAsync(NpgsqlTransaction transaction, Guid shopId, CancellationToken cancellationToken)
     {
         const string sql =
             "SELECT EXISTS (" +
             "SELECT 1 FROM \"ProductImportHistory\" " +
-            "WHERE \"Status\" = @StatusSucceeded" +
+            "WHERE \"Status\" = @StatusSucceeded AND \"ShopId\" = @ShopId" +
             ");";
 
-        return await _connection.ExecuteScalarAsync<bool>(
-                new CommandDefinition(sql, new { StatusSucceeded }, transaction: transaction, cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
+        try
+        {
+            return await _connection.ExecuteScalarAsync<bool>(
+                    new CommandDefinition(sql, new { StatusSucceeded, ShopId = shopId }, transaction: transaction, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedColumn)
+        {
+            throw new InvalidOperationException("La colonne ShopId est requise dans ProductImportHistory. Appliquez les dernières migrations de base de données.", ex);
+        }
     }
 
-    private async Task DeleteExistingProductsAsync(NpgsqlTransaction transaction, CancellationToken cancellationToken)
+    private async Task DeleteExistingProductsAsync(Guid shopId, NpgsqlTransaction transaction, CancellationToken cancellationToken)
     {
-        const string sql = "DELETE FROM \"Product\";";
+        const string sql = "DELETE FROM \"Product\" WHERE \"ShopId\" = @ShopId;";
 
         await _connection.ExecuteAsync(
-                new CommandDefinition(sql, transaction: transaction, cancellationToken: cancellationToken))
+                new CommandDefinition(sql, new { ShopId = shopId }, transaction: transaction, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
     }
 
@@ -565,6 +603,7 @@ public sealed class ProductImportService : IProductImportService
 
     private async Task<UpsertStatistics> UpsertRowsAsync(
         IReadOnlyList<ProductCsvRow> rows,
+        Guid shopId,
         NpgsqlTransaction transaction,
         CancellationToken cancellationToken)
     {
@@ -584,9 +623,9 @@ public sealed class ProductImportService : IProductImportService
         }
 
         const string sql = """
-INSERT INTO "Product" ("Sku", "Name", "Ean", "GroupId", "Attributes", "CodeDigits", "CreatedAtUtc")
-VALUES (@sku, @name, @ean, @gid, @attrs, @digits, @created)
-ON CONFLICT ((LOWER("Sku")))
+INSERT INTO "Product" ("ShopId", "Sku", "Name", "Ean", "GroupId", "Attributes", "CodeDigits", "CreatedAtUtc")
+VALUES (@shopId, @sku, @name, @ean, @gid, @attrs, @digits, @created)
+ON CONFLICT ("ShopId", LOWER("Sku"))
 DO UPDATE SET
     "Name" = EXCLUDED."Name",
     "Ean" = EXCLUDED."Ean",
@@ -598,6 +637,7 @@ RETURNING (xmax = 0) AS inserted;
 
         await using var command = new NpgsqlCommand(sql, npgsqlConnection, transaction);
 
+        var shopParameter = command.Parameters.Add("shopId", NpgsqlDbType.Uuid);
         var skuParameter = command.Parameters.Add("sku", NpgsqlDbType.Text);
         var nameParameter = command.Parameters.Add("name", NpgsqlDbType.Text);
         var eanParameter = command.Parameters.Add("ean", NpgsqlDbType.Text);
@@ -606,6 +646,7 @@ RETURNING (xmax = 0) AS inserted;
         var digitsParameter = command.Parameters.Add("digits", NpgsqlDbType.Text);
         var createdParameter = command.Parameters.Add("created", NpgsqlDbType.TimestampTz);
 
+        shopParameter.Value = shopId;
         skuParameter.Value = string.Empty;
         nameParameter.Value = string.Empty;
         eanParameter.Value = DBNull.Value;
@@ -686,6 +727,7 @@ RETURNING (xmax = 0) AS inserted;
 
     private async Task<UpsertStatistics> ComputeUpsertPreviewAsync(
         IReadOnlyList<ProductCsvRow> rows,
+        Guid shopId,
         NpgsqlTransaction transaction,
         CancellationToken cancellationToken)
     {
@@ -703,10 +745,18 @@ RETURNING (xmax = 0) AS inserted;
             .Select(static sku => sku.ToLowerInvariant())
             .ToArray();
 
-        const string sql = "SELECT \"Sku\" FROM \"Product\" WHERE LOWER(\"Sku\") = ANY(@LowerSkus);";
-        var existingSkus = await _connection.QueryAsync<string>(
-                new CommandDefinition(sql, new { LowerSkus = lowerSkus }, transaction: transaction, cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
+        const string sql = "SELECT \"Sku\" FROM \"Product\" WHERE \"ShopId\" = @ShopId AND LOWER(\"Sku\") = ANY(@LowerSkus);";
+        IReadOnlyList<string> existingSkus;
+        try
+        {
+            existingSkus = (await _connection.QueryAsync<string>(
+                    new CommandDefinition(sql, new { ShopId = shopId, LowerSkus = lowerSkus }, transaction: transaction, cancellationToken: cancellationToken))
+                .ConfigureAwait(false)).ToArray();
+        }
+        catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedColumn)
+        {
+            throw new InvalidOperationException("La colonne ShopId est requise dans Product. Appliquez les dernières migrations de base de données.", ex);
+        }
 
         var existingSet = new HashSet<string>(existingSkus, StringComparer.OrdinalIgnoreCase);
 

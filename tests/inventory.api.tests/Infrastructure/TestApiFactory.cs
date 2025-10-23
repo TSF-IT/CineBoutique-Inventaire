@@ -87,8 +87,10 @@ END $$;";
 
     // Garantit un index/contrainte unique exploitable par ON CONFLICT("Sku") dans les arranges
     const string __ensureProductSkuUniqueIndex = @"
-  CREATE UNIQUE INDEX IF NOT EXISTS uq_product_sku_idx
-  ON ""Product"" (""Sku"");";
+  DROP INDEX IF EXISTS uq_product_sku_idx;
+  CREATE UNIQUE INDEX IF NOT EXISTS uq_product_shopid_lowersku_idx
+    ON ""Product"" (""ShopId"", LOWER(""Sku""))
+    WHERE ""Sku"" IS NOT NULL;";
     await global::Dapper.SqlMapper.ExecuteAsync(connection, __ensureProductSkuUniqueIndex).ConfigureAwait(false);
     try
     {
@@ -185,21 +187,18 @@ RETURNING ""Id"";";
   }
 
   public async System.Threading.Tasks.Task UpsertProductAsync(
-    System.Data.IDbConnection conn, string sku, string name, string? ean, long? groupId,
+    System.Data.IDbConnection conn, Guid shopId, string sku, string name, string? ean, long? groupId,
     System.Threading.CancellationToken ct = default)
   {
-    // Présence des colonnes (le schéma peut varier selon le chemin d'init des tests)
     var hasCreated = await ColumnExistsAsync(conn, "Product", "CreatedAtUtc", ct).ConfigureAwait(false);
     var hasUpdated = await ColumnExistsAsync(conn, "Product", "UpdatedAtUtc", ct).ConfigureAwait(false);
 
-    // SET de l'UPDATE
     var updateSet = "\"Name\" = @name, \"Ean\" = @ean, \"GroupId\" = @gid";
     if (hasUpdated)
       updateSet += ", \"UpdatedAtUtc\" = NOW() AT TIME ZONE 'UTC'";
 
-    // Colonnes & valeurs de l'INSERT
-    var insertCols = new System.Collections.Generic.List<string> { "\"Sku\"", "\"Name\"", "\"Ean\"", "\"GroupId\"" };
-    var insertVals = new System.Collections.Generic.List<string> { "@sku", "@name", "@ean", "@gid" };
+    var insertCols = new System.Collections.Generic.List<string> { "\"ShopId\"", "\"Sku\"", "\"Name\"", "\"Ean\"", "\"GroupId\"" };
+    var insertVals = new System.Collections.Generic.List<string> { "@shopId", "@sku", "@name", "@ean", "@gid" };
     if (hasCreated)
     {
       insertCols.Add("\"CreatedAtUtc\"");
@@ -207,29 +206,23 @@ RETURNING ""Id"";";
     }
     if (hasUpdated)
     {
-      insertCols.Add("\"UpdatedAtUtc\"");
+        insertCols.Add("\"UpdatedAtUtc\"");
       insertVals.Add("NOW() AT TIME ZONE 'UTC'");
     }
 
-    var sql =
-$@"
-WITH upsert AS (
-  UPDATE ""Product""
-  SET {updateSet}
-  WHERE ""Sku"" = @sku
-  RETURNING ""Sku""
-)
-INSERT INTO ""Product"" ({System.String.Join(", ", insertCols)})
-SELECT {System.String.Join(", ", insertVals)}
-WHERE NOT EXISTS (SELECT 1 FROM upsert);";
+    var sql = $"""
+INSERT INTO "Product" ({string.Join(", ", insertCols)})
+VALUES ({string.Join(", ", insertVals)})
+ON CONFLICT ("ShopId", LOWER("Sku"))
+DO UPDATE SET {updateSet};
+""";
 
     var gid = (object?)groupId ?? System.DBNull.Value;
     await Dapper.SqlMapper.ExecuteAsync(
       conn,
-      new Dapper.CommandDefinition(sql, new { sku, name, ean, gid }, cancellationToken: ct)
+      new Dapper.CommandDefinition(sql, new { shopId, sku, name, ean, gid }, cancellationToken: ct)
     ).ConfigureAwait(false);
   }
-
   private static async System.Threading.Tasks.Task<bool> ColumnExistsAsync(
     System.Data.IDbConnection conn, string table, string column, System.Threading.CancellationToken ct)
   {

@@ -80,13 +80,14 @@ public sealed class ProductSuggestEndpointTests : IntegrationTestBase
 
         await Fixture.ResetAndSeedAsync(async seeder =>
         {
+            var shopId = await seeder.CreateShopAsync("Boutique Suggestion").ConfigureAwait(false);
             var parentId = await seeder.CreateProductGroupAsync("Rayon Cafés").ConfigureAwait(false);
             var grainsGroupId = await seeder.CreateProductGroupAsync("Grains 1kg", parentId).ConfigureAwait(false);
 
-            await seeder.CreateProductAsync("CB-0001", "Café grains 1kg", "0001234567890").ConfigureAwait(false);
+            await seeder.CreateProductAsync(shopId, "CB-0001", "Café grains 1kg", "0001234567890").ConfigureAwait(false);
             await seeder.AssignProductToGroupAsync("CB-0001", grainsGroupId).ConfigureAwait(false);
 
-            await seeder.CreateProductAsync("CB-0500", "Café grains 500g", "5001234567890").ConfigureAwait(false);
+            await seeder.CreateProductAsync(shopId, "CB-0500", "Café grains 500g", "5001234567890").ConfigureAwait(false);
             await seeder.AssignProductToGroupAsync("CB-0500", grainsGroupId).ConfigureAwait(false);
         }).ConfigureAwait(false);
 
@@ -213,18 +214,19 @@ public sealed class ProductSuggestEndpointTests : IntegrationTestBase
 
     private static async Task SeedSuggestionScenarioAsync(TestDataSeeder seeder)
     {
+        var shopId = await seeder.CreateShopAsync("Boutique Suggestions").ConfigureAwait(false);
         var parentId = await seeder.CreateProductGroupAsync("Boissons chaudes").ConfigureAwait(false);
         var cafesGroupId = await seeder.CreateProductGroupAsync("Cafés moulus", parentId).ConfigureAwait(false);
         var machinesGroupId = await seeder.CreateProductGroupAsync("Machines Café", parentId).ConfigureAwait(false);
         var gourmandGroupId = await seeder.CreateProductGroupAsync("Cafés gourmands", parentId).ConfigureAwait(false);
 
-        await seeder.CreateProductAsync("CAF-100", "Café moulu fort", "1000000000001").ConfigureAwait(false);
+        await seeder.CreateProductAsync(shopId, "CAF-100", "Café moulu fort", "1000000000001").ConfigureAwait(false);
         await seeder.AssignProductToGroupAsync("CAF-100", cafesGroupId).ConfigureAwait(false);
 
-        await seeder.CreateProductAsync("EXP-200", "Machine expresso café", "2000000000002").ConfigureAwait(false);
+        await seeder.CreateProductAsync(shopId, "EXP-200", "Machine expresso café", "2000000000002").ConfigureAwait(false);
         await seeder.AssignProductToGroupAsync("EXP-200", machinesGroupId).ConfigureAwait(false);
 
-        await seeder.CreateProductAsync("SWEET-300", "Sucre roux", "3000000000003").ConfigureAwait(false);
+        await seeder.CreateProductAsync(shopId, "SWEET-300", "Sucre roux", "3000000000003").ConfigureAwait(false);
         await seeder.AssignProductToGroupAsync("SWEET-300", gourmandGroupId).ConfigureAwait(false);
     }
 }

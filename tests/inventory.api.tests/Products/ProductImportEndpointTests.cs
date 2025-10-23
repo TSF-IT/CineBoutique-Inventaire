@@ -30,9 +30,11 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
+        Guid shopId = Guid.Empty;
         await Fixture.ResetAndSeedAsync(async seeder =>
         {
-            await seeder.CreateProductAsync("OLD-001", "Ancien produit", "1111111111111").ConfigureAwait(false);
+            shopId = await seeder.CreateShopAsync("Boutique Import Tests").ConfigureAwait(false);
+            await seeder.CreateProductAsync(shopId, "OLD-001", "Ancien produit", "1111111111111").ConfigureAwait(false);
         }).ConfigureAwait(false);
 
         var client = CreateClient();
@@ -43,7 +45,7 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
                   "\"ABC-987654\";\"SKU-200\";\"Steelbook limité\"\n";
 
         using var content = new StringContent(csv, Encoding.Latin1, "text/csv");
-        var response = await client.PostAsync("/api/products/import", content).ConfigureAwait(false);
+        var response = await client.PostAsync($"/api/shops/{shopId}/products/import", content).ConfigureAwait(false);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
@@ -60,7 +62,8 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
         payload.ProposedGroups.Should().BeEmpty();
 
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
-        await using var command = new NpgsqlCommand("SELECT \"Sku\", \"Name\", \"Ean\", \"CodeDigits\" FROM \"Product\" ORDER BY \"Sku\";", connection);
+        await using var command = new NpgsqlCommand("SELECT \"Sku\", \"Name\", \"Ean\", \"CodeDigits\" FROM \"Product\" WHERE \"ShopId\" = @shopId ORDER BY \"Sku\";", connection);
+        command.Parameters.AddWithValue("shopId", shopId);
         await using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
 
         var rows = new List<(string Sku, string Name, string? Ean, string? CodeDigits)>();
@@ -82,9 +85,11 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
+        Guid shopId = Guid.Empty;
         await Fixture.ResetAndSeedAsync(async seeder =>
         {
-            await seeder.CreateProductAsync("LEGACY", "Produit existant", "999").ConfigureAwait(false);
+            shopId = await seeder.CreateShopAsync("Boutique Import Dup").ConfigureAwait(false);
+            await seeder.CreateProductAsync(shopId, "LEGACY", "Produit existant", "999").ConfigureAwait(false);
         }).ConfigureAwait(false);
 
         var client = CreateClient();
@@ -95,7 +100,7 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
                   "\"CODE-2\";\"SKU-900\";\"Produit B\"\n";
 
         using var content = new StringContent(csv, Encoding.UTF8, "text/csv");
-        var response = await client.PostAsync("/api/products/import", content).ConfigureAwait(false);
+        var response = await client.PostAsync($"/api/shops/{shopId}/products/import", content).ConfigureAwait(false);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
@@ -112,7 +117,8 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
         payload.ProposedGroups.Should().BeEmpty();
 
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
-        await using var command = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\" WHERE \"Sku\" = 'LEGACY';", connection);
+        await using var command = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\" WHERE \"ShopId\" = @shopId AND \"Sku\" = 'LEGACY';", connection);
+        command.Parameters.AddWithValue("shopId", shopId);
         var remaining = (long)await command.ExecuteScalarAsync().ConfigureAwait(false);
         remaining.Should().Be(1);
     }
