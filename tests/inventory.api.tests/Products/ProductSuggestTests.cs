@@ -1,3 +1,4 @@
+using System;
 using System.Net;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using Dapper;
@@ -36,7 +37,7 @@ public class ProductSuggestTests : IClassFixture<TestApiFactory>
         }
 
         static async System.Threading.Tasks.Task UpsertProductAsync(
-            System.Data.IDbConnection c, string sku, string name, string ean, long gid)
+            System.Data.IDbConnection c, Guid shopId, string sku, string name, string ean, long gid)
         {
             // Détecte dynamiquement la présence des colonnes de timestamps pour éviter 42703/23502
             const string q = @"
@@ -49,8 +50,8 @@ public class ProductSuggestTests : IClassFixture<TestApiFactory>
 
             var updateSet = "\"Name\"=@name, \"Ean\"=@ean, \"GroupId\"=@gid"
                           + (hasUpdated ? ", \"UpdatedAtUtc\" = NOW() AT TIME ZONE 'UTC'" : "");
-            var insertCols = new System.Collections.Generic.List<string> { "\"Sku\"", "\"Name\"", "\"Ean\"", "\"GroupId\"" };
-            var insertVals = new System.Collections.Generic.List<string> { "@sku", "@name", "@ean", "@gid" };
+            var insertCols = new System.Collections.Generic.List<string> { "\"ShopId\"", "\"Sku\"", "\"Name\"", "\"Ean\"", "\"GroupId\"" };
+            var insertVals = new System.Collections.Generic.List<string> { "@shopId", "@sku", "@name", "@ean", "@gid" };
             if (hasCreated) { insertCols.Add("\"CreatedAtUtc\""); insertVals.Add("NOW() AT TIME ZONE 'UTC'"); }
             if (hasUpdated) { insertCols.Add("\"UpdatedAtUtc\""); insertVals.Add("NOW() AT TIME ZONE 'UTC'"); }
 
@@ -58,20 +59,21 @@ public class ProductSuggestTests : IClassFixture<TestApiFactory>
         WITH upsert AS (
           UPDATE ""Product""
           SET {updateSet}
-          WHERE ""Sku"" = @sku
+          WHERE ""Sku"" = @sku AND ""ShopId"" = @shopId
           RETURNING ""Sku""
         )
         INSERT INTO ""Product"" ({string.Join(", ", insertCols)})
         SELECT {string.Join(", ", insertVals)}
         WHERE NOT EXISTS (SELECT 1 FROM upsert);";
 
-            await Dapper.SqlMapper.ExecuteAsync(c, sql, new { sku, name, ean, gid }).ConfigureAwait(false);
+            await Dapper.SqlMapper.ExecuteAsync(c, sql, new { shopId, sku, name, ean, gid }).ConfigureAwait(false);
         }
 
         // --- Arrange concret (équivalent fonctionnel, sans ON CONFLICT) ---
         var gid = await UpsertGroupAsync(conn, "cafe", "Café").ConfigureAwait(false);
-        await UpsertProductAsync(conn, "CB-0001", "Café Grains 1kg", "321000000001", gid).ConfigureAwait(false);
-        await UpsertProductAsync(conn, "CB-0002", "Café Moulu",        "321000000002", gid).ConfigureAwait(false);
+        var shopId = await conn.ExecuteScalarAsync<Guid>(@"SELECT ""Id"" FROM ""Shop"" ORDER BY LOWER(""Name""), ""Id"" LIMIT 1;").ConfigureAwait(false);
+        await UpsertProductAsync(conn, shopId, "CB-0001", "Café Grains 1kg", "321000000001", gid).ConfigureAwait(false);
+        await UpsertProductAsync(conn, shopId, "CB-0002", "Café Moulu",        "321000000002", gid).ConfigureAwait(false);
     });
 
     // Act

@@ -12,6 +12,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
+using CineBoutique.Inventory.Api.Infrastructure.Shops;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Services.Products;
@@ -32,8 +33,8 @@ namespace CineBoutique.Inventory.Api.Endpoints;
 
 internal static class ProductEndpoints
 {
-    private const string LowerSkuConstraintName = "UX_Product_LowerSku";
-    private const string EanNotNullConstraintName = "UX_Product_Ean_NotNull";
+    private const string LowerSkuConstraintName = "UX_Product_Shop_LowerSku";
+    private const string EanNotNullConstraintName = "UX_Product_Shop_Ean_NotNull";
     private sealed class ProductLookupLogger
     {
     }
@@ -493,6 +494,7 @@ LIMIT @top;";
             IDbConnection connection,
             IAuditLogger auditLogger,
             IClock clock,
+            IShopResolver shopResolver,
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
@@ -538,9 +540,32 @@ LIMIT @top;";
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-            const string insertSql = @"INSERT INTO ""Product"" (""Id"", ""Sku"", ""Name"", ""Ean"", ""CodeDigits"", ""CreatedAtUtc"")
-VALUES (@Id, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc)
-ON CONFLICT (LOWER(""Sku"")) DO NOTHING
+            Guid? shopId = null;
+            try
+            {
+                shopId = await shopResolver.GetDefaultForBackCompatAsync(connection, cancellationToken).ConfigureAwait(false);
+            }
+            catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedTable)
+            {
+                // La table des shops n'est pas encore créée : on laisse shopId à null et on gèrera plus bas.
+            }
+            catch (InvalidOperationException)
+            {
+                // Absence de boutique disponible : on gère plus bas.
+            }
+
+            if (!shopId.HasValue)
+            {
+                await LogProductCreationAttemptAsync(clock, auditLogger, httpContext, "sans boutique", "products.create.invalid", cancellationToken).ConfigureAwait(false);
+                return Results.Problem(
+                    statusCode: StatusCodes.Status503ServiceUnavailable,
+                    title: "Aucune boutique disponible",
+                    detail: "Impossible de créer un produit sans boutique active.");
+            }
+
+            const string insertSql = @"INSERT INTO ""Product"" (""Id"", ""ShopId"", ""Sku"", ""Name"", ""Ean"", ""CodeDigits"", ""CreatedAtUtc"")
+VALUES (@Id, @ShopId, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc)
+ON CONFLICT (""ShopId"", LOWER(""Sku"")) DO NOTHING
 RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
             var now = clock.UtcNow;
@@ -556,7 +581,8 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                             Name = sanitizedName,
                             Ean = sanitizedEan,
                             CodeDigits = sanitizedCodeDigits,
-                            CreatedAtUtc = now
+                            CreatedAtUtc = now,
+                            ShopId = shopId.Value
                         },
                         cancellationToken: cancellationToken)).ConfigureAwait(false);
 
