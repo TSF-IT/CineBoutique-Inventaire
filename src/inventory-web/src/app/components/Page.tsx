@@ -7,6 +7,7 @@ import { PageShell } from './PageShell'
 type PageProps = HTMLAttributes<HTMLDivElement> & {
   showHomeLink?: boolean
   homeLinkLabel?: string
+  homeLinkTo?: string
   headerAction?: ReactNode
   mobileNav?: ReactNode
 }
@@ -16,6 +17,7 @@ export const Page = ({
   children,
   showHomeLink = false,
   homeLinkLabel = 'Retour à l’accueil',
+  homeLinkTo = '/',
   headerAction,
   mobileNav,
   ...rest
@@ -33,7 +35,7 @@ export const Page = ({
           <div className="flex items-center gap-3">
             {showHomeLink && (
               <Link
-                to="/"
+                to={homeLinkTo}
                 className="inline-flex items-center justify-center gap-2 rounded-2xl border border-[var(--cb-border-strong)] bg-[var(--cb-surface-soft)] px-3 py-2 text-sm font-semibold text-brand-600 shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--cb-surface-strong)] dark:text-brand-200"
                 data-testid="btn-go-home"
                 aria-label="Revenir à l’accueil"
