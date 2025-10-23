@@ -1,10 +1,12 @@
 **/node_modules
 **/dist
-**/.next
-**/.turbo
 **/.vite
+**/.turbo
 **/.DS_Store
 **/coverage
 **/playwright-report
 **/.git
 **/.github
+**/bin
+**/obj
+**/TestResults

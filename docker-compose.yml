@@ -27,10 +27,10 @@ services:
         condition: service_healthy
     # Vérifie l'état de préparation de l'API avant d'exposer le service
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/ready"]
+      test: ["CMD", "wget", "-qO-", "http://localhost/index.html"]
       interval: 10s
       timeout: 3s
-      retries: 5
+      retries: 6
       start_period: 15s
     environment:
       ASPNETCORE_ENVIRONMENT: Docker
