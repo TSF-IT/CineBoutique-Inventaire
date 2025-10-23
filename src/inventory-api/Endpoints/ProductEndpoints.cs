@@ -978,15 +978,53 @@ WHERE "ShopId"=@ShopId AND (
 )
 """;
 
-            var total = await connection.ExecuteScalarAsync<long>(
-                new Dapper.CommandDefinition($$"""
+            const string globalWhereClause = """
+WHERE
+    @Filter IS NULL OR @Filter='' OR
+    COALESCE("Sku",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE("Ean",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE("CodeDigits",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE("Description",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE("Name",'') ILIKE '%'||@Filter||'%'
+""";
+
+            static Microsoft.AspNetCore.Http.IResult BuildPagedResult(
+                long totalCount,
+                IEnumerable<dynamic> rows,
+                int pageNumber,
+                int pageSizeValue,
+                string sortField,
+                string sortDirectionValue,
+                string? filterValue)
+            {
+                var totalPagesValue = totalCount == 0
+                    ? 0
+                    : (int)System.Math.Ceiling(totalCount / (double)pageSizeValue);
+
+                return Microsoft.AspNetCore.Http.Results.Ok(new
+                {
+                    items = rows,
+                    page = pageNumber,
+                    pageSize = pageSizeValue,
+                    total = totalCount,
+                    totalPages = totalPagesValue,
+                    sortBy = sortField,
+                    sortDir = sortDirectionValue,
+                    q = filterValue
+                });
+            }
+
+            try
+            {
+                var total = await connection.ExecuteScalarAsync<long>(
+                    new Dapper.CommandDefinition($$"""
 SELECT COUNT(*)
 FROM "Product"
 {{whereClause}};
 """, new { ShopId = shopId, Filter = filter }, cancellationToken: ct)).ConfigureAwait(false);
 
-            var data = await connection.QueryAsync(
-                new Dapper.CommandDefinition($$"""
+                var data = await connection.QueryAsync(
+                    new Dapper.CommandDefinition($$"""
 SELECT "Id","Sku","Name","Ean","Description","CodeDigits"
 FROM "Product"
 {{whereClause}}
@@ -1000,17 +1038,34 @@ ORDER BY
 LIMIT @Limit OFFSET @Offset;
 """, new { ShopId = shopId, Filter = filter, Sort = sort, Limit = ps, Offset = off }, cancellationToken: ct)).ConfigureAwait(false);
 
-            var totalPages = total == 0 ? 0 : (int)System.Math.Ceiling(total / (double)ps);
-            return Results.Ok(new {
-                items = data,
-                page = p,
-                pageSize = ps,
-                total,
-                totalPages,
-                sortBy = sort,
-                sortDir = dir,
-                q = filter
-            });
+                return BuildPagedResult(total, data, p, ps, sort, dir, filter);
+            }
+            catch (PostgresException ex) when (IsShopScopeMissing(ex))
+            {
+                var total = await connection.ExecuteScalarAsync<long>(
+                    new Dapper.CommandDefinition($$"""
+SELECT COUNT(*)
+FROM "Product"
+{{globalWhereClause}};
+""", new { Filter = filter }, cancellationToken: ct)).ConfigureAwait(false);
+
+                var data = await connection.QueryAsync(
+                    new Dapper.CommandDefinition($$"""
+SELECT "Id","Sku","Name","Ean","Description","CodeDigits"
+FROM "Product"
+{{globalWhereClause}}
+ORDER BY
+  CASE WHEN @Sort='ean'   THEN "Ean"
+       WHEN @Sort='name'  THEN "Name"
+       WHEN @Sort='descr' THEN "Description"
+       WHEN @Sort='digits'THEN "CodeDigits"
+       ELSE "Sku" END {{dir}},
+  "Sku" ASC
+LIMIT @Limit OFFSET @Offset;
+""", new { Filter = filter, Sort = sort, Limit = ps, Offset = off }, cancellationToken: ct)).ConfigureAwait(false);
+
+                return BuildPagedResult(total, data, p, ps, sort, dir, filter);
+            }
         }), catalogEndpointsPublic);
 
         ApplyCatalogVisibility(app.MapGet("/api/shops/{shopId:guid}/products/export", async (
@@ -1077,5 +1132,11 @@ LIMIT @Limit OFFSET @Offset;
 
             return Results.Ok(new { count, hasCatalog });
         }), catalogEndpointsPublic);
+    }
+
+    private static bool IsShopScopeMissing(PostgresException ex)
+    {
+        ArgumentNullException.ThrowIfNull(ex);
+        return ex.SqlState is PostgresErrorCodes.UndefinedColumn or PostgresErrorCodes.UndefinedTable;
     }
 }
