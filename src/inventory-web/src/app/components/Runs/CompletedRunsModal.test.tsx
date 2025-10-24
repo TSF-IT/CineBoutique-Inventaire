@@ -60,4 +60,43 @@ describe('CompletedRunsModal', () => {
       expect(header).not.toContain('·')
     })
   })
+
+  it('classe les comptages d’une même zone par numéro croissant', () => {
+    const runs: CompletedRunSummary[] = [
+      buildRun({
+        runId: 'run-zone-a-2',
+        locationId: 'loc-a',
+        locationCode: 'A1',
+        locationLabel: 'Zone A',
+        countType: 2,
+        completedAtUtc: '2024-01-01T09:00:00Z',
+      }),
+      buildRun({
+        runId: 'run-zone-a-1',
+        locationId: 'loc-a',
+        locationCode: 'A1',
+        locationLabel: 'Zone A',
+        countType: 1,
+        completedAtUtc: '2024-01-02T09:00:00Z',
+      }),
+      buildRun({
+        runId: 'run-zone-a-3',
+        locationId: 'loc-a',
+        locationCode: 'A1',
+        locationLabel: 'Zone A',
+        countType: 3,
+        completedAtUtc: '2024-01-03T09:00:00Z',
+      }),
+    ]
+
+    render(<CompletedRunsModal open completedRuns={runs} onClose={() => {}} />)
+
+    const list = screen.getByRole('list')
+    const items = within(list).getAllByRole('listitem')
+    const subtitles = items.map((item) =>
+      within(item).getByText(/Comptage n°/i).textContent?.trim(),
+    )
+
+    expect(subtitles).toEqual(['Comptage n°1', 'Comptage n°2', 'Comptage n°3'])
+  })
 })

@@ -126,6 +126,13 @@ const compareCompletedRunsByZone = (
     return zoneComparison
   }
 
+  const countTypeA = a.countType ?? Number.MAX_SAFE_INTEGER
+  const countTypeB = b.countType ?? Number.MAX_SAFE_INTEGER
+  const countTypeComparison = countTypeA - countTypeB
+  if (countTypeComparison !== 0) {
+    return countTypeComparison
+  }
+
   const codeA = toValidLocationCode(a.locationCode) ?? ''
   const codeB = toValidLocationCode(b.locationCode) ?? ''
   const codeComparison = codeA.localeCompare(codeB, 'fr', {
