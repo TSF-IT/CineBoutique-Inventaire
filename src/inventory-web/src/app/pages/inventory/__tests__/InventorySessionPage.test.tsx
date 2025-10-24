@@ -291,7 +291,7 @@ describe('InventorySessionPage - catalogue', () => {
 
       await waitFor(() => expect(fetchProductByEanMock).toHaveBeenCalledWith('9000000000000'))
       await waitFor(() => expect(screen.getByText('Produit catalogue')).toBeInTheDocument())
-      expect(screen.getByText('Ajout manuel')).toBeInTheDocument()
+      expect(screen.queryByText('Ajout manuel')).not.toBeInTheDocument()
     } finally {
       global.fetch = originalFetch
     }

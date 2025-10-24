@@ -229,7 +229,7 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
     []
   );
 
-  const commonRowClassName = `${GRID_TEMPLATE_CLASS} items-center gap-3 border-b border-slate-200/70 bg-white/80 px-4 py-2.5 text-sm transition dark:border-slate-800 dark:bg-slate-900/40`;
+  const commonRowClassName = `${GRID_TEMPLATE_CLASS} relative items-center gap-3 border-b border-slate-200/70 bg-white/80 px-4 py-2.5 text-left text-sm transition dark:border-slate-800 dark:bg-slate-900/40`;
 
   if (!open) return null;
 
@@ -357,27 +357,41 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
                             const isDisabled = Boolean(
                               pendingSelectionId && pendingSelectionId !== product.id
                             );
+                            const isRowInteractive = isInteractive && !isDisabled && !isPending;
+
+                            const activateRow = () => {
+                              if (!isRowInteractive) {
+                                return;
+                              }
+                              void handleRowActivation(product);
+                            };
+
                             return (
-                              <button
-                                type="button"
+                              <div
                                 role="row"
                                 style={style}
-                                onClick={() => void handleRowActivation(product)}
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter" || event.key === " ") {
-                                    event.preventDefault();
-                                    void handleRowActivation(product);
-                                  }
-                                }}
-                                className={`${commonRowClassName} last:border-b-0 text-left ${
+                                className={`${commonRowClassName} last:border-b-0 ${
                                   isInteractive
                                     ? isDisabled
                                       ? "cursor-not-allowed opacity-60"
                                       : "cursor-pointer hover:bg-product-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-product-600"
                                     : "cursor-default"
                                 }`}
-                                disabled={!isInteractive || isDisabled || isPending}
-                                aria-disabled={isPending}
+                                tabIndex={
+                                  isInteractive ? (isRowInteractive ? 0 : -1) : undefined
+                                }
+                                onClick={activateRow}
+                                onKeyDown={
+                                  isInteractive
+                                    ? (event) => {
+                                        if (event.key === "Enter" || event.key === " ") {
+                                          event.preventDefault();
+                                          activateRow();
+                                        }
+                                      }
+                                    : undefined
+                                }
+                                aria-disabled={isPending || undefined}
                                 data-testid={`products-modal-row-${product.id}`}
                               >
                                 <div
@@ -396,17 +410,17 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
                                 </div>
                                 <div
                                   role="cell"
-                                  className="flex items-center justify-between gap-3 truncate"
+                                  className="relative flex items-center"
                                   title={product.name}
                                 >
-                                  <span className="truncate">{product.name}</span>
+                                  <span className="flex-1 truncate pr-24">{product.name}</span>
                                   {isInteractive ? (
-                                    <span className="shrink-0 rounded-full bg-product-100 px-3 py-1 text-xs font-semibold text-product-700 dark:bg-product-700/40 dark:text-product-200">
+                                    <span className="pointer-events-none absolute right-0 inline-flex shrink-0 items-center rounded-full bg-product-100 px-3 py-1 text-xs font-semibold text-product-700 dark:bg-product-700/40 dark:text-product-200">
                                       {isPending ? "Ajout…" : resolvedSelectLabel}
                                     </span>
                                   ) : null}
                                 </div>
-                              </button>
+                              </div>
                             );
                           }}
                         </VirtualList>
@@ -416,23 +430,17 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
                           const isDisabled = Boolean(
                             pendingSelectionId && pendingSelectionId !== product.id
                           );
-                          const RowElement = isInteractive ? "button" : "div";
-                          const rowProps = isInteractive
-                            ? {
-                                type: "button" as const,
-                                onClick: () => void handleRowActivation(product),
-                                onKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => {
-                                  if (event.key === "Enter" || event.key === " ") {
-                                    event.preventDefault();
-                                    void handleRowActivation(product);
-                                  }
-                                },
-                                disabled: isDisabled || isPending,
-                              }
-                            : {};
+                          const isRowInteractive = isInteractive && !isDisabled && !isPending;
+
+                          const activateRow = () => {
+                            if (!isRowInteractive) {
+                              return;
+                            }
+                            void handleRowActivation(product);
+                          };
 
                           return (
-                            <RowElement
+                            <div
                               role="row"
                               key={itemKey(index, items)}
                               className={`${commonRowClassName} ${
@@ -442,9 +450,22 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
                                     : "cursor-pointer hover:bg-product-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-product-600"
                                   : "cursor-default hover:bg-product-50/60 focus-within:bg-product-50/60"
                               }`}
+                              tabIndex={
+                                isInteractive ? (isRowInteractive ? 0 : -1) : undefined
+                              }
+                              onClick={activateRow}
+                              onKeyDown={
+                                isInteractive
+                                  ? (event) => {
+                                      if (event.key === "Enter" || event.key === " ") {
+                                        event.preventDefault();
+                                        activateRow();
+                                      }
+                                    }
+                                  : undefined
+                              }
                               aria-disabled={isPending || undefined}
                               data-testid={`products-modal-row-${product.id}`}
-                              {...rowProps}
                             >
                               <div
                                 role="cell"
@@ -462,17 +483,17 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
                               </div>
                               <div
                                 role="cell"
-                                className="flex items-center justify-between gap-3 truncate"
+                                className="relative flex items-center"
                                 title={product.name}
                               >
-                                <span className="truncate">{product.name}</span>
+                                <span className="flex-1 truncate pr-24">{product.name}</span>
                                 {isInteractive ? (
-                                  <span className="shrink-0 rounded-full bg-product-100 px-3 py-1 text-xs font-semibold text-product-700 dark:bg-product-700/40 dark:text-product-200">
+                                  <span className="pointer-events-none absolute right-0 inline-flex shrink-0 items-center rounded-full bg-product-100 px-3 py-1 text-xs font-semibold text-product-700 dark:bg-product-700/40 dark:text-product-200">
                                     {isPending ? "Ajout…" : resolvedSelectLabel}
                                   </span>
                                 ) : null}
                               </div>
-                            </RowElement>
+                            </div>
                           );
                         })
                       )}

@@ -1398,7 +1398,6 @@ export const InventorySessionPage = () => {
                 {item.hasConflict && (
                   <p className="text-xs font-semibold text-rose-600 dark:text-rose-300">Référence en conflit</p>
                 )}
-                {item.isManual && <p className="text-xs text-amber-600 dark:text-amber-300">Ajout manuel</p>}
               </div>
               <div className="flex items-center gap-3">
                 <Button
