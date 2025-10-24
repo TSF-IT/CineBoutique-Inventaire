@@ -23,8 +23,7 @@ import { CountType } from '../../types/inventory'
 import { useShop } from '@/state/ShopContext'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { useScanRejectionFeedback } from '@/hooks/useScanRejectionFeedback'
-import { CatalogueSearchDialog } from '@/components/products/CatalogueSearchDialog'
-import type { ProductRow } from '@/hooks/useProductsSearch'
+import { ProductsModal, type ProductsModalItem } from '@/components/products/ProductsModal'
 
 const DEV_API_UNREACHABLE_HINT =
   "Impossible de joindre l’API : vérifie que le backend tourne (curl http://localhost:8080/healthz) ou que le proxy Vite est actif."
@@ -626,8 +625,8 @@ export const InventorySessionPage = () => {
   )
 
   const handlePickFromCatalogue = useCallback(
-    async (row: ProductRow) => {
-      const sanitizedEan = sanitizeScanValue(row.ean ?? '')
+    async (row: ProductsModalItem) => {
+      const sanitizedEan = sanitizeScanValue(row.ean ?? row.codeDigits ?? '')
       if (!sanitizedEan) {
         setErrorMessage(`Impossible d’ajouter ${row.name} : code manquant.`)
         updateStatus(null)
@@ -1339,19 +1338,20 @@ export const InventorySessionPage = () => {
                 <Button
                   type="button"
                   variant="ghost"
-                  className="inline-flex items-center gap-2 rounded-2xl border border-transparent px-3 py-2 text-sm font-semibold text-brand-600 transition hover:border-brand-200 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 dark:text-brand-300 dark:hover:border-brand-500/60 dark:hover:bg-slate-800"
-                  onClick={() => setCatalogueOpen(true)}
-                  data-testid="btn-open-catalogue"
-                >
-                  Catalogue
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
                   onClick={() => navigate('/inventory/scan-camera')}
                   data-testid="btn-scan-camera"
                 >
                   Scan caméra
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-transparent px-3 py-2 text-sm font-semibold text-brand-600 transition hover:border-brand-200 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 dark:text-brand-300 dark:hover:border-brand-500/60 dark:hover:bg-slate-800"
+                  onClick={() => setCatalogueOpen(true)}
+                  data-testid="btn-open-catalogue"
+                  disabled={!shopId}
+                >
+                  Ajout via catalogue
                 </Button>
               </>
             )}
@@ -1511,10 +1511,12 @@ export const InventorySessionPage = () => {
         zone={conflictZoneSummary}
         onClose={() => setConflictModalOpen(false)}
       />
-      <CatalogueSearchDialog
-        open={catalogueOpen}
+      <ProductsModal
+        open={catalogueOpen && Boolean(shopId)}
         onClose={() => setCatalogueOpen(false)}
-        onPick={handlePickFromCatalogue}
+        shopId={shopId}
+        onSelect={handlePickFromCatalogue}
+        selectLabel="Ajouter"
       />
 
     </div>

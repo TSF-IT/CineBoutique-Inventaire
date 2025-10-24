@@ -25,7 +25,13 @@ type Response = {
   q?: string | null;
 };
 
-type Props = { open: boolean; onClose: () => void; shopId: string };
+type Props = {
+  open: boolean
+  onClose: () => void
+  shopId: string
+  onSelect?: (product: Item) => Promise<boolean> | boolean
+  selectLabel?: string
+};
 
 const columns = [
   { key: "ean", label: "EAN/RFID" },
@@ -41,17 +47,23 @@ const VirtualizedRowGroup = React.forwardRef<HTMLDivElement, React.HTMLAttribute
   }
 );
 
-export function ProductsModal({ open, onClose, shopId }: Props) {
+export type ProductsModalItem = Item
+
+export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: Props) {
   const [q, setQ] = React.useState("");
   const [page, setPage] = React.useState(1);
   const [sortBy, setSortBy] = React.useState<ColumnKey>("sku");
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
   const [data, setData] = React.useState<Response | null>(null);
   const [loading, setLoading] = React.useState(false);
+  const [pendingSelectionId, setPendingSelectionId] = React.useState<string | null>(null);
   const listRef = React.useRef<{
     scrollToItem?: (index: number) => void;
   } | null>(null);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
+
+  const isInteractive = typeof onSelect === "function";
+  const resolvedSelectLabel = selectLabel ?? "Ajouter";
 
   React.useEffect(() => {
     if (!open) return;
@@ -98,6 +110,7 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
 
   React.useEffect(() => {
     if (!open) {
+      setPendingSelectionId(null);
       return;
     }
 
@@ -134,6 +147,24 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
     setPage(1);
     setQ("");
   }, []);
+
+  const handleRowActivation = React.useCallback(
+    async (product: Item) => {
+      if (!onSelect || pendingSelectionId) {
+        return;
+      }
+      setPendingSelectionId(product.id);
+      try {
+        const result = await onSelect(product);
+        if (result) {
+          onClose();
+        }
+      } finally {
+        setPendingSelectionId(null);
+      }
+    },
+    [onClose, onSelect, pendingSelectionId]
+  );
 
   const header = React.useMemo(
     () => (
@@ -197,6 +228,8 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
     (index: number, products: Item[]) => products[index]?.id ?? index,
     []
   );
+
+  const commonRowClassName = `${GRID_TEMPLATE_CLASS} items-center gap-3 border-b border-slate-200/70 bg-white/80 px-4 py-2.5 text-sm transition dark:border-slate-800 dark:bg-slate-900/40`;
 
   if (!open) return null;
 
@@ -320,11 +353,32 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
                             style: React.CSSProperties;
                           }) => {
                             const product = items[index];
+                            const isPending = pendingSelectionId === product.id;
+                            const isDisabled = Boolean(
+                              pendingSelectionId && pendingSelectionId !== product.id
+                            );
                             return (
-                              <div
+                              <button
+                                type="button"
                                 role="row"
                                 style={style}
-                                className={`${GRID_TEMPLATE_CLASS} items-center gap-3 border-b border-slate-200/70 bg-white/80 px-4 py-2.5 last:border-b-0 dark:border-slate-800 dark:bg-slate-900/50`}
+                                onClick={() => void handleRowActivation(product)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    void handleRowActivation(product);
+                                  }
+                                }}
+                                className={`${commonRowClassName} last:border-b-0 text-left ${
+                                  isInteractive
+                                    ? isDisabled
+                                      ? "cursor-not-allowed opacity-60"
+                                      : "cursor-pointer hover:bg-product-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-product-600"
+                                    : "cursor-default"
+                                }`}
+                                disabled={!isInteractive || isDisabled || isPending}
+                                aria-disabled={isPending}
+                                data-testid={`products-modal-row-${product.id}`}
                               >
                                 <div
                                   role="cell"
@@ -333,46 +387,94 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
                                 >
                                   {product.ean ?? ""}
                                 </div>
-                                <div role="cell" className="truncate font-medium text-slate-900 dark:text-white">
+                                <div
+                                  role="cell"
+                                  className="truncate font-medium text-slate-900 dark:text-white"
+                                  title={product.sku}
+                                >
                                   {product.sku}
                                 </div>
-                                <div role="cell" className="truncate">
-                                  {product.name}
+                                <div
+                                  role="cell"
+                                  className="flex items-center justify-between gap-3 truncate"
+                                  title={product.name}
+                                >
+                                  <span className="truncate">{product.name}</span>
+                                  {isInteractive ? (
+                                    <span className="shrink-0 rounded-full bg-product-100 px-3 py-1 text-xs font-semibold text-product-700 dark:bg-product-700/40 dark:text-product-200">
+                                      {isPending ? "Ajout…" : resolvedSelectLabel}
+                                    </span>
+                                  ) : null}
                                 </div>
-                              </div>
+                              </button>
                             );
                           }}
                         </VirtualList>
                       ) : (
-                        items.map((product, index) => (
-                          <div
-                            role="row"
-                            key={itemKey(index, items)}
-                            className={`${GRID_TEMPLATE_CLASS} items-center gap-3 border-b border-slate-200/70 bg-white/80 px-4 py-2.5 text-sm transition hover:bg-product-50/60 focus-within:bg-product-50/60 dark:border-slate-800 dark:bg-slate-900/40 dark:hover:bg-product-700/30`}
-                          >
-                            <div
-                              role="cell"
-                              className="truncate"
-                              title={product.ean ?? undefined}
+                        items.map((product, index) => {
+                          const isPending = pendingSelectionId === product.id;
+                          const isDisabled = Boolean(
+                            pendingSelectionId && pendingSelectionId !== product.id
+                          );
+                          const RowElement = isInteractive ? "button" : "div";
+                          const rowProps = isInteractive
+                            ? {
+                                type: "button" as const,
+                                onClick: () => void handleRowActivation(product),
+                                onKeyDown: (event: React.KeyboardEvent<HTMLButtonElement>) => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    void handleRowActivation(product);
+                                  }
+                                },
+                                disabled: isDisabled || isPending,
+                              }
+                            : {};
+
+                          return (
+                            <RowElement
+                              role="row"
+                              key={itemKey(index, items)}
+                              className={`${commonRowClassName} ${
+                                isInteractive
+                                  ? isDisabled
+                                    ? "cursor-not-allowed opacity-60"
+                                    : "cursor-pointer hover:bg-product-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-product-600"
+                                  : "cursor-default hover:bg-product-50/60 focus-within:bg-product-50/60"
+                              }`}
+                              aria-disabled={isPending || undefined}
+                              data-testid={`products-modal-row-${product.id}`}
+                              {...rowProps}
                             >
-                              {product.ean ?? ""}
-                            </div>
-                            <div
-                              role="cell"
-                              className="truncate font-medium text-slate-900 dark:text-white"
-                              title={product.sku}
-                            >
-                              {product.sku}
-                            </div>
-                            <div
-                              role="cell"
-                              className="truncate"
-                              title={product.name}
-                            >
-                              {product.name}
-                            </div>
-                          </div>
-                        ))
+                              <div
+                                role="cell"
+                                className="truncate"
+                                title={product.ean ?? undefined}
+                              >
+                                {product.ean ?? ""}
+                              </div>
+                              <div
+                                role="cell"
+                                className="truncate font-medium text-slate-900 dark:text-white"
+                                title={product.sku}
+                              >
+                                {product.sku}
+                              </div>
+                              <div
+                                role="cell"
+                                className="flex items-center justify-between gap-3 truncate"
+                                title={product.name}
+                              >
+                                <span className="truncate">{product.name}</span>
+                                {isInteractive ? (
+                                  <span className="shrink-0 rounded-full bg-product-100 px-3 py-1 text-xs font-semibold text-product-700 dark:bg-product-700/40 dark:text-product-200">
+                                    {isPending ? "Ajout…" : resolvedSelectLabel}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </RowElement>
+                          );
+                        })
                       )}
                     </div>
                   </div>

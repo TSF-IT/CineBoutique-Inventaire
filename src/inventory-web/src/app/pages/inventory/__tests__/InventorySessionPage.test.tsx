@@ -254,6 +254,7 @@ describe('InventorySessionPage - catalogue', () => {
 
   it('permet d’ajouter un produit via le catalogue', async () => {
     const catalogueProduct = {
+      id: 'cat-prod-900',
       sku: 'SKU-900',
       ean: '9000000000000',
       name: 'Produit catalogue',
@@ -280,12 +281,12 @@ describe('InventorySessionPage - catalogue', () => {
       const openButton = await screen.findByTestId('btn-open-catalogue')
       await user.click(openButton)
 
-      const searchInput = await screen.findByPlaceholderText('Saisir un produit (contains)…')
+      const searchInput = await screen.findByPlaceholderText('Rechercher (SKU / EAN / nom)')
       await user.type(searchInput, 'Catalogue')
 
       await waitFor(() => expect(fetchMock).toHaveBeenCalled())
 
-      const option = await screen.findByRole('option', { name: /Produit catalogue/ })
+      const option = await screen.findByTestId('products-modal-row-cat-prod-900')
       await user.click(option)
 
       await waitFor(() => expect(fetchProductByEanMock).toHaveBeenCalledWith('9000000000000'))
@@ -302,7 +303,7 @@ describe('InventorySessionPage - navigation', () => {
     const user = userEvent.setup()
     renderSessionPage(CountType.Count1)
 
-    const [button] = await screen.findAllByRole('button', { name: /scan caméra/i })
+    const button = await screen.findByTestId('btn-scan-camera')
     await user.click(button)
 
     await waitFor(() => {
