@@ -19,8 +19,9 @@ import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
 import { CountType, type ConflictZoneSummary, type Product } from '../../types/inventory'
 import { fetchProductByEan, startInventoryRun } from '../../api/inventoryApi'
 import type { HttpError } from '@/lib/api/http'
-import { ProductsListCompact } from '@/components/products/ProductsListCompact'
+import { CatalogueSearchDialog } from '@/components/products/CatalogueSearchDialog'
 import { useScanRejectionFeedback } from '@/hooks/useScanRejectionFeedback'
+import type { ProductRow } from '@/hooks/useProductsSearch'
 
 const MAX_SCAN_LENGTH = 32
 
@@ -62,12 +63,12 @@ export const ScanCameraPage = () => {
     setSessionId,
   } = useInventory()
   const [sheetState, setSheetState] = useState<SheetState>('closed')
+  const [catalogueOpen, setCatalogueOpen] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [highlightEan, setHighlightEan] = useState<string | null>(null)
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
   const triggerScanRejectionFeedback = useScanRejectionFeedback()
-  const shopId = shop?.id?.trim() ?? ''
   const dragStateRef = useRef<{ startY: number; pointerId: number } | null>(null)
   const manualInputActiveRef = useRef(false)
   const focusedRowKeyRef = useRef<string | null>(null)
@@ -259,40 +260,41 @@ export const ScanCameraPage = () => {
   )
 
   const handlePickFromCatalogue = useCallback(
-    async ({ sku, name, ean }: { sku: string; name: string; ean?: string | null }) => {
-      const sanitizedEan = sanitizeScanValue(ean ?? '')
+    async (row: ProductRow) => {
+      const sanitizedEan = sanitizeScanValue(row.ean ?? '')
       if (!sanitizedEan) {
-        setErrorMessage(`Impossible d’ajouter ${name} : code manquant.`)
+        setErrorMessage(`Impossible d’ajouter ${row.name} : code manquant.`)
         setStatusMessage(null)
-        return
+        return false
       }
       if (!isScanLengthValid(sanitizedEan)) {
         setErrorMessage(`Code ${sanitizedEan} invalide : ${MAX_SCAN_LENGTH} caractères maximum.`)
         setStatusMessage(null)
-        return
+        return false
       }
       try {
         ensureScanPrerequisites()
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : 'Impossible d’ajouter ce produit.')
         setStatusMessage(null)
-        return
+        return false
       }
 
-      setStatusMessage(`Ajout de ${name}…`)
+      setStatusMessage(`Ajout de ${row.name}…`)
       setErrorMessage(null)
       try {
         const product = await fetchProductByEan(sanitizedEan)
-        const added = await addProductToSession({ ...product, sku: product.sku ?? sku })
+        const added = await addProductToSession({ ...product, sku: product.sku ?? row.sku })
         if (!added) {
           setStatusMessage(null)
-          return
+          return false
         }
         setStatusMessage(`${product.name} ajouté`)
         setHighlightEan(product.ean)
         scrollToEndRef.current = true
         pendingFocusEanRef.current = product.ean
         setSheetState('full')
+        return true
       } catch (error) {
         const err = error as HttpError
         if (err?.status === 404) {
@@ -302,6 +304,7 @@ export const ScanCameraPage = () => {
           setErrorMessage('Impossible d’ajouter ce produit. Réessayez.')
         }
         setStatusMessage(null)
+        return false
       }
     },
     [addProductToSession, ensureScanPrerequisites, triggerScanRejectionFeedback],
@@ -517,9 +520,24 @@ export const ScanCameraPage = () => {
             onClick={handleToggleSheet}
             aria-label="Changer la hauteur du panneau"
           />
-          <div className="flex items-center justify-between pb-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-2">
             <h2 className="text-base font-semibold">Articles scannés</h2>
-            <span className="text-xs text-slate-500">{items.length} références</span>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                {items.length} références
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                className="rounded-full border border-transparent px-3 py-1.5 text-sm font-semibold text-brand-600 transition hover:border-brand-200 hover:bg-brand-50 dark:text-brand-300 dark:hover:border-brand-500/60 dark:hover:bg-slate-800"
+                onClick={() => {
+                  setSheetState('full')
+                  setCatalogueOpen(true)
+                }}
+              >
+                Catalogue
+              </Button>
+            </div>
           </div>
         </div>
         <div className="relative flex-1 overflow-hidden">
@@ -562,11 +580,6 @@ export const ScanCameraPage = () => {
                 })}
               </ul>
             )}
-            {shopId && (
-              <div className="mt-6 border-t border-slate-200 pt-4 dark:border-slate-700">
-                <ProductsListCompact shopId={shopId} onPick={handlePickFromCatalogue} />
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -584,9 +597,13 @@ export const ScanCameraPage = () => {
           onClose={() => setConflictModalOpen(false)}
         />
       )}
+      <CatalogueSearchDialog
+        open={catalogueOpen}
+        onClose={() => setCatalogueOpen(false)}
+        onPick={handlePickFromCatalogue}
+      />
     </div>
   )
 }
 
 export default ScanCameraPage
-
