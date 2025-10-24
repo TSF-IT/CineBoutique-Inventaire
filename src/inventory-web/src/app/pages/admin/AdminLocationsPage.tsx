@@ -41,13 +41,6 @@ const ADMIN_SECTIONS: { id: AdminSection; label: string; description: string }[]
   },
 ]
 
-const formatBusyStatus = (location: Location) => {
-  if (!location.isBusy) {
-    return null
-  }
-  return location.busyBy ? `Occupée par ${location.busyBy}` : 'Occupée'
-}
-
 type SectionSwitcherProps = {
   activeSection: AdminSection
   onChange: (section: AdminSection) => void
@@ -392,8 +385,6 @@ const LocationListItem = ({ location, onSave }: LocationListItemProps) => {
     }
   }
 
-  const busyStatus = formatBusyStatus(location)
-
   return (
     <div className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
       {isEditing ? (
@@ -432,7 +423,6 @@ const LocationListItem = ({ location, onSave }: LocationListItemProps) => {
           <div className="min-w-0 space-y-1">
             <p className="text-sm font-semibold uppercase tracking-widest text-brand-500">{location.code}</p>
             <p className="text-lg font-semibold text-slate-900 dark:text-white break-words">{location.label}</p>
-            {busyStatus && <p className="text-sm text-slate-600 dark:text-slate-400 break-words">{busyStatus}</p>}
           </div>
           <Button variant="secondary" onClick={() => setIsEditing(true)} className="sm:self-start">
             Modifier
