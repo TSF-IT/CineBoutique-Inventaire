@@ -20,9 +20,9 @@ import { CountType, type ConflictZoneSummary, type Product } from '../../types/i
 import { fetchProductByEan, startInventoryRun } from '../../api/inventoryApi'
 import type { HttpError } from '@/lib/api/http'
 import { ProductsListCompact } from '@/components/products/ProductsListCompact'
+import { useScanRejectionFeedback } from '@/hooks/useScanRejectionFeedback'
 
-const MIN_EAN_LENGTH = 8
-const MAX_EAN_LENGTH = 13
+const MAX_SCAN_LENGTH = 32
 
 type SheetState = 'closed' | 'half' | 'full'
 
@@ -32,9 +32,9 @@ const SHEET_HEIGHTS: Record<SheetState, string> = {
   full: '90vh',
 }
 
-const sanitizeEan = (value: string) => value.replace(/\D+/g, '')
+const sanitizeScanValue = (value: string) => value.replace(/\r|\n/g, '')
 
-const isEanLengthValid = (ean: string) => ean.length >= MIN_EAN_LENGTH && ean.length <= MAX_EAN_LENGTH
+const isScanLengthValid = (code: string) => code.length > 0 && code.length <= MAX_SCAN_LENGTH
 
 const moveState = (current: SheetState, direction: 'up' | 'down'): SheetState => {
   if (direction === 'up') {
@@ -66,8 +66,7 @@ export const ScanCameraPage = () => {
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [highlightEan, setHighlightEan] = useState<string | null>(null)
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
-  const [pendingManualEan, setPendingManualEan] = useState<string | null>(null)
-  const [manualAddLoading, setManualAddLoading] = useState(false)
+  const triggerScanRejectionFeedback = useScanRejectionFeedback()
   const shopId = shop?.id?.trim() ?? ''
   const dragStateRef = useRef<{ startY: number; pointerId: number } | null>(null)
   const manualInputActiveRef = useRef(false)
@@ -213,17 +212,13 @@ export const ScanCameraPage = () => {
 
   const handleDetected = useCallback(
     async (rawValue: string) => {
-      const sanitized = sanitizeEan(rawValue.trim())
+      const sanitized = sanitizeScanValue(rawValue)
       if (!sanitized) {
-        setPendingManualEan(null)
         return
       }
-      if (!isEanLengthValid(sanitized)) {
-        setErrorMessage(
-          `EAN ${sanitized} invalide : saisir entre ${MIN_EAN_LENGTH} et ${MAX_EAN_LENGTH} chiffres.`,
-        )
+      if (!isScanLengthValid(sanitized)) {
+        setErrorMessage(`Code ${sanitized} invalide : ${MAX_SCAN_LENGTH} caractères maximum.`)
         setStatusMessage(null)
-        setPendingManualEan(null)
         return
       }
       try {
@@ -231,12 +226,10 @@ export const ScanCameraPage = () => {
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : 'Impossible de lancer le scan.')
         setStatusMessage(null)
-        setPendingManualEan(null)
         return
       }
       setStatusMessage(`Lecture de ${sanitized}…`)
       setErrorMessage(null)
-      setPendingManualEan(null)
       try {
         const product = await fetchProductByEan(sanitized)
         const added = await addProductToSession(product)
@@ -252,69 +245,29 @@ export const ScanCameraPage = () => {
       } catch (error) {
         const err = error as HttpError
         if (err?.status === 404) {
-          setErrorMessage(`Aucun produit trouvé pour ${sanitized}.`)
-          setPendingManualEan(sanitized)
+          setErrorMessage(
+            `Code ${sanitized} introuvable dans la liste des produits à inventorier.`,
+          )
+          triggerScanRejectionFeedback()
         } else {
           setErrorMessage('Échec de la récupération du produit. Réessayez.')
-          setPendingManualEan(null)
         }
         setStatusMessage(null)
       }
     },
-    [addProductToSession, ensureScanPrerequisites],
+    [addProductToSession, ensureScanPrerequisites, triggerScanRejectionFeedback],
   )
-
-  const handleManualAdd = useCallback(async () => {
-    if (manualAddLoading) {
-      return
-    }
-    const manualEan = sanitizeEan(pendingManualEan ?? '')
-    if (!manualEan) {
-      return
-    }
-    if (!isEanLengthValid(manualEan)) {
-      setErrorMessage(
-        `EAN ${manualEan} invalide : saisir entre ${MIN_EAN_LENGTH} et ${MAX_EAN_LENGTH} chiffres.`,
-      )
-      setPendingManualEan(null)
-      return
-    }
-
-    setManualAddLoading(true)
-    try {
-      const product: Product = {
-        ean: manualEan,
-        name: `Produit inconnu EAN ${manualEan}`,
-      }
-      const added = await addProductToSession(product, { isManual: true })
-      if (!added) {
-        return
-      }
-      setStatusMessage(`${product.name} ajouté manuellement`)
-      setErrorMessage(null)
-      setHighlightEan(product.ean)
-      scrollToEndRef.current = true
-      if (manualInputActiveRef.current) {
-        pendingFocusEanRef.current = product.ean
-      }
-      setPendingManualEan(null)
-    } finally {
-      setManualAddLoading(false)
-    }
-  }, [addProductToSession, manualAddLoading, pendingManualEan])
 
   const handlePickFromCatalogue = useCallback(
     async ({ sku, name, ean }: { sku: string; name: string; ean?: string | null }) => {
-      const sanitizedEan = sanitizeEan(ean ?? '')
+      const sanitizedEan = sanitizeScanValue(ean ?? '')
       if (!sanitizedEan) {
-        setErrorMessage(`Impossible d’ajouter ${name} : EAN manquant.`)
+        setErrorMessage(`Impossible d’ajouter ${name} : code manquant.`)
         setStatusMessage(null)
         return
       }
-      if (!isEanLengthValid(sanitizedEan)) {
-        setErrorMessage(
-          `EAN ${sanitizedEan} invalide : saisir entre ${MIN_EAN_LENGTH} et ${MAX_EAN_LENGTH} chiffres.`,
-        )
+      if (!isScanLengthValid(sanitizedEan)) {
+        setErrorMessage(`Code ${sanitizedEan} invalide : ${MAX_SCAN_LENGTH} caractères maximum.`)
         setStatusMessage(null)
         return
       }
@@ -343,14 +296,15 @@ export const ScanCameraPage = () => {
       } catch (error) {
         const err = error as HttpError
         if (err?.status === 404) {
-          setErrorMessage(`Produit introuvable pour ${sanitizedEan}.`)
+          setErrorMessage(`Produit introuvable pour ${sanitizedEan}. Signalez ce code.`)
+          triggerScanRejectionFeedback()
         } else {
           setErrorMessage('Impossible d’ajouter ce produit. Réessayez.')
         }
         setStatusMessage(null)
       }
     },
-    [addProductToSession, ensureScanPrerequisites],
+    [addProductToSession, ensureScanPrerequisites, triggerScanRejectionFeedback],
   )
 
   const handleDec = useCallback(
@@ -620,18 +574,6 @@ export const ScanCameraPage = () => {
         <div className="absolute inset-x-0 bottom-[calc(100%+8px)] z-30 flex justify-center p-3">
           <div className="flex items-center gap-3 rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-lg">
             <span>{errorMessage}</span>
-            {pendingManualEan && (
-              <Button
-                variant="ghost"
-                className="rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs font-semibold text-white hover:bg-white/20 focus-visible:ring-2 focus-visible:ring-white/60"
-                onClick={() => {
-                  void handleManualAdd()
-                }}
-                disabled={manualAddLoading}
-              >
-                {manualAddLoading ? 'Ajout…' : 'Ajouter manuellement'}
-              </Button>
-            )}
           </div>
         </div>
       )}

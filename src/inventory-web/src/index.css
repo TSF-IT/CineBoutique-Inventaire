@@ -167,3 +167,36 @@ dialog::backdrop {
     color: var(--cb-muted);
   }
 }
+body.inventory-flash-active::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: rgba(239, 68, 68, 0.22);
+  pointer-events: none;
+  animation: inventory-flash-pulse 720ms ease-in-out 1;
+  z-index: 2147483647;
+}
+
+@keyframes inventory-flash-pulse {
+  0% {
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.65;
+  }
+  25% {
+    opacity: 0;
+  }
+  45% {
+    opacity: 0.55;
+  }
+  60% {
+    opacity: 0;
+  }
+  80% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 0;
+  }
+}

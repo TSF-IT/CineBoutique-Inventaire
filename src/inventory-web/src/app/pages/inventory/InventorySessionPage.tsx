@@ -22,6 +22,7 @@ import type { ConflictZoneItem, ConflictZoneSummary, InventoryItem, Product } fr
 import { CountType } from '../../types/inventory'
 import { useShop } from '@/state/ShopContext'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
+import { useScanRejectionFeedback } from '@/hooks/useScanRejectionFeedback'
 
 const DEV_API_UNREACHABLE_HINT =
   "Impossible de joindre l’API : vérifie que le backend tourne (curl http://localhost:8080/healthz) ou que le proxy Vite est actif."
@@ -64,10 +65,9 @@ const buildHttpMessage = (prefix: string, error: HttpError) => {
   return diagnostics.length > 0 ? `${prefix} | ${diagnostics.join(' | ')}` : prefix
 }
 
-const MIN_EAN_LENGTH = 8
-const MAX_EAN_LENGTH = 13
+const MAX_SCAN_LENGTH = 32
 
-const sanitizeEan = (value: string) => value.replace(/\D+/g, '')
+const sanitizeScanValue = (value: string) => value.replace(/\r|\n/g, '')
 
 const normalizeIdentifier = (value: string | null | undefined) => {
   const trimmed = value?.trim()
@@ -125,8 +125,6 @@ export const aggregateItemsForCompletion = (
   return Array.from(aggregated.values())
 }
 
-const isEanLengthValid = (ean: string) => ean.length >= MIN_EAN_LENGTH && ean.length <= MAX_EAN_LENGTH
-
 const resolveLifecycleErrorMessage = (error: unknown, fallback: string): string => {
   if (isHttpError(error)) {
     const problem = error.problem as { message?: unknown; detail?: unknown; title?: unknown } | undefined
@@ -168,10 +166,10 @@ export const InventorySessionPage = () => {
     logEvent,
   } = useInventory()
   const { shop } = useShop()
+  const triggerScanRejectionFeedback = useScanRejectionFeedback()
   const [status, setStatusState] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [scanValue, setScanValue] = useState('')
-  const [manualEan, setManualEan] = useState('')
   const [inputLookupStatus, setInputLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not-found' | 'error'>('idle')
   const [completionLoading, setCompletionLoading] = useState(false)
   const completionDialogRef = useRef<HTMLDialogElement | null>(null)
@@ -561,20 +559,30 @@ export const InventorySessionPage = () => {
     [addOrIncrementItem, ensureActiveRun, items.length, setErrorMessage, updateStatus],
   )
 
+  const handleUnknownProduct = useCallback(
+    (code: string) => {
+      updateStatus(null)
+      setErrorMessage(
+        `Code ${code} introuvable dans la liste des produits à inventorier.`,
+      )
+      setInputLookupStatus('not-found')
+      setScanValue(code)
+      triggerScanRejectionFeedback()
+    },
+    [triggerScanRejectionFeedback, updateStatus],
+  )
+
   const handleDetected = useCallback(
     async (rawValue: string) => {
-      const value = sanitizeEan(rawValue.trim())
+      const value = sanitizeScanValue(rawValue)
       if (!value) {
         return
       }
 
-      if (!isEanLengthValid(value)) {
+      if (value.length > MAX_SCAN_LENGTH) {
         updateStatus(null)
-        setErrorMessage(
-          `EAN ${value} invalide : saisissez un code entre ${MIN_EAN_LENGTH} et ${MAX_EAN_LENGTH} chiffres.`,
-        )
-        setManualEan('')
-        setInputLookupStatus('idle')
+        setErrorMessage(`Code ${value} trop long : ${MAX_SCAN_LENGTH} caractères maximum.`)
+        setInputLookupStatus('error')
         return
       }
 
@@ -600,9 +608,7 @@ export const InventorySessionPage = () => {
       }
 
       if (result.status === 'not-found') {
-        updateStatus(null)
-        setManualEan(value)
-        setInputLookupStatus('not-found')
+        handleUnknownProduct(value)
         return
       }
 
@@ -611,34 +617,27 @@ export const InventorySessionPage = () => {
       setErrorMessage(
         resolveLifecycleErrorMessage(
           err,
-          'Impossible de récupérer le produit. Réessayez ou ajoutez-le manuellement.',
+          'Impossible de récupérer le produit. Réessayez ou signalez le code scanné.',
         ),
       )
       setInputLookupStatus('error')
     },
-    [addProductToSession, searchProductByEan, updateStatus],
+    [addProductToSession, handleUnknownProduct, searchProductByEan, updateStatus],
   )
 
-  const trimmedScanValue = sanitizeEan(scanValue.trim())
+  const normalizedScanValue = sanitizeScanValue(scanValue)
   const scanInputError = useMemo(() => {
-    if (!trimmedScanValue) {
+    if (!normalizedScanValue) {
       return null
     }
-    if (trimmedScanValue.length < MIN_EAN_LENGTH) {
-      const remaining = MIN_EAN_LENGTH - trimmedScanValue.length
-      return `Ajoutez encore ${remaining} chiffre${remaining > 1 ? 's' : ''} pour valider l’EAN.`
-    }
-    if (trimmedScanValue.length > MAX_EAN_LENGTH) {
-      return `EAN trop long : ${MAX_EAN_LENGTH} chiffres maximum.`
+    if (normalizedScanValue.length > MAX_SCAN_LENGTH) {
+      return `Code ${normalizedScanValue} trop long : ${MAX_SCAN_LENGTH} caractères maximum.`
     }
     return null
-  }, [trimmedScanValue])
-
-  const manualCandidateEan = (manualEan ? sanitizeEan(manualEan) : trimmedScanValue).trim()
-  const isManualCandidateValid = manualCandidateEan.length > 0 && isEanLengthValid(manualCandidateEan)
+  }, [normalizedScanValue])
 
   useEffect(() => {
-    if (!trimmedScanValue) {
+    if (!normalizedScanValue) {
       manualLookupIdRef.current += 1
       lastSearchedInputRef.current = null
       setInputLookupStatus('idle')
@@ -648,24 +647,24 @@ export const InventorySessionPage = () => {
     if (scanInputError) {
       manualLookupIdRef.current += 1
       lastSearchedInputRef.current = null
-      setInputLookupStatus('idle')
-      setErrorMessage(null)
+      setInputLookupStatus('error')
+      setErrorMessage(scanInputError)
       return
     }
 
-    if (lastSearchedInputRef.current === trimmedScanValue) {
+    if (lastSearchedInputRef.current === normalizedScanValue) {
       return
     }
 
-    lastSearchedInputRef.current = trimmedScanValue
+    lastSearchedInputRef.current = normalizedScanValue
     const currentLookupId = ++manualLookupIdRef.current
     setInputLookupStatus('loading')
-    updateStatus(`Recherche du code ${trimmedScanValue}`)
+    updateStatus(`Recherche du code ${normalizedScanValue}`)
     setErrorMessage(null)
 
     const timeoutId = window.setTimeout(() => {
       void (async () => {
-        const result = await searchProductByEan(trimmedScanValue)
+        const result = await searchProductByEan(normalizedScanValue)
 
         if (manualLookupIdRef.current !== currentLookupId) {
           return
@@ -681,22 +680,23 @@ export const InventorySessionPage = () => {
           } else {
             setInputLookupStatus('error')
           }
-        } else if (result.status === 'not-found') {
-          updateStatus(null)
-          setManualEan(trimmedScanValue)
-          setErrorMessage('Aucun produit trouvé pour cet EAN. Ajoutez-le manuellement.')
-          setInputLookupStatus('not-found')
-        } else {
-          const err = result.error
-          updateStatus(null)
-          setErrorMessage(
-            resolveLifecycleErrorMessage(
-              err,
-              'Impossible de récupérer le produit. Réessayez ou ajoutez-le manuellement.',
-            ),
-          )
-          setInputLookupStatus('error')
+          return
         }
+
+        if (result.status === 'not-found') {
+          handleUnknownProduct(normalizedScanValue)
+          return
+        }
+
+        const err = result.error
+        updateStatus(null)
+        setErrorMessage(
+          resolveLifecycleErrorMessage(
+            err,
+            'Impossible de récupérer le produit. Réessayez ou signalez le code scanné.',
+          ),
+        )
+        setInputLookupStatus('error')
       })()
     }, 300)
 
@@ -705,9 +705,10 @@ export const InventorySessionPage = () => {
     }
   }, [
     addProductToSession,
+    handleUnknownProduct,
+    normalizedScanValue,
     scanInputError,
     searchProductByEan,
-    trimmedScanValue,
     updateStatus,
   ])
 
@@ -715,65 +716,33 @@ export const InventorySessionPage = () => {
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (event.key === 'Enter') {
         event.preventDefault()
-        const value = trimmedScanValue
+        const value = normalizedScanValue
         if (value) {
           setScanValue('')
           void handleDetected(value)
         }
       }
     },
-    [handleDetected, trimmedScanValue],
+    [handleDetected, normalizedScanValue],
   )
 
   const handleInputChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       const { value } = event.target
       if (value.includes('\n') || value.includes('\r')) {
-        const [code] = value.split(/\s+/)
+        const code = sanitizeScanValue(value)
         setScanValue('')
-        setManualEan('')
-        if (code.trim()) {
+        if (code) {
           void handleDetected(code)
         }
         return
       }
-      const sanitized = sanitizeEan(value)
+      const sanitized = sanitizeScanValue(value)
       setScanValue(sanitized)
-      setManualEan('')
       setErrorMessage(null)
     },
     [handleDetected],
   )
-
-  const handleManualAdd = useCallback(async () => {
-    const sanitizedEan = sanitizeEan(manualCandidateEan)
-    if (!sanitizedEan) {
-      setErrorMessage('Indiquez un EAN pour ajouter le produit à la session.')
-      return
-    }
-    if (!isEanLengthValid(sanitizedEan)) {
-      setErrorMessage(
-        `Un EAN doit contenir entre ${MIN_EAN_LENGTH} et ${MAX_EAN_LENGTH} chiffres (code saisi : ${sanitizedEan.length}).`,
-      )
-      return
-    }
-
-    const product: Product = {
-      ean: sanitizedEan,
-      name: `Produit inconnu EAN ${sanitizedEan}`,
-    }
-
-    const added = await addProductToSession(product, { isManual: true })
-    if (!added) {
-      return
-    }
-
-    updateStatus(`${product.name} ajouté manuellement`)
-    setManualEan('')
-    setScanValue('')
-    setInputLookupStatus('idle')
-    inputRef.current?.focus()
-  }, [addProductToSession, manualCandidateEan, updateStatus])
 
   const handleCompleteRun = useCallback(async () => {
     if (!isValidCountType) {
@@ -819,7 +788,6 @@ export const InventorySessionPage = () => {
 
       await completeInventoryRun(locationId, payload)
       updateStatus('Comptage terminé avec succès.')
-      setManualEan('')
       clearSession()
       setScanValue('')
       setInputLookupStatus('idle')
@@ -1135,13 +1103,12 @@ export const InventorySessionPage = () => {
                 ref={inputRef}
                 name="scanInput"
                 label="Scanner (douchette ou saisie)"
-                placeholder="Scannez un EAN et validez avec Entrée"
+                placeholder="Scannez un code EAN/RFID et validez avec Entrée"
                 value={scanValue}
                 onChange={handleInputChange}
                 onKeyDown={handleInputKeyDown}
-                inputMode="numeric"
-                pattern="\d*"
-                maxLength={MAX_EAN_LENGTH}
+                inputMode="text"
+                maxLength={MAX_SCAN_LENGTH}
                 autoComplete="off"
                 aria-invalid={Boolean(scanInputError)}
                 autoFocus
@@ -1152,20 +1119,8 @@ export const InventorySessionPage = () => {
                 }`}
                 aria-live="polite"
               >
-                {scanInputError ?? `EAN attendu : ${MIN_EAN_LENGTH} à ${MAX_EAN_LENGTH} chiffres.`}
+                {scanInputError ?? 'Saisissez ou scannez un code EAN/RFID.'}
               </p>
-            </div>
-            <div className="flex justify-end">
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  void handleManualAdd()
-                }}
-                data-testid="btn-open-manual"
-                disabled={!manualCandidateEan || inputLookupStatus !== 'not-found' || !isManualCandidateValid}
-              >
-                Ajouter manuellement
-              </Button>
             </div>
           </>
         )}

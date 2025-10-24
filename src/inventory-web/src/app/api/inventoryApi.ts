@@ -470,24 +470,24 @@ const tryResolveAmbiguousProduct = async (
 }
 
 export const fetchProductByEan = async (ean: string): Promise<Product> => {
-  const trimmed = (ean ?? '').trim()
-  if (trimmed.length === 0 || !/^\d+$/.test(trimmed)) {
-    throw new Error("EAN invalide (valeur vide ou non numérique)")
+  const rawCode = (ean ?? '').replace(/\r|\n/g, '')
+  if (rawCode.length === 0) {
+    throw new Error('Code vide ou invalide')
   }
 
-  const normalizedCode = normalizeLookupCode(trimmed)
+  const normalizedCode = normalizeLookupCode(rawCode)
   let searchCandidates: ProductCandidate[] = []
 
   if (normalizedCode) {
     try {
-      const params = new URLSearchParams({ code: trimmed, limit: '5' })
+      const params = new URLSearchParams({ code: rawCode, limit: '5' })
       const searchUrl = `${API_BASE}/products/search?${params.toString()}`
       const rawResult = await http(searchUrl)
       const candidates = toProductSearchItems(rawResult)
       searchCandidates = dedupeCandidates(candidates)
       const hasMatch = hasMatchingProductCandidate(searchCandidates, normalizedCode)
       if (!hasMatch) {
-        throw createNotFoundHttpError(trimmed)
+        throw createNotFoundHttpError(rawCode)
       }
     } catch (error) {
       if (isHttpError(error) && error.status === 404) {
@@ -500,12 +500,12 @@ export const fetchProductByEan = async (ean: string): Promise<Product> => {
   }
 
   try {
-    const data = await http(`${API_BASE}/products/${encodeURIComponent(trimmed)}`)
+    const data = await http(`${API_BASE}/products/${encodeURIComponent(rawCode)}`)
     return data as Product
   } catch (error) {
     const err = error as HttpError
     if (isHttpError(err) && err.status === 409) {
-      const resolved = await tryResolveAmbiguousProduct(err, searchCandidates, trimmed)
+      const resolved = await tryResolveAmbiguousProduct(err, searchCandidates, rawCode)
       if (resolved) {
         return resolved
       }

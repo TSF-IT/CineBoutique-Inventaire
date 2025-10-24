@@ -773,7 +773,8 @@ describe("Workflow d'inventaire", () => {
       },
     })
 
-    const [input] = await screen.findAllByLabelText('Scanner (douchette ou saisie)')
+    const input = (await screen.findByLabelText('Scanner (douchette ou saisie)')) as HTMLInputElement
+    expect(input).toBeDefined()
     fireEvent.change(input, { target: { value: '12345678' } })
 
     await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('12345678'))
@@ -781,12 +782,12 @@ describe("Workflow d'inventaire", () => {
     await waitFor(() => expect((input as HTMLInputElement).value).toBe(''))
   })
 
-  it("active l'ajout manuel uniquement lorsqu'un EAN est introuvable", async () => {
+  it('affiche un feedback visuel clair lorsqu’un code RFID alphanumérique est introuvable', async () => {
     const notFoundError: HttpError = {
       name: 'Error',
       message: 'HTTP 404',
       status: 404,
-      url: '/api/products/99999999',
+      url: '/api/products/RFID001',
     }
 
     fetchProductMock.mockRejectedValueOnce(notFoundError)
@@ -800,31 +801,29 @@ describe("Workflow d'inventaire", () => {
       },
     })
 
-    const [input] = await screen.findAllByLabelText('Scanner (douchette ou saisie)')
-    const sessionPages = await screen.findAllByTestId('page-session')
-    const inputPage = (input as HTMLElement).closest('[data-testid="page-session"]') as HTMLElement | null
-    const pageContainer = inputPage ?? sessionPages[sessionPages.length - 1]
-    const manualButton = within(pageContainer).getByTestId('btn-open-manual')
+    const input = (await screen.findByLabelText('Scanner (douchette ou saisie)')) as HTMLInputElement
+    expect(input).toBeDefined()
 
-    expect(manualButton).toBeDisabled()
+    fireEvent.change(input, { target: { value: 'rfid001' } })
 
-    fireEvent.change(input, { target: { value: '99999999' } })
-
-    expect(manualButton).toBeDisabled()
-    await waitFor(() => expect((input as HTMLInputElement).value).toBe('99999999'))
-
-    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('99999999'))
-    expect(fetchProductMock).toHaveBeenCalledTimes(1)
-    await waitFor(() => expect(screen.getByText(/Aucun produit trouvé/)).toBeInTheDocument())
-    await waitFor(() => expect(manualButton).toBeEnabled())
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'Code rfid001 introuvable dans la liste des produits à inventorier.',
+        ),
+      ).toBeInTheDocument(),
+    )
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('rfid001'))
+    expect(document.body).toHaveClass('inventory-flash-active')
+    expect(screen.queryByTestId('btn-open-manual')).not.toBeInTheDocument()
   })
 
-  it("permet d'ajouter un produit inconnu via l'ajout manuel", async () => {
+  it("n'ajoute pas automatiquement les codes RFID introuvables à la session", async () => {
     const notFoundError: HttpError = {
       name: 'Error',
       message: 'HTTP 404',
       status: 404,
-      url: '/api/products/99999999',
+      url: '/api/products/RFID001',
     }
 
     fetchProductMock.mockRejectedValueOnce(notFoundError)
@@ -838,30 +837,55 @@ describe("Workflow d'inventaire", () => {
       },
     })
 
-    const sessionPages = await screen.findAllByTestId('page-session')
-    const activeSessionPage = sessionPages[sessionPages.length - 1]
-    const input = within(activeSessionPage).getByLabelText('Scanner (douchette ou saisie)')
-    const manualButton = within(activeSessionPage).getByTestId('btn-open-manual')
+    const input = (await screen.findByLabelText('Scanner (douchette ou saisie)')) as HTMLInputElement
+    expect(input).toBeDefined()
 
-    expect(manualButton).toBeDisabled()
+    fireEvent.change(input, { target: { value: 'rfid001\n' } })
 
-    fireEvent.change(input, { target: { value: '99999999\n' } })
-
-    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('99999999'))
-    await waitFor(() => expect(manualButton).toBeEnabled())
-
-    fireEvent.click(manualButton)
-
-    await within(activeSessionPage).findByText('Produit inconnu EAN 99999999')
-    await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
-    expect(startInventoryRunMock).toHaveBeenCalledWith(
-      reserveLocation.id,
-      expect.objectContaining({
-        countType: 1,
-        ownerUserId: shopUsers[0].id,
-        shopId: testShop.id,
-      }),
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'Code rfid001 introuvable dans la liste des produits à inventorier.',
+        ),
+      ).toBeInTheDocument(),
     )
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('rfid001'))
+
+    expect(screen.queryAllByTestId('scanned-item')).toHaveLength(0)
+  })
+
+  it('recherche les saisies manuelles avec espaces et caractères spéciaux sans les modifier', async () => {
+    const notFoundError: HttpError = {
+      name: 'Error',
+      message: 'HTTP 404',
+      status: 404,
+      url: '/api/products/RF ID 001-★',
+    }
+
+    fetchProductMock.mockRejectedValueOnce(notFoundError)
+
+    renderInventoryRoutes('/inventory/session', {
+      initialize: (inventory) => {
+        inventory.setSelectedUser(shopUsers[0])
+        inventory.setCountType(CountType.Count1)
+        inventory.setLocation({ ...reserveLocation })
+        inventory.clearSession()
+      },
+    })
+
+    const input = (await screen.findByLabelText('Scanner (douchette ou saisie)')) as HTMLInputElement
+    expect(input).toBeDefined()
+
+    fireEvent.change(input, { target: { value: 'RF ID 001-★' } })
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'Code RF ID 001-★ introuvable dans la liste des produits à inventorier.',
+        ),
+      ).toBeInTheDocument(),
+    )
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('RF ID 001-★'))
   })
 
   it("restaure l'utilisateur sélectionné depuis la session", async () => {
