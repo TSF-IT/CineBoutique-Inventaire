@@ -8,6 +8,12 @@ import { Button } from '../ui/Button'
 import { ErrorPanel } from '../ErrorPanel'
 import { LoadingIndicator } from '../LoadingIndicator'
 import { modalOverlayClassName } from '../Modal/modalOverlayClassName'
+import {
+  formatZoneTitle,
+  resolveZoneLabel,
+  toValidLocationCode,
+  toValidLocationLabel,
+} from './runLocation'
 
 interface CompletedRunsModalProps {
   open: boolean
@@ -96,21 +102,6 @@ const formatSku = (value: string | null | undefined) => {
   const trimmed = value?.trim()
   return trimmed && trimmed.length > 0 ? trimmed : '—'
 }
-
-const toValidLocationCode = (value: string | null | undefined) => {
-  const trimmed = value?.trim()
-  return trimmed && trimmed.length > 0 ? trimmed : null
-}
-
-const toValidLocationLabel = (value: string | null | undefined) => {
-  const trimmed = value?.trim()
-  return trimmed && trimmed.length > 0 ? trimmed : null
-}
-
-const resolveZoneLabel = (detail: CompletedRunSummary | CompletedRunDetail) =>
-  toValidLocationLabel(detail.locationLabel) ?? toValidLocationCode(detail.locationCode) ?? 'Zone inconnue'
-
-const formatZoneTitle = (detail: CompletedRunSummary | CompletedRunDetail) => resolveZoneLabel(detail)
 
 const compareCompletedRunsByZone = (
   a: CompletedRunSummary,
