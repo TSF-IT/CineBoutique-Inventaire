@@ -65,6 +65,7 @@ const createUseInventoryValue = (overrides: Partial<UseInventoryValue> = {}): Us
   setLocation: vi.fn(),
   setSessionId: vi.fn(),
   addOrIncrementItem: vi.fn(),
+  initializeItems: vi.fn(),
   setQuantity: vi.fn(),
   removeItem: vi.fn(),
   reset: vi.fn(),
