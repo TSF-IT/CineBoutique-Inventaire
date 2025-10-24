@@ -4,7 +4,7 @@ import { FixedSizeList as VirtualList } from "react-window";
 import { modalOverlayClassName } from "@/app/components/Modal/modalOverlayClassName";
 
 const GRID_TEMPLATE_CLASS =
-  "grid grid-cols-[minmax(120px,1fr)_minmax(140px,1fr)_minmax(220px,1.6fr)_minmax(120px,1fr)] sm:grid-cols-[minmax(140px,1fr)_minmax(180px,1fr)_minmax(320px,2fr)_minmax(140px,1fr)]";
+  "grid grid-cols-[minmax(140px,1fr)_minmax(120px,1fr)_minmax(220px,1.6fr)] sm:grid-cols-[minmax(160px,1fr)_minmax(140px,1fr)_minmax(320px,2fr)]";
 
 const ROW_HEIGHT = 44;
 type Item = {
@@ -28,10 +28,9 @@ type Response = {
 type Props = { open: boolean; onClose: () => void; shopId: string };
 
 const columns = [
-  { key: "sku", label: "SKU" },
-  { key: "ean", label: "EAN" },
-  { key: "name", label: "Nom" },
-  { key: "digits", label: "Digits" },
+  { key: "ean", label: "EAN/RFID" },
+  { key: "sku", label: "SKU/item" },
+  { key: "name", label: "Description" },
 ] as const;
 
 type ColumnKey = (typeof columns)[number]["key"];
@@ -324,17 +323,18 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
                                 style={style}
                                 className={`${GRID_TEMPLATE_CLASS} items-center gap-3 border-b border-slate-200/70 bg-white/80 px-4 py-2.5 last:border-b-0 dark:border-slate-800 dark:bg-slate-900/50`}
                               >
+                                <div
+                                  role="cell"
+                                  className="truncate"
+                                  title={product.ean ?? undefined}
+                                >
+                                  {product.ean ?? ""}
+                                </div>
                                 <div role="cell" className="truncate font-medium text-slate-900 dark:text-white">
                                   {product.sku}
                                 </div>
                                 <div role="cell" className="truncate">
-                                  {product.ean ?? ""}
-                                </div>
-                                <div role="cell" className="truncate">
                                   {product.name}
-                                </div>
-                                <div role="cell" className="truncate">
-                                  {product.codeDigits ?? ""}
                                 </div>
                               </div>
                             );
@@ -349,6 +349,13 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
                           >
                             <div
                               role="cell"
+                              className="truncate"
+                              title={product.ean ?? undefined}
+                            >
+                              {product.ean ?? ""}
+                            </div>
+                            <div
+                              role="cell"
                               className="truncate font-medium text-slate-900 dark:text-white"
                               title={product.sku}
                             >
@@ -357,23 +364,9 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
                             <div
                               role="cell"
                               className="truncate"
-                              title={product.ean ?? undefined}
-                            >
-                              {product.ean ?? ""}
-                            </div>
-                            <div
-                              role="cell"
-                              className="truncate"
                               title={product.name}
                             >
                               {product.name}
-                            </div>
-                            <div
-                              role="cell"
-                              className="truncate"
-                              title={product.codeDigits ?? undefined}
-                            >
-                              {product.codeDigits ?? ""}
                             </div>
                           </div>
                         ))
