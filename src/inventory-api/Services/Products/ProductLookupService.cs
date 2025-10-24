@@ -36,16 +36,31 @@ public sealed class ProductLookupService : IProductLookupService
             return ProductLookupResult.Success(originalCode, normalizedCode, null, ToDto(skuMatch));
         }
 
+        var digits = ExtractDigits(normalizedCode);
+        IReadOnlyList<ProductLookupItem>? digitMatches = null;
+
         var rawMatches = await _repository.FindByRawCodeAsync(normalizedCode, cancellationToken).ConfigureAwait(false);
         if (rawMatches.Count == 1)
         {
+            if (digits.Length > 0)
+            {
+                digitMatches = await _repository.FindByCodeDigitsAsync(digits, cancellationToken).ConfigureAwait(false);
+                if (HasAdditionalMatches(rawMatches[0], digitMatches))
+                {
+                    var matches = digitMatches
+                        .Select(item => new ProductLookupMatch(item.Sku, (item.Code ?? item.Ean ?? string.Empty).Trim()))
+                        .ToArray();
+
+                    return ProductLookupResult.Conflict(originalCode, normalizedCode, digits, matches);
+                }
+            }
+
             return ProductLookupResult.Success(originalCode, normalizedCode, null, ToDto(rawMatches[0]));
         }
 
-        var digits = ExtractDigits(normalizedCode);
         if (digits.Length > 0)
         {
-            var digitMatches = await _repository.FindByCodeDigitsAsync(digits, cancellationToken).ConfigureAwait(false);
+            digitMatches ??= await _repository.FindByCodeDigitsAsync(digits, cancellationToken).ConfigureAwait(false);
             if (digitMatches.Count == 1)
             {
                 return ProductLookupResult.Success(originalCode, normalizedCode, digits, ToDto(digitMatches[0]));
@@ -66,6 +81,24 @@ public sealed class ProductLookupService : IProductLookupService
 
     private static string ExtractDigits(string value)
         => DigitsOnlyRegex.Replace(value, string.Empty);
+
+    private static bool HasAdditionalMatches(ProductLookupItem primary, IReadOnlyList<ProductLookupItem> matches)
+    {
+        if (matches.Count <= 1)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < matches.Count; i++)
+        {
+            if (matches[i].Id != primary.Id)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static ProductDto ToDto(ProductLookupItem item)
         => new(item.Id, item.Sku, item.Name, item.Ean);
