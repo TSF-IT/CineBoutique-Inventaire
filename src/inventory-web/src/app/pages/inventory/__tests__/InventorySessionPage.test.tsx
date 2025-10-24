@@ -168,6 +168,49 @@ describe('InventorySessionPage - conflits', () => {
       }),
     ).toBeInTheDocument()
   })
+
+  it('masque les options de scan lors du troisième comptage', async () => {
+    renderSessionPage(CountType.Count3)
+
+    expect(await screen.findByText('Références en conflit')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Scanner \(douchette ou saisie\)/i)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-open-manual')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-scan-camera')).not.toBeInTheDocument()
+  })
+
+  it('préremplit les références en conflit avec une quantité à zéro', async () => {
+    getConflictZoneDetailMock.mockResolvedValue({
+      locationId: baseLocation.id,
+      locationCode: baseLocation.code,
+      locationLabel: baseLocation.label,
+      items: [
+        { productId: 'prod-1', ean: '0123456789012', qtyC1: 10, qtyC2: 8, delta: 2, sku: 'SKU-1' },
+        { productId: 'prod-2', ean: '0001112223334', qtyC1: 5, qtyC2: 6, delta: -1, sku: 'SKU-2' },
+      ],
+    })
+    fetchProductByEanMock.mockImplementation(async (ean) => ({
+      ean,
+      name: `Produit ${ean}`,
+      sku: `SKU-${ean}`,
+    }))
+
+    renderSessionPage(CountType.Count3)
+
+    await waitFor(() => expect(getConflictZoneDetailMock).toHaveBeenCalled())
+    expect(await screen.findByText('Produit 0123456789012')).toBeInTheDocument()
+    expect(await screen.findByText('Produit 0001112223334')).toBeInTheDocument()
+
+    const inputs = await screen.findAllByTestId('quantity-input')
+    expect(inputs).toHaveLength(2)
+    expect(inputs[0]).toHaveValue('0')
+    expect(inputs[1]).toHaveValue('0')
+
+    const completeButton = await screen.findByTestId('btn-complete-run')
+    expect(completeButton).toBeDisabled()
+
+    fireEvent.change(inputs[0], { target: { value: '5' } })
+    expect(completeButton).not.toBeDisabled()
+  })
 })
 
 describe('InventorySessionPage - navigation', () => {
