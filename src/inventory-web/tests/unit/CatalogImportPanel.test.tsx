@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../../src/app/api/inventoryApi', () => ({
@@ -86,5 +87,36 @@ describe('CatalogImportPanel', () => {
     expect(mergeRadio).toBeChecked()
 
     await screen.findByText('2 comptages terminés utilisent ce catalogue : le mode ajout est appliqué automatiquement.')
+  })
+
+  it('affiche un récapitulatif détaillé après un import réussi', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue({
+        status: 200,
+        text: async () =>
+          JSON.stringify({ total: 500, inserted: 46, updated: 454, errorCount: 0, unknownColumns: [] }),
+      } as unknown as Response)
+
+    try {
+      render(<CatalogImportPanel description="" />)
+
+      await waitFor(() => expect(mockedFetchInventorySummary).toHaveBeenCalled())
+
+      const fileInputs = screen.getAllByLabelText('Fichier CSV', { selector: 'input' })
+      const fileInput = fileInputs[fileInputs.length - 1] as HTMLInputElement
+      const file = new File(['sku;item;descr'], 'catalog.csv', { type: 'text/csv' })
+      await userEvent.upload(fileInput, file)
+
+      const submitButtons = screen.getAllByRole('button', { name: /remplacer le catalogue/i })
+      const submitButton = submitButtons[submitButtons.length - 1]
+      await userEvent.click(submitButton)
+
+      await screen.findByText('Import terminé avec succès.')
+      await screen.findByText('500 produits dans le fichier : 46 ajoutés, 454 déjà présents.')
+      await screen.findByText('Déjà présents')
+    } finally {
+      fetchSpy.mockRestore()
+    }
   })
 })

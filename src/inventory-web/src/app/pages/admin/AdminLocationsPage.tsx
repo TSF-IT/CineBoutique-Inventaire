@@ -86,7 +86,9 @@ const SectionSwitcher = ({ activeSection, onChange }: SectionSwitcherProps) => (
 )
 
 type ImportSummary = {
+  total: number
   inserted: number
+  updated: number
   errorCount: number
   unknownColumns: string[]
 }
@@ -143,6 +145,8 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
       .map((item) => (typeof item === 'string' ? item.trim() : ''))
       .filter((item): item is string => item.length > 0)
   }
+
+  const pluralSuffix = (value: number) => (value > 1 ? 's' : '')
 
   const parseJson = (text: string) => {
     try {
@@ -229,9 +233,13 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
 
       if (response.status === 200) {
         const insertedCount = toInteger(record.inserted)
-        const fallbackTotal = toInteger(record.total)
+        const updatedCount = toInteger(record.updated)
+        const totalCount = toInteger(record.total)
+        const derivedTotal = totalCount > 0 ? totalCount : insertedCount + updatedCount
         const summary: ImportSummary = {
-          inserted: insertedCount > 0 ? insertedCount : fallbackTotal,
+          total: derivedTotal,
+          inserted: insertedCount,
+          updated: updatedCount,
           errorCount: toInteger(record.errorCount),
           unknownColumns: toStringList(record.unknownColumns),
         }
@@ -418,10 +426,23 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
               <p className="font-medium">
                 Import terminé avec succès.
               </p>
+              <p className="text-sm text-slate-600">
+                {feedback.summary.total > 0
+                  ? `${feedback.summary.total} produit${pluralSuffix(feedback.summary.total)} dans le fichier : ${feedback.summary.inserted} ajouté${pluralSuffix(feedback.summary.inserted)}, ${feedback.summary.updated} déjà présent${pluralSuffix(feedback.summary.updated)}.`
+                  : 'Aucun produit détecté dans le fichier.'}
+              </p>
               <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                 <div>
-                  <dt className="font-medium text-slate-700">Produits importés</dt>
+                  <dt className="font-medium text-slate-700">Total du fichier</dt>
+                  <dd className="text-slate-600">{feedback.summary.total}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-slate-700">Produits ajoutés</dt>
                   <dd className="text-slate-600">{feedback.summary.inserted}</dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-slate-700">Déjà présents</dt>
+                  <dd className="text-slate-600">{feedback.summary.updated}</dd>
                 </div>
                 <div>
                   <dt className="font-medium text-slate-700">Erreurs détectées</dt>

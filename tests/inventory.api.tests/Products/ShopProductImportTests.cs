@@ -1,18 +1,24 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models;
+using CineBoutique.Inventory.Api.Services.Products;
 using CineBoutique.Inventory.Api.Tests.Fixtures;
 using CineBoutique.Inventory.Api.Tests.Helpers;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
+using CineBoutique.Inventory.Api.Infrastructure.Time;
+using CineBoutique.Inventory.Infrastructure.Database.Products;
 using FluentAssertions;
 using Npgsql;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests.Products;
@@ -491,6 +497,68 @@ public sealed class ShopProductImportTests : IntegrationTestBase
         finalSkus.Should().BeEquivalentTo(new[] { "A-GOBBIO16", "A-KF63030", "A-NEW-REPLACE" });
     }
 
+    [SkippableFact]
+    public async Task ProductImportService_BlocksReplacementWhenCountLinesExist()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
+
+        Guid locationId = Guid.Empty;
+        Guid operatorId = Guid.Empty;
+
+        var shopId = await ResetAndSeedWithShopAsync(async (seeder, defaultShopId) =>
+        {
+            locationId = await seeder.CreateLocationAsync(defaultShopId, "LOCK-ZONE", "Zone Verrouillée").ConfigureAwait(false);
+            operatorId = await seeder.CreateShopUserAsync(defaultShopId, "locker", "Opérateur verrou").ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var adminClient = CreateClient();
+        adminClient.DefaultRequestHeaders.Add("X-Admin", "true");
+
+        using (var initialContent = CreateCsvContent(InitialCsvLines))
+        {
+            var initialResponse = await PostImportAsync(adminClient, shopId, initialContent).ConfigureAwait(false);
+            await initialResponse.ShouldBeAsync(HttpStatusCode.OK).ConfigureAwait(false);
+        }
+
+        var operatorClient = CreateClient();
+        var startResponse = await operatorClient.PostAsJsonAsync(
+                operatorClient.CreateRelativeUri($"/api/inventories/{locationId}/start"),
+                new StartRunRequest(shopId, operatorId, 1))
+            .ConfigureAwait(false);
+        await startResponse.ShouldBeAsync(HttpStatusCode.OK).ConfigureAwait(false);
+
+        var startedRun = await startResponse.Content.ReadFromJsonAsync<StartInventoryRunResponse>().ConfigureAwait(false);
+        startedRun.Should().NotBeNull();
+
+        var completionPayload = new CompleteRunRequest(
+            startedRun!.RunId,
+            operatorId,
+            1,
+            new[] { new CompleteRunItemRequest("24719", 1m, false) });
+
+        var completeResponse = await operatorClient.PostAsJsonAsync(
+                operatorClient.CreateRelativeUri($"/api/inventories/{locationId}/complete"),
+                completionPayload)
+            .ConfigureAwait(false);
+        await completeResponse.ShouldBeAsync(HttpStatusCode.OK).ConfigureAwait(false);
+
+        await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
+        var logger = NullLogger<ProductImportService>.Instance;
+        var clock = new SystemClock();
+        var metrics = new NoopProductImportMetrics();
+        var groupRepository = new ProductGroupRepository(connection);
+        var service = new ProductImportService(connection, clock, logger, metrics, groupRepository);
+
+        var csvPayload = string.Join('\n', InitialCsvLines);
+        await using var csvStream = new MemoryStream(Encoding.UTF8.GetBytes(csvPayload));
+
+        var command = new ProductImportCommand(csvStream, false, "admin", shopId, ProductImportMode.ReplaceCatalogue);
+
+        var act = async () => await service.ImportAsync(command, CancellationToken.None).ConfigureAwait(false);
+
+        await act.Should().ThrowAsync<ProductCatalogueLockedException>().ConfigureAwait(false);
+    }
+
     private static StringContent CreateCsvContent(string[] lines)
     {
         var csv = string.Join('\n', lines);
@@ -501,5 +569,24 @@ public sealed class ShopProductImportTests : IntegrationTestBase
         };
 
         return content;
+    }
+
+    private sealed class NoopProductImportMetrics : IProductImportMetrics
+    {
+        public void IncrementStarted()
+        {
+        }
+
+        public void IncrementSucceeded(bool dryRun)
+        {
+        }
+
+        public void IncrementFailed()
+        {
+        }
+
+        public void ObserveDuration(TimeSpan duration, bool dryRun)
+        {
+        }
     }
 }

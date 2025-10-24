@@ -986,14 +986,22 @@ LIMIT 1;";
                 var user = EndpointUtilities.GetAuthenticatedUserName(request.HttpContext);
                 var importService = request.HttpContext.RequestServices.GetRequiredService<CineBoutique.Inventory.Api.Services.Products.IProductImportService>();
                 var cmd = new CineBoutique.Inventory.Api.Models.ProductImportCommand(csvStream, isDryRun, user, shopId, resolvedMode);
-                var result = await importService.ImportAsync(cmd, ct).ConfigureAwait(false);
 
-                return result.ResultType switch
+                try
                 {
-                    CineBoutique.Inventory.Api.Models.ProductImportResultType.ValidationFailed => Results.BadRequest(result.Response),
-                    CineBoutique.Inventory.Api.Models.ProductImportResultType.Skipped          => Results.StatusCode(StatusCodes.Status204NoContent),
-                    _                                                                          => Results.Ok(result.Response)
-                };
+                    var result = await importService.ImportAsync(cmd, ct).ConfigureAwait(false);
+
+                    return result.ResultType switch
+                    {
+                        CineBoutique.Inventory.Api.Models.ProductImportResultType.ValidationFailed => Results.BadRequest(result.Response),
+                        CineBoutique.Inventory.Api.Models.ProductImportResultType.Skipped          => Results.StatusCode(StatusCodes.Status204NoContent),
+                        _                                                                          => Results.Ok(result.Response)
+                    };
+                }
+                catch (ProductCatalogueLockedException)
+                {
+                    return Results.Json(new { reason = "counts_completed" }, statusCode: StatusCodes.Status409Conflict);
+                }
             }
         }).RequireAuthorization();
 

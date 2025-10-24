@@ -242,10 +242,32 @@ public sealed class ProductImportService : IProductImportService
 
                 if (!command.DryRun && command.Mode == ProductImportMode.ReplaceCatalogue)
                 {
+                    var hasCountingReferences = await CatalogueHasCountingReferencesAsync(shopId, transaction, cancellationToken)
+                        .ConfigureAwait(false);
+                    if (hasCountingReferences)
+                    {
+                        ApiLog.ImportStep(
+                            _logger,
+                            "Import produits: remplacement refusé — des comptages référencent encore ce catalogue.");
+                        throw new ProductCatalogueLockedException("Le catalogue ne peut pas être remplacé tant que des comptages référencent ses produits.");
+                    }
+
                     preloadedAttributes = await LoadExistingAttributesBySkuAsync(parseOutcome.Rows, shopId, transaction, cancellationToken)
                         .ConfigureAwait(false);
 
-                    await DeleteExistingProductsAsync(shopId, transaction, cancellationToken).ConfigureAwait(false);
+                    try
+                    {
+                        await DeleteExistingProductsAsync(shopId, transaction, cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+                    {
+                        ApiLog.ImportStep(
+                            _logger,
+                            "Import produits: suppression bloquée par des lignes de comptage existantes — bascule en mode ajout requise.");
+                        throw new ProductCatalogueLockedException(
+                            "Le catalogue ne peut pas être remplacé car des comptages existants référencent encore des produits.",
+                            ex);
+                    }
                 }
 
                 var upsertStats = await UpsertRowsAsync(parseOutcome.Rows, shopId, transaction, cancellationToken, preloadedAttributes)
@@ -487,6 +509,18 @@ public sealed class ProductImportService : IProductImportService
         await _connection.ExecuteAsync(
                 new CommandDefinition(sql, new { ShopId = shopId }, transaction: transaction, cancellationToken: cancellationToken))
             .ConfigureAwait(false);
+    }
+
+    private async Task<bool> CatalogueHasCountingReferencesAsync(Guid shopId, NpgsqlTransaction transaction, CancellationToken cancellationToken)
+    {
+        const string sql =
+            "SELECT 1 FROM \"CountLine\" cl JOIN \"Product\" p ON p.\"Id\" = cl.\"ProductId\" WHERE p.\"ShopId\" = @ShopId LIMIT 1;";
+
+        var hasReferences = await _connection.ExecuteScalarAsync<int?>(
+                new CommandDefinition(sql, new { ShopId = shopId }, transaction: transaction, cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        return hasReferences.HasValue;
     }
 
     private async Task<Dictionary<string, string>> LoadExistingAttributesBySkuAsync(
