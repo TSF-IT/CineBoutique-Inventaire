@@ -1,6 +1,11 @@
 import React from "react";
 import { FixedSizeList as VirtualList } from "react-window";
 
+import { modalOverlayClassName } from "@/app/components/Modal/modalOverlayClassName";
+
+const GRID_TEMPLATE_CLASS =
+  "grid grid-cols-[minmax(120px,1fr)_minmax(140px,1fr)_minmax(220px,1.6fr)_minmax(120px,1fr)] sm:grid-cols-[minmax(140px,1fr)_minmax(180px,1fr)_minmax(320px,2fr)_minmax(140px,1fr)]";
+
 const ROW_HEIGHT = 44;
 type Item = {
   id: string;
@@ -22,18 +27,32 @@ type Response = {
 
 type Props = { open: boolean; onClose: () => void; shopId: string };
 
+const columns = [
+  { key: "sku", label: "SKU" },
+  { key: "ean", label: "EAN" },
+  { key: "name", label: "Nom" },
+  { key: "digits", label: "Digits" },
+] as const;
+
+type ColumnKey = (typeof columns)[number]["key"];
+
+const VirtualizedRowGroup = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  function VirtualizedRowGroup(props, ref) {
+    return <div {...props} ref={ref} role="rowgroup" />;
+  }
+);
+
 export function ProductsModal({ open, onClose, shopId }: Props) {
   const [q, setQ] = React.useState("");
   const [page, setPage] = React.useState(1);
-  const [sortBy, setSortBy] = React.useState<"sku" | "ean" | "name" | "digits">(
-    "sku",
-  );
+  const [sortBy, setSortBy] = React.useState<ColumnKey>("sku");
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
   const [data, setData] = React.useState<Response | null>(null);
   const [loading, setLoading] = React.useState(false);
   const listRef = React.useRef<{
     scrollToItem?: (index: number) => void;
   } | null>(null);
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
@@ -78,35 +97,93 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
     listRef.current?.scrollToItem?.(0);
   }, [page, sortBy, sortDir, q, data?.items]);
 
+  React.useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+      }
+    };
+
+    requestAnimationFrame(() => {
+      containerRef.current?.focus?.();
+    });
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      previouslyFocused?.focus?.();
+    };
+  }, [open, onClose]);
+
+  const handleOverlayClick = React.useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (event.target === event.currentTarget) {
+        onClose();
+      }
+    },
+    [onClose]
+  );
+
+  const handleClearSearch = React.useCallback(() => {
+    setPage(1);
+    setQ("");
+  }, []);
+
   const header = React.useMemo(
     () => (
-      <thead className="sticky top-0 bg-white">
-        <tr className="text-left text-sm text-gray-600">
-          {(
-            [
-              ["sku", "SKU"],
-              ["ean", "EAN"],
-              ["name", "Nom"],
-              ["digits", "Digits"],
-            ] as const
-          ).map(([key, label]) => (
-            <th
+      <div role="row" className={`${GRID_TEMPLATE_CLASS} items-center gap-3 border-b border-slate-200/80 bg-white/95 px-4 py-3 text-[0.75rem] font-semibold uppercase tracking-wide text-slate-500 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-300`}>
+        {columns.map(({ key, label }) => {
+          const isActive = sortBy === key;
+          const ariaSort: React.AriaAttributes["aria-sort"] = isActive
+            ? sortDir === "asc"
+              ? "ascending"
+              : "descending"
+            : "none";
+
+          return (
+            <div
               key={key}
-              className="cursor-pointer p-2 font-medium text-gray-900"
+              role="columnheader"
+              aria-sort={ariaSort}
+              className="group flex cursor-pointer select-none items-center gap-2 text-left text-slate-600 transition hover:text-product-700 focus:outline-none focus-visible:text-product-700 dark:text-slate-200 dark:hover:text-product-200"
+              tabIndex={0}
               onClick={() => setSort(key)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setSort(key);
+                }
+              }}
             >
-              <span className="inline-flex items-center gap-1">
-                {label}
-                {sortBy === key ? (
-                  <span aria-hidden="true">
-                    {sortDir === "asc" ? "↑" : "↓"}
-                  </span>
-                ) : null}
+              <span>{label}</span>
+              <span className="sr-only">
+                {isActive
+                  ? sortDir === "asc"
+                    ? "Tri croissant"
+                    : "Tri décroissant"
+                  : "Activer le tri"}
               </span>
-            </th>
-          ))}
-        </tr>
-      </thead>
+              <span
+                aria-hidden="true"
+                className={`w-3 text-xs font-bold leading-none transition ${
+                  isActive
+                    ? "opacity-100 text-product-600 dark:text-product-300"
+                    : "opacity-0 text-slate-400"
+                }`}
+              >
+                {sortDir === "asc" ? "↑" : "↓"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
     ),
     [setSort, sortBy, sortDir]
   );
@@ -122,142 +199,225 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
   if (!open) return null;
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/40"
-      role="dialog"
-      aria-modal="true"
-    >
-      <div className="absolute inset-x-0 bottom-0 top-8 mx-auto max-w-4xl rounded-t-xl bg-white shadow-lg">
-        <div className="sticky top-0 flex items-center justify-between border-b bg-white p-3">
-          <input
-            placeholder="Rechercher (SKU / EAN / nom)"
-            className="w-full max-w-sm rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-            value={q}
-            onChange={(e) => {
-              setPage(1);
-              setQ(e.target.value);
-            }}
-          />
-          <button
-            onClick={onClose}
-            className="ml-3 rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-          >
-            Fermer
-          </button>
-        </div>
-
-        <div className="max-h-[70vh] overflow-x-hidden">
-          {loading && (!data || items.length === 0) ? (
-            <table className="min-w-full table-fixed border-collapse">
-              {header}
-              <tbody>
-                <tr>
-                  <td className="p-4 text-sm text-gray-500" colSpan={4}>
-                    Chargement…
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          ) : items.length === 0 ? (
-            <table className="min-w-full table-fixed border-collapse">
-              {header}
-              <tbody>
-                <tr>
-                  <td className="p-4 text-sm text-gray-500" colSpan={4}>
-                    Aucun résultat
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          ) : canVirtualize ? (
-            <VirtualList
-              ref={listRef as React.Ref<any>}
-              height={Math.min(440, Math.max(220, itemCount * ROW_HEIGHT))}
-              itemCount={itemCount}
-              itemSize={ROW_HEIGHT}
-              width="100%"
-              className="border-t"
-            >
-              {({
-                index,
-                style,
-              }: {
-                index: number;
-                style: React.CSSProperties;
-              }) => {
-                const product = items[index];
-                return (
-                  <div style={style} className="text-sm grid grid-cols-4">
-                    <div className="p-2">{product.sku}</div>
-                    <div className="p-2">{product.ean ?? ""}</div>
-                    <div className="p-2">{product.name}</div>
-                    <div className="p-2">{product.codeDigits ?? ""}</div>
-                  </div>
-                );
-              }}
-            </VirtualList>
-          ) : (
-            <table className="min-w-full table-fixed border-collapse">
-              {header}
-              <tbody>
-                {items.map((product, index) => (
-                  <tr
-                    key={itemKey(index, items)}
-                    className="border-t text-sm text-gray-700 hover:bg-gray-50"
+    <div className={modalOverlayClassName} role="presentation" onClick={handleOverlayClick}>
+      <div
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="products-modal-title"
+        className="relative flex w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-product-600 dark:bg-slate-900"
+        tabIndex={-1}
+      >
+        <header className="flex flex-col gap-4 border-b border-product-200 bg-product-50/80 px-5 py-5 dark:border-product-700/60 dark:bg-product-700/30 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex-1">
+            <p className="text-xs font-semibold uppercase tracking-wide text-product-700 dark:text-product-200">
+              Catalogue produits
+            </p>
+            <h2 id="products-modal-title" className="mt-1 text-xl font-semibold text-slate-900 dark:text-white">
+              Produits disponibles
+            </h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+              Recherchez une référence par SKU, EAN ou nom pour vérifier votre inventaire.
+            </p>
+            <div className="mt-4">
+              <label htmlFor="products-search" className="sr-only">
+                Rechercher un produit
+              </label>
+              <div className="relative flex items-center">
+                <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400 dark:text-slate-500" aria-hidden="true">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    className="h-5 w-5"
                   >
-                    <td className="p-2 truncate" title={product.sku}>
-                      {product.sku}
-                    </td>
-                    <td
-                      className="p-2 truncate"
-                      title={product.ean ?? undefined}
-                    >
-                      {product.ean ?? ""}
-                    </td>
-                    <td className="p-2 truncate" title={product.name}>
-                      {product.name}
-                    </td>
-                    <td
-                      className="p-2 truncate"
-                      title={product.codeDigits ?? undefined}
-                    >
-                      {product.codeDigits ?? ""}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+                    <path
+                      fillRule="evenodd"
+                      d="M9 3.5a5.5 5.5 0 1 0 3.356 9.9l3.622 3.621a.75.75 0 1 0 1.06-1.06l-3.62-3.623A5.5 5.5 0 0 0 9 3.5Zm-4 5.5a4 4 0 1 1 8 0 4 4 0 0 1-8 0Z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </span>
+                <input
+                  id="products-search"
+                  placeholder="Rechercher (SKU / EAN / nom)"
+                  className="w-full rounded-full border border-product-200 bg-white px-10 py-2.5 text-sm text-slate-900 shadow-inner placeholder:text-slate-400 focus:border-product-600 focus:outline-none focus:ring-2 focus:ring-product-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-400 dark:focus:border-product-600 dark:focus:ring-product-600/30"
+                  value={q}
+                  onChange={(e) => {
+                    setPage(1);
+                    setQ(e.target.value);
+                  }}
+                />
+                {q ? (
+                  <button
+                    type="button"
+                    onClick={handleClearSearch}
+                    className="absolute inset-y-0 right-2 inline-flex items-center justify-center rounded-full p-2 text-slate-400 transition hover:text-product-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-product-600 dark:text-slate-300 dark:hover:text-product-200"
+                  >
+                    <span className="sr-only">Effacer la recherche</span>
+                    <span aria-hidden="true">✕</span>
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex shrink-0 items-center justify-center rounded-full border border-product-200 p-3 text-product-700 transition hover:bg-product-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-product-600 focus-visible:ring-offset-2 dark:border-product-700 dark:text-product-200 dark:hover:bg-product-700/40"
+            aria-label="Fermer"
+          >
+            <span aria-hidden="true">✕</span>
+          </button>
+        </header>
 
-        <div className="flex items-center justify-between border-t p-3 text-sm text-gray-600">
-          <div>
-            {data ? (
-              <>
-                Page {data.page} / {data.totalPages} — {data.total} éléments
-              </>
-            ) : (
-              "—"
-            )}
+        <div className="flex flex-1 flex-col overflow-hidden bg-white dark:bg-slate-900">
+          <div className="flex-1 overflow-hidden px-5 py-5">
+            <div className="flex h-full flex-col gap-4">
+              <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white/95 shadow-elev-1 dark:border-slate-700 dark:bg-slate-900/40">
+                <div className="max-h-[60vh] overflow-y-auto">
+                  <div
+                    role="table"
+                    aria-label="Liste des produits"
+                    className="min-w-full text-sm text-slate-700 dark:text-slate-200"
+                  >
+                    <div role="rowgroup">{header}</div>
+                    <div role="rowgroup">
+                      {loading && (!data || items.length === 0) ? (
+                        <div
+                          role="row"
+                          className={`${GRID_TEMPLATE_CLASS} items-center gap-3 px-4 py-5 text-sm text-slate-500 dark:text-slate-300`}
+                        >
+                          <div role="cell" className="col-span-full text-center">
+                            Chargement…
+                          </div>
+                        </div>
+                      ) : items.length === 0 ? (
+                        <div
+                          role="row"
+                          className={`${GRID_TEMPLATE_CLASS} items-center gap-3 px-4 py-5 text-sm text-slate-500 dark:text-slate-300`}
+                        >
+                          <div role="cell" className="col-span-full text-center">
+                            Aucun résultat
+                          </div>
+                        </div>
+                      ) : canVirtualize ? (
+                        <VirtualList
+                          ref={listRef as React.Ref<any>}
+                          height={Math.min(440, Math.max(220, itemCount * ROW_HEIGHT))}
+                          itemCount={itemCount}
+                          itemSize={ROW_HEIGHT}
+                          width="100%"
+                          outerElementType={VirtualizedRowGroup as any}
+                        >
+                          {({
+                            index,
+                            style,
+                          }: {
+                            index: number;
+                            style: React.CSSProperties;
+                          }) => {
+                            const product = items[index];
+                            return (
+                              <div
+                                role="row"
+                                style={style}
+                                className={`${GRID_TEMPLATE_CLASS} items-center gap-3 border-b border-slate-200/70 bg-white/80 px-4 py-2.5 last:border-b-0 dark:border-slate-800 dark:bg-slate-900/50`}
+                              >
+                                <div role="cell" className="truncate font-medium text-slate-900 dark:text-white">
+                                  {product.sku}
+                                </div>
+                                <div role="cell" className="truncate">
+                                  {product.ean ?? ""}
+                                </div>
+                                <div role="cell" className="truncate">
+                                  {product.name}
+                                </div>
+                                <div role="cell" className="truncate">
+                                  {product.codeDigits ?? ""}
+                                </div>
+                              </div>
+                            );
+                          }}
+                        </VirtualList>
+                      ) : (
+                        items.map((product, index) => (
+                          <div
+                            role="row"
+                            key={itemKey(index, items)}
+                            className={`${GRID_TEMPLATE_CLASS} items-center gap-3 border-b border-slate-200/70 bg-white/80 px-4 py-2.5 text-sm transition hover:bg-product-50/60 focus-within:bg-product-50/60 dark:border-slate-800 dark:bg-slate-900/40 dark:hover:bg-product-700/30`}
+                          >
+                            <div
+                              role="cell"
+                              className="truncate font-medium text-slate-900 dark:text-white"
+                              title={product.sku}
+                            >
+                              {product.sku}
+                            </div>
+                            <div
+                              role="cell"
+                              className="truncate"
+                              title={product.ean ?? undefined}
+                            >
+                              {product.ean ?? ""}
+                            </div>
+                            <div
+                              role="cell"
+                              className="truncate"
+                              title={product.name}
+                            >
+                              {product.name}
+                            </div>
+                            <div
+                              role="cell"
+                              className="truncate"
+                              title={product.codeDigits ?? undefined}
+                            >
+                              {product.codeDigits ?? ""}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="flex gap-2">
-            <button
-              disabled={!data || data.page <= 1}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="rounded border border-gray-300 px-3 py-1 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Préc.
-            </button>
-            <button
-              disabled={
-                !data || data.totalPages === 0 || data.page >= data.totalPages
-              }
-              onClick={() => setPage((p) => p + 1)}
-              className="rounded border border-gray-300 px-3 py-1 text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Suiv.
-            </button>
-          </div>
+
+          <footer className="flex flex-col gap-3 border-t border-slate-200 bg-slate-50/80 px-5 py-4 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              {data ? (
+                <>
+                  Page {data.page} / {data.totalPages} — {data.total} éléments
+                </>
+              ) : (
+                "—"
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={!data || data.page <= 1}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className="inline-flex items-center gap-1 rounded-full border border-slate-300 px-4 py-1.5 font-medium text-slate-700 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-product-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                <span aria-hidden="true">←</span>
+                <span>Préc.</span>
+              </button>
+              <button
+                type="button"
+                disabled={
+                  !data || data.totalPages === 0 || data.page >= data.totalPages
+                }
+                onClick={() => setPage((p) => p + 1)}
+                className="inline-flex items-center gap-1 rounded-full border border-product-200 bg-product-600/10 px-4 py-1.5 font-medium text-product-700 transition hover:bg-product-600/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-product-600 disabled:cursor-not-allowed disabled:opacity-50 dark:border-product-700/60 dark:bg-product-700/30 dark:text-product-200 dark:hover:bg-product-700/40"
+              >
+                <span>Suiv.</span>
+                <span aria-hidden="true">→</span>
+              </button>
+            </div>
+          </footer>
         </div>
       </div>
     </div>
