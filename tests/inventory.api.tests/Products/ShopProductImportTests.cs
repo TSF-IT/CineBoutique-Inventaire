@@ -29,7 +29,7 @@ public sealed class ShopProductImportTests : IntegrationTestBase
     private static readonly string[] InitialCsvLines =
     {
         "barcode_rfid;item;descr",
-        "24719;A-KF63030;Prod X",
+        "0000000247190;A-KF63030;Prod X",
         "33906 56;A-GOBBIO16;Gob bio"
     };
 
@@ -449,7 +449,7 @@ public sealed class ShopProductImportTests : IntegrationTestBase
             startedRun!.RunId,
             operatorId,
             1,
-            new[] { new CompleteRunItemRequest("24719", 1m, false) });
+            new[] { new CompleteRunItemRequest("0000000247190", 1m, false) });
 
         var completeResponse = await operatorClient.PostAsJsonAsync(
                 operatorClient.CreateRelativeUri($"/api/inventories/{locationId}/complete"),
@@ -534,7 +534,7 @@ public sealed class ShopProductImportTests : IntegrationTestBase
             startedRun!.RunId,
             operatorId,
             1,
-            new[] { new CompleteRunItemRequest("24719", 1m, false) });
+            new[] { new CompleteRunItemRequest("0000000247190", 1m, false) });
 
         var completeResponse = await operatorClient.PostAsJsonAsync(
                 operatorClient.CreateRelativeUri($"/api/inventories/{locationId}/complete"),
