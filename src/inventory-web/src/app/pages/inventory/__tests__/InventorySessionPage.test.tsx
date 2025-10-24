@@ -246,12 +246,64 @@ describe('InventorySessionPage - conflits', () => {
   })
 })
 
+describe('InventorySessionPage - catalogue', () => {
+  beforeEach(() => {
+    fetchProductByEanMock.mockReset()
+    getConflictZoneDetailMock.mockReset()
+  })
+
+  it('permet d’ajouter un produit via le catalogue', async () => {
+    const catalogueProduct = {
+      id: 'cat-prod-900',
+      sku: 'SKU-900',
+      ean: '9000000000000',
+      name: 'Produit catalogue',
+      group: 'Films',
+      subGroup: 'Blu-ray',
+    }
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [catalogueProduct] }),
+    })
+    const originalFetch = global.fetch
+    global.fetch = fetchMock as unknown as typeof fetch
+
+    fetchProductByEanMock.mockResolvedValue({
+      ean: '9000000000000',
+      sku: 'SKU-900',
+      name: 'Produit catalogue',
+    })
+
+    const user = userEvent.setup()
+    renderSessionPage(CountType.Count1)
+
+    try {
+      const openButton = await screen.findByTestId('btn-open-catalogue')
+      await user.click(openButton)
+
+      const searchInput = await screen.findByPlaceholderText('Rechercher (SKU / EAN / nom)')
+      await user.type(searchInput, 'Catalogue')
+
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+
+      const option = await screen.findByTestId('products-modal-row-cat-prod-900')
+      await user.click(option)
+
+      await waitFor(() => expect(fetchProductByEanMock).toHaveBeenCalledWith('9000000000000'))
+      await waitFor(() => expect(screen.getByText('Produit catalogue')).toBeInTheDocument())
+      expect(screen.queryByText('Ajout manuel')).not.toBeInTheDocument()
+    } finally {
+      global.fetch = originalFetch
+    }
+  })
+})
+
 describe('InventorySessionPage - navigation', () => {
   it('redirige vers la page de scan caméra', async () => {
     const user = userEvent.setup()
     renderSessionPage(CountType.Count1)
 
-    const [button] = await screen.findAllByRole('button', { name: /scan caméra/i })
+    const button = await screen.findByTestId('btn-scan-camera')
     await user.click(button)
 
     await waitFor(() => {

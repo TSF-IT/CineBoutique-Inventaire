@@ -19,7 +19,6 @@ import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
 import { CountType, type ConflictZoneSummary, type Product } from '../../types/inventory'
 import { fetchProductByEan, startInventoryRun } from '../../api/inventoryApi'
 import type { HttpError } from '@/lib/api/http'
-import { ProductsListCompact } from '@/components/products/ProductsListCompact'
 import { useScanRejectionFeedback } from '@/hooks/useScanRejectionFeedback'
 
 const MAX_SCAN_LENGTH = 32
@@ -67,7 +66,6 @@ export const ScanCameraPage = () => {
   const [highlightEan, setHighlightEan] = useState<string | null>(null)
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
   const triggerScanRejectionFeedback = useScanRejectionFeedback()
-  const shopId = shop?.id?.trim() ?? ''
   const dragStateRef = useRef<{ startY: number; pointerId: number } | null>(null)
   const manualInputActiveRef = useRef(false)
   const focusedRowKeyRef = useRef<string | null>(null)
@@ -251,55 +249,6 @@ export const ScanCameraPage = () => {
           triggerScanRejectionFeedback()
         } else {
           setErrorMessage('Échec de la récupération du produit. Réessayez.')
-        }
-        setStatusMessage(null)
-      }
-    },
-    [addProductToSession, ensureScanPrerequisites, triggerScanRejectionFeedback],
-  )
-
-  const handlePickFromCatalogue = useCallback(
-    async ({ sku, name, ean }: { sku: string; name: string; ean?: string | null }) => {
-      const sanitizedEan = sanitizeScanValue(ean ?? '')
-      if (!sanitizedEan) {
-        setErrorMessage(`Impossible d’ajouter ${name} : code manquant.`)
-        setStatusMessage(null)
-        return
-      }
-      if (!isScanLengthValid(sanitizedEan)) {
-        setErrorMessage(`Code ${sanitizedEan} invalide : ${MAX_SCAN_LENGTH} caractères maximum.`)
-        setStatusMessage(null)
-        return
-      }
-      try {
-        ensureScanPrerequisites()
-      } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : 'Impossible d’ajouter ce produit.')
-        setStatusMessage(null)
-        return
-      }
-
-      setStatusMessage(`Ajout de ${name}…`)
-      setErrorMessage(null)
-      try {
-        const product = await fetchProductByEan(sanitizedEan)
-        const added = await addProductToSession({ ...product, sku: product.sku ?? sku })
-        if (!added) {
-          setStatusMessage(null)
-          return
-        }
-        setStatusMessage(`${product.name} ajouté`)
-        setHighlightEan(product.ean)
-        scrollToEndRef.current = true
-        pendingFocusEanRef.current = product.ean
-        setSheetState('full')
-      } catch (error) {
-        const err = error as HttpError
-        if (err?.status === 404) {
-          setErrorMessage(`Produit introuvable pour ${sanitizedEan}. Signalez ce code.`)
-          triggerScanRejectionFeedback()
-        } else {
-          setErrorMessage('Impossible d’ajouter ce produit. Réessayez.')
         }
         setStatusMessage(null)
       }
@@ -517,9 +466,13 @@ export const ScanCameraPage = () => {
             onClick={handleToggleSheet}
             aria-label="Changer la hauteur du panneau"
           />
-          <div className="flex items-center justify-between pb-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-2">
             <h2 className="text-base font-semibold">Articles scannés</h2>
-            <span className="text-xs text-slate-500">{items.length} références</span>
+            <div className="flex items-center gap-2">
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                {items.length} références
+              </span>
+            </div>
           </div>
         </div>
         <div className="relative flex-1 overflow-hidden">
@@ -562,11 +515,6 @@ export const ScanCameraPage = () => {
                 })}
               </ul>
             )}
-            {shopId && (
-              <div className="mt-6 border-t border-slate-200 pt-4 dark:border-slate-700">
-                <ProductsListCompact shopId={shopId} onPick={handlePickFromCatalogue} />
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -589,4 +537,3 @@ export const ScanCameraPage = () => {
 }
 
 export default ScanCameraPage
-
