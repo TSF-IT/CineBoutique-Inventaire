@@ -804,12 +804,12 @@ describe("Workflow d'inventaire", () => {
 
     fireEvent.change(input, { target: { value: 'rfid001' } })
 
-    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('RFID001'))
     await waitFor(() =>
       expect(
-        screen.getByText('Code RFID001 introuvable dans l’inventaire. Signalez-le pour création.'),
+        screen.getByText('Code rfid001 introuvable dans l’inventaire. Signalez-le pour création.'),
       ).toBeInTheDocument(),
     )
+    expect(fetchProductMock.mock.calls.some(([code]) => code === 'rfid001')).toBe(true)
     expect(document.body).toHaveClass('inventory-flash-active')
     expect(screen.queryByTestId('btn-open-manual')).not.toBeInTheDocument()
   })
@@ -837,14 +837,45 @@ describe("Workflow d'inventaire", () => {
 
     fireEvent.change(input, { target: { value: 'rfid001\n' } })
 
-    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('RFID001'))
     await waitFor(() =>
       expect(
-        screen.getByText('Code RFID001 introuvable dans l’inventaire. Signalez-le pour création.'),
+        screen.getByText('Code rfid001 introuvable dans l’inventaire. Signalez-le pour création.'),
       ).toBeInTheDocument(),
     )
+    expect(fetchProductMock.mock.calls.some(([code]) => code === 'rfid001')).toBe(true)
 
     expect(screen.queryAllByTestId('scanned-item')).toHaveLength(0)
+  })
+
+  it('recherche les saisies manuelles avec espaces et caractères spéciaux sans les modifier', async () => {
+    const notFoundError: HttpError = {
+      name: 'Error',
+      message: 'HTTP 404',
+      status: 404,
+      url: '/api/products/RF ID 001-★',
+    }
+
+    fetchProductMock.mockRejectedValueOnce(notFoundError)
+
+    renderInventoryRoutes('/inventory/session', {
+      initialize: (inventory) => {
+        inventory.setSelectedUser(shopUsers[0])
+        inventory.setCountType(CountType.Count1)
+        inventory.setLocation({ ...reserveLocation })
+        inventory.clearSession()
+      },
+    })
+
+    const [input] = await screen.findAllByLabelText('Scanner (douchette ou saisie)')
+
+    fireEvent.change(input, { target: { value: 'RF ID 001-★' } })
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Code RF ID 001-★ introuvable dans l’inventaire. Signalez-le pour création.'),
+      ).toBeInTheDocument(),
+    )
+    expect(fetchProductMock.mock.calls.some(([code]) => code === 'RF ID 001-★')).toBe(true)
   })
 
   it("restaure l'utilisateur sélectionné depuis la session", async () => {

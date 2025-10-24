@@ -67,7 +67,7 @@ const buildHttpMessage = (prefix: string, error: HttpError) => {
 
 const MAX_SCAN_LENGTH = 32
 
-const sanitizeEan = (value: string) => value.replace(/\s+/g, '').toUpperCase()
+const sanitizeScanValue = (value: string) => value.replace(/\r|\n/g, '')
 
 const normalizeIdentifier = (value: string | null | undefined) => {
   const trimmed = value?.trim()
@@ -572,7 +572,7 @@ export const InventorySessionPage = () => {
 
   const handleDetected = useCallback(
     async (rawValue: string) => {
-      const value = sanitizeEan(rawValue.trim())
+      const value = sanitizeScanValue(rawValue)
       if (!value) {
         return
       }
@@ -623,19 +623,19 @@ export const InventorySessionPage = () => {
     [addProductToSession, handleUnknownProduct, searchProductByEan, updateStatus],
   )
 
-  const trimmedScanValue = sanitizeEan(scanValue.trim())
+  const normalizedScanValue = sanitizeScanValue(scanValue)
   const scanInputError = useMemo(() => {
-    if (!trimmedScanValue) {
+    if (!normalizedScanValue) {
       return null
     }
-    if (trimmedScanValue.length > MAX_SCAN_LENGTH) {
-      return `Code trop long : ${MAX_SCAN_LENGTH} caractères maximum.`
+    if (normalizedScanValue.length > MAX_SCAN_LENGTH) {
+      return `Code ${normalizedScanValue} trop long : ${MAX_SCAN_LENGTH} caractères maximum.`
     }
     return null
-  }, [trimmedScanValue])
+  }, [normalizedScanValue])
 
   useEffect(() => {
-    if (!trimmedScanValue) {
+    if (!normalizedScanValue) {
       manualLookupIdRef.current += 1
       lastSearchedInputRef.current = null
       setInputLookupStatus('idle')
@@ -650,19 +650,19 @@ export const InventorySessionPage = () => {
       return
     }
 
-    if (lastSearchedInputRef.current === trimmedScanValue) {
+    if (lastSearchedInputRef.current === normalizedScanValue) {
       return
     }
 
-    lastSearchedInputRef.current = trimmedScanValue
+    lastSearchedInputRef.current = normalizedScanValue
     const currentLookupId = ++manualLookupIdRef.current
     setInputLookupStatus('loading')
-    updateStatus(`Recherche du code ${trimmedScanValue}`)
+    updateStatus(`Recherche du code ${normalizedScanValue}`)
     setErrorMessage(null)
 
     const timeoutId = window.setTimeout(() => {
       void (async () => {
-        const result = await searchProductByEan(trimmedScanValue)
+        const result = await searchProductByEan(normalizedScanValue)
 
         if (manualLookupIdRef.current !== currentLookupId) {
           return
@@ -682,7 +682,7 @@ export const InventorySessionPage = () => {
         }
 
         if (result.status === 'not-found') {
-          handleUnknownProduct(trimmedScanValue)
+          handleUnknownProduct(normalizedScanValue)
           return
         }
 
@@ -704,9 +704,9 @@ export const InventorySessionPage = () => {
   }, [
     addProductToSession,
     handleUnknownProduct,
+    normalizedScanValue,
     scanInputError,
     searchProductByEan,
-    trimmedScanValue,
     updateStatus,
   ])
 
@@ -714,28 +714,28 @@ export const InventorySessionPage = () => {
     (event: KeyboardEvent<HTMLInputElement>) => {
       if (event.key === 'Enter') {
         event.preventDefault()
-        const value = trimmedScanValue
+        const value = normalizedScanValue
         if (value) {
           setScanValue('')
           void handleDetected(value)
         }
       }
     },
-    [handleDetected, trimmedScanValue],
+    [handleDetected, normalizedScanValue],
   )
 
   const handleInputChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       const { value } = event.target
       if (value.includes('\n') || value.includes('\r')) {
-        const [code] = value.split(/\s+/)
+        const code = sanitizeScanValue(value)
         setScanValue('')
-        if (code.trim()) {
+        if (code) {
           void handleDetected(code)
         }
         return
       }
-      const sanitized = sanitizeEan(value)
+      const sanitized = sanitizeScanValue(value)
       setScanValue(sanitized)
       setErrorMessage(null)
     },

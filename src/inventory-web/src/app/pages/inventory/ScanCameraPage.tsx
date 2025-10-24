@@ -32,7 +32,7 @@ const SHEET_HEIGHTS: Record<SheetState, string> = {
   full: '90vh',
 }
 
-const sanitizeEan = (value: string) => value.replace(/\s+/g, '').toUpperCase()
+const sanitizeScanValue = (value: string) => value.replace(/\r|\n/g, '')
 
 const isScanLengthValid = (code: string) => code.length > 0 && code.length <= MAX_SCAN_LENGTH
 
@@ -212,7 +212,7 @@ export const ScanCameraPage = () => {
 
   const handleDetected = useCallback(
     async (rawValue: string) => {
-      const sanitized = sanitizeEan(rawValue.trim())
+      const sanitized = sanitizeScanValue(rawValue)
       if (!sanitized) {
         return
       }
@@ -258,7 +258,7 @@ export const ScanCameraPage = () => {
 
   const handlePickFromCatalogue = useCallback(
     async ({ sku, name, ean }: { sku: string; name: string; ean?: string | null }) => {
-      const sanitizedEan = sanitizeEan(ean ?? '')
+      const sanitizedEan = sanitizeScanValue(ean ?? '')
       if (!sanitizedEan) {
         setErrorMessage(`Impossible d’ajouter ${name} : code manquant.`)
         setStatusMessage(null)

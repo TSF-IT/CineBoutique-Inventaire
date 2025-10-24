@@ -298,7 +298,7 @@ describe('ScanCameraPage', () => {
     await waitFor(() => expect(typeof scannerCallbacks.onDetected).toBe('function'))
     await scannerCallbacks.onDetected?.(' rf id-123a ')
 
-    await waitFor(() => expect(fetchProductByEanMock).toHaveBeenCalledWith('RFID-123A'))
+    await waitFor(() => expect(fetchProductByEanMock).toHaveBeenCalledWith(' rf id-123a '))
     await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalled())
     await waitFor(() => expect(latestItems.some((item) => item.product.ean === 'RFID-123A')).toBe(true))
     expect(await screen.findByText('Badge RFID')).toBeInTheDocument()
