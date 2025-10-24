@@ -137,7 +137,10 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
 
   const header = React.useMemo(
     () => (
-      <div role="row" className={`${GRID_TEMPLATE_CLASS} items-center gap-3 border-b border-slate-200/80 bg-white/95 px-4 py-3 text-[0.75rem] font-semibold uppercase tracking-wide text-slate-500 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-300`}>
+      <div
+        role="row"
+        className={`${GRID_TEMPLATE_CLASS} sticky top-0 z-10 items-center gap-3 border-b border-slate-200/80 bg-white/95 px-4 py-3 text-[0.75rem] font-semibold uppercase tracking-wide text-slate-500 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-300`}
+      >
         {columns.map(({ key, label }) => {
           const isActive = sortBy === key;
           const ariaSort: React.AriaAttributes["aria-sort"] = isActive
