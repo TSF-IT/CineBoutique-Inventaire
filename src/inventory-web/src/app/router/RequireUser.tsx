@@ -45,14 +45,15 @@ export default function RequireUser(): ReactElement | null {
   const [state, setState] = useState<GuardState>({ status: "checking" });
   const resolvedUserIdRef = useRef<string | null>(null);
   const lastShopIdRef = useRef<string | null>(null);
+  const shopId = shop?.id?.trim() || null;
+  const selectedUserId = selectedUser?.id ?? null;
 
   useEffect(() => {
-    const currentShopId = shop?.id ?? null;
-    if (lastShopIdRef.current !== currentShopId) {
+    if (lastShopIdRef.current !== shopId) {
       resolvedUserIdRef.current = null;
-      lastShopIdRef.current = currentShopId;
+      lastShopIdRef.current = shopId;
     }
-  }, [shop?.id]);
+  }, [shopId]);
 
   const redirectTarget = useMemo(
     () => `${loc.pathname}${loc.search}${loc.hash}`,
@@ -65,12 +66,11 @@ export default function RequireUser(): ReactElement | null {
       return;
     }
 
-    if (!shop) {
+    if (!shopId) {
       setState({ status: "redirect", target: "select-shop" });
       return;
     }
 
-    const shopId = shop.id;
     const stored = loadSelectedUserForShop(shopId);
     const storedUserId = extractStoredUserId(stored);
 
@@ -85,7 +85,7 @@ export default function RequireUser(): ReactElement | null {
       return;
     }
 
-    if (selectedUser && selectedUser.id === storedUserId) {
+    if (selectedUserId && selectedUserId === storedUserId) {
       resolvedUserIdRef.current = storedUserId;
       setState({ status: "ready" });
       return;
@@ -143,7 +143,7 @@ export default function RequireUser(): ReactElement | null {
     return () => {
       cancelled = true;
     };
-  }, [isLoaded, selectedUser, selectedUser.id, setSelectedUser, shop, shop.id]);
+  }, [isLoaded, selectedUser, selectedUserId, setSelectedUser, shopId]);
 
   if (!isLoaded) {
     return null;
