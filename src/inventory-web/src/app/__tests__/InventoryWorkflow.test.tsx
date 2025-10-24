@@ -781,12 +781,12 @@ describe("Workflow d'inventaire", () => {
     await waitFor(() => expect((input as HTMLInputElement).value).toBe(''))
   })
 
-  it('affiche un feedback visuel clair lorsqu’un code est introuvable', async () => {
+  it('affiche un feedback visuel clair lorsqu’un code RFID alphanumérique est introuvable', async () => {
     const notFoundError: HttpError = {
       name: 'Error',
       message: 'HTTP 404',
       status: 404,
-      url: '/api/products/99999999',
+      url: '/api/products/RFID001',
     }
 
     fetchProductMock.mockRejectedValueOnce(notFoundError)
@@ -802,24 +802,24 @@ describe("Workflow d'inventaire", () => {
 
     const [input] = await screen.findAllByLabelText('Scanner (douchette ou saisie)')
 
-    fireEvent.change(input, { target: { value: '99999999' } })
+    fireEvent.change(input, { target: { value: 'rfid001' } })
 
-    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('99999999'))
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('RFID001'))
     await waitFor(() =>
       expect(
-        screen.getByText('Code 99999999 introuvable dans l’inventaire. Signalez-le pour création.'),
+        screen.getByText('Code RFID001 introuvable dans l’inventaire. Signalez-le pour création.'),
       ).toBeInTheDocument(),
     )
     expect(document.body).toHaveClass('inventory-flash-active')
     expect(screen.queryByTestId('btn-open-manual')).not.toBeInTheDocument()
   })
 
-  it("n'ajoute pas automatiquement les codes introuvables à la session", async () => {
+  it("n'ajoute pas automatiquement les codes RFID introuvables à la session", async () => {
     const notFoundError: HttpError = {
       name: 'Error',
       message: 'HTTP 404',
       status: 404,
-      url: '/api/products/99999999',
+      url: '/api/products/RFID001',
     }
 
     fetchProductMock.mockRejectedValueOnce(notFoundError)
@@ -835,12 +835,12 @@ describe("Workflow d'inventaire", () => {
 
     const [input] = await screen.findAllByLabelText('Scanner (douchette ou saisie)')
 
-    fireEvent.change(input, { target: { value: '99999999\n' } })
+    fireEvent.change(input, { target: { value: 'rfid001\n' } })
 
-    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('99999999'))
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('RFID001'))
     await waitFor(() =>
       expect(
-        screen.getByText('Code 99999999 introuvable dans l’inventaire. Signalez-le pour création.'),
+        screen.getByText('Code RFID001 introuvable dans l’inventaire. Signalez-le pour création.'),
       ).toBeInTheDocument(),
     )
 

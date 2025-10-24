@@ -471,8 +471,8 @@ const tryResolveAmbiguousProduct = async (
 
 export const fetchProductByEan = async (ean: string): Promise<Product> => {
   const trimmed = (ean ?? '').trim()
-  if (trimmed.length === 0 || !/^\d+$/.test(trimmed)) {
-    throw new Error("EAN invalide (valeur vide ou non numérique)")
+  if (trimmed.length === 0) {
+    throw new Error('Code vide ou invalide')
   }
 
   const normalizedCode = normalizeLookupCode(trimmed)
