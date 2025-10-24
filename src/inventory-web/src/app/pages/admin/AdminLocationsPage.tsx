@@ -7,7 +7,7 @@ import {
   updateShopUser,
   disableShopUser,
 } from '../../api/adminApi'
-import { fetchLocations } from '../../api/inventoryApi'
+import { fetchLocations, fetchInventorySummary } from '@/app/api/inventoryApi'
 import { fetchShopUsers } from '../../api/shopUsers'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
@@ -16,7 +16,7 @@ import { Card } from '../../components/Card'
 import { EmptyState } from '../../components/EmptyState'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { useAsync } from '../../hooks/useAsync'
-import type { Location } from '../../types/inventory'
+import type { InventorySummary, Location } from '../../types/inventory'
 import type { ShopUser } from '@/types/user'
 import { useShop } from '@/state/ShopContext'
 
@@ -101,7 +101,14 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
   const [file, setFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [feedback, setFeedback] = useState<CatalogImportFeedback | null>(null)
+  const [importMode, setImportMode] = useState<'replace' | 'merge'>('replace')
+  const [summary, setSummary] = useState<InventorySummary | null>(null)
+  const [summaryError, setSummaryError] = useState<string | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  const openRuns = summary?.openRuns ?? 0
+  const hasOpenRuns = openRuns > 0
 
   const handleFileChange = (nextFile: File | null) => {
     setFile(nextFile)
@@ -143,6 +150,52 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
     }
   }
 
+  useEffect(() => {
+    let cancelled = false
+
+    if (!shop?.id) {
+      setSummary(null)
+      setSummaryError(null)
+      setImportMode('replace')
+      return () => {
+        cancelled = true
+      }
+    }
+
+    const load = async () => {
+      setSummaryLoading(true)
+      setSummaryError(null)
+      try {
+        const data = await fetchInventorySummary()
+        if (!cancelled) {
+          setSummary(data)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('[admin] inventory summary fetch failed', error)
+          setSummary(null)
+          setSummaryError("Impossible de vérifier l'état des comptages en cours.")
+        }
+      } finally {
+        if (!cancelled) {
+          setSummaryLoading(false)
+        }
+      }
+    }
+
+    void load()
+
+    return () => {
+      cancelled = true
+    }
+  }, [shop?.id])
+
+  useEffect(() => {
+    if (hasOpenRuns && importMode !== 'merge') {
+      setImportMode('merge')
+    }
+  }, [hasOpenRuns, importMode])
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setFeedback(null)
@@ -162,7 +215,11 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
       const fd = new FormData()
       fd.set('file', file)
 
-      const url = `/api/shops/${shop.id}/products/import?dryRun=false`
+      const searchParams = new URLSearchParams({
+        dryRun: 'false',
+        mode: importMode,
+      })
+      const url = `/api/shops/${shop.id}/products/import?${searchParams.toString()}`
       const response = await fetch(url, { method: 'POST', body: fd })
       const rawText = await response.text()
       const payload = rawText ? parseJson(rawText) : null
@@ -189,6 +246,20 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
 
       if (response.status === 423) {
         setFeedback({ type: 'error', message: 'Un import est déjà en cours.' })
+        return
+      }
+
+      if (response.status === 409) {
+        const reason = typeof record.reason === 'string' ? record.reason : null
+        if (reason === 'open_counts') {
+          setFeedback({
+            type: 'error',
+            message:
+              'Des comptages sont en cours. Terminez-les pour remplacer le catalogue ou utilisez le mode ajout.',
+          })
+        } else {
+          setFeedback({ type: 'error', message: 'Import refusé : conflit détecté.' })
+        }
         return
       }
 
@@ -244,6 +315,52 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
         </div>
       </div>
       <form className="flex flex-col gap-4" onSubmit={handleSubmit} encType="multipart/form-data">
+        <fieldset className="space-y-3 rounded-lg border border-slate-200 p-4 text-sm dark:border-slate-700">
+          <legend className="text-sm font-semibold text-slate-900 dark:text-white">
+            Mode d'import
+          </legend>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-6">
+            <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+              <input
+                type="radio"
+                name="catalog-import-mode"
+                value="replace"
+                checked={importMode === 'replace'}
+                onChange={() => setImportMode('replace')}
+                disabled={submitting || hasOpenRuns}
+                className="h-4 w-4 border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-600"
+              />
+              Remplacer le catalogue
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+              <input
+                type="radio"
+                name="catalog-import-mode"
+                value="merge"
+                checked={importMode === 'merge'}
+                onChange={() => setImportMode('merge')}
+                disabled={submitting}
+                className="h-4 w-4 border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-600"
+              />
+              Ajouter les produits
+            </label>
+          </div>
+          {hasOpenRuns ? (
+            <p className="text-sm text-amber-600 dark:text-amber-400">
+              {openRuns === 1
+                ? 'Un comptage est en cours : le mode ajout est appliqué automatiquement.'
+                : `${openRuns} comptages sont en cours : le mode ajout est appliqué automatiquement.`}
+            </p>
+          ) : summaryLoading ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400">Vérification des comptages en cours…</p>
+          ) : summaryError ? (
+            <p className="text-sm text-red-600 dark:text-red-400">{summaryError}</p>
+          ) : (
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              Aucun comptage en cours&nbsp;: choisissez entre remplacement ou ajout des produits.
+            </p>
+          )}
+        </fieldset>
         <FileUploadField
           ref={fileInputRef}
           name="file"
@@ -257,10 +374,18 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
           <Button
             type="submit"
-            disabled={submitting || !file}
+            disabled={
+              submitting ||
+              !file ||
+              (hasOpenRuns && importMode === 'replace')
+            }
             className="w-full sm:w-auto"
           >
-            {submitting ? 'Import en cours…' : 'Importer le CSV'}
+            {submitting
+              ? 'Import en cours…'
+              : importMode === 'merge'
+                ? 'Ajouter les produits'
+                : 'Remplacer le catalogue'}
           </Button>
         </div>
       </form>
@@ -1012,6 +1137,8 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
     </Card>
   )
 }
+
+export { CatalogImportPanel }
 
 export const AdminLocationsPage = () => {
   const [activeSection, setActiveSection] = useState<AdminSection>('locations')

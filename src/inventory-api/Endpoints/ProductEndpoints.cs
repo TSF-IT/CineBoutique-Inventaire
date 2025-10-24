@@ -882,6 +882,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             System.Data.IDbConnection connection,
             CineBoutique.Inventory.Infrastructure.Locks.IImportLockService importLockService,
             string? dryRun,
+            string? mode,
             System.Threading.CancellationToken ct) =>
         {
             var lockHandle = await importLockService.TryAcquireForShopAsync(shopId, ct).ConfigureAwait(false);
@@ -895,6 +896,46 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                 // dryRun (bool)
                 bool isDryRun = false;
                 if (!string.IsNullOrWhiteSpace(dryRun) && bool.TryParse(dryRun, out var b)) isDryRun = b;
+
+                // mode (replace/merge)
+                var resolvedMode = CineBoutique.Inventory.Api.Models.ProductImportMode.ReplaceCatalogue;
+                if (!string.IsNullOrWhiteSpace(mode))
+                {
+                    var normalized = mode.Trim();
+                    if (normalized.Equals("merge", StringComparison.OrdinalIgnoreCase))
+                    {
+                        resolvedMode = CineBoutique.Inventory.Api.Models.ProductImportMode.Merge;
+                    }
+                    else if (!normalized.Equals("replace", StringComparison.OrdinalIgnoreCase) &&
+                             !normalized.Equals("replacecatalogue", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return Results.BadRequest(new { reason = "INVALID_MODE" });
+                    }
+                }
+
+                if (!isDryRun && resolvedMode == CineBoutique.Inventory.Api.Models.ProductImportMode.ReplaceCatalogue)
+                {
+                    var hasIsActiveColumn = await EndpointUtilities
+                        .ColumnExistsAsync(connection, "CountingRun", "IsActive", ct)
+                        .ConfigureAwait(false);
+
+                    var openRunsSql = $@"SELECT 1
+FROM ""CountingRun"" cr
+JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
+WHERE l.""ShopId"" = @ShopId
+  AND cr.""CompletedAtUtc"" IS NULL
+{(hasIsActiveColumn ? "  AND cr.\"IsActive\" = TRUE\n" : string.Empty)}LIMIT 1;";
+
+                    var hasOpenRuns = await connection
+                        .ExecuteScalarAsync<int?>(
+                            new Dapper.CommandDefinition(openRunsSql, new { ShopId = shopId }, cancellationToken: ct))
+                        .ConfigureAwait(false);
+
+                    if (hasOpenRuns.HasValue)
+                    {
+                        return Results.Json(new { reason = "open_counts" }, statusCode: StatusCodes.Status409Conflict);
+                    }
+                }
 
                 // 25 MiB
                 const long maxCsvSizeBytes = 25L * 1024L * 1024L;
@@ -927,7 +968,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
                 var user = EndpointUtilities.GetAuthenticatedUserName(request.HttpContext);
                 var importService = request.HttpContext.RequestServices.GetRequiredService<CineBoutique.Inventory.Api.Services.Products.IProductImportService>();
-                var cmd = new CineBoutique.Inventory.Api.Models.ProductImportCommand(csvStream, isDryRun, user, shopId, CineBoutique.Inventory.Api.Models.ProductImportMode.ReplaceCatalogue);
+                var cmd = new CineBoutique.Inventory.Api.Models.ProductImportCommand(csvStream, isDryRun, user, shopId, resolvedMode);
                 var result = await importService.ImportAsync(cmd, ct).ConfigureAwait(false);
 
                 return result.ResultType switch

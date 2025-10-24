@@ -47,11 +47,26 @@ public sealed class ShopProductImportTests : IntegrationTestBase
         return shopId;
     }
 
-    private static Task<HttpResponseMessage> PostImportAsync(HttpClient client, Guid shopId, HttpContent content, bool dryRun = false)
+    private static Task<HttpResponseMessage> PostImportAsync(
+        HttpClient client,
+        Guid shopId,
+        HttpContent content,
+        bool dryRun = false,
+        string? mode = null)
     {
-        var uri = dryRun
-            ? $"/api/shops/{shopId}/products/import?dryRun=true"
-            : $"/api/shops/{shopId}/products/import";
+        var query = new List<string>();
+        if (dryRun)
+        {
+            query.Add("dryRun=true");
+        }
+
+        if (!string.IsNullOrWhiteSpace(mode))
+        {
+            query.Add($"mode={Uri.EscapeDataString(mode)}");
+        }
+
+        var queryString = query.Count > 0 ? $"?{string.Join("&", query)}" : string.Empty;
+        var uri = $"/api/shops/{shopId}/products/import{queryString}";
         return client.PostAsync(uri, content);
     }
 
@@ -270,6 +285,125 @@ public sealed class ShopProductImportTests : IntegrationTestBase
         perShop.Should().Contain((primaryShopId, "PRIMARY-001"));
         perShop.Should().Contain((secondaryShopId, "SECOND-NEW"));
         perShop.Should().NotContain((secondaryShopId, "SECOND-001"));
+    }
+
+    [SkippableFact]
+    public async Task ShopImport_MergeMode_AppendsWithoutDeleting()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
+
+        var shopId = await ResetAndSeedWithShopAsync().ConfigureAwait(false);
+
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add("X-Admin", "true");
+
+        using (var initialContent = CreateCsvContent(InitialCsvLines))
+        {
+            var initialResponse = await PostImportAsync(client, shopId, initialContent).ConfigureAwait(false);
+            await initialResponse.ShouldBeAsync(HttpStatusCode.OK).ConfigureAwait(false);
+        }
+
+        var mergeLines = new[]
+        {
+            "barcode_rfid;item;descr",
+            "987654;A-APPEND1;Produit ajouté",
+        };
+
+        using var mergeContent = CreateCsvContent(mergeLines);
+        var mergeResponse = await PostImportAsync(client, shopId, mergeContent, dryRun: false, mode: "merge")
+            .ConfigureAwait(false);
+        await mergeResponse.ShouldBeAsync(HttpStatusCode.OK).ConfigureAwait(false);
+
+        var payload = await mergeResponse.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
+        payload.Should().NotBeNull();
+        payload!.Inserted.Should().Be(1);
+        payload.Updated.Should().Be(0);
+
+        await using var verifyConnection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
+        const string sql = "SELECT \"Sku\" FROM \"Product\" WHERE \"ShopId\" = @shopId ORDER BY \"Sku\";";
+        await using var command = new NpgsqlCommand(sql, verifyConnection)
+        {
+            Parameters = { new("shopId", shopId) }
+        };
+
+        await using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
+        var skus = new List<string>();
+        while (await reader.ReadAsync().ConfigureAwait(false))
+        {
+            skus.Add(reader.GetString(0));
+        }
+
+        skus.Should().BeEquivalentTo(new[] { "A-APPEND1", "A-GOBBIO16", "A-KF63030" });
+    }
+
+    [SkippableFact]
+    public async Task ShopImport_RejectsReplaceModeWhenOpenRuns()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
+
+        Guid locationId = Guid.Empty;
+        Guid operatorId = Guid.Empty;
+
+        var shopId = await ResetAndSeedWithShopAsync(async (seeder, defaultShopId) =>
+        {
+            locationId = await seeder.CreateLocationAsync(defaultShopId, "CSV-ZONE", "Zone Import").ConfigureAwait(false);
+            operatorId = await seeder.CreateShopUserAsync(defaultShopId, "importer", "Importeur").ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var adminClient = CreateClient();
+        adminClient.DefaultRequestHeaders.Add("X-Admin", "true");
+
+        using (var initialContent = CreateCsvContent(InitialCsvLines))
+        {
+            var initialResponse = await PostImportAsync(adminClient, shopId, initialContent).ConfigureAwait(false);
+            await initialResponse.ShouldBeAsync(HttpStatusCode.OK).ConfigureAwait(false);
+        }
+
+        var operatorClient = CreateClient();
+        var startResponse = await operatorClient.PostAsJsonAsync(
+                operatorClient.CreateRelativeUri($"/api/inventories/{locationId}/start"),
+                new StartRunRequest(shopId, operatorId, 1))
+            .ConfigureAwait(false);
+        await startResponse.ShouldBeAsync(HttpStatusCode.OK).ConfigureAwait(false);
+
+        var replaceLines = new[]
+        {
+            "barcode_rfid;item;descr",
+            "222222;A-NEW-REPLACE;Produit remplaçant",
+        };
+
+        using var replaceContent = CreateCsvContent(replaceLines);
+        var replaceResponse = await PostImportAsync(adminClient, shopId, replaceContent).ConfigureAwait(false);
+        await replaceResponse.ShouldBeAsync(HttpStatusCode.Conflict).ConfigureAwait(false);
+
+        var conflictPayload = await replaceResponse.Content.ReadFromJsonAsync<Dictionary<string, string>>()
+            .ConfigureAwait(false);
+        conflictPayload.Should().NotBeNull();
+        conflictPayload!.Should().ContainKey("reason");
+        conflictPayload["reason"].Should().Be("open_counts");
+
+        using var mergeContent = CreateCsvContent(replaceLines);
+        var mergeResponse = await PostImportAsync(adminClient, shopId, mergeContent, dryRun: false, mode: "merge")
+            .ConfigureAwait(false);
+        await mergeResponse.ShouldBeAsync(HttpStatusCode.OK).ConfigureAwait(false);
+
+        await using var verifyConnection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
+        const string verifySql = "SELECT \"Sku\" FROM \"Product\" WHERE \"ShopId\" = @shopId ORDER BY \"Sku\";";
+        await using var verifyCommand = new NpgsqlCommand(verifySql, verifyConnection)
+        {
+            Parameters = { new("shopId", shopId) }
+        };
+
+        var finalSkus = new List<string>();
+        await using (var finalReader = await verifyCommand.ExecuteReaderAsync().ConfigureAwait(false))
+        {
+            while (await finalReader.ReadAsync().ConfigureAwait(false))
+            {
+                finalSkus.Add(finalReader.GetString(0));
+            }
+        }
+
+        finalSkus.Should().BeEquivalentTo(new[] { "A-GOBBIO16", "A-KF63030", "A-NEW-REPLACE" });
     }
 
     private static StringContent CreateCsvContent(string[] lines)
