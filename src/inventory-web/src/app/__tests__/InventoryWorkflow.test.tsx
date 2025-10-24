@@ -773,8 +773,7 @@ describe("Workflow d'inventaire", () => {
       },
     })
 
-    const scannerInputs = await screen.findAllByLabelText('Scanner (douchette ou saisie)')
-    const input = scannerInputs[0] as HTMLInputElement
+    const input = (await screen.findByLabelText('Scanner (douchette ou saisie)')) as HTMLInputElement
     expect(input).toBeDefined()
     fireEvent.change(input, { target: { value: '12345678' } })
 
@@ -802,8 +801,7 @@ describe("Workflow d'inventaire", () => {
       },
     })
 
-    const scannerInputs = await screen.findAllByLabelText('Scanner (douchette ou saisie)')
-    const input = scannerInputs[0] as HTMLInputElement
+    const input = (await screen.findByLabelText('Scanner (douchette ou saisie)')) as HTMLInputElement
     expect(input).toBeDefined()
 
     fireEvent.change(input, { target: { value: 'rfid001' } })
@@ -839,8 +837,7 @@ describe("Workflow d'inventaire", () => {
       },
     })
 
-    const scannerInputs = await screen.findAllByLabelText('Scanner (douchette ou saisie)')
-    const input = scannerInputs[0] as HTMLInputElement
+    const input = (await screen.findByLabelText('Scanner (douchette ou saisie)')) as HTMLInputElement
     expect(input).toBeDefined()
 
     fireEvent.change(input, { target: { value: 'rfid001\n' } })
@@ -876,8 +873,7 @@ describe("Workflow d'inventaire", () => {
       },
     })
 
-    const scannerInputs = await screen.findAllByLabelText('Scanner (douchette ou saisie)')
-    const input = scannerInputs[0] as HTMLInputElement
+    const input = (await screen.findByLabelText('Scanner (douchette ou saisie)')) as HTMLInputElement
     expect(input).toBeDefined()
 
     fireEvent.change(input, { target: { value: 'RF ID 001-★' } })
