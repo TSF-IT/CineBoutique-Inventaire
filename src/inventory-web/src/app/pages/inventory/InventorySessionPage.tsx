@@ -8,6 +8,7 @@ import {
   getConflictZoneDetail,
   releaseInventoryRun,
   startInventoryRun,
+  type CompleteInventoryRunItem,
   type CompleteInventoryRunPayload,
 } from '../../api/inventoryApi'
 import { Button } from '../../components/ui/Button'
@@ -17,7 +18,7 @@ import { EmptyState } from '../../components/EmptyState'
 import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
 import { useInventory } from '../../contexts/InventoryContext'
 import type { HttpError } from '@/lib/api/http'
-import type { ConflictZoneSummary, Product } from '../../types/inventory'
+import type { ConflictZoneItem, ConflictZoneSummary, InventoryItem, Product } from '../../types/inventory'
 import { CountType } from '../../types/inventory'
 import { useShop } from '@/state/ShopContext'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
@@ -67,6 +68,62 @@ const MIN_EAN_LENGTH = 8
 const MAX_EAN_LENGTH = 13
 
 const sanitizeEan = (value: string) => value.replace(/\D+/g, '')
+
+const normalizeIdentifier = (value: string | null | undefined) => {
+  const trimmed = value?.trim()
+  return trimmed && trimmed.length > 0 ? trimmed : null
+}
+
+const dedupeConflictItems = (items: ConflictZoneItem[]): ConflictZoneItem[] => {
+  const seen = new Set<string>()
+  const result: ConflictZoneItem[] = []
+
+  items.forEach((item, index) => {
+    const ean = normalizeIdentifier(item.ean)
+    const productId = normalizeIdentifier(item.productId)
+    const sku = normalizeIdentifier(item.sku)
+
+    const key = ean ?? productId ?? sku ?? `index:${index}`
+    if (seen.has(key)) {
+      return
+    }
+
+    seen.add(key)
+    result.push(item)
+  })
+
+  return result
+}
+
+export const aggregateItemsForCompletion = (
+  items: InventoryItem[],
+): CompleteInventoryRunItem[] => {
+  const aggregated = new Map<string, CompleteInventoryRunItem>()
+
+  for (const item of items) {
+    const normalizedEan = normalizeIdentifier(item.product.ean)
+    const quantity = Number.isFinite(item.quantity) ? item.quantity : 0
+
+    if (!normalizedEan || quantity <= 0) {
+      continue
+    }
+
+    const existing = aggregated.get(normalizedEan)
+    if (existing) {
+      existing.quantity += quantity
+      existing.isManual = existing.isManual || Boolean(item.isManual)
+      continue
+    }
+
+    aggregated.set(normalizedEan, {
+      ean: normalizedEan,
+      quantity,
+      isManual: Boolean(item.isManual),
+    })
+  }
+
+  return Array.from(aggregated.values())
+}
 
 const isEanLengthValid = (ean: string) => ean.length >= MIN_EAN_LENGTH && ean.length <= MAX_EAN_LENGTH
 
@@ -279,7 +336,8 @@ export const InventorySessionPage = () => {
           return
         }
 
-        const conflictItems = Array.isArray(detail.items) ? detail.items : []
+        const rawConflictItems = Array.isArray(detail.items) ? detail.items : []
+        const conflictItems = dedupeConflictItems(rawConflictItems)
 
         if (conflictItems.length === 0) {
           initializeItems([])
@@ -746,13 +804,7 @@ export const InventorySessionPage = () => {
     setErrorMessage(null)
     updateStatus('Envoi du comptage…')
     try {
-      const payloadItems = items
-        .map((item) => ({
-          ean: item.product.ean,
-          quantity: item.quantity,
-          isManual: Boolean(item.isManual),
-        }))
-        .filter((entry) => entry.ean.trim().length > 0 && entry.quantity > 0)
+      const payloadItems = aggregateItemsForCompletion(items)
 
       if (payloadItems.length === 0) {
         throw new Error('Ajoutez au moins un article avec une quantité positive pour terminer le comptage.')
