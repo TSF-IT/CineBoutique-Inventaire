@@ -1790,7 +1790,7 @@ WHERE ""Id"" = @RunId;";
                 }
 
                 const string insertProductSql =
-                    "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"Ean\", \"CodeDigits\", \"CreatedAtUtc\") VALUES (@Id, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc);";
+                    "INSERT INTO \"Product\" (\"Id\", \"ShopId\", \"Sku\", \"Name\", \"Ean\", \"CodeDigits\", \"CreatedAtUtc\") VALUES (@Id, @ShopId, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc);";
 
                 const string insertLineSql =
                     "INSERT INTO \"CountLine\" (\"Id\", \"CountingRunId\", \"ProductId\", \"Quantity\", \"CountedAtUtc\") VALUES (@Id, @RunId, @ProductId, @Quantity, @CountedAtUtc);";
@@ -1810,6 +1810,7 @@ WHERE ""Id"" = @RunId;";
                                     new
                                     {
                                         Id = productId,
+                                        ShopId = location.ShopId,
                                         Sku = sku,
                                         Name = name,
                                         Ean = item.Ean,
