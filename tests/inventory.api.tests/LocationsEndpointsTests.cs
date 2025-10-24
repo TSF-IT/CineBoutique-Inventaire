@@ -133,6 +133,7 @@ public sealed class LocationsEndpointsTests : IntegrationTestBase
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>().ConfigureAwait(false);
         problem.Should().NotBeNull();
-        problem!.Detail.Should().Contain("existe déjà");
+        problem!.Title.Should().Be("Code déjà utilisé");
+        problem.Detail.Should().Be("Impossible de créer cette zone : le code « DUP » est déjà attribué dans cette boutique.");
     }
 }

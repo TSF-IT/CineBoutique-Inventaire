@@ -76,7 +76,7 @@ public sealed class ShopUserService : IShopUserService
         }
         catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
         {
-            throw new ShopUserConflictException($"Le login '{trimmedLogin}' est déjà utilisé dans cette boutique.");
+            throw new ShopUserConflictException($"Impossible de créer cet utilisateur : l'identifiant « {trimmedLogin} » est déjà attribué dans cette boutique.");
         }
         catch
         {
@@ -134,7 +134,7 @@ public sealed class ShopUserService : IShopUserService
         }
         catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
         {
-            throw new ShopUserConflictException($"Le login '{trimmedLogin}' est déjà utilisé dans cette boutique.");
+            throw new ShopUserConflictException($"Impossible de mettre à jour cet utilisateur : l'identifiant « {trimmedLogin} » est déjà attribué à un autre compte dans cette boutique.");
         }
         catch
         {
