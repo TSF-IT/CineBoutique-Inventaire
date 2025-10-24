@@ -579,14 +579,16 @@ export const HomePage = () => {
               className={clsx(
                 summaryCardBaseClasses,
                 hasConflicts
-                  ? 'border-amber-400 bg-amber-50/80 dark:border-amber-500/40 dark:bg-amber-500/10'
+                  ? 'border-rose-400 bg-rose-50/80 dark:border-rose-500/40 dark:bg-rose-500/10'
                   : 'border-amber-200 bg-amber-50/60 dark:border-amber-500/30 dark:bg-amber-500/5'
               )}
             >
               <p
                 className={clsx(
                   'text-sm uppercase',
-                  hasConflicts ? 'text-amber-800 dark:text-amber-200' : 'text-amber-700 dark:text-amber-200'
+                  hasConflicts
+                    ? 'text-rose-900 dark:text-rose-100'
+                    : 'text-amber-700 dark:text-amber-200'
                 )}
               >
                 Conflits
@@ -595,31 +597,64 @@ export const HomePage = () => {
                 className={clsx(
                   'mt-2 font-semibold',
                   hasConflicts
-                    ? 'text-4xl text-amber-800 dark:text-amber-100'
+                    ? 'text-4xl text-rose-900 dark:text-rose-100'
                     : 'text-lg text-amber-800 dark:text-amber-100'
                 )}
               >
                 {hasConflicts ? conflictCount : 'Aucun conflit'}
               </p>
               {canOpenConflicts && (
-                <p className="mt-1 text-xs text-amber-800/80 dark:text-amber-200/70">
+                <p
+                  className={clsx(
+                    'mt-1 text-xs',
+                    hasConflicts
+                      ? 'text-rose-900/80 dark:text-rose-200/70'
+                      : 'text-amber-800/80 dark:text-amber-200/70'
+                  )}
+                >
                   Touchez une zone pour voir le détail
                 </p>
               )}
               <div className="mt-4 flex flex-col gap-2">
                 {hasConflicts && conflictZones.length > 0 ? (
-                  <ul className="divide-y divide-amber-200/70 rounded-2xl border border-amber-200/70 bg-white/60 dark:divide-amber-500/40 dark:border-amber-500/30 dark:bg-amber-500/10">
+                  <ul
+                    className={clsx(
+                      'divide-y rounded-2xl border bg-white/60',
+                      hasConflicts
+                        ? 'divide-rose-200/70 border-rose-200/70 dark:divide-rose-500/40 dark:border-rose-500/30 dark:bg-rose-500/10'
+                        : 'divide-amber-200/70 border-amber-200/70 dark:divide-amber-500/40 dark:border-amber-500/30 dark:bg-amber-500/10'
+                    )}
+                  >
                     {conflictZones.map((zone) => (
                       <li key={zone.locationId}>
                         <button
                           type="button"
                           onClick={() => openConflictModal(zone)}
-                          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm transition hover:bg-amber-100/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 dark:hover:bg-amber-500/20"
+                          className={clsx(
+                            'flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2',
+                            hasConflicts
+                              ? 'hover:bg-rose-100/70 focus-visible:ring-rose-500 dark:hover:bg-rose-500/20'
+                              : 'hover:bg-amber-100/70 focus-visible:ring-amber-500 dark:hover:bg-amber-500/20'
+                          )}
                         >
-                          <span className="font-medium text-amber-900 dark:text-amber-100">
+                          <span
+                            className={clsx(
+                              'font-medium',
+                              hasConflicts
+                                ? 'text-rose-900 dark:text-rose-100'
+                                : 'text-amber-900 dark:text-amber-100'
+                            )}
+                          >
                             {zone.locationCode} · {zone.locationLabel}
                           </span>
-                          <span className="text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+                          <span
+                            className={clsx(
+                              'text-xs font-semibold uppercase tracking-wide',
+                              hasConflicts
+                                ? 'text-rose-900 dark:text-rose-100'
+                                : 'text-amber-800 dark:text-amber-200'
+                            )}
+                          >
                             {zone.conflictLines} réf.
                           </span>
                         </button>
@@ -627,7 +662,7 @@ export const HomePage = () => {
                     ))}
                   </ul>
                 ) : hasConflicts ? (
-                  <p className="rounded-2xl border border-amber-200 bg-white/60 px-4 py-3 text-xs text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+                  <p className="rounded-2xl border border-rose-200 bg-white/60 px-4 py-3 text-xs text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
                     Impossible d’afficher le détail des zones en conflit.
                   </p>
                 ) : null}
