@@ -299,7 +299,13 @@ LIMIT @top;";
 
             var sanitizedSku = sku.Trim();
             var sanitizedName = request.Name?.Trim();
-            var sanitizedEan = string.IsNullOrWhiteSpace(request.Ean) ? null : request.Ean.Trim();
+            var rawEan = request.Ean;
+            if (!ProductCodeValidator.TryNormalize(rawEan, out var sanitizedEan))
+            {
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, sanitizedSku, "EAN invalide", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                return Results.BadRequest(new { message = ProductCodeValidator.ValidationMessage });
+            }
+
             var sanitizedCodeDigits = CodeDigitsSanitizer.Build(sanitizedEan);
 
             if (string.IsNullOrWhiteSpace(sanitizedName))
@@ -312,12 +318,6 @@ LIMIT @top;";
             {
                 await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, sanitizedSku, "nom trop long", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le nom du produit ne peut pas dépasser 256 caractères." });
-            }
-
-            if (sanitizedEan is { Length: > 0 } && (sanitizedEan.Length is < 8 or > 13 || !sanitizedEan.All(char.IsDigit)))
-            {
-                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, sanitizedSku, "EAN invalide", "products.update.invalid", cancellationToken).ConfigureAwait(false);
-                return Results.BadRequest(new { message = "L'EAN doit contenir entre 8 et 13 chiffres." });
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -405,7 +405,13 @@ LIMIT @top;";
             }
 
             var sanitizedName = request.Name?.Trim();
-            var sanitizedEan = string.IsNullOrWhiteSpace(request.Ean) ? null : request.Ean.Trim();
+            var rawEan = request.Ean;
+            if (!ProductCodeValidator.TryNormalize(rawEan, out var sanitizedEan))
+            {
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "EAN invalide", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                return Results.BadRequest(new { message = ProductCodeValidator.ValidationMessage });
+            }
+
             var sanitizedCodeDigits = CodeDigitsSanitizer.Build(sanitizedEan);
 
             if (string.IsNullOrWhiteSpace(sanitizedName))
@@ -418,12 +424,6 @@ LIMIT @top;";
             {
                 await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "nom trop long", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le nom du produit ne peut pas dépasser 256 caractères." });
-            }
-
-            if (sanitizedEan is { Length: > 0 } && (sanitizedEan.Length is < 8 or > 13 || !sanitizedEan.All(char.IsDigit)))
-            {
-                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "EAN invalide", "products.update.invalid", cancellationToken).ConfigureAwait(false);
-                return Results.BadRequest(new { message = "L'EAN doit contenir entre 8 et 13 chiffres." });
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -505,7 +505,13 @@ LIMIT @top;";
 
             var sanitizedSku = request.Sku?.Trim();
             var sanitizedName = request.Name?.Trim();
-            var sanitizedEan = string.IsNullOrWhiteSpace(request.Ean) ? null : request.Ean.Trim();
+            var rawEan = request.Ean;
+            if (!ProductCodeValidator.TryNormalize(rawEan, out var sanitizedEan))
+            {
+                await LogProductCreationAttemptAsync(clock, auditLogger, httpContext, "avec un EAN invalide", "products.create.invalid", cancellationToken).ConfigureAwait(false);
+                return Results.BadRequest(new { message = ProductCodeValidator.ValidationMessage });
+            }
+
             var sanitizedCodeDigits = CodeDigitsSanitizer.Build(sanitizedEan);
 
             if (string.IsNullOrWhiteSpace(sanitizedSku))
@@ -530,12 +536,6 @@ LIMIT @top;";
             {
                 await LogProductCreationAttemptAsync(clock, auditLogger, httpContext, "avec un nom trop long", "products.create.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le nom du produit ne peut pas dépasser 256 caractères." });
-            }
-
-            if (sanitizedEan is { Length: > 0 } && (sanitizedEan.Length is < 8 or > 13 || !sanitizedEan.All(char.IsDigit)))
-            {
-                await LogProductCreationAttemptAsync(clock, auditLogger, httpContext, "avec un EAN invalide", "products.create.invalid", cancellationToken).ConfigureAwait(false);
-                return Results.BadRequest(new { message = "L'EAN doit contenir entre 8 et 13 chiffres." });
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);

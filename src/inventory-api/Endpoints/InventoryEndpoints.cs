@@ -11,6 +11,7 @@ using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Logging;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
+using CineBoutique.Inventory.Api.Services.Products;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
 using FluentValidation;
@@ -1428,26 +1429,26 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc{ownerValue}{oper
             for (var index = 0; index < rawItems.Length; index++)
             {
                 var item = rawItems[index];
-                var ean = item.Ean?.Trim();
-                if (string.IsNullOrWhiteSpace(ean))
+                if (string.IsNullOrWhiteSpace(item.Ean))
                 {
-                    additionalFailures.Add(new ValidationFailure($"items[{index}].ean", "Chaque ligne doit contenir un EAN."));
+                    additionalFailures.Add(new ValidationFailure($"items[{index}].ean", "Chaque ligne doit contenir un code EAN/RFID."));
                     continue;
                 }
 
-                if (ean.Length is < 8 or > 13 || !ean.All(char.IsDigit))
+                if (!ProductCodeValidator.TryNormalize(item.Ean, out var sanitizedEan))
                 {
-                    additionalFailures.Add(new ValidationFailure($"items[{index}].ean", $"L'EAN {ean} est invalide. Il doit contenir entre 8 et 13 chiffres."));
+                    var displayValue = item.Ean!.Trim();
+                    additionalFailures.Add(new ValidationFailure($"items[{index}].ean", $"Le code {displayValue} est invalide. {ProductCodeValidator.ValidationMessage}"));
                     continue;
                 }
 
                 if (item.Quantity < 0)
                 {
-                    additionalFailures.Add(new ValidationFailure($"items[{index}].quantity", $"La quantité pour l'EAN {ean} doit être positive ou nulle."));
+                    additionalFailures.Add(new ValidationFailure($"items[{index}].quantity", $"La quantité pour le code {sanitizedEan} doit être positive ou nulle."));
                     continue;
                 }
 
-                sanitizedItems.Add(new SanitizedCountLine(ean, item.Quantity, item.IsManual));
+                sanitizedItems.Add(new SanitizedCountLine(sanitizedEan!, item.Quantity, item.IsManual));
             }
 
             if (additionalFailures.Count > 0)

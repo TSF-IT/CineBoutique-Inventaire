@@ -779,18 +779,19 @@ RETURNING (xmax = 0) AS inserted;
 
     private string? NormalizeEan(string? ean)
     {
-        if (string.IsNullOrWhiteSpace(ean))
+        if (ProductCodeValidator.TryNormalize(ean, out var normalized))
         {
-            return null;
+            return normalized;
         }
 
-        var trimmed = ean.Trim();
-        if (trimmed.Length <= 13)
+        var trimmed = ean?.Trim();
+        if (!string.IsNullOrEmpty(trimmed))
         {
-            return trimmed;
+            _logger.LogDebug(
+                "Code importé invalide ({Value}), colonne EAN laissée vide.",
+                trimmed);
         }
 
-        _logger.LogDebug("Code importé trop long ({Length} > 13), colonne EAN laissée vide.", trimmed.Length);
         return null;
     }
 
