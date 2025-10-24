@@ -69,4 +69,22 @@ describe('CatalogImportPanel', () => {
     expect(mergeRadio).not.toBeDisabled()
     expect(mergeRadio).not.toBeChecked()
   })
+
+  it("impose le mode ajout lorsqu'un comptage terminé existe", async () => {
+    mockedFetchInventorySummary.mockResolvedValueOnce({ ...baseSummary, completedRuns: 2 })
+
+    render(<CatalogImportPanel description="" />)
+
+    await waitFor(() => expect(mockedFetchInventorySummary).toHaveBeenCalled())
+
+    const replaceRadios = await screen.findAllByLabelText('Remplacer le catalogue')
+    const replaceRadio = replaceRadios[replaceRadios.length - 1]
+    expect(replaceRadio).toBeDisabled()
+
+    const mergeRadios = await screen.findAllByLabelText('Ajouter les produits')
+    const mergeRadio = mergeRadios[mergeRadios.length - 1]
+    expect(mergeRadio).toBeChecked()
+
+    await screen.findByText('2 comptages terminés utilisent ce catalogue : le mode ajout est appliqué automatiquement.')
+  })
 })

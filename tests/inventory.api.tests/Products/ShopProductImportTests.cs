@@ -406,6 +406,91 @@ public sealed class ShopProductImportTests : IntegrationTestBase
         finalSkus.Should().BeEquivalentTo(new[] { "A-GOBBIO16", "A-KF63030", "A-NEW-REPLACE" });
     }
 
+    [SkippableFact]
+    public async Task ShopImport_RejectsReplaceModeWhenCompletedRuns()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
+
+        Guid locationId = Guid.Empty;
+        Guid operatorId = Guid.Empty;
+
+        var shopId = await ResetAndSeedWithShopAsync(async (seeder, defaultShopId) =>
+        {
+            locationId = await seeder.CreateLocationAsync(defaultShopId, "CSV-ZONE", "Zone Import").ConfigureAwait(false);
+            operatorId = await seeder.CreateShopUserAsync(defaultShopId, "importer", "Importeur").ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var adminClient = CreateClient();
+        adminClient.DefaultRequestHeaders.Add("X-Admin", "true");
+
+        using (var initialContent = CreateCsvContent(InitialCsvLines))
+        {
+            var initialResponse = await PostImportAsync(adminClient, shopId, initialContent).ConfigureAwait(false);
+            await initialResponse.ShouldBeAsync(HttpStatusCode.OK).ConfigureAwait(false);
+        }
+
+        var operatorClient = CreateClient();
+        var startResponse = await operatorClient.PostAsJsonAsync(
+                operatorClient.CreateRelativeUri($"/api/inventories/{locationId}/start"),
+                new StartRunRequest(shopId, operatorId, 1))
+            .ConfigureAwait(false);
+        await startResponse.ShouldBeAsync(HttpStatusCode.OK).ConfigureAwait(false);
+
+        var startedRun = await startResponse.Content.ReadFromJsonAsync<StartInventoryRunResponse>().ConfigureAwait(false);
+        startedRun.Should().NotBeNull();
+
+        var completionPayload = new CompleteRunRequest(
+            startedRun!.RunId,
+            operatorId,
+            1,
+            new[] { new CompleteRunItemRequest("24719", 1m, false) });
+
+        var completeResponse = await operatorClient.PostAsJsonAsync(
+                operatorClient.CreateRelativeUri($"/api/inventories/{locationId}/complete"),
+                completionPayload)
+            .ConfigureAwait(false);
+        await completeResponse.ShouldBeAsync(HttpStatusCode.OK).ConfigureAwait(false);
+
+        var replaceLines = new[]
+        {
+            "barcode_rfid;item;descr",
+            "222222;A-NEW-REPLACE;Produit remplaçant",
+        };
+
+        using var replaceContent = CreateCsvContent(replaceLines);
+        var replaceResponse = await PostImportAsync(adminClient, shopId, replaceContent).ConfigureAwait(false);
+        await replaceResponse.ShouldBeAsync(HttpStatusCode.Conflict).ConfigureAwait(false);
+
+        var conflictPayload = await replaceResponse.Content.ReadFromJsonAsync<Dictionary<string, string>>()
+            .ConfigureAwait(false);
+        conflictPayload.Should().NotBeNull();
+        conflictPayload!.Should().ContainKey("reason");
+        conflictPayload["reason"].Should().Be("counts_completed");
+
+        using var mergeContent = CreateCsvContent(replaceLines);
+        var mergeResponse = await PostImportAsync(adminClient, shopId, mergeContent, dryRun: false, mode: "merge")
+            .ConfigureAwait(false);
+        await mergeResponse.ShouldBeAsync(HttpStatusCode.OK).ConfigureAwait(false);
+
+        await using var verifyConnection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
+        const string verifySql = "SELECT \"Sku\" FROM \"Product\" WHERE \"ShopId\" = @shopId ORDER BY \"Sku\";";
+        await using var verifyCommand = new NpgsqlCommand(verifySql, verifyConnection)
+        {
+            Parameters = { new("shopId", shopId) }
+        };
+
+        var finalSkus = new List<string>();
+        await using (var finalReader = await verifyCommand.ExecuteReaderAsync().ConfigureAwait(false))
+        {
+            while (await finalReader.ReadAsync().ConfigureAwait(false))
+            {
+                finalSkus.Add(finalReader.GetString(0));
+            }
+        }
+
+        finalSkus.Should().BeEquivalentTo(new[] { "A-GOBBIO16", "A-KF63030", "A-NEW-REPLACE" });
+    }
+
     private static StringContent CreateCsvContent(string[] lines)
     {
         var csv = string.Join('\n', lines);

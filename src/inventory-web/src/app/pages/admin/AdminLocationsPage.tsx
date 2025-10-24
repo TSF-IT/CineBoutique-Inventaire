@@ -108,7 +108,9 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const openRuns = summary?.openRuns ?? 0
+  const completedRuns = summary?.completedRuns ?? summary?.completedRunDetails.length ?? 0
   const hasOpenRuns = openRuns > 0
+  const hasCompletedRuns = completedRuns > 0
 
   const handleFileChange = (nextFile: File | null) => {
     setFile(nextFile)
@@ -191,10 +193,10 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
   }, [shop?.id])
 
   useEffect(() => {
-    if (hasOpenRuns && importMode !== 'merge') {
+    if ((hasOpenRuns || hasCompletedRuns) && importMode !== 'merge') {
       setImportMode('merge')
     }
-  }, [hasOpenRuns, importMode])
+  }, [hasOpenRuns, hasCompletedRuns, importMode])
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -256,6 +258,12 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
             type: 'error',
             message:
               'Des comptages sont en cours. Terminez-les pour remplacer le catalogue ou utilisez le mode ajout.',
+          })
+        } else if (reason === 'counts_completed') {
+          setFeedback({
+            type: 'error',
+            message:
+              'Ce catalogue a servi à des comptages terminés. Vous pouvez ajouter des produits mais pas remplacer la liste.',
           })
         } else {
           setFeedback({ type: 'error', message: 'Import refusé : conflit détecté.' })
@@ -327,7 +335,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
                 value="replace"
                 checked={importMode === 'replace'}
                 onChange={() => setImportMode('replace')}
-                disabled={submitting || hasOpenRuns}
+                disabled={submitting || hasOpenRuns || hasCompletedRuns}
                 className="h-4 w-4 border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-600"
               />
               Remplacer le catalogue
@@ -345,19 +353,25 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
               Ajouter les produits
             </label>
           </div>
-          {hasOpenRuns ? (
+          {summaryLoading ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400">Vérification des comptages en cours…</p>
+          ) : summaryError ? (
+            <p className="text-sm text-red-600 dark:text-red-400">{summaryError}</p>
+          ) : hasOpenRuns ? (
             <p className="text-sm text-amber-600 dark:text-amber-400">
               {openRuns === 1
                 ? 'Un comptage est en cours : le mode ajout est appliqué automatiquement.'
                 : `${openRuns} comptages sont en cours : le mode ajout est appliqué automatiquement.`}
             </p>
-          ) : summaryLoading ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400">Vérification des comptages en cours…</p>
-          ) : summaryError ? (
-            <p className="text-sm text-red-600 dark:text-red-400">{summaryError}</p>
+          ) : hasCompletedRuns ? (
+            <p className="text-sm text-amber-600 dark:text-amber-400">
+              {completedRuns === 1
+                ? 'Un comptage terminé utilise ce catalogue : le mode ajout est appliqué automatiquement.'
+                : `${completedRuns} comptages terminés utilisent ce catalogue : le mode ajout est appliqué automatiquement.`}
+            </p>
           ) : (
             <p className="text-sm text-slate-600 dark:text-slate-300">
-              Aucun comptage en cours&nbsp;: choisissez entre remplacement ou ajout des produits.
+              Aucun comptage détecté&nbsp;: choisissez entre remplacement ou ajout des produits.
             </p>
           )}
         </fieldset>
@@ -377,7 +391,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
             disabled={
               submitting ||
               !file ||
-              (hasOpenRuns && importMode === 'replace')
+              ((hasOpenRuns || hasCompletedRuns) && importMode === 'replace')
             }
             className="w-full sm:w-auto"
           >

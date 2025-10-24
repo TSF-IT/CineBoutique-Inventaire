@@ -935,6 +935,23 @@ WHERE l.""ShopId"" = @ShopId
                     {
                         return Results.Json(new { reason = "open_counts" }, statusCode: StatusCodes.Status409Conflict);
                     }
+
+                    const string completedRunsSql = @"SELECT 1
+FROM ""CountingRun"" cr
+JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
+WHERE l.""ShopId"" = @ShopId
+  AND cr.""CompletedAtUtc"" IS NOT NULL
+LIMIT 1;";
+
+                    var hasCompletedRuns = await connection
+                        .ExecuteScalarAsync<int?>(
+                            new Dapper.CommandDefinition(completedRunsSql, new { ShopId = shopId }, cancellationToken: ct))
+                        .ConfigureAwait(false);
+
+                    if (hasCompletedRuns.HasValue)
+                    {
+                        return Results.Json(new { reason = "counts_completed" }, statusCode: StatusCodes.Status409Conflict);
+                    }
                 }
 
                 // 25 MiB
