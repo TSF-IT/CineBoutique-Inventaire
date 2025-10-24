@@ -89,6 +89,48 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task CompleteRun_WhenCatalogContainsDuplicatedEans_CompletesSuccessfully()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        Guid shopId = Guid.Empty;
+        Guid locationId = Guid.Empty;
+        Guid operatorId = Guid.Empty;
+        const string duplicatedEan = "5555555555555";
+
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.CreateShopAsync("Boutique Doublons").ConfigureAwait(false);
+            locationId = await seeder.CreateLocationAsync(shopId, "LOC-DUP", "Zone Doublons").ConfigureAwait(false);
+            operatorId = await seeder.CreateShopUserAsync(shopId, "dup-operator", "Opérateur Doublons").ConfigureAwait(false);
+            await seeder.CreateProductAsync(shopId, "SKU-DUP-1", "Produit Doublon A", duplicatedEan).ConfigureAwait(false);
+            await seeder.CreateProductAsync(shopId, "SKU-DUP-2", "Produit Doublon B", duplicatedEan).ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var client = CreateClient();
+
+        var startResponse = await client.PostAsJsonAsync(
+            client.CreateRelativeUri($"/api/inventories/{locationId}/start"),
+            new StartRunRequest(shopId, operatorId, 1)
+        ).ConfigureAwait(false);
+        await startResponse.ShouldBeAsync(HttpStatusCode.OK, "start run with duplicated EANs");
+
+        var started = await startResponse.Content.ReadFromJsonAsync<StartInventoryRunResponse>().ConfigureAwait(false);
+        started.Should().NotBeNull();
+
+        var completeResponse = await CompleteRunAsync(
+            client,
+            locationId,
+            started!.RunId,
+            operatorId,
+            1,
+            (duplicatedEan, 3m)
+        ).ConfigureAwait(false);
+
+        await completeResponse.ShouldBeAsync(HttpStatusCode.OK, "complete run should ignore duplicated catalog rows");
+    }
+
+    [SkippableFact]
     public async Task ReleaseRun_ReleasesLock_ThenAnotherStartIsAllowed()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");

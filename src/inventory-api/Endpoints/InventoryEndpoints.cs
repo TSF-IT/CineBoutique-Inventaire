@@ -1764,11 +1764,27 @@ WHERE ""Id"" = @RunId;";
                 var requestedEans = aggregatedItems.Select(item => item.Ean).Distinct(StringComparer.Ordinal).ToArray();
 
                 const string selectProductsSql = "SELECT \"Id\", \"Ean\", \"CodeDigits\" FROM \"Product\" WHERE \"Ean\" = ANY(@Eans::text[]);";
-                var existingProducts = (await connection
+                var productRows = (await connection
                         .QueryAsync<ProductLookupRow>(
                             new CommandDefinition(selectProductsSql, new { Eans = requestedEans }, transaction, cancellationToken: cancellationToken))
                         .ConfigureAwait(false))
-                    .ToDictionary(row => row.Ean, row => row.Id, StringComparer.Ordinal);
+                    .ToList();
+
+                var existingProducts = new Dictionary<string, Guid>(StringComparer.Ordinal);
+                foreach (var row in productRows)
+                {
+                    if (string.IsNullOrWhiteSpace(row.Ean))
+                    {
+                        continue;
+                    }
+
+                    if (existingProducts.ContainsKey(row.Ean))
+                    {
+                        continue;
+                    }
+
+                    existingProducts[row.Ean] = row.Id;
+                }
 
                 const string insertProductSql =
                     "INSERT INTO \"Product\" (\"Id\", \"Sku\", \"Name\", \"Ean\", \"CodeDigits\", \"CreatedAtUtc\") VALUES (@Id, @Sku, @Name, @Ean, @CodeDigits, @CreatedAtUtc);";
