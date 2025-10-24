@@ -8,6 +8,7 @@ using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Fixtures;
 using CineBoutique.Inventory.Api.Tests.Helpers;
 using FluentAssertions;
+using Npgsql;
 using Xunit;
 
 namespace CineBoutique.Inventory.Api.Tests;
@@ -38,6 +39,8 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
         started.OwnerUserId.Should().Be(seeded.PrimaryUserId);
         started.CountType.Should().Be(1);
 
+        await InsertCountLineAsync(started!.RunId, seeded.ProductEan, 1m).ConfigureAwait(false);
+
         var summaryResponse = await client.GetAsync(
             client.CreateRelativeUri($"/api/inventories/summary?shopId={seeded.ShopId}")
         ).ConfigureAwait(false);
@@ -48,6 +51,34 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
         summary!.OpenRuns.Should().BeGreaterOrEqualTo(1);
         summary.OpenRunDetails.Should().NotBeNull();
         summary.OpenRunDetails.Should().Contain(detail => detail.RunId == started.RunId && detail.LocationId == seeded.LocationId);
+    }
+
+    [SkippableFact]
+    public async Task StartRun_WithoutLines_DoesNotAppearInSummary()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
+        var client = CreateClient();
+
+        var startResponse = await client.PostAsJsonAsync(
+            client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
+            new StartRunRequest(seeded.ShopId, seeded.PrimaryUserId, 1)
+        ).ConfigureAwait(false);
+
+        await startResponse.ShouldBeAsync(HttpStatusCode.OK, "start run without lines");
+        var started = await startResponse.Content.ReadFromJsonAsync<StartInventoryRunResponse>().ConfigureAwait(false);
+        started.Should().NotBeNull();
+
+        var summaryResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/inventories/summary?shopId={seeded.ShopId}")
+        ).ConfigureAwait(false);
+
+        await summaryResponse.ShouldBeAsync(HttpStatusCode.OK, "get summary without lines");
+        var summary = await summaryResponse.Content.ReadFromJsonAsync<InventorySummaryDto>().ConfigureAwait(false);
+        summary.Should().NotBeNull();
+        summary!.OpenRuns.Should().Be(0);
+        summary.OpenRunDetails.Should().NotContain(detail => detail.RunId == started!.RunId);
     }
 
     [SkippableFact]
@@ -325,6 +356,40 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
         }).ConfigureAwait(false);
 
         return (shopId, locationId, primaryUserId, secondaryUserId, productSku, productEan);
+    }
+
+    private async Task InsertCountLineAsync(Guid runId, string ean, decimal quantity)
+    {
+        await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync().ConfigureAwait(false);
+
+        Guid productId;
+        await using (var lookup = new NpgsqlCommand("SELECT \"Id\" FROM \"Product\" WHERE \"Ean\" = @ean LIMIT 1;", connection, transaction))
+        {
+            lookup.Parameters.AddWithValue("ean", ean);
+            var result = await lookup.ExecuteScalarAsync().ConfigureAwait(false);
+            if (result is not Guid id)
+            {
+                throw new InvalidOperationException($"Produit introuvable pour l'EAN {ean}.");
+            }
+
+            productId = id;
+        }
+
+        await using (var insert = new NpgsqlCommand(
+                   "INSERT INTO \"CountLine\" (\"Id\", \"CountingRunId\", \"ProductId\", \"Quantity\", \"CountedAtUtc\") VALUES (@id, @runId, @productId, @quantity, @at);",
+                   connection,
+                   transaction))
+        {
+            insert.Parameters.AddWithValue("id", Guid.NewGuid());
+            insert.Parameters.AddWithValue("runId", runId);
+            insert.Parameters.AddWithValue("productId", productId);
+            insert.Parameters.AddWithValue("quantity", quantity);
+            insert.Parameters.AddWithValue("at", DateTimeOffset.UtcNow);
+            await insert.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync().ConfigureAwait(false);
     }
 
     private static Task<HttpResponseMessage> CompleteRunAsync(

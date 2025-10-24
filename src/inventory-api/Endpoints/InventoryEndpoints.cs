@@ -145,6 +145,7 @@ JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
 LEFT JOIN ""ShopUser"" su ON su.""Id"" = cr.""OwnerUserId"" AND su.""ShopId"" = l.""ShopId""
 WHERE l.""ShopId"" = @ShopId
   AND cr.""CompletedAtUtc"" IS NULL
+  AND EXISTS (SELECT 1 FROM ""CountLine"" cl WHERE cl.""CountingRunId"" = cr.""Id"")
 {(hasIsActiveColumn ? "  AND cr.\"IsActive\" = TRUE\n" : string.Empty)}ORDER BY cr.""StartedAtUtc"" DESC;";
 
             var openRunRows = (await connection
@@ -923,6 +924,7 @@ ORDER BY COALESCE(NULLIF(p."Sku", ''), p."Ean"), p."Ean", pr."RunId";
 {AppendJoinClause(locationOperatorSql.JoinClause)}
     WHERE cr.""CompletedAtUtc"" IS NULL
       AND (@CountType IS NULL OR cr.""CountType"" = @CountType){activeRunsFilterClause}
+      AND EXISTS (SELECT 1 FROM ""CountLine"" cl WHERE cl.""CountingRunId"" = cr.""Id"")
     ORDER BY {activeRunsOrderByColumns}
 )
 SELECT
@@ -977,6 +979,7 @@ FROM ""CountingRun"" cr
 {AppendJoinClause(openRunsOperatorSql.JoinClause)}
 WHERE cr.""CompletedAtUtc"" IS NULL
   AND cr.""LocationId"" = ANY(@LocationIds::uuid[])
+  AND EXISTS (SELECT 1 FROM ""CountLine"" cl WHERE cl.""CountingRunId"" = cr.""Id"")
 ORDER BY cr.""LocationId"", cr.""CountType"", cr.""StartedAtUtc"" DESC;";
 
         var completedRunsOperatorSql = BuildOperatorSqlFragments("cr", "owner", columnsState);
@@ -2266,6 +2269,7 @@ WHERE ""LocationId"" = @LocationId
       AND cr.""CountType""         = @CountType
       AND cr.""OwnerUserId""       = @OwnerUserId
       AND cr.""CompletedAtUtc"" IS NULL
+      AND EXISTS (SELECT 1 FROM ""CountLine"" cl WHERE cl.""CountingRunId"" = cr.""Id"")
     ORDER BY cr.""StartedAtUtc"" DESC
     LIMIT 1;";
 
@@ -2293,6 +2297,7 @@ WHERE ""LocationId"" = @LocationId
       AND cr.""CountType""         = @CountType
       AND COALESCE(cr.""OperatorDisplayName"", '') = @OperatorDisplayName
       AND cr.""CompletedAtUtc"" IS NULL
+      AND EXISTS (SELECT 1 FROM ""CountLine"" cl WHERE cl.""CountingRunId"" = cr.""Id"")
     ORDER BY cr.""StartedAtUtc"" DESC
     LIMIT 1;";
 
