@@ -252,6 +252,7 @@ export const ScanCameraPage = () => {
         }
         setStatusMessage(null)
       }
+    },
     [addProductToSession, ensureScanPrerequisites, triggerScanRejectionFeedback],
   )
 
