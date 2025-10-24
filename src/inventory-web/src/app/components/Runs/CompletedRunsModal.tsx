@@ -8,6 +8,12 @@ import { Button } from '../ui/Button'
 import { ErrorPanel } from '../ErrorPanel'
 import { LoadingIndicator } from '../LoadingIndicator'
 import { modalOverlayClassName } from '../Modal/modalOverlayClassName'
+import {
+  formatZoneTitle,
+  resolveZoneLabel,
+  toValidLocationCode,
+  toValidLocationLabel,
+} from './runLocation'
 
 interface CompletedRunsModalProps {
   open: boolean
@@ -97,9 +103,50 @@ const formatSku = (value: string | null | undefined) => {
   return trimmed && trimmed.length > 0 ? trimmed : '—'
 }
 
+const compareCompletedRunsByZone = (
+  a: CompletedRunSummary,
+  b: CompletedRunSummary,
+) => {
+  const zoneA = resolveZoneLabel(a)
+  const zoneB = resolveZoneLabel(b)
+  const zoneComparison = zoneA.localeCompare(zoneB, 'fr', {
+    sensitivity: 'base',
+    ignorePunctuation: true,
+  })
+  if (zoneComparison !== 0) {
+    return zoneComparison
+  }
+
+  const countTypeA = a.countType ?? Number.MAX_SAFE_INTEGER
+  const countTypeB = b.countType ?? Number.MAX_SAFE_INTEGER
+  const countTypeComparison = countTypeA - countTypeB
+  if (countTypeComparison !== 0) {
+    return countTypeComparison
+  }
+
+  const codeA = toValidLocationCode(a.locationCode) ?? ''
+  const codeB = toValidLocationCode(b.locationCode) ?? ''
+  const codeComparison = codeA.localeCompare(codeB, 'fr', {
+    sensitivity: 'base',
+    ignorePunctuation: true,
+  })
+  if (codeComparison !== 0) {
+    return codeComparison
+  }
+
+  const completedA = a.completedAtUtc ?? ''
+  const completedB = b.completedAtUtc ?? ''
+  const completionComparison = completedB.localeCompare(completedA)
+  if (completionComparison !== 0) {
+    return completionComparison
+  }
+
+  return a.runId.localeCompare(b.runId)
+}
+
 const formatZoneLabel = (detail: CompletedRunSummary | CompletedRunDetail) => {
-  const code = detail.locationCode?.trim()
-  const label = detail.locationLabel?.trim()
+  const code = toValidLocationCode(detail.locationCode)
+  const label = toValidLocationLabel(detail.locationLabel)
   if (code && label) {
     return `${code} · ${label}`
   }
@@ -417,7 +464,7 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
   }, [runDetail, selectedRun])
 
   const orderedCompletedRuns = useMemo(
-    () => [...completedRuns].sort((a, b) => (a.completedAtUtc > b.completedAtUtc ? -1 : 1)),
+    () => [...completedRuns].sort(compareCompletedRunsByZone),
     [completedRuns],
   )
 
@@ -460,6 +507,9 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
   const detailErrorDescription = useMemo(() => describeDetailError(detailError), [detailError])
   const hasDetailView = Boolean(selectedRun)
   const detailTitle = selectedRun ? buildRunTitle(selectedRun, runDetail) : ''
+  const detailZoneTitle = selectedRun ? formatZoneTitle(selectedRun) : ''
+  const detailZoneCode = selectedRun ? toValidLocationCode(selectedRun.locationCode) : null
+  const shouldDisplayZoneCode = Boolean(detailZoneCode && detailZoneCode !== detailZoneTitle)
   const itemsCount = runDetail ? runDetail.items.length : null
   const totalQuantity = useMemo(() => {
     if (!runDetail) {
@@ -511,9 +561,10 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
                     Détail du comptage
                   </p>
                   <h3 className="mt-1 text-lg font-semibold text-slate-900 dark:text-white">{detailTitle}</h3>
-                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                    {selectedRun.locationCode} · {selectedRun.locationLabel}
-                  </p>
+                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{detailZoneTitle}</p>
+                  {shouldDisplayZoneCode ? (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Code zone : {detailZoneCode}</p>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap justify-end gap-2">
                   <Button variant="secondary" onClick={handleBackToList}>
@@ -646,7 +697,7 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
                           )}
                         >
                           <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                            {run.locationCode} · {run.locationLabel}
+                            {formatZoneTitle(run)}
                           </p>
                           <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
                             {describeCountType(run.countType)} • Opérateur : {formatOwnerName(run.ownerDisplayName)} • Terminé le {formatDateTime(run.completedAtUtc)}

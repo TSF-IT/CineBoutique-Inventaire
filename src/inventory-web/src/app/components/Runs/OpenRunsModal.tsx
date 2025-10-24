@@ -1,5 +1,6 @@
 import type { MouseEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { formatZoneTitle, resolveZoneLabel, toValidLocationCode } from './runLocation'
 import type { OpenRunSummary } from '../../types/inventory'
 import { modalOverlayClassName } from '../Modal/modalOverlayClassName'
 
@@ -52,9 +53,48 @@ const formatOwnerName = (name: string | null | undefined) => {
   return trimmed && trimmed.length > 0 ? trimmed : '—'
 }
 
+const compareOpenRunsByZone = (a: OpenRunSummary, b: OpenRunSummary) => {
+  const zoneA = resolveZoneLabel(a)
+  const zoneB = resolveZoneLabel(b)
+  const zoneComparison = zoneA.localeCompare(zoneB, 'fr', {
+    sensitivity: 'base',
+    ignorePunctuation: true,
+  })
+  if (zoneComparison !== 0) {
+    return zoneComparison
+  }
+
+  const countTypeA = a.countType ?? Number.MAX_SAFE_INTEGER
+  const countTypeB = b.countType ?? Number.MAX_SAFE_INTEGER
+  const countTypeComparison = countTypeA - countTypeB
+  if (countTypeComparison !== 0) {
+    return countTypeComparison
+  }
+
+  const codeA = toValidLocationCode(a.locationCode) ?? ''
+  const codeB = toValidLocationCode(b.locationCode) ?? ''
+  const codeComparison = codeA.localeCompare(codeB, 'fr', {
+    sensitivity: 'base',
+    ignorePunctuation: true,
+  })
+  if (codeComparison !== 0) {
+    return codeComparison
+  }
+
+  const startedA = a.startedAtUtc ?? ''
+  const startedB = b.startedAtUtc ?? ''
+  const startedComparison = startedA.localeCompare(startedB)
+  if (startedComparison !== 0) {
+    return startedComparison
+  }
+
+  return a.runId.localeCompare(b.runId)
+}
+
 export const OpenRunsModal = ({ open, openRuns, onClose, ownedRunIds, onResumeRun }: OpenRunsModalProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const ownedRunsSet = useMemo(() => new Set(ownedRunIds ?? []), [ownedRunIds])
+  const orderedOpenRuns = useMemo(() => [...openRuns].sort(compareOpenRunsByZone), [openRuns])
 
   useEffect(() => {
     if (!open) {
@@ -178,12 +218,12 @@ export const OpenRunsModal = ({ open, openRuns, onClose, ownedRunIds, onResumeRu
             </h3>
             {hasOpenRuns ? (
               <ul className="divide-y divide-slate-200 rounded-2xl border border-slate-200 bg-white/80 dark:divide-slate-800 dark:border-slate-700 dark:bg-slate-900/40">
-                {openRuns.map((run) => (
+                {orderedOpenRuns.map((run) => (
                   <li key={run.runId} className="px-4 py-3">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div>
                         <p className="text-sm font-semibold text-slate-900 dark:text-white">
-                          {run.locationCode} · {run.locationLabel}
+                          {formatZoneTitle(run)}
                         </p>
                         <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
                           {describeCountType(run.countType)} • Opérateur : {formatOwnerName(run.ownerDisplayName)} • Démarré le {formatDateTime(run.startedAtUtc)}
