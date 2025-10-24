@@ -674,8 +674,8 @@ ORDER BY COALESCE(NULLIF(p."Sku", ''), p."Ean"), p."Ean", pr."RunId";
             catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
             {
                 return EndpointUtilities.Problem(
-                    "Zone en doublon",
-                    $"Une zone avec le code '{normalizedCode}' existe déjà pour cette boutique.",
+                    "Code déjà utilisé",
+                    $"Impossible de créer cette zone : le code « {normalizedCode} » est déjà attribué dans cette boutique.",
                     StatusCodes.Status409Conflict);
             }
 
@@ -818,8 +818,8 @@ ORDER BY COALESCE(NULLIF(p."Sku", ''), p."Ean"), p."Ean", pr."RunId";
             catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
             {
                 return EndpointUtilities.Problem(
-                    "Zone en doublon",
-                    "Ce code est déjà utilisé par une autre zone de la boutique.",
+                    "Code déjà utilisé",
+                    "Impossible de mettre à jour cette zone : ce code est déjà attribué à une autre zone de la boutique.",
                     StatusCodes.Status409Conflict);
             }
 

@@ -64,7 +64,7 @@ public sealed class ShopUsersController : ControllerBase
         }
         catch (ShopUserConflictException ex)
         {
-            return Conflict(BuildProblem(ex.Message));
+            return Conflict(BuildConflictProblem(ex.Message));
         }
     }
 
@@ -96,7 +96,7 @@ public sealed class ShopUsersController : ControllerBase
         }
         catch (ShopUserConflictException ex)
         {
-            return Conflict(BuildProblem(ex.Message));
+            return Conflict(BuildConflictProblem(ex.Message));
         }
     }
 
@@ -145,6 +145,13 @@ public sealed class ShopUsersController : ControllerBase
     {
         Status = statusCode,
         Title = "Requête invalide",
+        Detail = detail
+    };
+
+    private static ProblemDetails BuildConflictProblem(string detail) => new()
+    {
+        Status = StatusCodes.Status409Conflict,
+        Title = "Identifiant déjà utilisé",
         Detail = detail
     };
 }
