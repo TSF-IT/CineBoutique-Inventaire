@@ -813,7 +813,7 @@ describe("Workflow d'inventaire", () => {
         ),
       ).toBeInTheDocument(),
     )
-    expect(fetchProductMock.mock.calls.some(([code]) => code === 'rfid001')).toBe(true)
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('rfid001'))
     expect(document.body).toHaveClass('inventory-flash-active')
     expect(screen.queryByTestId('btn-open-manual')).not.toBeInTheDocument()
   })
@@ -849,7 +849,7 @@ describe("Workflow d'inventaire", () => {
         ),
       ).toBeInTheDocument(),
     )
-    expect(fetchProductMock.mock.calls.some(([code]) => code === 'rfid001')).toBe(true)
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('rfid001'))
 
     expect(screen.queryAllByTestId('scanned-item')).toHaveLength(0)
   })
@@ -885,7 +885,7 @@ describe("Workflow d'inventaire", () => {
         ),
       ).toBeInTheDocument(),
     )
-    expect(fetchProductMock.mock.calls.some(([code]) => code === 'RF ID 001-★')).toBe(true)
+    await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('RF ID 001-★'))
   })
 
   it("restaure l'utilisateur sélectionné depuis la session", async () => {
