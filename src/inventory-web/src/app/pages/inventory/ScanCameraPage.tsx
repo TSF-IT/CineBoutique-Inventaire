@@ -32,7 +32,7 @@ const SHEET_HEIGHTS: Record<SheetState, string> = {
   full: '90vh',
 }
 
-const sanitizeEan = (value: string) => value.replace(/\D+/g, '')
+const sanitizeEan = (value: string) => value.replace(/\s+/g, '').toUpperCase()
 
 const isScanLengthValid = (code: string) => code.length > 0 && code.length <= MAX_SCAN_LENGTH
 
@@ -217,7 +217,7 @@ export const ScanCameraPage = () => {
         return
       }
       if (!isScanLengthValid(sanitized)) {
-        setErrorMessage(`Code ${sanitized} invalide : ${MAX_SCAN_LENGTH} chiffres maximum.`)
+        setErrorMessage(`Code ${sanitized} invalide : ${MAX_SCAN_LENGTH} caractères maximum.`)
         setStatusMessage(null)
         return
       }
@@ -265,7 +265,7 @@ export const ScanCameraPage = () => {
         return
       }
       if (!isScanLengthValid(sanitizedEan)) {
-        setErrorMessage(`Code ${sanitizedEan} invalide : ${MAX_SCAN_LENGTH} chiffres maximum.`)
+        setErrorMessage(`Code ${sanitizedEan} invalide : ${MAX_SCAN_LENGTH} caractères maximum.`)
         setStatusMessage(null)
         return
       }

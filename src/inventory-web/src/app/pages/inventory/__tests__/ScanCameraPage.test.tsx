@@ -284,6 +284,26 @@ describe('ScanCameraPage', () => {
     expect(await screen.findByText('Produit détecté')).toBeInTheDocument()
   })
 
+  it('normalise les codes alphanumériques sans filtrer les lettres', async () => {
+    fetchProductByEanMock.mockResolvedValue({ ean: 'RFID-123A', name: 'Badge RFID' })
+    startInventoryRunMock.mockResolvedValue({ runId: 'run-2' })
+
+    let latestItems: InventoryItem[] = []
+    renderScanCameraPage({
+      onItemsChange: (items) => {
+        latestItems = items
+      },
+    })
+
+    await waitFor(() => expect(typeof scannerCallbacks.onDetected).toBe('function'))
+    await scannerCallbacks.onDetected?.(' rf id-123a ')
+
+    await waitFor(() => expect(fetchProductByEanMock).toHaveBeenCalledWith('RFID-123A'))
+    await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalled())
+    await waitFor(() => expect(latestItems.some((item) => item.product.ean === 'RFID-123A')).toBe(true))
+    expect(await screen.findByText('Badge RFID')).toBeInTheDocument()
+  })
+
   it("signale l'absence de résultat sans proposer d'ajout manuel", async () => {
     fetchProductByEanMock.mockRejectedValue({ status: 404 })
 

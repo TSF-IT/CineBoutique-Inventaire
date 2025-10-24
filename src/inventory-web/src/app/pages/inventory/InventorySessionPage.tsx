@@ -67,7 +67,7 @@ const buildHttpMessage = (prefix: string, error: HttpError) => {
 
 const MAX_SCAN_LENGTH = 32
 
-const sanitizeEan = (value: string) => value.replace(/\D+/g, '')
+const sanitizeEan = (value: string) => value.replace(/\s+/g, '').toUpperCase()
 
 const normalizeIdentifier = (value: string | null | undefined) => {
   const trimmed = value?.trim()
@@ -579,7 +579,7 @@ export const InventorySessionPage = () => {
 
       if (value.length > MAX_SCAN_LENGTH) {
         updateStatus(null)
-        setErrorMessage(`Code ${value} trop long : ${MAX_SCAN_LENGTH} chiffres maximum.`)
+        setErrorMessage(`Code ${value} trop long : ${MAX_SCAN_LENGTH} caractères maximum.`)
         setInputLookupStatus('error')
         return
       }
@@ -629,7 +629,7 @@ export const InventorySessionPage = () => {
       return null
     }
     if (trimmedScanValue.length > MAX_SCAN_LENGTH) {
-      return `Code trop long : ${MAX_SCAN_LENGTH} chiffres maximum.`
+      return `Code trop long : ${MAX_SCAN_LENGTH} caractères maximum.`
     }
     return null
   }, [trimmedScanValue])
@@ -1105,8 +1105,7 @@ export const InventorySessionPage = () => {
                 value={scanValue}
                 onChange={handleInputChange}
                 onKeyDown={handleInputKeyDown}
-                inputMode="numeric"
-                pattern="\d*"
+                inputMode="text"
                 maxLength={MAX_SCAN_LENGTH}
                 autoComplete="off"
                 aria-invalid={Boolean(scanInputError)}
@@ -1118,7 +1117,7 @@ export const InventorySessionPage = () => {
                 }`}
                 aria-live="polite"
               >
-                {scanInputError ?? 'Saisissez ou scannez un code EAN/RFID (chiffres uniquement).'}
+                {scanInputError ?? 'Saisissez ou scannez un code EAN/RFID.'}
               </p>
             </div>
           </>
