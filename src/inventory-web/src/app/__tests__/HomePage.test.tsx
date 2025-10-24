@@ -210,7 +210,8 @@ describe('HomePage', () => {
         expect(within(conflictsCard).getByText(/Touchez une zone pour voir le détail/i)).toBeInTheDocument()
       }
 
-      expect(screen.getByText('0 zones terminées sur 2 zones')).toBeInTheDocument()
+      expect(screen.getByText('2 comptages terminés sur 4')).toBeInTheDocument()
+      expect(screen.getByText('0 zones terminées sur 2')).toBeInTheDocument()
     })
 
     expect(screen.getByRole('button', { name: 'Débuter un comptage' })).toBeInTheDocument()
@@ -236,6 +237,7 @@ describe('HomePage', () => {
 
     expect(await screen.findByText('Aucun comptage en cours')).toBeInTheDocument()
     expect(await screen.findByText('Aucun conflit')).toBeInTheDocument()
+    expect(await screen.findByText('Aucun comptage terminé')).toBeInTheDocument()
     expect(await screen.findByText('Aucune zone terminée')).toBeInTheDocument()
     expect(await screen.findByText('Aucun comptage en cours pour cette boutique.')).toBeInTheDocument()
   })

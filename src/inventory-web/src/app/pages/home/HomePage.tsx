@@ -332,6 +332,22 @@ export const HomePage = () => {
     }, 0)
   }, [locations])
 
+  const completedCountsFromLocations = useMemo(() => {
+    if (locations.length === 0) {
+      return 0
+    }
+
+    return locations.reduce((total, location) => {
+      const statuses = location.countStatuses ?? []
+      const completedForLocation = ZONE_COMPLETION_TYPES.reduce((count, type) => {
+        const status = statuses.find((item) => Number(item.countType) === Number(type))
+        return count + (status?.status === 'completed' ? 1 : 0)
+      }, 0)
+
+      return total + completedForLocation
+    }, 0)
+  }, [locations])
+
   const completedZones = useMemo(() => {
     if (locations.length > 0) {
       return completedZonesFromLocations
@@ -341,15 +357,43 @@ export const HomePage = () => {
     return Math.max(summaryValue, 0)
   }, [completedZonesFromLocations, displaySummary, locations.length])
 
+  const completedCounts = useMemo(() => {
+    if (locations.length > 0) {
+      return completedCountsFromLocations
+    }
+
+    return completedRunDetails.reduce((total, run) => {
+      if (ZONE_COMPLETION_TYPES.includes(run.countType)) {
+        return total + 1
+      }
+      return total
+    }, 0)
+  }, [completedCountsFromLocations, completedRunDetails, locations.length])
+
   const totalExpected = useMemo(() => locations.length, [locations.length])
+  const totalExpectedCounts = useMemo(() => {
+    if (locations.length > 0) {
+      return locations.length * ZONE_COMPLETION_TYPES.length
+    }
+
+    if (locationSummaries.length > 0) {
+      return locationSummaries.length * ZONE_COMPLETION_TYPES.length
+    }
+
+    const summaryValue = typeof displaySummary?.completedRuns === 'number' ? displaySummary.completedRuns : 0
+    if (summaryValue > 0) {
+      return summaryValue
+    }
+
+    return completedCounts > 0 ? completedCounts : 0
+  }, [completedCounts, displaySummary, locationSummaries.length, locations.length])
   const hasOpenRuns = openRunsCount > 0
   const hasConflicts = conflictCount > 0
   const completedZonesLabel = useMemo(() => {
     const completedPlural =
       completedZones > 1 ? 'zones terminées' : completedZones === 1 ? 'zone terminée' : 'zones terminées'
     if (totalExpected > 0) {
-      const totalPlural = totalExpected === 1 ? 'zone' : 'zones'
-      return `${completedZones} ${completedPlural} sur ${totalExpected} ${totalPlural}`
+      return `${completedZones} ${completedPlural} sur ${totalExpected}`
     }
 
     if (completedZones <= 0) {
@@ -358,7 +402,21 @@ export const HomePage = () => {
 
     return `${completedZones} ${completedPlural}`
   }, [completedZones, totalExpected])
+  const completedCountsLabel = useMemo(() => {
+    const completedPlural =
+      completedCounts > 1 ? 'comptages terminés' : completedCounts === 1 ? 'comptage terminé' : 'comptages terminés'
+    if (totalExpectedCounts > 0) {
+      return `${completedCounts} ${completedPlural} sur ${totalExpectedCounts}`
+    }
+
+    if (completedCounts <= 0) {
+      return 'Aucun comptage terminé'
+    }
+
+    return `${completedCounts} ${completedPlural}`
+  }, [completedCounts, totalExpectedCounts])
   const hasCompletedZones = completedZones > 0
+  const hasCompletedCounts = completedCounts > 0
   const canOpenOpenRunsModal = openRunDetails.length > 0
   const canOpenCompletedRunsModal = completedRunDetails.length > 0
   const canOpenConflicts = hasConflicts && conflictZones.length > 0
@@ -588,16 +646,28 @@ export const HomePage = () => {
               )}
             >
               <p className="text-sm uppercase text-emerald-700 dark:text-emerald-200">Comptages terminés</p>
-              <p
-                className={clsx(
-                  'mt-2 font-semibold',
-                  hasCompletedZones
-                    ? 'text-4xl text-emerald-800 dark:text-emerald-100'
-                    : 'text-lg text-emerald-700 dark:text-emerald-200'
-                )}
-              >
-                {completedZonesLabel}
-              </p>
+              <div className="mt-2 flex flex-col gap-1">
+                <p
+                  className={clsx(
+                    'font-semibold',
+                    hasCompletedCounts
+                      ? 'text-4xl leading-tight text-emerald-800 dark:text-emerald-100'
+                      : 'text-lg text-emerald-700 dark:text-emerald-200'
+                  )}
+                >
+                  {completedCountsLabel}
+                </p>
+                <p
+                  className={clsx(
+                    'text-sm font-medium',
+                    hasCompletedZones
+                      ? 'text-emerald-800 dark:text-emerald-100'
+                      : 'text-emerald-700 dark:text-emerald-200'
+                  )}
+                >
+                  {completedZonesLabel}
+                </p>
+              </div>
               {canOpenCompletedRunsModal && (
                 <p className="mt-1 text-xs text-emerald-700/80 dark:text-emerald-200/80">Touchez pour voir le détail</p>
               )}
