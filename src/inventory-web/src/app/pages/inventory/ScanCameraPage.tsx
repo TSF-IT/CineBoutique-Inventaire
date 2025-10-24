@@ -19,9 +19,7 @@ import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
 import { CountType, type ConflictZoneSummary, type Product } from '../../types/inventory'
 import { fetchProductByEan, startInventoryRun } from '../../api/inventoryApi'
 import type { HttpError } from '@/lib/api/http'
-import { CatalogueSearchDialog } from '@/components/products/CatalogueSearchDialog'
 import { useScanRejectionFeedback } from '@/hooks/useScanRejectionFeedback'
-import type { ProductRow } from '@/hooks/useProductsSearch'
 
 const MAX_SCAN_LENGTH = 32
 
@@ -63,7 +61,6 @@ export const ScanCameraPage = () => {
     setSessionId,
   } = useInventory()
   const [sheetState, setSheetState] = useState<SheetState>('closed')
-  const [catalogueOpen, setCatalogueOpen] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [highlightEan, setHighlightEan] = useState<string | null>(null)
@@ -254,57 +251,6 @@ export const ScanCameraPage = () => {
           setErrorMessage('Échec de la récupération du produit. Réessayez.')
         }
         setStatusMessage(null)
-      }
-    },
-    [addProductToSession, ensureScanPrerequisites, triggerScanRejectionFeedback],
-  )
-
-  const handlePickFromCatalogue = useCallback(
-    async (row: ProductRow) => {
-      const sanitizedEan = sanitizeScanValue(row.ean ?? '')
-      if (!sanitizedEan) {
-        setErrorMessage(`Impossible d’ajouter ${row.name} : code manquant.`)
-        setStatusMessage(null)
-        return false
-      }
-      if (!isScanLengthValid(sanitizedEan)) {
-        setErrorMessage(`Code ${sanitizedEan} invalide : ${MAX_SCAN_LENGTH} caractères maximum.`)
-        setStatusMessage(null)
-        return false
-      }
-      try {
-        ensureScanPrerequisites()
-      } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : 'Impossible d’ajouter ce produit.')
-        setStatusMessage(null)
-        return false
-      }
-
-      setStatusMessage(`Ajout de ${row.name}…`)
-      setErrorMessage(null)
-      try {
-        const product = await fetchProductByEan(sanitizedEan)
-        const added = await addProductToSession({ ...product, sku: product.sku ?? row.sku })
-        if (!added) {
-          setStatusMessage(null)
-          return false
-        }
-        setStatusMessage(`${product.name} ajouté`)
-        setHighlightEan(product.ean)
-        scrollToEndRef.current = true
-        pendingFocusEanRef.current = product.ean
-        setSheetState('full')
-        return true
-      } catch (error) {
-        const err = error as HttpError
-        if (err?.status === 404) {
-          setErrorMessage(`Produit introuvable pour ${sanitizedEan}. Signalez ce code.`)
-          triggerScanRejectionFeedback()
-        } else {
-          setErrorMessage('Impossible d’ajouter ce produit. Réessayez.')
-        }
-        setStatusMessage(null)
-        return false
       }
     },
     [addProductToSession, ensureScanPrerequisites, triggerScanRejectionFeedback],
@@ -526,17 +472,6 @@ export const ScanCameraPage = () => {
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                 {items.length} références
               </span>
-              <Button
-                type="button"
-                variant="ghost"
-                className="rounded-full border border-transparent px-3 py-1.5 text-sm font-semibold text-brand-600 transition hover:border-brand-200 hover:bg-brand-50 dark:text-brand-300 dark:hover:border-brand-500/60 dark:hover:bg-slate-800"
-                onClick={() => {
-                  setSheetState('full')
-                  setCatalogueOpen(true)
-                }}
-              >
-                Catalogue
-              </Button>
             </div>
           </div>
         </div>
@@ -597,11 +532,6 @@ export const ScanCameraPage = () => {
           onClose={() => setConflictModalOpen(false)}
         />
       )}
-      <CatalogueSearchDialog
-        open={catalogueOpen}
-        onClose={() => setCatalogueOpen(false)}
-        onPick={handlePickFromCatalogue}
-      />
     </div>
   )
 }

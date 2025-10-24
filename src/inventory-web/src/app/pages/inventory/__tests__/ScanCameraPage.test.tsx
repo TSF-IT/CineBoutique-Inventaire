@@ -233,47 +233,6 @@ describe('ScanCameraPage', () => {
     await waitFor(() => expect(latestItems[0]?.quantity).toBe(12))
   })
 
-  it('ajoute un produit via le catalogue de recherche', async () => {
-    const catalogueProduct = {
-      sku: 'SKU-900',
-      ean: '9000000000000',
-      name: 'Produit catalogue',
-      group: 'Films',
-      subGroup: 'Blu-ray',
-    }
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ items: [catalogueProduct] }),
-    })
-    const originalFetch = global.fetch
-    global.fetch = fetchMock as unknown as typeof fetch
-
-    fetchProductByEanMock.mockResolvedValue({
-      ean: '9000000000000',
-      sku: 'SKU-900',
-      name: 'Produit catalogue',
-    })
-
-    const user = userEvent.setup()
-    renderScanCameraPage()
-
-    try {
-      await user.click(await screen.findByRole('button', { name: 'Catalogue' }))
-      const searchInput = await screen.findByPlaceholderText('Saisir un produit (contains)…')
-      await user.type(searchInput, 'Catalogue')
-
-      await waitFor(() => expect(fetchMock).toHaveBeenCalled())
-
-      const option = await screen.findByRole('option', { name: /Produit catalogue/ })
-      await user.click(option)
-
-      await waitFor(() => expect(fetchProductByEanMock).toHaveBeenCalledWith('9000000000000'))
-      await waitFor(() => expect(screen.getByText('Produit catalogue')).toBeInTheDocument())
-    } finally {
-      global.fetch = originalFetch
-    }
-  })
-
   it('change d’état via un geste de balayage', async () => {
     renderScanCameraPage({
       items: [

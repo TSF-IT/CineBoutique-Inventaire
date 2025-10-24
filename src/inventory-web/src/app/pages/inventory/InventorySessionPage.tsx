@@ -23,6 +23,8 @@ import { CountType } from '../../types/inventory'
 import { useShop } from '@/state/ShopContext'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { useScanRejectionFeedback } from '@/hooks/useScanRejectionFeedback'
+import { CatalogueSearchDialog } from '@/components/products/CatalogueSearchDialog'
+import type { ProductRow } from '@/hooks/useProductsSearch'
 
 const DEV_API_UNREACHABLE_HINT =
   "Impossible de joindre l’API : vérifie que le backend tourne (curl http://localhost:8080/healthz) ou que le proxy Vite est actif."
@@ -252,6 +254,7 @@ export const InventorySessionPage = () => {
   const [conflictPrefillError, setConflictPrefillError] = useState<string | null>(null)
   const [conflictPrefillAttempt, setConflictPrefillAttempt] = useState(0)
   const conflictPrefillKeyRef = useRef<string | null>(null)
+  const [catalogueOpen, setCatalogueOpen] = useState(false)
 
   const isConflictResolutionMode = typeof countType === 'number' && countType >= CountType.Count3
 
@@ -620,6 +623,67 @@ export const InventorySessionPage = () => {
       return true
     },
     [addOrIncrementItem, ensureActiveRun, items.length, setErrorMessage, updateStatus],
+  )
+
+  const handlePickFromCatalogue = useCallback(
+    async (row: ProductRow) => {
+      const sanitizedEan = sanitizeScanValue(row.ean ?? '')
+      if (!sanitizedEan) {
+        setErrorMessage(`Impossible d’ajouter ${row.name} : code manquant.`)
+        updateStatus(null)
+        return false
+      }
+
+      if (sanitizedEan.length > MAX_SCAN_LENGTH) {
+        setErrorMessage(`Code ${sanitizedEan} invalide : ${MAX_SCAN_LENGTH} caractères maximum.`)
+        updateStatus(null)
+        return false
+      }
+
+      try {
+        ensureScanPrerequisites()
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : 'Impossible d’ajouter ce produit.')
+        updateStatus(null)
+        return false
+      }
+
+      updateStatus(`Ajout de ${row.name}…`)
+      setErrorMessage(null)
+
+      try {
+        const product = await fetchProductByEan(sanitizedEan)
+        const added = await addProductToSession(
+          { ...product, sku: product.sku ?? row.sku },
+          { isManual: true },
+        )
+        if (!added) {
+          updateStatus(null)
+          return false
+        }
+
+        updateStatus(`${product.name} ajouté`)
+        pendingFocusEanRef.current = product.ean ?? sanitizedEan
+        return true
+      } catch (error) {
+        const err = error as HttpError
+        if (err?.status === 404) {
+          setErrorMessage(`Produit introuvable pour ${sanitizedEan}. Signalez ce code.`)
+          triggerScanRejectionFeedback()
+        } else {
+          setErrorMessage('Impossible d’ajouter ce produit. Réessayez.')
+        }
+        updateStatus(null)
+        return false
+      }
+    },
+    [
+      addProductToSession,
+      ensureScanPrerequisites,
+      triggerScanRejectionFeedback,
+      updateStatus,
+      setErrorMessage,
+    ],
   )
 
   const handleUnknownProduct = useCallback(
@@ -1271,14 +1335,25 @@ export const InventorySessionPage = () => {
           </div>
           <div className="flex flex-wrap items-center gap-3 sm:justify-end">
             {!isConflictResolutionMode && (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => navigate('/inventory/scan-camera')}
-                data-testid="btn-scan-camera"
-              >
-                Scan caméra
-              </Button>
+              <>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="inline-flex items-center gap-2 rounded-2xl border border-transparent px-3 py-2 text-sm font-semibold text-brand-600 transition hover:border-brand-200 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 dark:text-brand-300 dark:hover:border-brand-500/60 dark:hover:bg-slate-800"
+                  onClick={() => setCatalogueOpen(true)}
+                  data-testid="btn-open-catalogue"
+                >
+                  Catalogue
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => navigate('/inventory/scan-camera')}
+                  data-testid="btn-scan-camera"
+                >
+                  Scan caméra
+                </Button>
+              </>
             )}
             {conflictZoneSummary && (
               <>
@@ -1435,6 +1510,11 @@ export const InventorySessionPage = () => {
         open={Boolean(conflictZoneSummary) && conflictModalOpen}
         zone={conflictZoneSummary}
         onClose={() => setConflictModalOpen(false)}
+      />
+      <CatalogueSearchDialog
+        open={catalogueOpen}
+        onClose={() => setCatalogueOpen(false)}
+        onPick={handlePickFromCatalogue}
       />
 
     </div>
