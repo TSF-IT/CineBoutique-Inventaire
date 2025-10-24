@@ -259,7 +259,102 @@ export const fetchLocations = async (shopId: string): Promise<Location[]> => {
 interface ProductSearchItemDtoLike {
   sku?: string | null
   code?: string | null
+  ean?: string | null
   name?: string | null
+}
+
+type ProductCandidate = {
+  sku?: string
+  code?: string
+  ean?: string
+  name?: string
+}
+
+type ProductLookupConflictMatchLike = {
+  sku?: string | null
+  code?: string | null
+}
+
+interface ProductLookupConflictProblemLike {
+  matches?: ProductLookupConflictMatchLike[]
+}
+
+interface ProductDetailsDtoLike {
+  sku?: string | null
+  ean?: string | null
+  name?: string | null
+}
+
+const sanitizeProductCandidate = (candidate: unknown): ProductCandidate | null => {
+  if (!candidate || typeof candidate !== 'object') {
+    return null
+  }
+
+  const record = candidate as ProductSearchItemDtoLike & Record<string, unknown>
+  const sku = typeof record.sku === 'string' ? record.sku.trim() : ''
+  const code = typeof record.code === 'string' ? record.code.trim() : ''
+  const ean = typeof record.ean === 'string' ? record.ean.trim() : ''
+  const name = typeof record.name === 'string' ? record.name.trim() : ''
+
+  if (!sku && !code && !ean && !name) {
+    return null
+  }
+
+  return {
+    sku: sku || undefined,
+    code: code || undefined,
+    ean: ean || undefined,
+    name: name || undefined,
+  }
+}
+
+const toProductSearchItems = (rawCandidates: unknown): ProductCandidate[] => {
+  if (!Array.isArray(rawCandidates)) {
+    return []
+  }
+
+  const candidates: ProductCandidate[] = []
+  for (const item of rawCandidates) {
+    const candidate = sanitizeProductCandidate(item)
+    if (candidate) {
+      candidates.push(candidate)
+    }
+  }
+  return candidates
+}
+
+const dedupeCandidates = (candidates: ProductCandidate[]): ProductCandidate[] => {
+  const seen = new Set<string>()
+  const result: ProductCandidate[] = []
+
+  for (const candidate of candidates) {
+    const keyParts: string[] = []
+    if (candidate.sku) {
+      keyParts.push(`sku:${candidate.sku.toLowerCase()}`)
+    }
+    const normalizedEan = normalizeLookupCode(candidate.ean ?? null)
+    if (normalizedEan) {
+      keyParts.push(`ean:${normalizedEan}`)
+    }
+    const normalizedCode = normalizeLookupCode(candidate.code ?? null)
+    if (normalizedCode) {
+      keyParts.push(`code:${normalizedCode}`)
+    }
+
+    if (keyParts.length === 0) {
+      continue
+    }
+
+    const key = keyParts.join('|')
+    if (seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    result.push(candidate)
+  }
+
+  return result
 }
 
 const normalizeLookupCode = (value: string | null | undefined): string | null => {
@@ -297,20 +392,81 @@ const createNotFoundHttpError = (requestedCode: string): HttpError => {
   return error
 }
 
-const hasMatchingProductCandidate = (rawCandidates: unknown, normalizedCode: string): boolean => {
-  if (!Array.isArray(rawCandidates)) {
-    return false
-  }
-
-  return rawCandidates.some((candidate) => {
-    if (!candidate || typeof candidate !== 'object') {
-      return false
-    }
-
-    const record = candidate as ProductSearchItemDtoLike
-    const codes = [normalizeLookupCode(record.code), normalizeLookupCode(record.sku)]
+const hasMatchingProductCandidate = (candidates: ProductCandidate[], normalizedCode: string): boolean => {
+  return candidates.some((candidate) => {
+    const codes = [
+      normalizeLookupCode(candidate.code ?? null),
+      normalizeLookupCode(candidate.sku ?? null),
+      normalizeLookupCode(candidate.ean ?? null),
+    ]
     return codes.some((value) => value === normalizedCode)
   })
+}
+
+const tryResolveAmbiguousProduct = async (
+  error: HttpError,
+  fallbackCandidates: ProductCandidate[],
+  requestedCode: string,
+): Promise<Product | null> => {
+  const problem = (error.problem ?? null) as ProductLookupConflictProblemLike | null
+  const matches = Array.isArray(problem?.matches) ? problem!.matches! : []
+
+  const candidates: ProductCandidate[] = []
+  for (const match of matches) {
+    const candidate = sanitizeProductCandidate(match)
+    if (candidate) {
+      candidates.push(candidate)
+    }
+  }
+
+  candidates.push(...fallbackCandidates)
+
+  const deduped = dedupeCandidates(candidates)
+  if (deduped.length === 0) {
+    return null
+  }
+
+  for (const candidate of deduped) {
+    if (!candidate.sku) {
+      continue
+    }
+
+    try {
+      const details = (await http(`${API_BASE}/products/${encodeURIComponent(candidate.sku)}/details`)) as ProductDetailsDtoLike
+      const enriched = sanitizeProductCandidate({ ...candidate, ...details })
+      if (!enriched) {
+        continue
+      }
+
+      const eanValue = enriched.ean ?? enriched.code ?? requestedCode
+      const nameValue = enriched.name ?? `Produit ${enriched.sku ?? eanValue}`
+      return {
+        ean: eanValue,
+        name: nameValue,
+        sku: enriched.sku ?? undefined,
+      }
+    } catch (detailsError) {
+      if (isHttpError(detailsError) && detailsError.status === 404) {
+        continue
+      }
+      continue
+    }
+  }
+
+  for (const candidate of deduped) {
+    const eanValue = candidate.ean ?? candidate.code ?? requestedCode
+    if (!eanValue) {
+      continue
+    }
+    const nameValue = candidate.name ?? `Produit ${candidate.sku ?? eanValue}`
+    return {
+      ean: eanValue,
+      name: nameValue,
+      sku: candidate.sku ?? undefined,
+    }
+  }
+
+  return null
 }
 
 export const fetchProductByEan = async (ean: string): Promise<Product> => {
@@ -320,13 +476,16 @@ export const fetchProductByEan = async (ean: string): Promise<Product> => {
   }
 
   const normalizedCode = normalizeLookupCode(trimmed)
+  let searchCandidates: ProductCandidate[] = []
 
   if (normalizedCode) {
     try {
       const params = new URLSearchParams({ code: trimmed, limit: '5' })
       const searchUrl = `${API_BASE}/products/search?${params.toString()}`
       const rawResult = await http(searchUrl)
-      const hasMatch = hasMatchingProductCandidate(rawResult, normalizedCode)
+      const candidates = toProductSearchItems(rawResult)
+      searchCandidates = dedupeCandidates(candidates)
+      const hasMatch = hasMatchingProductCandidate(searchCandidates, normalizedCode)
       if (!hasMatch) {
         throw createNotFoundHttpError(trimmed)
       }
@@ -340,8 +499,19 @@ export const fetchProductByEan = async (ean: string): Promise<Product> => {
     }
   }
 
-  const data = await http(`${API_BASE}/products/${encodeURIComponent(trimmed)}`)
-  return data as Product
+  try {
+    const data = await http(`${API_BASE}/products/${encodeURIComponent(trimmed)}`)
+    return data as Product
+  } catch (error) {
+    const err = error as HttpError
+    if (isHttpError(err) && err.status === 409) {
+      const resolved = await tryResolveAmbiguousProduct(err, searchCandidates, trimmed)
+      if (resolved) {
+        return resolved
+      }
+    }
+    throw err
+  }
 }
 
 /* --------------------------- Runs start/complete -------------------------- */

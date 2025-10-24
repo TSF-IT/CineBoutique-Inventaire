@@ -15,6 +15,9 @@ export interface InventoryContextValue {
   setLocation: (location: Location) => void
   setSessionId: (sessionId: string | null) => void
   addOrIncrementItem: (product: Product, options?: { isManual?: boolean }) => void
+  initializeItems: (
+    entries: Array<{ product: Product; quantity?: number; isManual?: boolean; hasConflict?: boolean }>,
+  ) => void
   setQuantity: (ean: string, quantity: number) => void
   removeItem: (ean: string) => void
   reset: () => void
@@ -138,6 +141,29 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
     })
   }, [])
 
+  const initializeItems = useCallback<InventoryContextValue['initializeItems']>((entries) => {
+    setState((prev) => {
+      const now = new Date()
+      const baseTimestamp = now.getTime()
+      const isoTimestamp = now.toISOString()
+      const items: InventoryItem[] = entries.map((entry, index) => ({
+        id: createInventoryItemId(),
+        product: entry.product,
+        quantity: typeof entry.quantity === 'number' ? entry.quantity : 0,
+        lastScanAt: isoTimestamp,
+        isManual: Boolean(entry.isManual),
+        addedAt: baseTimestamp + index,
+        hasConflict: entry.hasConflict,
+      }))
+
+      return {
+        ...prev,
+        items,
+        logs: prev.logs,
+      }
+    })
+  }, [])
+
   const setQuantity = useCallback((ean: string, quantity: number) => {
     setState((prev) => {
       const index = prev.items.findIndex((item) => item.product.ean === ean)
@@ -227,6 +253,7 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
       setLocation,
       setSessionId,
       addOrIncrementItem,
+      initializeItems,
       setQuantity,
       removeItem,
       reset,
@@ -244,6 +271,7 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
       reset,
       setCountType,
       setLocation,
+      initializeItems,
       setQuantity,
       setSelectedUser,
       setSessionId,

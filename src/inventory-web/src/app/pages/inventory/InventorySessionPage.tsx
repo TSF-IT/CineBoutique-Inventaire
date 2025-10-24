@@ -1,12 +1,14 @@
 // Modifications : forcer l'inclusion de runId=null lors de la complétion sans run existant.
 import type { KeyboardEvent, ChangeEvent, FocusEvent, PointerEvent } from 'react'
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   completeInventoryRun,
   fetchProductByEan,
+  getConflictZoneDetail,
   releaseInventoryRun,
   startInventoryRun,
+  type CompleteInventoryRunItem,
   type CompleteInventoryRunPayload,
 } from '../../api/inventoryApi'
 import { Button } from '../../components/ui/Button'
@@ -16,10 +18,10 @@ import { EmptyState } from '../../components/EmptyState'
 import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
 import { useInventory } from '../../contexts/InventoryContext'
 import type { HttpError } from '@/lib/api/http'
-import type { ConflictZoneSummary, Product } from '../../types/inventory'
+import type { ConflictZoneItem, ConflictZoneSummary, InventoryItem, Product } from '../../types/inventory'
 import { CountType } from '../../types/inventory'
 import { useShop } from '@/state/ShopContext'
-import { useProductSuggestions } from '@/hooks/useProductSuggestions'
+import { LoadingIndicator } from '../../components/LoadingIndicator'
 
 const DEV_API_UNREACHABLE_HINT =
   "Impossible de joindre l’API : vérifie que le backend tourne (curl http://localhost:8080/healthz) ou que le proxy Vite est actif."
@@ -67,6 +69,62 @@ const MAX_EAN_LENGTH = 13
 
 const sanitizeEan = (value: string) => value.replace(/\D+/g, '')
 
+const normalizeIdentifier = (value: string | null | undefined) => {
+  const trimmed = value?.trim()
+  return trimmed && trimmed.length > 0 ? trimmed : null
+}
+
+const dedupeConflictItems = (items: ConflictZoneItem[]): ConflictZoneItem[] => {
+  const seen = new Set<string>()
+  const result: ConflictZoneItem[] = []
+
+  items.forEach((item, index) => {
+    const ean = normalizeIdentifier(item.ean)
+    const productId = normalizeIdentifier(item.productId)
+    const sku = normalizeIdentifier(item.sku)
+
+    const key = ean ?? productId ?? sku ?? `index:${index}`
+    if (seen.has(key)) {
+      return
+    }
+
+    seen.add(key)
+    result.push(item)
+  })
+
+  return result
+}
+
+export const aggregateItemsForCompletion = (
+  items: InventoryItem[],
+): CompleteInventoryRunItem[] => {
+  const aggregated = new Map<string, CompleteInventoryRunItem>()
+
+  for (const item of items) {
+    const normalizedEan = normalizeIdentifier(item.product.ean)
+    const quantity = Number.isFinite(item.quantity) ? item.quantity : 0
+
+    if (!normalizedEan || quantity <= 0) {
+      continue
+    }
+
+    const existing = aggregated.get(normalizedEan)
+    if (existing) {
+      existing.quantity += quantity
+      existing.isManual = existing.isManual || Boolean(item.isManual)
+      continue
+    }
+
+    aggregated.set(normalizedEan, {
+      ean: normalizedEan,
+      quantity,
+      isManual: Boolean(item.isManual),
+    })
+  }
+
+  return Array.from(aggregated.values())
+}
+
 const isEanLengthValid = (ean: string) => ean.length >= MIN_EAN_LENGTH && ean.length <= MAX_EAN_LENGTH
 
 const resolveLifecycleErrorMessage = (error: unknown, fallback: string): string => {
@@ -100,6 +158,7 @@ export const InventorySessionPage = () => {
     location,
     items,
     addOrIncrementItem,
+    initializeItems,
     setQuantity,
     removeItem,
     sessionId,
@@ -128,12 +187,12 @@ export const InventorySessionPage = () => {
   const pendingFocusEanRef = useRef<string | null>(null)
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
-  const {
-    items: suggestionItems,
-    loading: suggestionsLoading,
-    query: querySuggestions,
-  } = useProductSuggestions()
-  const suggestionListId = useId()
+  const [conflictPrefillStatus, setConflictPrefillStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle')
+  const [conflictPrefillError, setConflictPrefillError] = useState<string | null>(null)
+  const [conflictPrefillAttempt, setConflictPrefillAttempt] = useState(0)
+  const conflictPrefillKeyRef = useRef<string | null>(null)
+
+  const isConflictResolutionMode = typeof countType === 'number' && countType >= CountType.Count3
 
   const updateStatus = useCallback(
     (message: string | null) => {
@@ -200,7 +259,7 @@ export const InventorySessionPage = () => {
   const locationId = location?.id?.trim() ?? ''
   const shopId = shop?.id?.trim() ?? ''
   const conflictZoneSummary = useMemo<ConflictZoneSummary | null>(() => {
-    if (typeof countType !== 'number' || countType < CountType.Count3 || !location) {
+    if (!isConflictResolutionMode || !location) {
       return null
     }
 
@@ -210,13 +269,168 @@ export const InventorySessionPage = () => {
       locationLabel: location.label,
       conflictLines: 0,
     }
-  }, [countType, location])
+  }, [isConflictResolutionMode, location])
 
   useEffect(() => {
-    if (typeof countType !== 'number' || countType < CountType.Count3 || !location) {
+    if (!isConflictResolutionMode || !location) {
       setConflictModalOpen(false)
     }
-  }, [countType, location])
+  }, [isConflictResolutionMode, location])
+
+  useEffect(() => {
+    if (!isConflictResolutionMode) {
+      setConflictPrefillStatus('idle')
+      setConflictPrefillError(null)
+      conflictPrefillKeyRef.current = null
+    }
+  }, [isConflictResolutionMode])
+
+  useEffect(() => {
+    if (!isConflictResolutionMode) {
+      return
+    }
+
+    if (!locationId) {
+      setConflictPrefillStatus('idle')
+      setConflictPrefillError('Impossible de charger les références en conflit.')
+      return
+    }
+
+    const key = `${locationId}:${countType ?? ''}`
+
+    if (items.length > 0 && conflictPrefillKeyRef.current === key) {
+      setConflictPrefillStatus('loaded')
+      setConflictPrefillError(null)
+      return
+    }
+
+    if (items.length > 0 && conflictPrefillKeyRef.current !== key) {
+      conflictPrefillKeyRef.current = key
+      setConflictPrefillStatus('loaded')
+      setConflictPrefillError(null)
+      return
+    }
+
+    let cancelled = false
+    const abortController = new AbortController()
+
+    const buildFallbackProduct = (ean: string, sku?: string | null): Product => {
+      const normalizedEan = (ean ?? '').trim()
+      const normalizedSku = typeof sku === 'string' ? sku.trim() : ''
+      const label = normalizedSku
+        ? `SKU ${normalizedSku}`
+        : normalizedEan
+          ? `EAN ${normalizedEan}`
+          : 'Produit en conflit'
+      return {
+        ean: normalizedEan || ean,
+        name: label,
+        sku: normalizedSku || undefined,
+      }
+    }
+
+    const loadConflicts = async () => {
+      try {
+        const detail = await getConflictZoneDetail(locationId, abortController.signal)
+        if (cancelled) {
+          return
+        }
+
+        const rawConflictItems = Array.isArray(detail.items) ? detail.items : []
+        const conflictItems = dedupeConflictItems(rawConflictItems)
+
+        if (conflictItems.length === 0) {
+          initializeItems([])
+          setConflictPrefillStatus('loaded')
+          conflictPrefillKeyRef.current = key
+          return
+        }
+
+        const productCache = new Map<string, Promise<Product>>()
+        const resolveProduct = (ean: string, sku?: string | null) => {
+          const normalizedEan = (ean ?? '').trim()
+          if (!normalizedEan) {
+            return Promise.resolve(buildFallbackProduct(ean, sku))
+          }
+          const cached = productCache.get(normalizedEan)
+          if (cached) {
+            return cached
+          }
+          const request = (async () => {
+            try {
+              return await fetchProductByEan(normalizedEan)
+            } catch (error) {
+              console.warn('[inventory] produit conflit introuvable, fallback', normalizedEan, error)
+              return buildFallbackProduct(normalizedEan, sku)
+            }
+          })()
+          productCache.set(normalizedEan, request)
+          return request
+        }
+
+        const products = await Promise.all(
+          conflictItems.map((item) => resolveProduct(item.ean ?? '', item.sku ?? undefined)),
+        )
+
+        if (cancelled) {
+          return
+        }
+
+        initializeItems(
+          conflictItems.map((item, index) => {
+            const resolved = products[index]
+            const normalizedEan = (item.ean ?? '').trim()
+            return {
+              product: {
+                ...resolved,
+                ean: resolved.ean?.trim().length ? resolved.ean : normalizedEan || resolved.ean,
+                sku:
+                  resolved.sku && resolved.sku.trim().length > 0
+                    ? resolved.sku
+                    : item.sku?.trim().length
+                      ? item.sku
+                      : undefined,
+              },
+              quantity: 0,
+              hasConflict: true,
+            }
+          }),
+        )
+
+        setConflictPrefillStatus('loaded')
+        setConflictPrefillError(null)
+        conflictPrefillKeyRef.current = key
+      } catch (error) {
+        if (cancelled) {
+          return
+        }
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return
+        }
+        console.error('[inventory] échec chargement références conflit', error)
+        setConflictPrefillError('Impossible de charger les références en conflit.')
+        setConflictPrefillStatus('error')
+        conflictPrefillKeyRef.current = null
+      }
+    }
+
+    setConflictPrefillStatus('loading')
+    setConflictPrefillError(null)
+    conflictPrefillKeyRef.current = key
+    void loadConflicts()
+
+    return () => {
+      cancelled = true
+      abortController.abort()
+    }
+  }, [
+    countType,
+    initializeItems,
+    isConflictResolutionMode,
+    items.length,
+    locationId,
+    conflictPrefillAttempt,
+  ])
 
   useEffect(() => {
     if (!selectedUser) {
@@ -227,6 +441,10 @@ export const InventorySessionPage = () => {
       navigate('/inventory/count-type', { replace: true })
     }
   }, [countType, locationId, navigate, selectedUser])
+
+  const handleRetryConflictPrefill = useCallback(() => {
+    setConflictPrefillAttempt((attempt) => attempt + 1)
+  }, [])
 
   const displayedItems = items
 
@@ -459,7 +677,6 @@ export const InventorySessionPage = () => {
           if (added) {
             updateStatus(`${product.name} ajouté`)
             setScanValue('')
-            querySuggestions('')
             setInputLookupStatus('found')
           } else {
             setInputLookupStatus('error')
@@ -488,7 +705,6 @@ export const InventorySessionPage = () => {
     }
   }, [
     addProductToSession,
-    querySuggestions,
     scanInputError,
     searchProductByEan,
     trimmedScanValue,
@@ -502,12 +718,11 @@ export const InventorySessionPage = () => {
         const value = trimmedScanValue
         if (value) {
           setScanValue('')
-          querySuggestions('')
           void handleDetected(value)
         }
       }
     },
-    [handleDetected, querySuggestions, trimmedScanValue],
+    [handleDetected, trimmedScanValue],
   )
 
   const handleInputChange = useCallback(
@@ -517,7 +732,6 @@ export const InventorySessionPage = () => {
         const [code] = value.split(/\s+/)
         setScanValue('')
         setManualEan('')
-        querySuggestions('')
         if (code.trim()) {
           void handleDetected(code)
         }
@@ -527,9 +741,8 @@ export const InventorySessionPage = () => {
       setScanValue(sanitized)
       setManualEan('')
       setErrorMessage(null)
-      querySuggestions(sanitized)
     },
-    [handleDetected, querySuggestions],
+    [handleDetected],
   )
 
   const handleManualAdd = useCallback(async () => {
@@ -558,48 +771,9 @@ export const InventorySessionPage = () => {
     updateStatus(`${product.name} ajouté manuellement`)
     setManualEan('')
     setScanValue('')
-    querySuggestions('')
     setInputLookupStatus('idle')
     inputRef.current?.focus()
-  }, [addProductToSession, manualCandidateEan, querySuggestions, updateStatus])
-
-  const handleSuggestionPick = useCallback(
-    async ({ sku, ean, name }: { sku: string; ean?: string | null; name: string }) => {
-      const sanitizedEan = sanitizeEan(ean ?? '')
-      if (!sanitizedEan) {
-        setErrorMessage(`Impossible d’ajouter ${name} : EAN manquant.`)
-        return
-      }
-
-      const product: Product = {
-        ean: sanitizedEan,
-        name,
-        sku,
-      }
-
-      const added = await addProductToSession(product)
-      if (!added) {
-        return
-      }
-
-      updateStatus(`${product.name} ajouté`)
-      setErrorMessage(null)
-      setManualEan('')
-      setScanValue('')
-      querySuggestions('')
-      setInputLookupStatus('idle')
-      pendingFocusEanRef.current = product.ean
-    },
-    [addProductToSession, querySuggestions, updateStatus],
-  )
-
-  const canCompleteRun =
-    locationId.length > 0 &&
-    isValidCountType &&
-    ownerUserId.length > 0 &&
-    shopId.length > 0 &&
-    items.length > 0 &&
-    !completionLoading
+  }, [addProductToSession, manualCandidateEan, updateStatus])
 
   const handleCompleteRun = useCallback(async () => {
     if (!isValidCountType) {
@@ -630,13 +804,7 @@ export const InventorySessionPage = () => {
     setErrorMessage(null)
     updateStatus('Envoi du comptage…')
     try {
-      const payloadItems = items
-        .map((item) => ({
-          ean: item.product.ean,
-          quantity: item.quantity,
-          isManual: Boolean(item.isManual),
-        }))
-        .filter((entry) => entry.ean.trim().length > 0 && entry.quantity > 0)
+      const payloadItems = aggregateItemsForCompletion(items)
 
       if (payloadItems.length === 0) {
         throw new Error('Ajoutez au moins un article avec une quantité positive pour terminer le comptage.')
@@ -896,8 +1064,26 @@ export const InventorySessionPage = () => {
     })
   }, [items])
 
-  const hasSuggestionItems = suggestionItems.length > 0
-  const shouldShowSuggestions = (suggestionsLoading || hasSuggestionItems) && scanValue.length > 0
+  const hasPositiveQuantity = useMemo(() => {
+    return items.some((item) => {
+      const draftValue = quantityDrafts[item.product.ean]
+      if (typeof draftValue === 'string' && draftValue.length > 0) {
+        const parsed = Number.parseInt(draftValue, 10)
+        return Number.isFinite(parsed) && parsed > 0
+      }
+      return item.quantity > 0
+    })
+  }, [items, quantityDrafts])
+
+  const canCompleteRun =
+    locationId.length > 0 &&
+    isValidCountType &&
+    ownerUserId.length > 0 &&
+    shopId.length > 0 &&
+    items.length > 0 &&
+    hasPositiveQuantity &&
+    !completionLoading &&
+    (!isConflictResolutionMode || conflictPrefillStatus === 'loaded')
 
   return (
     <div className="flex flex-col gap-6" data-testid="page-session">
@@ -922,84 +1108,74 @@ export const InventorySessionPage = () => {
             Journal des actions ({logs.length})
           </Button>
         </div>
-        <div className="space-y-2">
-          <Input
-            ref={inputRef}
-            name="scanInput"
-            label="Scanner (douchette ou saisie)"
-            placeholder="Scannez un EAN et validez avec Entrée"
-            value={scanValue}
-            onChange={handleInputChange}
-            onKeyDown={handleInputKeyDown}
-            inputMode="numeric"
-            pattern="\d*"
-            maxLength={MAX_EAN_LENGTH}
-            autoComplete="off"
-            aria-invalid={Boolean(scanInputError)}
-            aria-autocomplete="list"
-            aria-controls={shouldShowSuggestions ? suggestionListId : undefined}
-            aria-expanded={shouldShowSuggestions}
-            autoFocus
-          />
-          {shouldShowSuggestions && (
-            <div
-              id={suggestionsLoading && !hasSuggestionItems ? suggestionListId : undefined}
-              className="max-h-60 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg shadow-slate-200/60 dark:border-slate-700 dark:bg-slate-900/80 dark:shadow-black/30"
-            >
-              {suggestionsLoading && (
-                <p className="px-3 py-2 text-xs text-slate-500 dark:text-slate-400">Recherche…</p>
-              )}
-              {hasSuggestionItems && (
-                <ul id={suggestionListId} role="listbox" className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {suggestionItems.map(({ sku, ean, name }) => (
-                    <li key={sku} role="presentation">
-                      <button
-                        type="button"
-                        role="option"
-                        className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 dark:hover:bg-slate-800"
-                        onClick={() => {
-                          void handleSuggestionPick({ sku, ean, name })
-                        }}
-                      >
-                        <span className="text-sm font-medium text-slate-900 dark:text-white">{name}</span>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">
-                          {ean ? `EAN ${ean}` : 'EAN indisponible'} • SKU {sku}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+        {isConflictResolutionMode ? (
+          <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-100">
+            <p className="font-semibold">Références en conflit</p>
+            <p>
+              Saisissez la quantité constatée pour chaque produit afin de valider ce comptage de concordance.
+            </p>
+            {conflictPrefillStatus === 'loading' && (
+              <div className="pt-1">
+                <LoadingIndicator label="Chargement des références en conflit" />
+              </div>
+            )}
+            {conflictPrefillStatus === 'error' && (
+              <div className="flex flex-wrap items-center gap-3 text-rose-700 dark:text-rose-300">
+                <span>{conflictPrefillError ?? 'Impossible de charger les références en conflit.'}</span>
+                <Button type="button" variant="ghost" onClick={handleRetryConflictPrefill}>
+                  Réessayer
+                </Button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="space-y-2">
+              <Input
+                ref={inputRef}
+                name="scanInput"
+                label="Scanner (douchette ou saisie)"
+                placeholder="Scannez un EAN et validez avec Entrée"
+                value={scanValue}
+                onChange={handleInputChange}
+                onKeyDown={handleInputKeyDown}
+                inputMode="numeric"
+                pattern="\d*"
+                maxLength={MAX_EAN_LENGTH}
+                autoComplete="off"
+                aria-invalid={Boolean(scanInputError)}
+                autoFocus
+              />
+              <p
+                className={`text-xs ${
+                  scanInputError ? 'text-rose-600 dark:text-rose-300' : 'text-slate-500 dark:text-slate-400'
+                }`}
+                aria-live="polite"
+              >
+                {scanInputError ?? `EAN attendu : ${MIN_EAN_LENGTH} à ${MAX_EAN_LENGTH} chiffres.`}
+              </p>
             </div>
-          )}
-          <p
-            className={`text-xs ${
-              scanInputError ? 'text-rose-600 dark:text-rose-300' : 'text-slate-500 dark:text-slate-400'
-            }`}
-            aria-live="polite"
-          >
-            {scanInputError ?? `EAN attendu : ${MIN_EAN_LENGTH} à ${MAX_EAN_LENGTH} chiffres.`}
-          </p>
-        </div>
-        <div className="flex justify-end">
-          <Button
-            variant="ghost"
-            onClick={() => {
-              void handleManualAdd()
-            }}
-            data-testid="btn-open-manual"
-            disabled={!manualCandidateEan || inputLookupStatus !== 'not-found' || !isManualCandidateValid}
-          >
-            Ajouter manuellement
-          </Button>
-        </div>
+            <div className="flex justify-end">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  void handleManualAdd()
+                }}
+                data-testid="btn-open-manual"
+                disabled={!manualCandidateEan || inputLookupStatus !== 'not-found' || !isManualCandidateValid}
+              >
+                Ajouter manuellement
+              </Button>
+            </div>
+          </>
+        )}
         {status && (
           <p className="text-sm text-brand-600 dark:text-brand-200" data-testid="status-message">
             {status}
           </p>
         )}
         {errorMessage && <p className="text-sm text-red-600 dark:text-red-300">{errorMessage}</p>}
-        {import.meta.env.DEV && recentScans.length > 0 && (
+        {!isConflictResolutionMode && import.meta.env.DEV && recentScans.length > 0 && (
           <div className="rounded-2xl border border-slate-300 bg-slate-100 p-3 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300">
             <p className="font-semibold">Derniers scans</p>
             <ul className="mt-1 space-y-1">
@@ -1068,14 +1244,16 @@ export const InventorySessionPage = () => {
             <span className="text-sm text-slate-600 dark:text-slate-400">{items.length} références</span>
           </div>
           <div className="flex flex-wrap items-center gap-3 sm:justify-end">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => navigate('/inventory/scan-camera')}
-              data-testid="btn-scan-camera"
-            >
-              Scan caméra
-            </Button>
+            {!isConflictResolutionMode && (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => navigate('/inventory/scan-camera')}
+                data-testid="btn-scan-camera"
+              >
+                Scan caméra
+              </Button>
+            )}
             {conflictZoneSummary && (
               <>
                 <span className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-500/50 dark:bg-rose-500/10 dark:text-rose-200">
@@ -1094,10 +1272,14 @@ export const InventorySessionPage = () => {
             )}
           </div>
         </div>
-        {displayedItems.length === 0 && (
+        {displayedItems.length === 0 && (!isConflictResolutionMode || conflictPrefillStatus === 'loaded') && (
           <EmptyState
-            title="En attente de scan"
-            description="Scannez un produit via la caméra ou la douchette pour l&apos;ajouter au comptage."
+            title={isConflictResolutionMode ? 'Aucune référence en conflit' : 'En attente de scan'}
+            description={
+              isConflictResolutionMode
+                ? 'Toutes les divergences ont été résolues pour cette zone.'
+                : "Scannez un produit via la caméra ou la douchette pour l'ajouter au comptage."
+            }
           />
         )}
         <ul className="flex flex-col gap-3">
@@ -1112,6 +1294,9 @@ export const InventorySessionPage = () => {
               <div>
                 <p className="text-lg font-semibold text-slate-900 dark:text-white">{item.product.name}</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">EAN {item.product.ean}</p>
+                {item.hasConflict && (
+                  <p className="text-xs font-semibold text-rose-600 dark:text-rose-300">Référence en conflit</p>
+                )}
                 {item.isManual && <p className="text-xs text-amber-600 dark:text-amber-300">Ajout manuel</p>}
               </div>
               <div className="flex items-center gap-3">

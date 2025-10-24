@@ -6,9 +6,9 @@ import { MemoryRouter } from 'react-router-dom'
 import * as ReactRouterDom from 'react-router-dom'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { InventoryProvider, useInventory } from '../../../contexts/InventoryContext'
-import { InventorySessionPage } from '../InventorySessionPage'
+import { InventorySessionPage, aggregateItemsForCompletion } from '../InventorySessionPage'
 import { CountType } from '../../../types/inventory'
-import type { Location } from '../../../types/inventory'
+import type { InventoryItem, Location, Product } from '../../../types/inventory'
 import type { ShopUser } from '@/types/user'
 import type { Shop } from '@/types/shop'
 import { ShopProvider, useShop } from '@/state/ShopContext'
@@ -16,6 +16,7 @@ import * as inventoryApi from '../../../api/inventoryApi'
 
 const getConflictZoneDetailMock = vi.spyOn(inventoryApi, 'getConflictZoneDetail')
 const fetchProductByEanMock = vi.spyOn(inventoryApi, 'fetchProductByEan')
+const completeInventoryRunMock = vi.spyOn(inventoryApi, 'completeInventoryRun')
 const shopMock: Shop = { id: 'shop-test', name: 'Boutique test', kind: 'boutique' }
 
 const inventoryControls: { setCountType?: (type: number | null) => void } = {}
@@ -23,6 +24,7 @@ const inventoryControls: { setCountType?: (type: number | null) => void } = {}
 afterAll(() => {
   getConflictZoneDetailMock.mockRestore()
   fetchProductByEanMock.mockRestore()
+  completeInventoryRunMock.mockRestore()
 })
 
 const owner: ShopUser = {
@@ -141,6 +143,7 @@ describe('InventorySessionPage - conflits', () => {
   beforeEach(() => {
     fetchProductByEanMock.mockReset()
     getConflictZoneDetailMock.mockReset()
+    completeInventoryRunMock.mockReset()
     getConflictZoneDetailMock.mockResolvedValue({
       locationId: baseLocation.id,
       locationCode: baseLocation.code,
@@ -168,6 +171,77 @@ describe('InventorySessionPage - conflits', () => {
       }),
     ).toBeInTheDocument()
   })
+
+  it('masque les options de scan lors du troisième comptage', async () => {
+    renderSessionPage(CountType.Count3)
+
+    expect(await screen.findByText('Références en conflit')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/Scanner \(douchette ou saisie\)/i)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-open-manual')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('btn-scan-camera')).not.toBeInTheDocument()
+  })
+
+  it('préremplit les références en conflit avec une quantité à zéro', async () => {
+    getConflictZoneDetailMock.mockResolvedValue({
+      locationId: baseLocation.id,
+      locationCode: baseLocation.code,
+      locationLabel: baseLocation.label,
+      items: [
+        { productId: 'prod-1', ean: '0123456789012', qtyC1: 10, qtyC2: 8, delta: 2, sku: 'SKU-1' },
+        { productId: 'prod-2', ean: '0001112223334', qtyC1: 5, qtyC2: 6, delta: -1, sku: 'SKU-2' },
+      ],
+    })
+    fetchProductByEanMock.mockImplementation(async (ean) => ({
+      ean,
+      name: `Produit ${ean}`,
+      sku: `SKU-${ean}`,
+    }))
+
+    renderSessionPage(CountType.Count3)
+
+    await waitFor(() => expect(getConflictZoneDetailMock).toHaveBeenCalled())
+    expect(await screen.findByText('Produit 0123456789012')).toBeInTheDocument()
+    expect(await screen.findByText('Produit 0001112223334')).toBeInTheDocument()
+
+    const inputs = await screen.findAllByTestId('quantity-input')
+    expect(inputs).toHaveLength(2)
+    expect(inputs[0]).toHaveValue('0')
+    expect(inputs[1]).toHaveValue('0')
+
+    const completeButton = await screen.findByTestId('btn-complete-run')
+    expect(completeButton).toBeDisabled()
+
+    fireEvent.change(inputs[0], { target: { value: '5' } })
+    expect(completeButton).not.toBeDisabled()
+  })
+
+  it('ignore les doublons de références en conflit', async () => {
+    getConflictZoneDetailMock.mockResolvedValue({
+      locationId: baseLocation.id,
+      locationCode: baseLocation.code,
+      locationLabel: baseLocation.label,
+      items: [
+        { productId: 'prod-1', ean: '185323000132', qtyC1: 3, qtyC2: 5, delta: -2, sku: 'SKU-ROLLBAR' },
+        { productId: 'prod-1', ean: '185323000132', qtyC1: 3, qtyC2: 5, delta: -2, sku: 'SKU-ROLLBAR' },
+        { productId: 'prod-2', ean: '185323000132', qtyC1: 1, qtyC2: 0, delta: 1, sku: 'SKU-ROLLBAR' },
+      ],
+    })
+
+    fetchProductByEanMock.mockResolvedValue({
+      ean: '185323000132',
+      name: 'Produit Rollbar',
+      sku: 'SKU-ROLLBAR',
+    })
+
+    renderSessionPage(CountType.Count3)
+
+    await waitFor(() => expect(getConflictZoneDetailMock).toHaveBeenCalled())
+
+    const inputs = await screen.findAllByTestId('quantity-input')
+    expect(inputs).toHaveLength(1)
+    expect(await screen.findByText('Produit Rollbar')).toBeInTheDocument()
+    expect(fetchProductByEanMock).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('InventorySessionPage - navigation', () => {
@@ -182,5 +256,80 @@ describe('InventorySessionPage - navigation', () => {
       const paths = screen.getAllByTestId('current-path').map((element) => element.textContent)
       expect(paths).toContain('/inventory/scan-camera')
     })
+  })
+})
+
+const createInventoryItem = (
+  overrides: Partial<InventoryItem> & { product?: Product },
+): InventoryItem => ({
+  id: overrides.id ?? `item-${Math.random().toString(36).slice(2)}`,
+  product:
+    overrides.product ?? {
+      ean: '0000000000000',
+      name: 'Produit par défaut',
+      sku: 'SKU-DEFAULT',
+    },
+  quantity: overrides.quantity ?? 1,
+  lastScanAt: overrides.lastScanAt ?? new Date().toISOString(),
+  isManual: overrides.isManual ?? false,
+  addedAt: overrides.addedAt ?? Date.now(),
+  hasConflict: overrides.hasConflict,
+})
+
+describe('aggregateItemsForCompletion', () => {
+  it('additionne les quantités pour un même EAN', () => {
+    const now = new Date().toISOString()
+    const items: InventoryItem[] = [
+      createInventoryItem({
+        product: { ean: '1234567890123', name: 'Produit 1', sku: 'SKU-1' },
+        quantity: 2,
+        lastScanAt: now,
+        isManual: false,
+      }),
+      createInventoryItem({
+        product: { ean: '1234567890123', name: 'Produit 1', sku: 'SKU-1' },
+        quantity: 3,
+        lastScanAt: now,
+        isManual: true,
+      }),
+      createInventoryItem({
+        product: { ean: '9999999999999', name: 'Produit 2', sku: 'SKU-2' },
+        quantity: 1,
+        lastScanAt: now,
+        isManual: false,
+      }),
+    ]
+
+    const result = aggregateItemsForCompletion(items)
+
+    expect(result).toEqual([
+      { ean: '1234567890123', quantity: 5, isManual: true },
+      { ean: '9999999999999', quantity: 1, isManual: false },
+    ])
+  })
+
+  it("ignore les lignes sans EAN valide ou quantité positive", () => {
+    const now = new Date().toISOString()
+    const items: InventoryItem[] = [
+      createInventoryItem({
+        product: { ean: '   ', name: 'Produit invalide', sku: 'SKU-INVALID' },
+        quantity: 4,
+        lastScanAt: now,
+      }),
+      createInventoryItem({
+        product: { ean: '5555555555555', name: 'Produit 3', sku: 'SKU-3' },
+        quantity: 0,
+        lastScanAt: now,
+      }),
+      createInventoryItem({
+        product: { ean: '6666666666666', name: 'Produit 4', sku: 'SKU-4' },
+        quantity: -2,
+        lastScanAt: now,
+      }),
+    ]
+
+    const result = aggregateItemsForCompletion(items)
+
+    expect(result).toEqual([])
   })
 })
