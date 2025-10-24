@@ -1,11 +1,11 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { useEffect, useLayoutEffect } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import * as ReactRouterDom from 'react-router-dom'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { InventoryProvider, useInventory } from '../../../contexts/InventoryContext'
+import { InventoryProvider, useInventory, type InventoryContextValue } from '../../../contexts/InventoryContext'
 import { InventorySessionPage, aggregateItemsForCompletion } from '../InventorySessionPage'
 import { CountType } from '../../../types/inventory'
 import type { InventoryItem, Location, Product } from '../../../types/inventory'
@@ -19,7 +19,7 @@ const fetchProductByEanMock = vi.spyOn(inventoryApi, 'fetchProductByEan')
 const completeInventoryRunMock = vi.spyOn(inventoryApi, 'completeInventoryRun')
 const shopMock: Shop = { id: 'shop-test', name: 'Boutique test', kind: 'boutique' }
 
-const inventoryControls: { setCountType?: (type: number | null) => void } = {}
+const inventoryControls: Partial<Pick<InventoryContextValue, 'setCountType' | 'initializeItems'>> = {}
 
 afterAll(() => {
   getConflictZoneDetailMock.mockRestore()
@@ -85,7 +85,7 @@ const InventoryStateInitializer = ({
   location: Location
   countType: CountType
 }) => {
-  const { setSelectedUser, setLocation, setCountType, clearSession } = useInventory()
+  const { setSelectedUser, setLocation, setCountType, clearSession, initializeItems } = useInventory()
   useLayoutEffect(() => {
     clearSession()
     setSelectedUser(owner)
@@ -99,10 +99,12 @@ const InventoryStateInitializer = ({
 
   useEffect(() => {
     inventoryControls.setCountType = setCountType
+    inventoryControls.initializeItems = initializeItems
     return () => {
       inventoryControls.setCountType = undefined
+      inventoryControls.initializeItems = undefined
     }
-  }, [setCountType])
+  }, [initializeItems, setCountType])
 
   return <>{children}</>
 }
@@ -259,6 +261,45 @@ describe('InventorySessionPage - navigation', () => {
   })
 })
 
+describe('InventorySessionPage - complétion', () => {
+  beforeEach(() => {
+    fetchProductByEanMock.mockReset()
+    getConflictZoneDetailMock.mockReset()
+    completeInventoryRunMock.mockReset()
+  })
+
+  it('affiche un message explicite lorsqu’un EAN invalide bloque la clôture', async () => {
+    const user = userEvent.setup()
+    renderSessionPage(CountType.Count1)
+
+    await waitFor(() => expect(inventoryControls.initializeItems).toBeDefined())
+
+    act(() => {
+      inventoryControls.initializeItems?.([
+        {
+          product: { ean: '2066B', name: 'Produit invalide', sku: 'SKU-INVALID' },
+          quantity: 2,
+          isManual: true,
+        },
+      ])
+    })
+
+    expect(await screen.findByText('Produit invalide')).toBeInTheDocument()
+
+    const completeButton = await screen.findByTestId('btn-complete-run')
+    expect(completeButton).not.toBeDisabled()
+
+    await user.click(completeButton)
+
+    const confirmButton = await screen.findByTestId('btn-confirm-complete')
+    await user.click(confirmButton)
+
+    const errorMessage = await screen.findByText(/articles ont un EAN invalide/i)
+    expect(errorMessage.textContent).toContain('2066B')
+    expect(completeInventoryRunMock).not.toHaveBeenCalled()
+  })
+})
+
 const createInventoryItem = (
   overrides: Partial<InventoryItem> & { product?: Product },
 ): InventoryItem => ({
@@ -326,10 +367,35 @@ describe('aggregateItemsForCompletion', () => {
         quantity: -2,
         lastScanAt: now,
       }),
+      createInventoryItem({
+        product: { ean: '2066B', name: 'Produit 5', sku: 'SKU-5' },
+        quantity: 3,
+        lastScanAt: now,
+      }),
     ]
 
     const result = aggregateItemsForCompletion(items)
 
     expect(result).toEqual([])
+  })
+
+  it('normalise les EAN contenant des séparateurs non numériques', () => {
+    const now = new Date().toISOString()
+    const items: InventoryItem[] = [
+      createInventoryItem({
+        product: { ean: '2015\u202f02\u202f810', name: 'Produit 5', sku: 'SKU-5' },
+        quantity: 1,
+        lastScanAt: now,
+      }),
+      createInventoryItem({
+        product: { ean: '2015-02-810', name: 'Produit 6', sku: 'SKU-6' },
+        quantity: 2,
+        lastScanAt: now,
+      }),
+    ]
+
+    const result = aggregateItemsForCompletion(items)
+
+    expect(result).toEqual([{ ean: '201502810', quantity: 3, isManual: false }])
   })
 })

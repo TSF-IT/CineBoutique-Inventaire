@@ -162,6 +162,47 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task CompleteRun_WithUnknownProduct_CreatesProductBoundToShop()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
+        var client = CreateClient();
+
+        var startResponse = await client.PostAsJsonAsync(
+            client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
+            new StartRunRequest(seeded.ShopId, seeded.PrimaryUserId, 1)
+        ).ConfigureAwait(false);
+        await startResponse.ShouldBeAsync(HttpStatusCode.OK, "start run before creating unknown product");
+
+        var started = await startResponse.Content.ReadFromJsonAsync<StartInventoryRunResponse>().ConfigureAwait(false);
+        started.Should().NotBeNull();
+
+        const string unknownEan = "20150210";
+        var completeResponse = await CompleteRunAsync(
+            client,
+            seeded.LocationId,
+            started!.RunId,
+            seeded.PrimaryUserId,
+            1,
+            (unknownEan, 1m)
+        ).ConfigureAwait(false);
+
+        await completeResponse.ShouldBeAsync(HttpStatusCode.OK, "complete run should create unknown product");
+
+        await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
+        await using var command = new NpgsqlCommand(
+            "SELECT \"ShopId\" FROM \"Product\" WHERE \"Ean\" = @ean LIMIT 1;",
+            connection
+        );
+        command.Parameters.AddWithValue("ean", unknownEan);
+
+        var result = await command.ExecuteScalarAsync().ConfigureAwait(false);
+        var productShopId = result.Should().BeOfType<Guid>().Subject;
+        productShopId.Should().Be(seeded.ShopId);
+    }
+
+    [SkippableFact]
     public async Task ReleaseRun_ReleasesLock_ThenAnotherStartIsAllowed()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");

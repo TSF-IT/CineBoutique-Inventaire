@@ -74,6 +74,27 @@ const normalizeIdentifier = (value: string | null | undefined) => {
   return trimmed && trimmed.length > 0 ? trimmed : null
 }
 
+const EAN_MIN_LENGTH = 8
+const EAN_MAX_LENGTH = 13
+
+const sanitizeEanForSubmission = (value: string | null | undefined): string | null => {
+  const normalized = normalizeIdentifier(value)
+  if (!normalized) {
+    return null
+  }
+
+  const digitsOnly = normalized.replace(/\D+/g, '')
+  return digitsOnly.length > 0 ? digitsOnly : null
+}
+
+const isValidEanForSubmission = (ean: string | null | undefined): ean is string => {
+  if (!ean) {
+    return false
+  }
+
+  return ean.length >= EAN_MIN_LENGTH && ean.length <= EAN_MAX_LENGTH
+}
+
 const dedupeConflictItems = (items: ConflictZoneItem[]): ConflictZoneItem[] => {
   const seen = new Set<string>()
   const result: ConflictZoneItem[] = []
@@ -101,10 +122,10 @@ export const aggregateItemsForCompletion = (
   const aggregated = new Map<string, CompleteInventoryRunItem>()
 
   for (const item of items) {
-    const normalizedEan = normalizeIdentifier(item.product.ean)
+    const normalizedEan = sanitizeEanForSubmission(item.product.ean)
     const quantity = Number.isFinite(item.quantity) ? item.quantity : 0
 
-    if (!normalizedEan || quantity <= 0) {
+    if (!normalizedEan || !isValidEanForSubmission(normalizedEan) || quantity <= 0) {
       continue
     }
 
@@ -123,6 +144,48 @@ export const aggregateItemsForCompletion = (
   }
 
   return Array.from(aggregated.values())
+}
+
+const collectInvalidEanLabels = (items: InventoryItem[]): string[] => {
+  const labels: string[] = []
+
+  for (const item of items) {
+    const quantity = Number.isFinite(item.quantity) ? item.quantity : 0
+    if (quantity <= 0) {
+      continue
+    }
+
+    const sanitized = sanitizeEanForSubmission(item.product.ean)
+    if (isValidEanForSubmission(sanitized)) {
+      continue
+    }
+
+    const normalizedDisplay = normalizeIdentifier(item.product.ean)
+    if (normalizedDisplay) {
+      labels.push(normalizedDisplay)
+      continue
+    }
+
+    labels.push(`${item.product.name} (EAN manquant)`)
+  }
+
+  return labels
+}
+
+const formatInvalidEanSummary = (labels: string[]): string => {
+  if (labels.length === 0) {
+    return ''
+  }
+
+  const preview = labels.slice(0, 3).map((label) => `«${label}»`).join(', ')
+  const remaining = labels.length - 3
+
+  if (remaining <= 0) {
+    return preview
+  }
+
+  const plural = remaining > 1 ? 's' : ''
+  return `${preview}… (+${remaining} autre${plural})`
 }
 
 const resolveLifecycleErrorMessage = (error: unknown, fallback: string): string => {
@@ -773,6 +836,14 @@ export const InventorySessionPage = () => {
     setErrorMessage(null)
     updateStatus('Envoi du comptage…')
     try {
+      const invalidEanLabels = collectInvalidEanLabels(items)
+      if (invalidEanLabels.length > 0) {
+        const summary = formatInvalidEanSummary(invalidEanLabels)
+        throw new Error(
+          `Impossible de terminer : certains articles ont un EAN invalide (${summary}). Corrigez-les ou supprimez-les puis réessayez.`,
+        )
+      }
+
       const payloadItems = aggregateItemsForCompletion(items)
 
       if (payloadItems.length === 0) {
