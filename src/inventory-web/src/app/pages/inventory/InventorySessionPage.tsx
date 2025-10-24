@@ -786,7 +786,6 @@ export const InventorySessionPage = () => {
 
       await completeInventoryRun(locationId, payload)
       updateStatus('Comptage terminé avec succès.')
-      setManualEan('')
       clearSession()
       setScanValue('')
       setInputLookupStatus('idle')
