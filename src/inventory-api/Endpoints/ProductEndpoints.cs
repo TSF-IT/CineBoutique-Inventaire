@@ -961,7 +961,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             {
                 "ean"    => "ean",
                 "name"   => "name",
-                "descr"  => "descr",
+                "descr"  => "name",
                 "digits" => "digits",
                 _         => "sku"
             };
@@ -973,7 +973,6 @@ WHERE "ShopId"=@ShopId AND (
     COALESCE("Sku",'') ILIKE '%'||@Filter||'%' OR
     COALESCE("Ean",'') ILIKE '%'||@Filter||'%' OR
     COALESCE("CodeDigits",'') ILIKE '%'||@Filter||'%' OR
-    COALESCE("Description",'') ILIKE '%'||@Filter||'%' OR
     COALESCE("Name",'') ILIKE '%'||@Filter||'%'
 )
 """;
@@ -984,7 +983,6 @@ WHERE
     COALESCE("Sku",'') ILIKE '%'||@Filter||'%' OR
     COALESCE("Ean",'') ILIKE '%'||@Filter||'%' OR
     COALESCE("CodeDigits",'') ILIKE '%'||@Filter||'%' OR
-    COALESCE("Description",'') ILIKE '%'||@Filter||'%' OR
     COALESCE("Name",'') ILIKE '%'||@Filter||'%'
 """;
 
@@ -1025,13 +1023,12 @@ FROM "Product"
 
                 var data = await connection.QueryAsync(
                     new Dapper.CommandDefinition($$"""
-SELECT "Id","Sku","Name","Ean","Description","CodeDigits"
+SELECT "Id","Sku","Name","Ean","CodeDigits"
 FROM "Product"
 {{whereClause}}
 ORDER BY
   CASE WHEN @Sort='ean'   THEN "Ean"
        WHEN @Sort='name'  THEN "Name"
-       WHEN @Sort='descr' THEN "Description"
        WHEN @Sort='digits'THEN "CodeDigits"
        ELSE "Sku" END {{dir}},
   "Sku" ASC
@@ -1051,13 +1048,12 @@ FROM "Product"
 
                 var data = await connection.QueryAsync(
                     new Dapper.CommandDefinition($$"""
-SELECT "Id","Sku","Name","Ean","Description","CodeDigits"
+SELECT "Id","Sku","Name","Ean","CodeDigits"
 FROM "Product"
 {{globalWhereClause}}
 ORDER BY
   CASE WHEN @Sort='ean'   THEN "Ean"
        WHEN @Sort='name'  THEN "Name"
-       WHEN @Sort='descr' THEN "Description"
        WHEN @Sort='digits'THEN "CodeDigits"
        ELSE "Sku" END {{dir}},
   "Sku" ASC
@@ -1076,7 +1072,7 @@ LIMIT @Limit OFFSET @Offset;
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, ct).ConfigureAwait(false);
 
             const string sql = """
-    SELECT "Sku","Ean","Name","Description","CodeDigits"
+    SELECT "Sku","Ean","Name","CodeDigits"
     FROM "Product"
     WHERE "ShopId"=@ShopId
     ORDER BY "Sku";
@@ -1088,14 +1084,13 @@ LIMIT @Limit OFFSET @Offset;
 
             // Construire CSV ; séparateur ; ; latin1
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine("sku;ean;name;description;codeDigits");
+            sb.AppendLine("sku;ean;name;codeDigits");
             foreach (dynamic r in rows)
             {
                 string esc(string? s) => (s ?? string.Empty).Replace("\"", "\"\"");
                 sb.Append('"').Append(esc((string)r.Sku)).Append('"').Append(';')
                   .Append('"').Append(esc((string?)r.Ean)).Append('"').Append(';')
                   .Append('"').Append(esc((string)r.Name)).Append('"').Append(';')
-                  .Append('"').Append(esc((string?)r.Description)).Append('"').Append(';')
                   .Append('"').Append(esc((string?)r.CodeDigits)).Append('"')
                   .AppendLine();
             }

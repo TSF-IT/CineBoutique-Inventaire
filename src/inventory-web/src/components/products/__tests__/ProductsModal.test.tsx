@@ -18,7 +18,6 @@ describe('ProductsModal', () => {
           sku: 'SKU-1',
           name: 'Produit 1',
           ean: '1234567890123',
-          description: 'Article test',
           codeDigits: '99'
         }
       ],

@@ -9,7 +9,7 @@ public sealed class Perf_Indexes_Products : Migration
     {
         // Unicité déjà gérée : UX_Product_Shop_LowerSku
 
-        // Préfixe/ILIKE sur SKU/EAN/CodeDigits/Name/Description scope boutique
+        // Préfixe/ILIKE sur SKU/EAN/CodeDigits/Name scope boutique
         Execute.Sql(
             """
             CREATE INDEX IF NOT EXISTS "IX_Product_Shop_LowerSku"
@@ -20,8 +20,6 @@ public sealed class Perf_Indexes_Products : Migration
                 ON "Product" ("ShopId", "CodeDigits");
             CREATE INDEX IF NOT EXISTS "IX_Product_Shop_Name_trgm"
                 ON "Product" USING GIN ("ShopId", immutable_unaccent(LOWER("Name")) gin_trgm_ops);
-            CREATE INDEX IF NOT EXISTS "IX_Product_Shop_Descr_trgm"
-                ON "Product" USING GIN ("ShopId", immutable_unaccent(LOWER("Description")) gin_trgm_ops);
             """
         );
     }
