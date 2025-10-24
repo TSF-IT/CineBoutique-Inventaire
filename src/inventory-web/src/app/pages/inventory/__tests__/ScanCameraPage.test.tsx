@@ -284,9 +284,8 @@ describe('ScanCameraPage', () => {
     expect(await screen.findByText('Produit détecté')).toBeInTheDocument()
   })
 
-  it('permet d’ajouter manuellement un produit introuvable après un scan', async () => {
+  it("signale l'absence de résultat sans proposer d'ajout manuel", async () => {
     fetchProductByEanMock.mockRejectedValue({ status: 404 })
-    startInventoryRunMock.mockResolvedValue({ runId: 'run-manual' })
 
     let latestItems: InventoryItem[] = []
     renderScanCameraPage({
@@ -298,15 +297,14 @@ describe('ScanCameraPage', () => {
     await waitFor(() => expect(typeof scannerCallbacks.onDetected).toBe('function'))
     await scannerCallbacks.onDetected?.('0123456789012')
 
-    const error = await screen.findByText('Aucun produit trouvé pour 0123456789012.')
-    expect(error).toBeInTheDocument()
-
-    const manualButton = await screen.findByRole('button', { name: /ajouter manuellement/i })
-    await userEvent.click(manualButton)
-
-    await waitFor(() => expect(latestItems.some((item) => item.product.ean === '0123456789012')).toBe(true))
-    await waitFor(() => expect(screen.queryByText(/Aucun produit trouvé/)).not.toBeInTheDocument())
-    expect(await screen.findByText('Produit inconnu EAN 0123456789012')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(
+        screen.getByText('Code 0123456789012 introuvable dans l’inventaire. Signalez-le pour création.'),
+      ).toBeInTheDocument(),
+    )
+    expect(document.body).toHaveClass('inventory-flash-active')
+    expect(screen.queryByRole('button', { name: /ajouter manuellement/i })).not.toBeInTheDocument()
+    expect(latestItems.some((item) => item.product.ean === '0123456789012')).toBe(false)
   })
 })
 
