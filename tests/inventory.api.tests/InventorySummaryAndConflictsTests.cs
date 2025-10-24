@@ -4,6 +4,7 @@ using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Fixtures;
 using CineBoutique.Inventory.Api.Tests.Helpers;
 using FluentAssertions;
+using Npgsql;
 
 namespace CineBoutique.Inventory.Api.Tests;
 
@@ -82,23 +83,40 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
             client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
             new StartRunRequest(seeded.ShopId, seeded.PrimaryUserId, 1)
         ).ConfigureAwait(false);
-        await startResponse.ShouldBeAsync(HttpStatusCode.OK, "start run to mark busy");
+        await startResponse.ShouldBeAsync(HttpStatusCode.OK, "start run").ConfigureAwait(false);
         var started = await startResponse.Content.ReadFromJsonAsync<StartInventoryRunResponse>().ConfigureAwait(false);
         started.Should().NotBeNull();
 
-        var locationsResponse = await client.GetAsync(
+        var initialLocations = await client.GetAsync(
             client.CreateRelativeUri($"/api/locations?shopId={seeded.ShopId}")
         ).ConfigureAwait(false);
 
-        await locationsResponse.ShouldBeAsync(HttpStatusCode.OK, "list locations").ConfigureAwait(false);
-        var locations = await locationsResponse.Content.ReadFromJsonAsync<LocationListItemDto[]>().ConfigureAwait(false);
+        await initialLocations.ShouldBeAsync(HttpStatusCode.OK, "list locations without lines").ConfigureAwait(false);
+        var locations = await initialLocations.Content.ReadFromJsonAsync<LocationListItemDto[]>().ConfigureAwait(false);
         locations.Should().NotBeNull();
         locations!.Should().ContainSingle(loc => loc.Id == seeded.LocationId);
-        var location = locations!.Single(loc => loc.Id == seeded.LocationId);
-        location.IsBusy.Should().BeTrue();
-        location.ActiveRunId.Should().Be(started!.RunId);
-        location.CountStatuses.Should().NotBeNullOrEmpty();
+        var location = locations.Single(loc => loc.Id == seeded.LocationId);
+        location.IsBusy.Should().BeFalse("aucun article scanné");
+        location.ActiveRunId.Should().BeNull();
+        location.CountStatuses.Should().NotBeNull();
         location.CountStatuses.Any(status => status.CountType == 1 && status.Status == LocationCountStatus.InProgress)
+            .Should().BeFalse();
+
+        await InsertCountLineAsync(started!.RunId, seeded.ProductEan, 1m).ConfigureAwait(false);
+
+        var updatedResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/locations?shopId={seeded.ShopId}")
+        ).ConfigureAwait(false);
+
+        await updatedResponse.ShouldBeAsync(HttpStatusCode.OK, "list locations after first line").ConfigureAwait(false);
+        var updatedLocations = await updatedResponse.Content.ReadFromJsonAsync<LocationListItemDto[]>().ConfigureAwait(false);
+        updatedLocations.Should().NotBeNull();
+        updatedLocations!.Should().ContainSingle(loc => loc.Id == seeded.LocationId);
+        var updated = updatedLocations.Single(loc => loc.Id == seeded.LocationId);
+        updated.IsBusy.Should().BeTrue();
+        updated.ActiveRunId.Should().Be(started.RunId);
+        updated.CountStatuses.Should().NotBeNullOrEmpty();
+        updated.CountStatuses.Any(status => status.CountType == 1 && status.Status == LocationCountStatus.InProgress)
             .Should().BeTrue();
     }
 
@@ -149,5 +167,39 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
         ).ConfigureAwait(false);
         await completeResponse.ShouldBeAsync(HttpStatusCode.OK, "complete run for count");
         return await completeResponse.Content.ReadFromJsonAsync<CompleteInventoryRunResponse>().ConfigureAwait(false);
+    }
+
+    private async Task InsertCountLineAsync(Guid runId, string ean, decimal quantity)
+    {
+        await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync().ConfigureAwait(false);
+
+        Guid productId;
+        await using (var lookup = new NpgsqlCommand("SELECT \"Id\" FROM \"Product\" WHERE \"Ean\" = @ean LIMIT 1;", connection, transaction))
+        {
+            lookup.Parameters.AddWithValue("ean", ean);
+            var result = await lookup.ExecuteScalarAsync().ConfigureAwait(false);
+            if (result is not Guid id)
+            {
+                throw new InvalidOperationException($"Produit introuvable pour l'EAN {ean}.");
+            }
+
+            productId = id;
+        }
+
+        await using (var insert = new NpgsqlCommand(
+                   "INSERT INTO \"CountLine\" (\"Id\", \"CountingRunId\", \"ProductId\", \"Quantity\", \"CountedAtUtc\") VALUES (@id, @runId, @productId, @quantity, @at);",
+                   connection,
+                   transaction))
+        {
+            insert.Parameters.AddWithValue("id", Guid.NewGuid());
+            insert.Parameters.AddWithValue("runId", runId);
+            insert.Parameters.AddWithValue("productId", productId);
+            insert.Parameters.AddWithValue("quantity", quantity);
+            insert.Parameters.AddWithValue("at", DateTimeOffset.UtcNow);
+            await insert.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync().ConfigureAwait(false);
     }
 }
