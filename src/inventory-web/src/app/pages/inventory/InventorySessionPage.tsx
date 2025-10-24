@@ -562,7 +562,9 @@ export const InventorySessionPage = () => {
   const handleUnknownProduct = useCallback(
     (code: string) => {
       updateStatus(null)
-      setErrorMessage(`Code ${code} introuvable dans l’inventaire. Signalez-le pour création.`)
+      setErrorMessage(
+        `Code ${code} introuvable dans la liste des produits à inventorier.`,
+      )
       setInputLookupStatus('not-found')
       setScanValue(code)
       triggerScanRejectionFeedback()

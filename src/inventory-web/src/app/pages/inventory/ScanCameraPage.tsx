@@ -245,7 +245,9 @@ export const ScanCameraPage = () => {
       } catch (error) {
         const err = error as HttpError
         if (err?.status === 404) {
-          setErrorMessage(`Code ${sanitized} introuvable dans l’inventaire. Signalez-le pour création.`)
+          setErrorMessage(
+            `Code ${sanitized} introuvable dans la liste des produits à inventorier.`,
+          )
           triggerScanRejectionFeedback()
         } else {
           setErrorMessage('Échec de la récupération du produit. Réessayez.')

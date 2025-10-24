@@ -810,7 +810,9 @@ describe("Workflow d'inventaire", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText('Code rfid001 introuvable dans l’inventaire. Signalez-le pour création.'),
+        screen.getByText(
+          'Code rfid001 introuvable dans la liste des produits à inventorier.',
+        ),
       ).toBeInTheDocument(),
     )
     expect(fetchProductMock.mock.calls.some(([code]) => code === 'rfid001')).toBe(true)
@@ -845,7 +847,9 @@ describe("Workflow d'inventaire", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText('Code rfid001 introuvable dans l’inventaire. Signalez-le pour création.'),
+        screen.getByText(
+          'Code rfid001 introuvable dans la liste des produits à inventorier.',
+        ),
       ).toBeInTheDocument(),
     )
     expect(fetchProductMock.mock.calls.some(([code]) => code === 'rfid001')).toBe(true)
@@ -880,7 +884,9 @@ describe("Workflow d'inventaire", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText('Code RF ID 001-★ introuvable dans l’inventaire. Signalez-le pour création.'),
+        screen.getByText(
+          'Code RF ID 001-★ introuvable dans la liste des produits à inventorier.',
+        ),
       ).toBeInTheDocument(),
     )
     expect(fetchProductMock.mock.calls.some(([code]) => code === 'RF ID 001-★')).toBe(true)

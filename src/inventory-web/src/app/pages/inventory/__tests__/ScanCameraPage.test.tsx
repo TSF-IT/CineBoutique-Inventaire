@@ -319,7 +319,9 @@ describe('ScanCameraPage', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText('Code 0123456789012 introuvable dans l’inventaire. Signalez-le pour création.'),
+        screen.getByText(
+          'Code 0123456789012 introuvable dans la liste des produits à inventorier.',
+        ),
       ).toBeInTheDocument(),
     )
     expect(document.body).toHaveClass('inventory-flash-active')
