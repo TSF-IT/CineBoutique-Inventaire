@@ -7,7 +7,6 @@ type Item = {
   sku: string;
   name: string;
   ean?: string | null;
-  description?: string | null;
   codeDigits?: string | null;
 };
 type Response = {
@@ -26,9 +25,9 @@ type Props = { open: boolean; onClose: () => void; shopId: string };
 export function ProductsModal({ open, onClose, shopId }: Props) {
   const [q, setQ] = React.useState("");
   const [page, setPage] = React.useState(1);
-  const [sortBy, setSortBy] = React.useState<
-    "sku" | "ean" | "name" | "descr" | "digits"
-  >("sku");
+  const [sortBy, setSortBy] = React.useState<"sku" | "ean" | "name" | "digits">(
+    "sku",
+  );
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
   const [data, setData] = React.useState<Response | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -88,7 +87,6 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
               ["sku", "SKU"],
               ["ean", "EAN"],
               ["name", "Nom"],
-              ["descr", "Description"],
               ["digits", "Digits"],
             ] as const
           ).map(([key, label]) => (
@@ -132,7 +130,7 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
       <div className="absolute inset-x-0 bottom-0 top-8 mx-auto max-w-4xl rounded-t-xl bg-white shadow-lg">
         <div className="sticky top-0 flex items-center justify-between border-b bg-white p-3">
           <input
-            placeholder="Rechercher (SKU / EAN / description)"
+            placeholder="Rechercher (SKU / EAN / nom)"
             className="w-full max-w-sm rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 placeholder:text-gray-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
             value={q}
             onChange={(e) => {
@@ -154,7 +152,7 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
               {header}
               <tbody>
                 <tr>
-                  <td className="p-4 text-sm text-gray-500" colSpan={5}>
+                  <td className="p-4 text-sm text-gray-500" colSpan={4}>
                     Chargement…
                   </td>
                 </tr>
@@ -165,7 +163,7 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
               {header}
               <tbody>
                 <tr>
-                  <td className="p-4 text-sm text-gray-500" colSpan={5}>
+                  <td className="p-4 text-sm text-gray-500" colSpan={4}>
                     Aucun résultat
                   </td>
                 </tr>
@@ -189,11 +187,10 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
               }) => {
                 const product = items[index];
                 return (
-                  <div style={style} className="text-sm grid grid-cols-5">
+                  <div style={style} className="text-sm grid grid-cols-4">
                     <div className="p-2">{product.sku}</div>
                     <div className="p-2">{product.ean ?? ""}</div>
                     <div className="p-2">{product.name}</div>
-                    <div className="p-2">{product.description ?? ""}</div>
                     <div className="p-2">{product.codeDigits ?? ""}</div>
                   </div>
                 );
@@ -219,12 +216,6 @@ export function ProductsModal({ open, onClose, shopId }: Props) {
                     </td>
                     <td className="p-2 truncate" title={product.name}>
                       {product.name}
-                    </td>
-                    <td
-                      className="p-2 truncate"
-                      title={product.description ?? undefined}
-                    >
-                      {product.description ?? ""}
                     </td>
                     <td
                       className="p-2 truncate"

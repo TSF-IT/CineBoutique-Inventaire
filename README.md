@@ -215,6 +215,7 @@ curl -s "http://localhost:8080/api/products/search?code=0001&limit=5" | jq
 L'endpoint `POST /api/shops/{shopId}/products/import` remplace l'intégralité du catalogue de l'entité ciblée.
 
 - Format attendu : fichier CSV encodé en `latin-1` avec séparateur `;` et en-têtes `barcode_rfid;item;descr`.
+- Le champ `descr` est directement mappé sur la colonne `Name` des produits ; aucun champ `Description` distinct n'est stocké en base.
 - Idempotence : l'import est ignoré (`204 No Content`) si le fichier a déjà été appliqué.
 - Paramètre `dryRun=true|false` (par défaut `false`) pour valider le fichier sans rien écrire ; la réponse contient `dryRun: true` et les compteurs calculés.
 - Verrouillage optimiste : une exécution en cours renvoie `423 Locked` avec `{ "reason": "import_in_progress" }`.
