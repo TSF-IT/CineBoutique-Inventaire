@@ -36,13 +36,36 @@ public sealed class ProductLookupService : IProductLookupService
             return ProductLookupResult.Success(originalCode, normalizedCode, null, ToDto(skuMatch));
         }
 
+        var digits = ExtractDigits(normalizedCode);
+
         var rawMatches = await _repository.FindByRawCodeAsync(normalizedCode, cancellationToken).ConfigureAwait(false);
         if (rawMatches.Count == 1)
         {
-            return ProductLookupResult.Success(originalCode, normalizedCode, null, ToDto(rawMatches[0]));
+            if (digits.Length > 0)
+            {
+                var digitMatches = await _repository.FindByCodeDigitsAsync(digits, cancellationToken).ConfigureAwait(false);
+                if (digitMatches.Count > 1 && digitMatches.Any(match => match.Id != rawMatches[0].Id))
+                {
+                    var allMatches = digitMatches
+                        .Select(item => new ProductLookupMatch(item.Sku, (item.Code ?? item.Ean ?? string.Empty).Trim()))
+                        .ToArray();
+
+                    return ProductLookupResult.Conflict(originalCode, normalizedCode, digits, allMatches);
+                }
+            }
+
+            return ProductLookupResult.Success(originalCode, normalizedCode, digits.Length > 0 ? digits : null, ToDto(rawMatches[0]));
         }
 
-        var digits = ExtractDigits(normalizedCode);
+        if (rawMatches.Count > 1)
+        {
+            var rawMatchDtos = rawMatches
+                .Select(item => new ProductLookupMatch(item.Sku, (item.Code ?? item.Ean ?? string.Empty).Trim()))
+                .ToArray();
+
+            return ProductLookupResult.Conflict(originalCode, normalizedCode, digits.Length > 0 ? digits : null, rawMatchDtos);
+        }
+
         if (digits.Length > 0)
         {
             var digitMatches = await _repository.FindByCodeDigitsAsync(digits, cancellationToken).ConfigureAwait(false);
