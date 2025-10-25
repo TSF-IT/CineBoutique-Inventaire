@@ -4,7 +4,7 @@ import { FixedSizeList as VirtualList } from "react-window";
 import { modalOverlayClassName } from "@/app/components/Modal/modalOverlayClassName";
 
 const GRID_TEMPLATE_CLASS =
-  "grid grid-cols-[minmax(140px,1fr)_minmax(120px,1fr)_minmax(220px,1.6fr)] sm:grid-cols-[minmax(160px,1fr)_minmax(140px,1fr)_minmax(320px,2fr)]";
+  "grid grid-cols-[minmax(140px,1fr)_minmax(120px,1fr)_minmax(260px,1.6fr)] sm:grid-cols-[minmax(160px,1fr)_minmax(140px,1fr)_minmax(360px,2fr)]";
 
 const ROW_HEIGHT = 44;
 type Item = {
@@ -170,7 +170,7 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
     () => (
       <div
         role="row"
-        className={`${GRID_TEMPLATE_CLASS} sticky top-0 z-10 items-center gap-3 border-b border-slate-200/80 bg-white/95 px-4 py-3 text-[0.75rem] font-semibold uppercase tracking-wide text-slate-500 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-300`}
+        className={`${GRID_TEMPLATE_CLASS} items-center gap-3 border-b border-slate-200/80 bg-white/95 px-4 py-3 text-[0.75rem] font-semibold uppercase tracking-wide text-slate-500 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-300`}
       >
         {columns.map(({ key, label }) => {
           const isActive = sortBy === key;
@@ -316,7 +316,12 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
                     aria-label="Liste des produits"
                     className="min-w-full text-sm text-slate-700 dark:text-slate-200"
                   >
-                    <div role="rowgroup">{header}</div>
+                    <div
+                      role="rowgroup"
+                      className="sticky top-0 z-20 bg-white/95 backdrop-blur dark:bg-slate-900/90"
+                    >
+                      {header}
+                    </div>
                     <div role="rowgroup">
                       {loading && (!data || items.length === 0) ? (
                         <div
@@ -410,12 +415,12 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
                                 </div>
                                 <div
                                   role="cell"
-                                  className="relative flex items-center"
+                                  className="flex min-w-0 items-center gap-2"
                                   title={product.name}
                                 >
-                                  <span className="flex-1 truncate pr-24">{product.name}</span>
+                                  <span className="truncate flex-1">{product.name}</span>
                                   {isInteractive ? (
-                                    <span className="pointer-events-none absolute right-0 inline-flex shrink-0 items-center rounded-full bg-product-100 px-3 py-1 text-xs font-semibold text-product-700 dark:bg-product-700/40 dark:text-product-200">
+                                    <span className="inline-flex shrink-0 items-center rounded-full bg-product-100 px-3 py-1 text-xs font-semibold text-product-700 dark:bg-product-700/40 dark:text-product-200">
                                       {isPending ? "Ajout…" : resolvedSelectLabel}
                                     </span>
                                   ) : null}
@@ -483,12 +488,12 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
                               </div>
                               <div
                                 role="cell"
-                                className="relative flex items-center"
+                                className="flex min-w-0 items-center gap-2"
                                 title={product.name}
                               >
-                                <span className="flex-1 truncate pr-24">{product.name}</span>
+                                <span className="truncate flex-1">{product.name}</span>
                                 {isInteractive ? (
-                                  <span className="pointer-events-none absolute right-0 inline-flex shrink-0 items-center rounded-full bg-product-100 px-3 py-1 text-xs font-semibold text-product-700 dark:bg-product-700/40 dark:text-product-200">
+                                  <span className="inline-flex shrink-0 items-center rounded-full bg-product-100 px-3 py-1 text-xs font-semibold text-product-700 dark:bg-product-700/40 dark:text-product-200">
                                     {isPending ? "Ajout…" : resolvedSelectLabel}
                                   </span>
                                 ) : null}
