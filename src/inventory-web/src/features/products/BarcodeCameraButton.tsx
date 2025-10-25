@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
-type BarcodeDetection = { rawValue?: string | null };
-type BarcodeDetectorInstance = {
-  detect(source: ImageBitmapSource): Promise<BarcodeDetection[]>;
-};
-type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorInstance;
+type BarcodeDetectorOptions = { formats?: string[] };
+
+interface BarcodeDetectorConstructor {
+  prototype: BarcodeDetector;
+  new (options?: BarcodeDetectorOptions): BarcodeDetector;
+}
 
 declare global {
   interface Window {
@@ -50,11 +51,11 @@ function haptic() {
 }
 
 export function BarcodeCameraButton(props: { onDetected?: (value: string) => void }) {
-  const supported = Boolean(window.BarcodeDetector);
+  const supported = typeof window.BarcodeDetector === "function";
   const [active, setActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const detectorRef = useRef<BarcodeDetectorInstance | null>(null);
+  const detectorRef = useRef<BarcodeDetector | null>(null);
 
   function stop() {
     setActive(false);
@@ -107,7 +108,7 @@ export function BarcodeCameraButton(props: { onDetected?: (value: string) => voi
       const codes = await detector.detect(bitmap);
       bitmap.close?.();
       if (codes && codes.length > 0) {
-        const raw = String(codes[0].rawValue ?? "").trim();
+        const raw = String(codes[0].rawValue).trim();
         if (raw) {
           beep();
           haptic();

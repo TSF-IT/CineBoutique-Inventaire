@@ -116,7 +116,7 @@ export default function RequireUser(): ReactElement | null {
     if (snapshotUser) {
       resolvedUserIdRef.current = storedUserId;
       setSelectedUser(snapshotUser);
-      setState({ status: "ready" });
+      dispatch({ type: "ready" });
       return;
     }
 

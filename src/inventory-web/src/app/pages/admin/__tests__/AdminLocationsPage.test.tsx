@@ -445,7 +445,7 @@ describe('AdminLocationsPage', () => {
     const fetchMock = vi.fn().mockImplementation(
       async (input: RequestInfo | URL, __init?: RequestInit): Promise<Response> => {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
-        recordedCalls.push({ url, init })
+        recordedCalls.push({ url, _init: __init })
 
         if (url.endsWith('/products/import/status')) {
           return {
@@ -492,10 +492,10 @@ describe('AdminLocationsPage', () => {
         expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/products/import?'), expect.anything())
       })
 
-      const importCall = recordedCalls.find(({ url }) => url.includes('/products/import?'))
+    const importCall = recordedCalls.find(({ url }) => url.includes('/products/import?'))
       expect(importCall).toBeDefined()
       expect(importCall?.url).toContain('mode=merge')
-      expect(importCall?.init?.method ?? 'POST').toBe('POST')
+    expect(importCall?._init?.method ?? 'POST').toBe('POST')
     } finally {
       global.fetch = previousFetch
     }
