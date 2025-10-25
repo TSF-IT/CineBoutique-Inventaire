@@ -4,7 +4,7 @@ namespace CineBoutique.Inventory.Api.Services;
 
 public interface IShopUserService
 {
-    Task<IReadOnlyList<ShopUserDto>> GetAsync(Guid shopId, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ShopUserDto>> GetAsync(Guid shopId, bool includeDisabled, CancellationToken cancellationToken);
 
     Task<ShopUserDto> CreateAsync(Guid shopId, CreateShopUserRequest request, CancellationToken cancellationToken);
 

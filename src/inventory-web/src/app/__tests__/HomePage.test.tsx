@@ -50,7 +50,7 @@ const fetchInventorySummaryMock = vi.hoisted(() =>
 )
 
 const fetchLocationsMock = vi.hoisted(() =>
-  vi.fn(async (shopId: string): Promise<Location[]> => {
+  vi.fn(async (shopId: string, _options?: { includeDisabled?: boolean }): Promise<Location[]> => {
     expect(shopId).toBeTruthy()
     return [
       {
@@ -82,6 +82,7 @@ const fetchLocationsMock = vi.hoisted(() =>
             completedAtUtc: null,
           },
         ],
+        disabled: false,
       },
       {
         id: 'loc-2',
@@ -112,6 +113,7 @@ const fetchLocationsMock = vi.hoisted(() =>
             completedAtUtc: new Date('2025-01-01T09:30:00Z'),
           },
         ],
+        disabled: false,
       },
     ]
   }),
@@ -216,7 +218,9 @@ describe('HomePage', () => {
 
     expect(screen.getByRole('button', { name: 'Débuter un comptage' })).toBeInTheDocument()
     expect(fetchLocationsMock).toHaveBeenCalled()
-    expect(fetchLocationsMock.mock.calls[0]?.[0]).toBe(testShop.id)
+    const [shopIdArg, optionsArg] = fetchLocationsMock.mock.calls[0] ?? []
+    expect(shopIdArg).toBe(testShop.id)
+    expect(optionsArg).toEqual({ includeDisabled: true })
   })
 
   it('affiche les messages neutres quand il ne reste plus de conflit ni de comptage', async () => {

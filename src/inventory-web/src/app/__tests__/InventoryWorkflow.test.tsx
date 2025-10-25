@@ -37,6 +37,7 @@ const {
     id: 'zone-1',
     code: 'RES',
     label: 'Réserve',
+    disabled: false,
     isBusy: false,
     busyBy: null,
     activeRunId: null,
@@ -67,6 +68,7 @@ const {
     id: 'zone-2',
     code: 'SAL1',
     label: 'Salle 1',
+    disabled: false,
     isBusy: true,
     busyBy: 'paul.dupont',
     activeCountType: 1,
@@ -146,7 +148,7 @@ const {
     },
   ]
   return {
-    fetchLocationsMock: vi.fn(async (shopId: string): Promise<Location[]> => {
+    fetchLocationsMock: vi.fn(async (shopId: string, _options?: { includeDisabled?: boolean }): Promise<Location[]> => {
       expect(shopId).toBeTruthy()
       return [
         { ...reserveLocation },
@@ -187,7 +189,7 @@ const {
         startedAtUtc: new Date().toISOString(),
       }),
     releaseInventoryRunMock: vi.fn(async () => {}),
-    fetchShopUsersMock: vi.fn(async (shopId: string): Promise<ShopUser[]> => {
+    fetchShopUsersMock: vi.fn(async (shopId: string, _options?: { includeDisabled?: boolean }): Promise<ShopUser[]> => {
       expect(shopId).toBeTruthy()
       return shopUsers
     }),
@@ -301,7 +303,7 @@ describe("Workflow d'inventaire", () => {
     fetchShopUsersMock.mockReset()
     fetchShopUsersMock.mockResolvedValue(shopUsers)
     fetchLocationsMock.mockReset()
-    fetchLocationsMock.mockImplementation(async (shopId: string): Promise<Location[]> => {
+    fetchLocationsMock.mockImplementation(async (shopId: string, _options?: { includeDisabled?: boolean }): Promise<Location[]> => {
       expect(shopId).toBeTruthy()
       return [
         { ...reserveLocation },
@@ -309,6 +311,7 @@ describe("Workflow d'inventaire", () => {
           id: 'zone-2',
           code: 'SAL1',
           label: 'Salle 1',
+          disabled: false,
           isBusy: true,
           busyBy: 'paul.dupont',
           activeCountType: 1,
@@ -389,7 +392,9 @@ describe("Workflow d'inventaire", () => {
     expect(locationPages).not.toHaveLength(0)
 
     await waitFor(() => expect(fetchLocationsMock).toHaveBeenCalledTimes(1))
-    expect(fetchLocationsMock.mock.calls[0]?.[0]).toBe(testShop.id)
+    const [shopIdArg, optionsArg] = fetchLocationsMock.mock.calls[0] ?? []
+    expect(shopIdArg).toBe(testShop.id)
+    expect(optionsArg).toEqual({ includeDisabled: true })
 
     await waitFor(() => expect(fetchInventorySummaryMock).toHaveBeenCalledTimes(1))
 
@@ -425,6 +430,7 @@ describe("Workflow d'inventaire", () => {
       id: 'zone-4',
       code: 'ZC4',
       label: 'Zone ZC4',
+      disabled: false,
       isBusy: false,
       busyBy: null,
       activeRunId: null,
@@ -487,6 +493,7 @@ describe("Workflow d'inventaire", () => {
       id: 'zone-5',
       code: 'ZC5',
       label: 'Zone ZC5',
+      disabled: false,
       isBusy: false,
       busyBy: null,
       activeRunId: null,
@@ -556,6 +563,7 @@ describe("Workflow d'inventaire", () => {
       id: 'zone-6',
       code: 'ZC6',
       label: 'Zone ZC6',
+      disabled: false,
       isBusy: false,
       busyBy: null,
       activeRunId: null,

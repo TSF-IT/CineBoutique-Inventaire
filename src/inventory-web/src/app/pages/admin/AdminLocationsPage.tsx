@@ -6,6 +6,7 @@ import {
   createShopUser,
   updateShopUser,
   disableShopUser,
+  disableLocation,
 } from '../../api/adminApi'
 import { fetchLocations } from '../../api/inventoryApi'
 import { fetchShopUsers } from '../../api/shopUsers'
@@ -552,14 +553,22 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
 type LocationListItemProps = {
   location: Location
   onSave: (id: string, payload: { code: string; label: string }) => Promise<void>
+  onDisable: (id: string) => Promise<void>
 }
 
-const LocationListItem = ({ location, onSave }: LocationListItemProps) => {
+const LocationListItem = ({ location, onSave, onDisable }: LocationListItemProps) => {
   const [isEditing, setIsEditing] = useState(false)
   const [code, setCode] = useState(location.code)
   const [label, setLabel] = useState(location.label)
   const [saving, setSaving] = useState(false)
+  const [disabling, setDisabling] = useState(false)
+  const [isDisabling, setIsDisabling] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const disableConfirmationDialogRef = useRef<HTMLDialogElement | null>(null)
+  const disableConfirmButtonRef = useRef<HTMLButtonElement | null>(null)
+  const disableDialogTitleId = `disable-location-dialog-title-${location.id}`
+  const disableDialogDescriptionId = `disable-location-dialog-description-${location.id}`
+  const isDisabled = location.disabled
 
   useEffect(() => {
     if (!isEditing) {
@@ -610,8 +619,45 @@ const LocationListItem = ({ location, onSave }: LocationListItemProps) => {
     }
   }
 
+  const handleOpenDisableDialog = () => {
+    setError(null)
+    const dialog = disableConfirmationDialogRef.current
+    if (!dialog) return
+    dialog.showModal()
+    requestAnimationFrame(() => {
+      disableConfirmButtonRef.current?.focus()
+    })
+  }
+
+  const handleCancelDisableDialog = () => {
+    disableConfirmationDialogRef.current?.close()
+  }
+
+  const handleConfirmDisableDialog = async () => {
+    if (isDisabling) {
+      return
+    }
+    setIsDisabling(true)
+    try {
+      await onDisable(location.id)
+      disableConfirmationDialogRef.current?.close()
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Impossible de désactiver la zone.'
+      setError(message)
+    } finally {
+      setIsDisabling(false)
+    }
+  }
+
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70">
+    <div
+      data-testid="location-card"
+      data-location-id={location.id}
+      className={clsx(
+        'flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition dark:border-slate-700 dark:bg-slate-900/70',
+        isDisabled && 'opacity-80',
+      )}
+    >
       {isEditing ? (
         <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
           <div className="flex flex-col gap-4 sm:flex-row">
@@ -623,6 +669,7 @@ const LocationListItem = ({ location, onSave }: LocationListItemProps) => {
               containerClassName="sm:w-32"
               maxLength={12}
               autoComplete="off"
+              disabled={saving || isDisabling}
             />
             <Input
               label="Libellé"
@@ -631,14 +678,15 @@ const LocationListItem = ({ location, onSave }: LocationListItemProps) => {
               onChange={(event) => setLabel(event.target.value)}
               containerClassName="flex-1"
               autoComplete="off"
+              disabled={saving || isDisabling}
             />
           </div>
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button type="submit" className="py-3" disabled={saving}>
+            <Button type="submit" className="py-3" disabled={saving || isDisabling}>
               {saving ? 'Enregistrement…' : 'Enregistrer'}
             </Button>
-            <Button type="button" variant="ghost" onClick={handleCancel} disabled={saving}>
+            <Button type="button" variant="ghost" onClick={handleCancel} disabled={saving || isDisabling}>
               Annuler
             </Button>
           </div>
@@ -646,14 +694,73 @@ const LocationListItem = ({ location, onSave }: LocationListItemProps) => {
       ) : (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
           <div className="min-w-0 space-y-1">
-            <p className="text-sm font-semibold uppercase tracking-widest text-brand-500">{location.code}</p>
-            <p className="text-lg font-semibold text-slate-900 dark:text-white break-words">{location.label}</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <p className="text-sm font-semibold uppercase tracking-widest text-brand-500">{location.code}</p>
+              {isDisabled && (
+                <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  Désactivée
+                </span>
+              )}
+            </div>
+            <p className="break-words text-lg font-semibold text-slate-900 dark:text-white">{location.label}</p>
           </div>
-          <Button variant="secondary" onClick={() => setIsEditing(true)} className="sm:self-start">
-            Modifier
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <Button
+              variant="secondary"
+              onClick={() => setIsEditing(true)}
+              className="sm:self-start"
+              disabled={isDisabled || saving || isDisabling}
+            >
+              Modifier
+            </Button>
+            {!isDisabled && (
+              <Button
+                variant="ghost"
+                className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                onClick={handleOpenDisableDialog}
+                disabled={saving || isDisabling}
+              >
+                Désactiver
+              </Button>
+            )}
+          </div>
         </div>
       )}
+      {error && !isEditing && (
+        <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>
+      )}
+      <dialog
+        ref={disableConfirmationDialogRef}
+        aria-modal="true"
+        aria-labelledby={disableDialogTitleId}
+        aria-describedby={disableDialogDescriptionId}
+        className="px-4"
+      >
+        <Card className="w-full max-w-lg shadow-elev-2">
+          <div className="space-y-4">
+            <p id={disableDialogTitleId} className="text-lg font-semibold">
+              {`Désactiver ${location.code} ?`}
+            </p>
+            <p id={disableDialogDescriptionId} className="text-sm text-slate-600 dark:text-slate-300">
+              La zone désactivée ne sera plus proposée lors des inventaires tant qu&apos;elle n&apos;est pas réactivée.
+            </p>
+          </div>
+          <div className="mt-6 flex justify-end gap-3">
+            <Button type="button" variant="secondary" onClick={handleCancelDisableDialog} disabled={isDisabling}>
+              Annuler
+            </Button>
+            <Button
+              ref={disableConfirmButtonRef}
+              type="button"
+              onClick={handleConfirmDisableDialog}
+              className="bg-red-600 text-white shadow-soft hover:bg-red-500 focus-visible:ring-2 focus-visible:ring-red-300 dark:bg-red-500 dark:hover:bg-red-400"
+              disabled={isDisabling}
+            >
+              {isDisabling ? 'Désactivation…' : 'Confirmer la désactivation'}
+            </Button>
+          </div>
+        </Card>
+      </dialog>
     </div>
   )
 }
@@ -670,12 +777,14 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
   const [displayName, setDisplayName] = useState(user.displayName)
   const [isAdmin, setIsAdmin] = useState(user.isAdmin)
   const [saving, setSaving] = useState(false)
+  const [disabling, setDisabling] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const disableConfirmationDialogRef = useRef<HTMLDialogElement | null>(null)
   const disableConfirmButtonRef = useRef<HTMLButtonElement | null>(null)
   const disableDialogTitleId = `disable-user-dialog-title-${user.id}`
   const disableDialogDescriptionId = `disable-user-dialog-description-${user.id}`
   const disableConfirmationMessage = `Désactiver ${user.displayName} ? L'utilisateur ne pourra plus se connecter tant qu'il n'est pas recréé.`
+  const isDisabled = user.disabled
 
   useEffect(() => {
     if (!isEditing) {
@@ -729,19 +838,25 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
   }
 
   const performDisable = useCallback(async () => {
+    if (isDisabled) {
+      return
+    }
     setError(null)
-    setSaving(true)
+    setDisabling(true)
     try {
       await onDisable(user.id)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'La désactivation a échoué.'
       setError(message)
     } finally {
-      setSaving(false)
+      setDisabling(false)
     }
-  }, [onDisable, user.id])
+  }, [isDisabled, onDisable, user.id])
 
   const handleOpenDisableDialog = useCallback(() => {
+    if (isDisabled) {
+      return
+    }
     const dialog = disableConfirmationDialogRef.current
     if (dialog && typeof dialog.showModal === 'function') {
       dialog.showModal()
@@ -754,7 +869,7 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
     if (window.confirm(disableConfirmationMessage)) {
       void performDisable()
     }
-  }, [disableConfirmationMessage, performDisable])
+  }, [disableConfirmationMessage, isDisabled, performDisable])
 
   const handleCancelDisableDialog = useCallback(() => {
     disableConfirmationDialogRef.current?.close()
@@ -767,7 +882,10 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
 
   return (
     <div
-      className="flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-900/70"
+      className={clsx(
+        'flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition dark:border-slate-700 dark:bg-slate-900/70',
+        isDisabled && 'opacity-80',
+      )}
       data-testid="user-card"
       data-user-id={user.id}
     >
@@ -785,6 +903,7 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
               autoComplete="off"
               autoCorrect="off"
               spellCheck={false}
+              disabled={saving || disabling}
             />
             <Input
               label="Nom affiché"
@@ -793,6 +912,7 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
               onChange={(event) => setDisplayName(event.target.value)}
               containerClassName="flex-1"
               autoComplete="name"
+              disabled={saving || disabling}
             />
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -802,14 +922,15 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
                 checked={isAdmin}
                 onChange={(event) => setIsAdmin(event.target.checked)}
                 className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-600"
+                disabled={saving || disabling}
               />
               Administrateur
             </label>
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Button type="submit" className="py-3" disabled={saving}>
+              <Button type="submit" className="py-3" disabled={saving || disabling}>
                 {saving ? 'Enregistrement…' : 'Enregistrer'}
               </Button>
-              <Button type="button" variant="ghost" onClick={handleCancel} disabled={saving}>
+              <Button type="button" variant="ghost" onClick={handleCancel} disabled={saving || disabling}>
                 Annuler
               </Button>
             </div>
@@ -825,20 +946,29 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
               <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                 {user.isAdmin ? 'Administrateur' : 'Standard'}
               </span>
+              {isDisabled && (
+                <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                  Désactivé
+                </span>
+              )}
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-none sm:items-center">
-            <Button variant="secondary" onClick={() => setIsEditing(true)}>
+            <Button variant="secondary" onClick={() => setIsEditing(true)} disabled={isDisabled || saving || disabling}>
               Modifier
             </Button>
-            <Button
-              variant="ghost"
-              className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-              onClick={handleOpenDisableDialog}
-              disabled={saving}
-            >
-              Désactiver
-            </Button>
+            {!isDisabled ? (
+              <Button
+                variant="ghost"
+                className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                onClick={handleOpenDisableDialog}
+                disabled={saving || disabling}
+              >
+                Désactiver
+              </Button>
+            ) : (
+              <span className="text-sm text-slate-500 dark:text-slate-400">Compte désactivé</span>
+            )}
           </div>
           {error && <p className="text-sm text-red-600 dark:text-red-400 sm:ml-auto sm:w-full sm:text-right">{error}</p>}
         </div>
@@ -860,7 +990,7 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
             </p>
           </div>
           <div className="mt-6 flex justify-end gap-3">
-            <Button type="button" variant="secondary" onClick={handleCancelDisableDialog}>
+            <Button type="button" variant="secondary" onClick={handleCancelDisableDialog} disabled={disabling}>
               Annuler
             </Button>
             <Button
@@ -868,9 +998,9 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
               type="button"
               onClick={handleConfirmDisableDialog}
               className="bg-red-600 text-white shadow-soft hover:bg-red-500 focus-visible:ring-2 focus-visible:ring-red-300 dark:bg-red-500 dark:hover:bg-red-400"
-              disabled={saving}
+              disabled={disabling}
             >
-              Confirmer la désactivation
+              {disabling ? 'Désactivation…' : 'Confirmer la désactivation'}
             </Button>
           </div>
         </Card>
@@ -890,7 +1020,7 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
     if (!shop?.id) {
       return Promise.resolve<Location[]>([])
     }
-    return fetchLocations(shop.id)
+    return fetchLocations(shop.id, { includeDisabled: true })
   }, [shop?.id])
 
   const { data, loading, error, execute, setData } = useAsync(loadLocations, [loadLocations], {
@@ -902,10 +1032,16 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
   const [newLocationLabel, setNewLocationLabel] = useState('')
   const [creatingLocation, setCreatingLocation] = useState(false)
   const [locationFeedback, setLocationFeedback] = useState<FeedbackState>(null)
+  const [hideDisabledLocations, setHideDisabledLocations] = useState(true)
 
   const sortedLocations = useMemo(
     () => [...(data ?? [])].sort((a, b) => a.code.localeCompare(b.code)),
     [data],
+  )
+
+  const visibleLocations = useMemo(
+    () => (hideDisabledLocations ? sortedLocations.filter((item) => !item.disabled) : sortedLocations),
+    [hideDisabledLocations, sortedLocations],
   )
 
   const handleCreateLocation = useCallback(
@@ -937,6 +1073,19 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
     },
     [newLocationCode, newLocationLabel, setData],
   )
+
+  const handleDisableLocation = async (id: string) => {
+    setLocationFeedback(null)
+    try {
+      const disabled = await disableLocation(id)
+      setData((prev) => prev?.map((item) => (item.id === disabled.id ? disabled : item)) ?? [])
+      setLocationFeedback({ type: 'success', message: 'Zone désactivée.' })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Impossible de désactiver cette zone.'
+      setLocationFeedback({ type: 'error', message })
+      throw new Error(message)
+    }
+  }
 
   const handleUpdateLocation = async (id: string, payload: { code: string; label: string }) => {
     setLocationFeedback(null)
@@ -983,15 +1132,24 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
           label="Libellé"
           name="newLocationLabel"
           placeholder="Ex. Réserve, Comptoir"
-          value={newLocationLabel}
-          onChange={(event) => setNewLocationLabel(event.target.value)}
-          containerClassName="flex-1"
-          autoComplete="off"
+      value={newLocationLabel}
+      onChange={(event) => setNewLocationLabel(event.target.value)}
+      containerClassName="flex-1"
+      autoComplete="off"
+    />
+    <Button type="submit" disabled={creatingLocation} className="py-3">
+      {creatingLocation ? 'Création…' : 'Ajouter'}
+    </Button>
+  </form>
+      <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+        <input
+          type="checkbox"
+          checked={hideDisabledLocations}
+          onChange={(event) => setHideDisabledLocations(event.target.checked)}
+          className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-600"
         />
-        <Button type="submit" disabled={creatingLocation} className="py-3">
-          {creatingLocation ? 'Création…' : 'Ajouter'}
-        </Button>
-      </form>
+        Masquer les zones désactivées
+      </label>
       {locationFeedback && (
         <p
           className={`text-sm ${
@@ -1007,11 +1165,23 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
       {Boolean(error) && <EmptyState title="Erreur" description="Les zones n'ont pas pu être chargées." />}
       {!loading && !error && (
         <div className="grid grid-cols-1 gap-4">
-          {sortedLocations.length === 0 ? (
-            <EmptyState title="Aucune zone" description="Ajoutez votre première zone pour démarrer." />
+          {visibleLocations.length === 0 ? (
+            sortedLocations.length > 0 && hideDisabledLocations ? (
+              <EmptyState
+                title="Aucune zone active"
+                description="Toutes les zones sont désactivées. Décochez l'option ci-dessus pour les afficher."
+              />
+            ) : (
+              <EmptyState title="Aucune zone" description="Ajoutez votre première zone pour démarrer." />
+            )
           ) : (
-            sortedLocations.map((locationItem) => (
-              <LocationListItem key={locationItem.id} location={locationItem} onSave={handleUpdateLocation} />
+            visibleLocations.map((locationItem) => (
+              <LocationListItem
+                key={locationItem.id}
+                location={locationItem}
+                onSave={handleUpdateLocation}
+                onDisable={handleDisableLocation}
+              />
             ))
           )}
         </div>
@@ -1032,7 +1202,7 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
     if (!shop?.id) {
       return Promise.resolve<ShopUser[]>([])
     }
-    return fetchShopUsers(shop.id)
+    return fetchShopUsers(shop.id, { includeDisabled: true })
   }, [shop?.id])
 
   const { data, loading, error, execute, setData } = useAsync(loadUsers, [loadUsers], {
@@ -1046,6 +1216,7 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
   const [newUserIsAdmin, setNewUserIsAdmin] = useState(false)
   const [creatingUser, setCreatingUser] = useState(false)
   const [userFeedback, setUserFeedback] = useState<FeedbackState>(null)
+  const [hideDisabledUsers, setHideDisabledUsers] = useState(true)
 
   useEffect(() => {
     setHasRequested(false)
@@ -1070,6 +1241,11 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
     const list = data ?? []
     return [...list].sort((a, b) => a.displayName.localeCompare(b.displayName, 'fr', { sensitivity: 'base' }))
   }, [data])
+
+  const visibleUsers = useMemo(
+    () => (hideDisabledUsers ? sortedUsers.filter((user) => !user.disabled) : sortedUsers),
+    [hideDisabledUsers, sortedUsers],
+  )
 
   const handleCreateUser = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -1135,11 +1311,11 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
     }
 
     try {
-      await disableShopUser(shop.id, id)
-      setData((prev) => prev?.filter((item) => item.id !== id) ?? [])
+      const disabled = await disableShopUser(shop.id, id)
+      setData((prev) => prev?.map((item) => (item.id === disabled.id ? disabled : item)) ?? [])
       setUserFeedback({ type: 'success', message: 'Utilisateur désactivé.' })
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Impossible de désactiver l'utilisateur." 
+      const message = err instanceof Error ? err.message : "Impossible de désactiver l'utilisateur."
       setUserFeedback({ type: 'error', message })
       throw new Error(message)
     }
@@ -1208,6 +1384,15 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
           </div>
         </div>
       </form>
+      <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+        <input
+          type="checkbox"
+          checked={hideDisabledUsers}
+          onChange={(event) => setHideDisabledUsers(event.target.checked)}
+          className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-600"
+        />
+        Masquer les utilisateurs désactivés
+      </label>
       {userFeedback && (
         <p
           className={`text-sm ${
@@ -1225,10 +1410,17 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
       )}
       {!loading && !error && hasRequested && (
         <div className="grid grid-cols-1 gap-4">
-          {sortedUsers.length === 0 ? (
-            <EmptyState title="Aucun utilisateur" description="Ajoutez un premier compte pour démarrer." />
+          {visibleUsers.length === 0 ? (
+            sortedUsers.length > 0 && hideDisabledUsers ? (
+              <EmptyState
+                title="Aucun utilisateur actif"
+                description="Tous les comptes sont désactivés. Décochez l'option ci-dessus pour les afficher."
+              />
+            ) : (
+              <EmptyState title="Aucun utilisateur" description="Ajoutez un premier compte pour démarrer." />
+            )
           ) : (
-            sortedUsers.map((user) => (
+            visibleUsers.map((user) => (
               <UserListItem key={user.id} user={user} onSave={handleUpdateUser} onDisable={handleDisableUser} />
             ))
           )}

@@ -4,7 +4,14 @@ import { API_BASE } from '@/lib/api/config'
 
 const sanitizeString = (value: unknown): string => (typeof value === 'string' ? value : String(value ?? '')).trim()
 
-export const fetchShopUsers = async (shopId: string): Promise<ShopUser[]> => {
+type FetchShopUsersOptions = {
+  includeDisabled?: boolean
+}
+
+export const fetchShopUsers = async (
+  shopId: string,
+  options: FetchShopUsersOptions = {},
+): Promise<ShopUser[]> => {
   const sanitizedShopId = shopId.trim()
   if (!sanitizedShopId) {
     return []
@@ -12,8 +19,11 @@ export const fetchShopUsers = async (shopId: string): Promise<ShopUser[]> => {
 
   let response: unknown
 
+  const baseUrl = `${API_BASE}/shops/${encodeURIComponent(sanitizedShopId)}/users`
+  const url = options.includeDisabled ? `${baseUrl}?includeDisabled=true` : baseUrl
+
   try {
-    response = (await http(`${API_BASE}/shops/${encodeURIComponent(sanitizedShopId)}/users`)) as unknown
+    response = (await http(url)) as unknown
   } catch (error) {
     if (error && typeof error === 'object' && 'status' in error && (error as { status?: number }).status === 404) {
       ;(error as { __shopNotFound?: boolean }).__shopNotFound = true

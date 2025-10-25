@@ -15,7 +15,7 @@ public sealed class ShopUserService : IShopUserService
         _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
     }
 
-    public async Task<IReadOnlyList<ShopUserDto>> GetAsync(Guid shopId, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ShopUserDto>> GetAsync(Guid shopId, bool includeDisabled, CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken).ConfigureAwait(false);
 
@@ -25,12 +25,12 @@ public sealed class ShopUserService : IShopUserService
         SELECT "Id", "ShopId", "Login", "DisplayName", "IsAdmin", "Disabled"
         FROM "ShopUser"
         WHERE "ShopId" = @ShopId
-          AND "Disabled" = FALSE
+          AND (@IncludeDisabled OR "Disabled" = FALSE)
         ORDER BY "IsAdmin" DESC, "DisplayName";
         """;
 
         var users = await connection.QueryAsync<ShopUserDto>(
-            new CommandDefinition(sql, new { ShopId = shopId }, cancellationToken: cancellationToken)).ConfigureAwait(false);
+            new CommandDefinition(sql, new { ShopId = shopId, IncludeDisabled = includeDisabled }, cancellationToken: cancellationToken)).ConfigureAwait(false);
 
         return users.ToList();
     }

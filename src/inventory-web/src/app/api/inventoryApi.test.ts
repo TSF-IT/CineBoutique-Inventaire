@@ -42,6 +42,7 @@ describe('fetchLocations', () => {
         id: '00000000-0000-4000-8000-000000000001',
         code: 'Z1',
         label: 'Zone Z1',
+        disabled: false,
         isBusy: false,
         busyBy: null,
         activeRunId: null,
@@ -104,6 +105,16 @@ describe('fetchLocations', () => {
     await expect(fetchLocations(defaultShopId)).rejects.toMatchObject({ status: 404 })
   })
 })
+  it('signale includeDisabled dans la requête quand demandé', async () => {
+    const httpMock = vi.fn().mockResolvedValue([])
+    mockHttpModule(httpMock)
+
+    const { fetchLocations } = await import('./inventoryApi')
+
+    await fetchLocations(defaultShopId, { includeDisabled: true })
+
+    expect(httpMock).toHaveBeenCalledWith(expect.stringContaining('includeDisabled=true'))
+  })
 
 describe('fetchLocationSummaries', () => {
   beforeEach(() => {

@@ -40,6 +40,7 @@ const baseLocation: Location = {
   id: 'location-test',
   code: 'Z01',
   label: 'Zone test',
+  disabled: false,
   isBusy: false,
   busyBy: null,
   activeRunId: null,

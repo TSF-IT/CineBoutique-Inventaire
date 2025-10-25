@@ -51,6 +51,7 @@ const defaultInventoryLocation: Location = {
   activeCountType: null,
   activeStartedAtUtc: null,
   countStatuses: [],
+  disabled: false,
 }
 
 const createUseInventoryValue = (overrides: Partial<UseInventoryValue> = {}): UseInventoryValue => ({

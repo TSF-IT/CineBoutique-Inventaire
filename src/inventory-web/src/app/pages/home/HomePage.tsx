@@ -120,6 +120,7 @@ const createFallbackLocationFromRun = (run: OpenRunSummary): Location => {
         completedAtUtc: null,
       },
     ],
+    disabled: false,
   }
 }
 
@@ -127,6 +128,7 @@ const createFallbackLocationFromZone = (zone: ConflictZoneSummary): Location => 
   id: zone.locationId,
   code: zone.locationCode,
   label: zone.locationLabel,
+  disabled: false,
   isBusy: false,
   busyBy: null,
   activeRunId: null,

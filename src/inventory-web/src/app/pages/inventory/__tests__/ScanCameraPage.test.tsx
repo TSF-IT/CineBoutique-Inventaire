@@ -57,6 +57,7 @@ const locationMock: Location = {
   activeCountType: null,
   activeStartedAtUtc: null,
   countStatuses: [],
+  disabled: false,
 }
 
 vi.mock('@/state/ShopContext', () => ({

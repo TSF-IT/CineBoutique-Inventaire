@@ -27,11 +27,14 @@ public sealed class ShopUsersController : ControllerBase
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<IReadOnlyList<ShopUserDto>>> GetAsync(Guid shopId, CancellationToken cancellationToken)
+    public async Task<ActionResult<IReadOnlyList<ShopUserDto>>> GetAsync(
+        Guid shopId,
+        [FromQuery] bool includeDisabled = false,
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            var users = await _shopUserService.GetAsync(shopId, cancellationToken).ConfigureAwait(false);
+            var users = await _shopUserService.GetAsync(shopId, includeDisabled, cancellationToken).ConfigureAwait(false);
             return Ok(users);
         }
         catch (ShopNotFoundException ex)

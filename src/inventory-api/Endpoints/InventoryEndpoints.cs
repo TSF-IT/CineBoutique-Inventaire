@@ -363,7 +363,7 @@ ORDER BY COALESCE(p.""Ean"", p.""Sku""), p.""Name"";";
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
             const string locationSql =
-                "SELECT \"Id\" AS \"Id\", \"Code\" AS \"Code\", \"Label\" AS \"Label\" FROM \"Location\" WHERE \"Id\" = @LocationId";
+                "SELECT \"Id\" AS \"Id\", \"Code\" AS \"Code\", \"Label\" AS \"Label\", \"Disabled\" FROM \"Location\" WHERE \"Id\" = @LocationId";
 
             var location = await connection.QuerySingleOrDefaultAsync<LocationMetadataRow>(
                 new CommandDefinition(locationSql, new { LocationId = locationId }, cancellationToken: cancellationToken))
@@ -555,7 +555,7 @@ ORDER BY COALESCE(NULLIF(p."Sku", ''), p."Ean"), p."Ean", pr."RunId";
     {
         app.MapGet(
             "/api/locations",
-            async (string? shopId, int? countType, IDbConnection connection, CancellationToken cancellationToken) =>
+            async (string? shopId, int? countType, bool? includeDisabled, IDbConnection connection, CancellationToken cancellationToken) =>
         {
             if (!TryNormalizeShopId(shopId, out var parsedShopId, out var errorResult))
             {
@@ -570,7 +570,9 @@ ORDER BY COALESCE(NULLIF(p."Sku", ''), p."Ean"), p."Ean", pr."RunId";
                 });
             }
 
-            var locations = await QueryLocationsAsync(connection, parsedShopId, countType, null, cancellationToken).ConfigureAwait(false);
+            var includeDisabledFlag = includeDisabled ?? false;
+
+            var locations = await QueryLocationsAsync(connection, parsedShopId, countType, null, includeDisabledFlag, cancellationToken).ConfigureAwait(false);
             return Results.Ok(locations);
         })
         .WithName("GetLocations")
@@ -602,6 +604,18 @@ ORDER BY COALESCE(NULLIF(p."Sku", ''), p."Ean"), p."Ean", pr."RunId";
                     Required = false,
                     Description = "Type de comptage ciblé (1 pour premier passage, 2 pour second, 3 pour contrôle).",
                     Schema = new OpenApiSchema { Type = "integer", Minimum = 1 }
+                });
+            }
+
+            if (!op.Parameters.Any(parameter => string.Equals(parameter.Name, "includeDisabled", StringComparison.OrdinalIgnoreCase)))
+            {
+                op.Parameters.Add(new OpenApiParameter
+                {
+                    Name = "includeDisabled",
+                    In = ParameterLocation.Query,
+                    Required = false,
+                    Description = "Inclut les zones désactivées lorsqu'il est vrai.",
+                    Schema = new OpenApiSchema { Type = "boolean" }
                 });
             }
             return op;
@@ -680,7 +694,7 @@ ORDER BY COALESCE(NULLIF(p."Sku", ''), p."Ean"), p."Ean", pr."RunId";
                     StatusCodes.Status409Conflict);
             }
 
-            var created = (await QueryLocationsAsync(connection, parsedShopId, null, new[] { locationId }, cancellationToken).ConfigureAwait(false))
+            var created = (await QueryLocationsAsync(connection, parsedShopId, null, new[] { locationId }, includeDisabled: true, cancellationToken).ConfigureAwait(false))
                 .FirstOrDefault();
 
             var actor = EndpointUtilities.FormatActorLabel(httpContext);
@@ -770,7 +784,9 @@ ORDER BY COALESCE(NULLIF(p."Sku", ''), p."Ean"), p."Ean", pr."RunId";
                 }
             }
 
-            if (normalizedCode is null && normalizedLabel is null)
+            bool? requestedDisabled = request.Disabled;
+
+            if (normalizedCode is null && normalizedLabel is null && requestedDisabled is null)
             {
                 return EndpointUtilities.Problem(
                     "Requête invalide",
@@ -800,11 +816,11 @@ ORDER BY COALESCE(NULLIF(p."Sku", ''), p."Ean"), p."Ean", pr."RunId";
 
             try
             {
-                const string updateSql = "UPDATE \"Location\" SET \"Code\" = COALESCE(@Code, \"Code\"), \"Label\" = COALESCE(@Label, \"Label\") WHERE \"Id\" = @Id AND \"ShopId\" = @ShopId;";
+                const string updateSql = "UPDATE \"Location\" SET \"Code\" = COALESCE(@Code, \"Code\"), \"Label\" = COALESCE(@Label, \"Label\"), \"Disabled\" = COALESCE(@Disabled, \"Disabled\") WHERE \"Id\" = @Id AND \"ShopId\" = @ShopId;";
                 var affected = await connection.ExecuteAsync(
                         new CommandDefinition(
                             updateSql,
-                            new { Id = locationId, ShopId = parsedShopId, Code = normalizedCode, Label = normalizedLabel },
+                            new { Id = locationId, ShopId = parsedShopId, Code = normalizedCode, Label = normalizedLabel, Disabled = requestedDisabled },
                             cancellationToken: cancellationToken))
                     .ConfigureAwait(false);
 
@@ -824,7 +840,7 @@ ORDER BY COALESCE(NULLIF(p."Sku", ''), p."Ean"), p."Ean", pr."RunId";
                     StatusCodes.Status409Conflict);
             }
 
-            var updated = (await QueryLocationsAsync(connection, parsedShopId, null, new[] { locationId }, cancellationToken).ConfigureAwait(false))
+            var updated = (await QueryLocationsAsync(connection, parsedShopId, null, new[] { locationId }, includeDisabled: true, cancellationToken).ConfigureAwait(false))
                 .FirstOrDefault();
 
             if (updated is null)
@@ -858,6 +874,92 @@ ORDER BY COALESCE(NULLIF(p."Sku", ''), p."Ean"), p."Ean", pr."RunId";
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status404NotFound)
         .Produces(StatusCodes.Status409Conflict);
+
+        app.MapDelete(
+            "/api/locations/{locationId:guid}",
+            async (
+                Guid locationId,
+                string? shopId,
+                IDbConnection connection,
+                IAuditLogger auditLogger,
+                IClock clock,
+                HttpContext httpContext,
+                CancellationToken cancellationToken) =>
+        {
+            if (!TryNormalizeShopId(shopId, out var parsedShopId, out var errorResult))
+            {
+                return errorResult;
+            }
+
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+            var shop = await LoadShopAsync(connection, parsedShopId, cancellationToken).ConfigureAwait(false);
+            if (shop is null)
+            {
+                return EndpointUtilities.Problem(
+                    "Boutique introuvable",
+                    "Impossible de trouver la boutique ciblée.",
+                    StatusCodes.Status404NotFound);
+            }
+
+            var existing = await LoadLocationMetadataAsync(connection, parsedShopId, locationId, cancellationToken).ConfigureAwait(false);
+            if (existing is null)
+            {
+                return EndpointUtilities.Problem(
+                    "Zone introuvable",
+                    "Impossible de trouver cette zone pour la boutique demandée.",
+                    StatusCodes.Status404NotFound);
+            }
+
+            const string disableSql = """
+UPDATE "Location"
+SET "Disabled" = TRUE
+WHERE "Id" = @Id AND "ShopId" = @ShopId;
+""";
+
+            var affected = await connection.ExecuteAsync(
+                    new CommandDefinition(disableSql, new { Id = locationId, ShopId = parsedShopId }, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (affected == 0)
+            {
+                return EndpointUtilities.Problem(
+                    "Zone introuvable",
+                    "Impossible de trouver cette zone pour la boutique demandée.",
+                    StatusCodes.Status404NotFound);
+            }
+
+            var disabled = (await QueryLocationsAsync(connection, parsedShopId, null, new[] { locationId }, includeDisabled: true, cancellationToken).ConfigureAwait(false))
+                .FirstOrDefault();
+
+            if (disabled is null)
+            {
+                return EndpointUtilities.Problem(
+                    "Zone introuvable",
+                    "La zone a été désactivée mais n'a pas pu être relue.",
+                    StatusCodes.Status404NotFound);
+            }
+
+            var actor = EndpointUtilities.FormatActorLabel(httpContext);
+            var timestamp = EndpointUtilities.FormatTimestamp(clock.UtcNow);
+            var shopLabel = string.IsNullOrWhiteSpace(shop.Name) ? parsedShopId.ToString() : shop.Name;
+            var zoneDescription = FormatZoneDescription(disabled.Code, disabled.Label);
+            var userName = EndpointUtilities.GetAuthenticatedUserName(httpContext);
+
+            await auditLogger
+                .LogAsync(
+                    $"{actor} a désactivé la zone {zoneDescription} pour la boutique {shopLabel} le {timestamp} UTC.",
+                    userName,
+                    "locations.disable.success",
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            return Results.Ok(disabled);
+        })
+        .WithName("DisableLocation")
+        .WithTags("Locations")
+        .Produces<LocationListItemDto>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status404NotFound);
     }
 
     private static bool TryNormalizeShopId(string? shopId, out Guid parsedShopId, out IResult? errorResult)
@@ -891,6 +993,7 @@ ORDER BY COALESCE(NULLIF(p."Sku", ''), p."Ean"), p."Ean", pr."RunId";
         Guid shopId,
         int? countType,
         Guid[]? filterLocationIds,
+        bool includeDisabled,
         CancellationToken cancellationToken)
     {
         await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -932,6 +1035,7 @@ SELECT
     l.""Id"",
     l.""Code"",
     l.""Label"",
+    l.""Disabled"",
     (ar.""ActiveRunId"" IS NOT NULL) AS ""IsBusy"",
     ar.""BusyBy"",
     CASE
@@ -943,14 +1047,16 @@ SELECT
     ar.""ActiveStartedAtUtc""
 FROM ""Location"" l
 LEFT JOIN active_runs ar ON l.""Id"" = ar.""LocationId""
-WHERE l.""ShopId"" = @ShopId{filterClause}
+WHERE l.""ShopId"" = @ShopId
+  AND (@IncludeDisabled OR l.""Disabled"" = FALSE){filterClause}
 ORDER BY l.""Code"" ASC;";
 
         var sqlParameters = new
         {
             CountType = countType,
             ShopId = shopId,
-            FilterIds = hasFilter ? filterLocationIds : null
+            FilterIds = hasFilter ? filterLocationIds : null,
+            IncludeDisabled = includeDisabled
         };
 
         var locations = (await connection
@@ -1141,7 +1247,7 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
         Guid locationId,
         CancellationToken cancellationToken)
     {
-        const string sql = "SELECT \"Id\", \"ShopId\", \"Code\", \"Label\" FROM \"Location\" WHERE \"Id\" = @LocationId AND \"ShopId\" = @ShopId LIMIT 1;";
+        const string sql = "SELECT \"Id\", \"ShopId\", \"Code\", \"Label\", \"Disabled\" FROM \"Location\" WHERE \"Id\" = @LocationId AND \"ShopId\" = @ShopId LIMIT 1;";
         return connection.QuerySingleOrDefaultAsync<LocationMetadataRow>(
             new CommandDefinition(sql, new { LocationId = locationId, ShopId = shopId }, cancellationToken: cancellationToken));
     }
@@ -1193,7 +1299,7 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
             const string selectLocationSql =
-                "SELECT \"Id\", \"ShopId\", \"Code\", \"Label\" FROM \"Location\" WHERE \"Id\" = @LocationId AND \"ShopId\" = @ShopId LIMIT 1;";
+                "SELECT \"Id\", \"ShopId\", \"Code\", \"Label\", \"Disabled\" FROM \"Location\" WHERE \"Id\" = @LocationId AND \"ShopId\" = @ShopId LIMIT 1;";
 
             var location = await connection
                 .QuerySingleOrDefaultAsync<LocationMetadataRow>(
@@ -1209,6 +1315,14 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
                     "Ressource introuvable",
                     "La zone demandée est introuvable.",
                     StatusCodes.Status404NotFound);
+            }
+
+            if (location.Disabled)
+            {
+                return EndpointUtilities.Problem(
+                    "Zone désactivée",
+                    "La zone demandée est désactivée et ne peut pas démarrer de comptage.",
+                    StatusCodes.Status409Conflict);
             }
 
             var columnsState = await DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -1476,7 +1590,7 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc{ownerValue}{oper
             var columnsState = await DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
 
             const string selectLocationSql =
-                "SELECT \"Id\", \"ShopId\", \"Code\", \"Label\" FROM \"Location\" WHERE \"Id\" = @LocationId LIMIT 1;";
+                "SELECT \"Id\", \"ShopId\", \"Code\", \"Label\", \"Disabled\" FROM \"Location\" WHERE \"Id\" = @LocationId LIMIT 1;";
 
             var location = await connection
                 .QuerySingleOrDefaultAsync<LocationMetadataRow>(
@@ -1489,6 +1603,14 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc{ownerValue}{oper
                     "Ressource introuvable",
                     "La zone demandée est introuvable.",
                     StatusCodes.Status404NotFound);
+            }
+
+            if (location.Disabled)
+            {
+                return EndpointUtilities.Problem(
+                    "Zone désactivée",
+                    "La zone demandée est désactivée et ne peut pas être clôturée.",
+                    StatusCodes.Status409Conflict);
             }
 
             if (connection is not NpgsqlConnection npgsqlConnection)
@@ -2135,7 +2257,7 @@ LIMIT 1;";
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
             const string selectLocationSql =
-                "SELECT \"Id\", \"ShopId\", \"Code\", \"Label\" FROM \"Location\" WHERE \"Id\" = @LocationId LIMIT 1;";
+                "SELECT \"Id\", \"ShopId\", \"Code\", \"Label\", \"Disabled\" FROM \"Location\" WHERE \"Id\" = @LocationId LIMIT 1;";
 
             var location = await connection
                 .QuerySingleOrDefaultAsync<LocationMetadataRow>(
@@ -2148,6 +2270,14 @@ LIMIT 1;";
                     "Ressource introuvable",
                     "La zone demandée est introuvable.",
                     StatusCodes.Status404NotFound);
+            }
+
+            if (location.Disabled)
+            {
+                return EndpointUtilities.Problem(
+                    "Zone désactivée",
+                    "La zone demandée est désactivée et ne peut pas être relancée.",
+                    StatusCodes.Status409Conflict);
             }
 
             if (connection is NpgsqlConnection npgsqlConnection)

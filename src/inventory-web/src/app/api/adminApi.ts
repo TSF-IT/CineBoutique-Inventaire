@@ -28,6 +28,13 @@ export const updateLocation = async (
   return data as Location
 }
 
+export const disableLocation = async (id: string): Promise<Location> => {
+  const data = await http(`${API_BASE}/locations/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+  return data as Location
+}
+
 const sanitizeIdentifier = (value: string): string => value.trim()
 
 const buildShopUsersUrl = (shopId: string) => {

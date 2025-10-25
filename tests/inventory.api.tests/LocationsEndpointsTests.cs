@@ -51,6 +51,7 @@ public sealed class LocationsEndpointsTests : IntegrationTestBase
         created.Should().NotBeNull();
         created!.Code.Should().Be("NOUV");
         created.Label.Should().Be("Zone nouvelle");
+        created.Disabled.Should().BeFalse();
         created.CountStatuses.Should().NotBeNull();
 
         var listResponse = await client.GetAsync(
@@ -75,6 +76,7 @@ public sealed class LocationsEndpointsTests : IntegrationTestBase
         updated.Should().NotBeNull();
         updated!.Code.Should().Be("UPDT");
         updated.Label.Should().Be("Zone mise à jour");
+        updated.Disabled.Should().BeFalse();
 
         var auditEntries = Fixture.DrainAuditLogs();
         auditEntries.Should().NotBeNull();
@@ -136,4 +138,49 @@ public sealed class LocationsEndpointsTests : IntegrationTestBase
         problem!.Title.Should().Be("Code déjà utilisé");
         problem.Detail.Should().Be("Impossible de créer cette zone : le code « DUP » est déjà attribué dans cette boutique.");
     }
+
+    [SkippableFact]
+    public async Task DisableLocation_SoftDeletesAndHidesByDefault()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        Guid shopId = Guid.Empty;
+        Guid locationId = Guid.Empty;
+
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.CreateShopAsync("Boutique Désactivation").ConfigureAwait(false);
+            locationId = await seeder.CreateLocationAsync(shopId, "DIS1", "Zone à désactiver").ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var client = CreateClient();
+
+        var disableResponse = await client.DeleteAsync(
+            client.CreateRelativeUri($"/api/locations/{locationId}?shopId={shopId}"))
+            .ConfigureAwait(false);
+
+        disableResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var disabled = await disableResponse.Content.ReadFromJsonAsync<LocationListItemDto>().ConfigureAwait(false);
+        disabled.Should().NotBeNull();
+        disabled!.Disabled.Should().BeTrue();
+
+        var activeListResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/locations?shopId={shopId}"))
+            .ConfigureAwait(false);
+        activeListResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var activeList = await activeListResponse.Content.ReadFromJsonAsync<LocationListItemDto[]>().ConfigureAwait(false);
+        activeList.Should().NotBeNull();
+        activeList!.Any(item => item.Id == locationId).Should().BeFalse("la zone désactivée est masquée par défaut");
+
+        var allListResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/locations?shopId={shopId}&includeDisabled=true"))
+            .ConfigureAwait(false);
+        allListResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        var allList = await allListResponse.Content.ReadFromJsonAsync<LocationListItemDto[]>().ConfigureAwait(false);
+        allList.Should().NotBeNull();
+        var disabledItem = allList!.SingleOrDefault(item => item.Id == locationId);
+        disabledItem.Should().NotBeNull();
+        disabledItem!.Disabled.Should().BeTrue();
+    }
 }
+

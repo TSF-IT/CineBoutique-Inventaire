@@ -66,6 +66,7 @@ const baseLocation: Location = {
       completedAtUtc: null,
     },
   ],
+  disabled: false,
 }
 
 const summary: InventorySummary = {

@@ -34,6 +34,7 @@ const baseLocation: Location = {
   activeCountType: null,
   activeStartedAtUtc: null,
   countStatuses: [],
+  disabled: false,
 }
 
 const InventoryStateInitializer = ({

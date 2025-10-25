@@ -42,6 +42,8 @@ public sealed class LocationListItemDto
 
     public string? BusyBy { get; set; }
 
+    public bool Disabled { get; set; }
+
     public Guid? ActiveRunId { get; set; }
 
     public short? ActiveCountType { get; set; }

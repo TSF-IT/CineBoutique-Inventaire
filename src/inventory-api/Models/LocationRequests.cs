@@ -22,4 +22,6 @@ public sealed class UpdateLocationRequest
     public string? Code { get; set; }
 
     public string? Label { get; set; }
+
+    public bool? Disabled { get; set; }
 }

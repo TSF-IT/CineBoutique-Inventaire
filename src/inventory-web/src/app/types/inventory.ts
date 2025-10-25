@@ -120,6 +120,7 @@ export const LocationSchema = z.object({
   id: z.string().uuid(),
   code: z.string().min(1),
   label: z.string().min(1),
+  disabled: z.boolean().optional().default(false),
   isBusy: z.boolean(),
   busyBy: z.string().nullish().transform((value) => (typeof value === 'string' ? value : null)),
   activeRunId: z.string().uuid().nullish().transform((value) => value ?? null),

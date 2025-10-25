@@ -9,6 +9,7 @@ import { fetchLocations } from '../../../api/inventoryApi'
 import {
   createLocation,
   updateLocation,
+  disableLocation,
   createShopUser,
   updateShopUser,
   disableShopUser,
@@ -23,6 +24,7 @@ vi.mock('../../../api/inventoryApi', () => ({
 vi.mock('../../../api/adminApi', () => ({
   createLocation: vi.fn(),
   updateLocation: vi.fn(),
+  disableLocation: vi.fn(),
   createShopUser: vi.fn(),
   updateShopUser: vi.fn(),
   disableShopUser: vi.fn(),
@@ -36,10 +38,11 @@ const { fetchLocations: mockedFetchLocations } = vi.mocked({ fetchLocations })
 const {
   createLocation: mockedCreateLocation,
   updateLocation: mockedUpdateLocation,
+  disableLocation: mockedDisableLocation,
   createShopUser: mockedCreateShopUser,
   updateShopUser: mockedUpdateShopUser,
   disableShopUser: mockedDisableShopUser,
-} = vi.mocked({ createLocation, updateLocation, createShopUser, updateShopUser, disableShopUser })
+} = vi.mocked({ createLocation, updateLocation, disableLocation, createShopUser, updateShopUser, disableShopUser })
 const { fetchShopUsers: mockedFetchShopUsers } = vi.mocked({ fetchShopUsers })
 
 const testShop = { id: 'shop-123', name: 'Boutique test', kind: 'boutique' } as const
@@ -60,8 +63,9 @@ const renderAdminPage = async () => {
     expect(mockedFetchLocations).toHaveBeenCalled()
   })
 
-  expect(mockedFetchLocations.mock.calls[0]?.[0]).toBe(testShop.id)
-
+  const [shopIdArg, optionsArg] = mockedFetchLocations.mock.calls[0] ?? []
+  expect(shopIdArg).toBe(testShop.id)
+  expect(optionsArg).toEqual({ includeDisabled: true })
 }
 
 const openUsersTab = async (user: ReturnType<typeof userEvent.setup>) => {
@@ -91,6 +95,7 @@ describe('AdminLocationsPage', () => {
     activeCountType: null,
     activeStartedAtUtc: null,
     countStatuses: [],
+    disabled: false,
   }
 
   beforeEach(() => {
@@ -100,6 +105,7 @@ describe('AdminLocationsPage', () => {
     mockedFetchLocations.mockResolvedValue([baseLocation])
     mockedCreateLocation.mockReset()
     mockedUpdateLocation.mockReset()
+    mockedDisableLocation.mockReset()
     mockedFetchShopUsers.mockReset()
     mockedFetchShopUsers.mockResolvedValue([])
     mockedCreateShopUser.mockReset()
@@ -153,6 +159,32 @@ describe('AdminLocationsPage', () => {
     expect(mockedFetchShopUsers).not.toHaveBeenCalled()
   })
 
+  it('désactive une zone et la masque par défaut', async () => {
+    mockedDisableLocation.mockResolvedValue({ ...baseLocation, disabled: true })
+
+    await renderAdminPage()
+
+    const user = userEvent.setup()
+    const locationCard = await screen.findByTestId('location-card')
+    const disableButton = within(locationCard).getByRole('button', { name: 'Désactiver' })
+    await user.click(disableButton)
+
+    const confirmDialog = await screen.findByRole('dialog', { name: `Désactiver ${baseLocation.code} ?` })
+    const confirmButton = within(confirmDialog).getByRole('button', { name: 'Confirmer la désactivation' })
+    await user.click(confirmButton)
+
+    expect(mockedDisableLocation).toHaveBeenCalledWith(baseLocation.id)
+    expect(await screen.findByText('Zone désactivée.')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByTestId('location-card')).not.toBeInTheDocument()
+    })
+
+    const toggle = screen.getByLabelText('Masquer les zones désactivées')
+    await user.click(toggle)
+
+    const disabledCard = await screen.findByTestId('location-card')
+    expect(within(disabledCard).getByText('Désactivée')).toBeInTheDocument()
+  })
   it('met à jour le code et le libellé d’une zone existante', async () => {
     const updatedLocation: Location = {
       ...baseLocation,
@@ -201,7 +233,7 @@ describe('AdminLocationsPage', () => {
     await openUsersTab(user)
 
     await waitFor(() => {
-      expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id)
+      expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id, { includeDisabled: true })
     })
   })
 
@@ -223,7 +255,7 @@ describe('AdminLocationsPage', () => {
     await openUsersTab(user)
 
     await waitFor(() => {
-      expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id)
+      expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id, { includeDisabled: true })
     })
 
     const createForm = (await screen.findAllByTestId('user-create-form'))[0] as HTMLElement
@@ -276,7 +308,7 @@ describe('AdminLocationsPage', () => {
     await openUsersTab(user)
 
     await waitFor(() => {
-      expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id)
+      expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id, { includeDisabled: true })
     })
 
     const userCards = await screen.findAllByTestId('user-card')
@@ -359,7 +391,7 @@ describe('AdminLocationsPage', () => {
       await openUsersTab(user)
 
       await waitFor(() => {
-        expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id)
+        expect(mockedFetchShopUsers).toHaveBeenCalledWith(testShop.id, { includeDisabled: true })
       })
 
       const userCard = (await screen.findAllByTestId('user-card')).find(

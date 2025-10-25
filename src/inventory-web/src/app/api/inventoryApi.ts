@@ -133,6 +133,7 @@ const LocationApiItemSchema = z
   .object({
     id: z.string().uuid(),
     label: z.string(),
+    disabled: z.boolean().optional().default(false),
     isBusy: z.boolean().optional().default(false),
     busyBy: z.string().nullable().optional(),
     activeRunId: z.string().uuid().nullable().optional(),
@@ -235,10 +236,19 @@ export const getCompletedRunDetail = async (runId: string): Promise<CompletedRun
 /* ------------------------- /api/locations: select list -------------------- */
 /* Parse brut -> normalise UUID -> validation stricte LocationsSchema */
 
-export const fetchLocations = async (shopId: string): Promise<Location[]> => {
+type FetchLocationsOptions = {
+  includeDisabled?: boolean
+}
+
+export const fetchLocations = async (shopId: string, options: FetchLocationsOptions = {}): Promise<Location[]> => {
   if (!shopId) throw new Error('Aucune boutique sélectionnée.')
 
-  const url = `${API_BASE}/locations?shopId=${encodeURIComponent(shopId)}`
+  const params = new URLSearchParams({ shopId })
+  if (options.includeDisabled) {
+    params.set('includeDisabled', 'true')
+  }
+
+  const url = `${API_BASE}/locations?${params.toString()}`
   const response = await http(url)
 
   const arr = z.array(LocationApiItemSchema).parse(response)
