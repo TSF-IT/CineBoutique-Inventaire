@@ -22,7 +22,7 @@ export const PageShell = ({
   return (
     <div
       className={clsx(
-        'page-shell safe-pads max-w-full overflow-visible bg-gray-50 text-gray-900 antialiased',
+        'page-shell safe-pads relative flex min-h-screen w-full flex-col overflow-visible text-(--cb-text) antialiased transition-colors duration-300',
         hasNav && 'page-shell--with-nav',
         className,
       )}
@@ -31,8 +31,8 @@ export const PageShell = ({
     >
       <main
         className={clsx(
-          'layout-main cb-container overflow-visible',
-          hasNav ? 'pb-24' : 'pb-12',
+          'layout-main cb-container mx-auto flex w-full max-w-[var(--content-max)] flex-col overflow-visible',
+          hasNav ? 'pb-[calc(5rem+env(safe-area-inset-bottom))]' : 'pb-16',
           mainClassName,
         )}
       >
@@ -40,7 +40,10 @@ export const PageShell = ({
         {children}
       </main>
       {nav ? (
-        <nav className="mobile-bottom-bar" aria-label="Actions principales">
+        <nav
+          className="mobile-bottom-bar border border-(--cb-border-soft) bg-(--cb-surface) text-(--cb-text) shadow-panel-soft"
+          aria-label="Actions principales"
+        >
           {nav}
         </nav>
       ) : null}

@@ -135,7 +135,7 @@ export const App = () => (
     <AppErrorBoundary>
       {/* Migration React Router v6 → v7 : https://reactrouter.com/upgrading/v6 */}
       <BrowserRouter>
-        <div className="bg-gray-50 text-gray-900 antialiased pb-8 sm:pb-12 overflow-x-hidden">
+        <div className="relative min-h-screen overflow-x-hidden pb-12 text-(--cb-text) antialiased transition-colors duration-300 sm:pb-16">
           <AppRoutes />
         </div>
       </BrowserRouter>

@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom'
 import { Page } from '../../components/Page'
+import { AdminQuickActions } from './AdminQuickActions'
 import { useShop } from '@/state/ShopContext'
 
 export const AdminLayout = () => {
@@ -7,19 +8,20 @@ export const AdminLayout = () => {
   const shopDisplayName = shop?.name?.trim()
 
   return (
-    <Page className="gap-6" showHomeLink>
+    <Page className="gap-10" showHomeLink>
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-sm uppercase tracking-[0.3em] text-brand-500 dark:text-brand-200">
+          <p className="text-xs font-semibold uppercase tracking-[0.4em] text-brand-500/90 dark:text-brand-200/90">
             {shopDisplayName ?? 'CinéBoutique'}
           </p>
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Administration</h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-(--cb-text)">Administration</h1>
+          <p className="mt-2 max-w-xl text-sm leading-relaxed text-(--cb-muted)">
             Paramétrez les zones d&apos;inventaire et les comptes utilisateurs depuis un même espace.
           </p>
         </div>
       </header>
       <Outlet />
+      <AdminQuickActions />
     </Page>
   )
 }

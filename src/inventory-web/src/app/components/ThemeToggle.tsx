@@ -20,8 +20,8 @@ export const ThemeToggle = () => {
       aria-checked={isDark}
       title={`Thème: ${isDark ? "sombre" : "clair"}`}
       className={clsx(
-        "group relative inline-flex h-11 w-24 items-center overflow-hidden rounded-full border border-(--cb-border-strong) bg-(--cb-surface-soft) px-1 transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-(--cb-surface-strong)",
-        isDark ? "shadow-(--cb-card-shadow-soft)" : "shadow-sm"
+        "group relative inline-flex h-12 w-24 items-center overflow-hidden rounded-full border border-(--cb-border-soft) bg-(--cb-surface-soft) px-1 shadow-panel-soft transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2 focus-visible:ring-offset-(--cb-surface)",
+        isDark ? "shadow-panel" : "shadow-panel-soft"
       )}
       style={{ minHeight: "var(--tap-min)" }}
     >

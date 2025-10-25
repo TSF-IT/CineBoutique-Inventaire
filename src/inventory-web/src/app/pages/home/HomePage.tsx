@@ -541,18 +541,14 @@ export const HomePage = () => {
       <section className="flex flex-col gap-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex-1">
-            <p className="mt-3 font-semibold uppercase tracking-[.12em] text-[var(--text-muted)]">
-              {shopDisplayName ?? 'CinéBoutique'}
-            </p>
-            <h1 className="text-4xl font-black leading-tight text-slate-900 dark:text-white sm:text-5xl">
-              Inventaire {currentYear}
-            </h1>
-            <p className="max-w-xl text-base text-slate-600 dark:text-slate-300">
+            <p className="cb-kicker mt-1">{shopDisplayName ?? 'CinéBoutique'}</p>
+            <h1 className="cb-section-title mt-3">Inventaire {currentYear}</h1>
+            <p className="cb-section-subtitle mt-4 max-w-xl">
               Lancez un comptage en quelques gestes, scannez les produits depuis la caméra ou une douchette Bluetooth
               et assurez un suivi fiable de vos zones.
             </p>
           </div>
-          <div className="hidden text-right text-xs text-slate-500 dark:text-slate-400 sm:block">
+          <div className="hidden text-right text-xs text-(--cb-muted) sm:block">
             <p>Utilisateur : {selectedUser?.displayName ?? '–'}</p>
             <p>Zone : {selectedLocation?.label ?? '–'}</p>
             <p>Comptage : {countType ?? '–'}</p>
@@ -619,7 +615,7 @@ export const HomePage = () => {
                 {hasConflicts && conflictZones.length > 0 ? (
                   <ul
                     className={clsx(
-                      'divide-y rounded-2xl border bg-white/60',
+                  'divide-y rounded-2xl border border-(--cb-border-soft) bg-(--cb-surface-soft)',
                       hasConflicts
                         ? 'divide-rose-200/70 border-rose-200/70 dark:divide-rose-500/40 dark:border-rose-500/30 dark:bg-rose-500/10'
                         : 'divide-amber-200/70 border-amber-200/70 dark:divide-amber-500/40 dark:border-amber-500/30 dark:bg-amber-500/10'
@@ -662,7 +658,7 @@ export const HomePage = () => {
                     ))}
                   </ul>
                 ) : hasConflicts ? (
-                  <p className="rounded-2xl border border-rose-200 bg-white/60 px-4 py-3 text-xs text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
+                  <p className="rounded-2xl border border-rose-200/70 bg-rose-100/60 px-4 py-3 text-xs text-rose-900 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
                     Impossible d’afficher le détail des zones en conflit.
                   </p>
                 ) : null}
@@ -743,16 +739,16 @@ export const HomePage = () => {
           </div>
         )}
         {!combinedLoading && !errorDetails && !displaySummary && (
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          <p className="text-sm text-(--cb-muted)">
             Les indicateurs ne sont pas disponibles pour le moment.
           </p>
         )}
         {!combinedLoading && !errorDetails && !hasLocationSummaries && (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-white/70 p-5 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900/30 dark:text-slate-300">
-            <p className="font-medium text-slate-700 dark:text-slate-100">
+          <div className="rounded-2xl border border-dashed border-(--cb-border-soft) bg-(--cb-surface-soft) p-5 text-sm text-(--cb-muted) shadow-panel-soft">
+            <p className="font-medium text-(--cb-text)">
               Aucun comptage en cours pour cette boutique.
             </p>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+            <p className="mt-2 text-sm text-(--cb-muted)">
               Utilisez le bouton &laquo;&nbsp;Débuter un comptage&nbsp;&raquo; pour lancer une nouvelle session et suivre les zones en
               temps réel.
             </p>
@@ -768,7 +764,7 @@ export const HomePage = () => {
         >
           Débuter un comptage
         </Button>
-        <Link className="text-center text-sm text-slate-600 underline dark:text-slate-400" to="/admin">
+        <Link className="text-center text-sm text-(--cb-muted) underline hover:text-brand-600 dark:hover:text-brand-200" to="/admin">
           Espace administrateur
         </Link>
       </div>

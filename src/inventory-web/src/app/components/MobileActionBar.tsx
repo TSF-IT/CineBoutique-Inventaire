@@ -23,8 +23,8 @@ export const MobileActionBar = ({ className, scan, restart, complete }: MobileAc
     <Button
       type="button"
       variant="secondary"
+      size="lg"
       fullWidth
-      className="btn"
       disabled={scan?.disabled}
       onClick={scan?.onClick}
     >
@@ -33,8 +33,8 @@ export const MobileActionBar = ({ className, scan, restart, complete }: MobileAc
     <Button
       type="button"
       variant="ghost"
+      size="lg"
       fullWidth
-      className="btn"
       disabled={restart?.disabled}
       onClick={restart?.onClick}
     >
@@ -42,8 +42,8 @@ export const MobileActionBar = ({ className, scan, restart, complete }: MobileAc
     </Button>
     <Button
       type="button"
+      size="lg"
       fullWidth
-      className="btn"
       aria-busy={complete?.busy ? 'true' : undefined}
       disabled={complete?.disabled}
       onClick={complete?.onClick}

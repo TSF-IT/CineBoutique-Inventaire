@@ -1,7 +1,8 @@
 export const LoadingIndicator = ({ label }: { label?: string }) => (
-  <div className="flex items-center justify-center gap-3 py-10 text-slate-500 dark:text-slate-300">
+  <div className="flex items-center justify-center gap-3 py-10 text-(--cb-muted)">
     <span
-      className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-transparent dark:border-slate-400"
+      className="h-4 w-4 animate-spin rounded-full border-2 border-(--cb-border-strong) border-t-transparent"
+      role="status"
       aria-hidden
     />
     <span>{label ?? 'Chargement en cours…'}</span>

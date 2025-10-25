@@ -163,7 +163,7 @@ export default function SelectUserPage() {
 
   return (
     <Page
-      className="px-4 py-6 sm:px-6"
+      className="gap-8"
       headerAction={
         <BackToShopSelectionLink
           state={shopSelectionState}
@@ -172,7 +172,7 @@ export default function SelectUserPage() {
     >
       <main className="flex flex-1 flex-col justify-center gap-8">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
+          <h1 className="cb-section-title text-3xl">
             Merci de vous identifier
           </h1>
         </div>
@@ -197,11 +197,11 @@ export default function SelectUserPage() {
                   <button
                     type="button"
                     onClick={() => onPick(u)}
-                    className="block w-full rounded-2xl border border-slate-300 bg-white px-5 py-4 text-left text-base text-slate-900 shadow-sm transition hover:border-brand-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                    className="block w-full rounded-3xl border border-(--cb-border-soft) bg-(--cb-surface-soft) px-5 py-4 text-left text-base text-(--cb-text) shadow-panel-soft transition hover:-translate-y-0.5 hover:border-brand-400/60 hover:shadow-panel focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2 focus-visible:ring-offset-(--cb-surface-soft)"
                   >
                     <span className="block text-lg font-medium">{u.displayName}</span>
                     {u.email ? (
-                      <span className="mt-1 block text-sm text-slate-600 dark:text-slate-300">
+                      <span className="mt-1 block text-sm text-(--cb-muted)">
                         {u.email}
                       </span>
                     ) : null}
@@ -211,7 +211,7 @@ export default function SelectUserPage() {
             </ul>
 
             {!hasUsers && (
-              <p className="text-sm text-slate-500 dark:text-slate-300">
+              <p className="text-sm text-(--cb-muted)">
                 Aucun utilisateur n’est disponible pour cette boutique.
               </p>
             )}
@@ -221,3 +221,8 @@ export default function SelectUserPage() {
     </Page>
   )
 }
+
+
+
+
+

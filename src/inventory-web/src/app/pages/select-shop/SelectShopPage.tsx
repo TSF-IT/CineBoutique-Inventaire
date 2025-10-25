@@ -331,8 +331,8 @@ export const SelectShopPage = () => {
     <Page className="px-4 py-6 sm:px-6">
       <main className="flex flex-1 flex-col gap-8">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Choisir une entité</h1>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+          <h1 className="cb-section-title text-3xl sm:text-4xl">Choisir une entité</h1>
+          <p className="cb-section-subtitle mt-3">
             Sélectionne ton entité pour continuer vers l’identification.
           </p>
         </div>
@@ -355,7 +355,7 @@ export const SelectShopPage = () => {
         {isRedirecting && (
           <div className="card card--elev1 p-6 text-center">
             <LoadingIndicator label="Redirection en cours…" />
-            <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">
+            <p className="mt-4 text-sm text-(--cb-muted) dark:text-(--cb-muted)">
               Merci de patienter pendant la redirection vers l’identification.
             </p>
           </div>
@@ -417,17 +417,17 @@ export const SelectShopPage = () => {
                         <span className="text-lg font-semibold">
                           {card.definition.label}
                         </span>
-                        <span className="text-sm text-slate-600 dark:text-slate-300">
+                        <span className="text-sm text-(--cb-muted) dark:text-(--cb-muted)">
                           {card.definition.description}
                         </span>
                         <span
                           className={clsx(
-                            'inline-flex items-center rounded-full px-3 py-1 text-xs font-medium uppercase tracking-wide transition-colors',
+                            'inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium uppercase tracking-wide transition-colors',
                             isDisabled
-                              ? 'bg-gray-100 text-gray-500 dark:bg-slate-800 dark:text-slate-400'
+                              ? 'border-(--cb-border-soft) bg-(--cb-surface-soft) text-(--cb-muted) opacity-70'
                               : isSelected
-                              ? 'bg-brand-500/15 text-brand-700 shadow-sm dark:bg-brand-400/20 dark:text-brand-100'
-                              : 'bg-slate-100/90 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
+                              ? 'border-brand-500/40 bg-brand-500/15 text-brand-700 shadow-panel-soft dark:border-brand-400/40 dark:bg-brand-400/20 dark:text-brand-100'
+                              : 'border-(--cb-border-soft) bg-(--cb-surface-soft) text-(--cb-muted)',
                           )}
                         >
                           {isDisabled
@@ -444,7 +444,7 @@ export const SelectShopPage = () => {
               {selectedEntity && (
                 <section
                   aria-label={selectedEntity.definition.label}
-                  className="card card--elev1 space-y-3 p-4 backdrop-blur-sm"
+                  className="space-y-3 rounded-3xl border border-(--cb-border-soft) bg-(--cb-surface) p-4 shadow-panel-soft backdrop-blur-sm"
                 >
                   {selectedEntity.matches.length > 0 ? (
                     <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
@@ -456,15 +456,15 @@ export const SelectShopPage = () => {
                               type="button"
                               onClick={() => handleShopSelection(shopOption)}
                               className={clsx(
-                                'tile focus-ring flex h-full w-full items-center justify-between px-4 py-3 text-left text-sm font-medium transition hover:shadow-elev-1',
+                                'tile focus-ring flex h-full w-full items-center justify-between rounded-2xl border border-(--cb-border-soft) bg-(--cb-surface-soft) px-4 py-3 text-left text-sm font-medium transition hover:-translate-y-0.5 hover:shadow-panel-soft',
                                 isActive
-                                  ? 'border-brand-500 bg-brand-500/10 text-brand-900 shadow-sm dark:border-brand-400 dark:bg-brand-400/20 dark:text-brand-50'
-                                  : 'text-slate-900 hover:border-brand-300 hover:bg-brand-50/30 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-100 dark:hover:border-brand-400 dark:hover:bg-brand-400/10',
+                                  ? 'border-brand-500/60 bg-brand-500/15 text-brand-800 shadow-panel-soft dark:border-brand-400/60 dark:bg-brand-400/20 dark:text-brand-100'
+                                  : 'text-(--cb-text) hover:border-brand-400/60 hover:bg-brand-500/10 dark:border-(--cb-border-soft) dark:text-(--cb-text) dark:hover:border-brand-400/60 dark:hover:bg-brand-400/15',
                               )}
                             >
                               <span className="flex-1 truncate">{shopOption.name}</span>
                               {isActive && (
-                                <span className="ml-3 inline-flex items-center rounded-full bg-brand-500 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white shadow-sm dark:bg-brand-400 dark:text-slate-900">
+                                <span className="ml-3 inline-flex items-center rounded-full bg-brand-500 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white shadow-sm dark:bg-brand-400 dark:text-(--cb-text)">
                                   Sélectionné
                                 </span>
                               )}
@@ -474,14 +474,14 @@ export const SelectShopPage = () => {
                       })}
                     </ul>
                   ) : (
-                    <p className="text-sm text-slate-500 dark:text-slate-300">
+                    <p className="text-sm text-(--cb-muted) dark:text-(--cb-muted)">
                       Aucune boutique n’est disponible pour le moment.
                     </p>
                   )}
                 </section>
               )}
               {allEntitiesUnavailable && (
-                <p id="shop-help" className="text-sm text-slate-500 dark:text-slate-300">
+                <p id="shop-help" className="text-sm text-(--cb-muted) dark:text-(--cb-muted)">
                   Aucune entité n’est disponible pour le moment.
                 </p>
               )}
@@ -500,3 +500,8 @@ export const SelectShopPage = () => {
 }
 
 export default SelectShopPage
+
+
+
+
+

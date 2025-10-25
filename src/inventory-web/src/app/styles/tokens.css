@@ -1,18 +1,19 @@
 :root {
-  --spacing-1: 0.5rem;
-  --spacing-2: 0.75rem;
-  --spacing-3: 1rem;
-  --spacing-4: 1.5rem;
-  --radius: 0.75rem;
-  --shadow-1: 0 12px 32px rgba(15, 23, 42, 0.12);
-  --font-xs: clamp(0.75rem, 0.72rem + 0.2vw, 0.85rem);
-  --font-sm: clamp(0.875rem, 0.84rem + 0.2vw, 0.95rem);
-  --font-md: clamp(1rem, 0.94rem + 0.3vw, 1.125rem);
-  --font-base: 14px;
-  --font-lg: 16px;
-  --font-xl: 20px;
-  --tap-min: 44px;
-  --container-max: 1200px;
+  --spacing-1: clamp(0.5rem, 0.44rem + 0.9vw, 0.75rem);
+  --spacing-2: clamp(0.75rem, 0.65rem + 1.2vw, 1.125rem);
+  --spacing-3: clamp(1rem, 0.82rem + 2.1vw, 1.75rem);
+  --spacing-4: clamp(1.5rem, 1.1rem + 2.8vw, 2.5rem);
+  --radius: 1.5rem;
+  --shadow-1: var(--cb-card-shadow-soft);
+  --font-xs: clamp(0.75rem, 0.72rem + 0.25vw, 0.85rem);
+  --font-sm: clamp(0.875rem, 0.82rem + 0.4vw, 1rem);
+  --font-md: clamp(1rem, 0.94rem + 0.45vw, 1.18rem);
+  --font-base: clamp(15px, 1.6vw + 12px, 16px);
+  --font-lg: clamp(1.125rem, 1.02rem + 0.9vw, 1.5rem);
+  --font-xl: clamp(1.5rem, 1.18rem + 1.9vw, 2rem);
+  --tap-min: 48px;
+  --container-max: 1220px;
+  --content-max: 1040px;
 }
 
 html {
@@ -20,31 +21,25 @@ html {
 }
 
 .safe-pads {
-  padding: var(--spacing-3);
+  padding-left: var(--safe-area-gutter-x);
+  padding-right: var(--safe-area-gutter-x);
+  padding-top: var(--safe-area-gutter-y);
+  padding-bottom: var(--safe-area-gutter-y);
 }
 
 @media (max-width: 768px) {
   .safe-pads {
-    padding-left: max(env(safe-area-inset-left), var(--spacing-3));
-    padding-right: max(env(safe-area-inset-right), var(--spacing-3));
-    padding-top: max(env(safe-area-inset-top), var(--spacing-3));
-    padding-bottom: max(env(safe-area-inset-bottom), var(--spacing-3));
+    padding-left: max(env(safe-area-inset-left), var(--safe-area-gutter-x));
+    padding-right: max(env(safe-area-inset-right), var(--safe-area-gutter-x));
+    padding-top: max(env(safe-area-inset-top), var(--safe-area-gutter-y));
+    padding-bottom: max(env(safe-area-inset-bottom), var(--safe-area-gutter-y));
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 1440px) {
   :root {
-    --font-base: 15px;
-    --font-lg: 18px;
-    --font-xl: 22px;
-  }
-}
-
-@media (min-width: 1600px) {
-  :root {
-    --font-base: 16px;
-    --font-lg: 19px;
-    --font-xl: 24px;
+    --container-max: 1280px;
+    --content-max: 1120px;
   }
 }
 

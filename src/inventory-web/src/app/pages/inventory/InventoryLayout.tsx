@@ -104,10 +104,10 @@ export const InventoryLayout = () => {
             <p className="text-sm uppercase tracking-[0.25em] text-brand-500 dark:text-brand-200">
               {shopDisplayName ?? 'CinéBoutique'}
             </p>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Assistant d&apos;inventaire</h1>
+            <h1 className="cb-section-title text-3xl">Assistant d&apos;inventaire</h1>
           </div>
           <div className="flex flex-col items-end gap-3 sm:flex-row sm:items-center">
-            <div className="hidden text-right text-xs text-slate-500 dark:text-slate-400 sm:block">
+            <div className="hidden text-right text-xs text-(--cb-muted) sm:block">
               <p>Utilisateur : {selectedUser?.displayName ?? '–'}</p>
               <p>Zone : {selectedLocation?.label ?? '–'}</p>
               <p>Comptage : {countType ?? '–'}</p>
@@ -124,3 +124,4 @@ export const InventoryLayout = () => {
     </Page>
   )
 }
+

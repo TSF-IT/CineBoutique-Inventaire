@@ -42,18 +42,18 @@ export const Page = ({
       {...restProps}
       {...swipeHandlers}
       mainClassName={clsx(
-        "page-content cb-surface-panel flex w-full flex-col gap-6 px-4 py-6 text-base sm:px-8 sm:py-10",
+        "page-content cb-surface-panel relative flex w-full flex-col gap-8 px-5 py-6 text-base shadow-panel-soft backdrop-blur-sm transition-colors duration-300 sm:px-10 sm:py-12",
         className
       )}
       nav={mobileNav}
       header={
-        <div className="page-header flex w-full items-center gap-3">
+        <div className="page-header flex w-full items-center gap-4">
           {(showHomeLink || headerAction) && (
             <div className="flex items-center gap-3">
               {showHomeLink && (
                 <Link
                   to={homeLinkTo}
-                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-(--cb-border-strong) bg-(--cb-surface-soft) px-3 py-2 text-sm font-semibold text-brand-600 shadow-sm transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 focus-visible:ring-offset-(--cb-surface-strong) dark:text-brand-200"
+                  className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-(--cb-border-soft) bg-(--cb-surface-soft) text-lg font-semibold text-brand-600 shadow-panel-soft transition-all duration-200 hover:-translate-y-0.5 hover:text-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2 focus-visible:ring-offset-(--cb-surface) dark:text-brand-200"
                   data-testid="btn-go-home"
                   aria-label={homeLinkLabel}
                 >
@@ -64,7 +64,7 @@ export const Page = ({
               {headerAction}
             </div>
           )}
-          <div className="ml-auto">
+          <div className="ml-auto shrink-0">
             <ThemeToggle />
           </div>
         </div>

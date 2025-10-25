@@ -15,9 +15,12 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     const autoId = useId()
     const finalId = id ?? `${name}-${autoId}`
     return (
-      <div className={clsx('flex flex-col gap-1', containerClassName)}>
+      <div className={clsx('flex flex-col gap-2 text-sm', containerClassName)}>
         {label && (
-          <label htmlFor={finalId} className="text-sm font-medium text-gray-700 dark:text-gray-200">
+          <label
+            htmlFor={finalId}
+            className="font-medium text-(--cb-muted) transition-colors duration-200"
+          >
             {label}
           </label>
         )}
@@ -25,13 +28,13 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           id={finalId}
           name={name}
           className={clsx(
-            'rounded-xl border border-gray-300 px-3 py-2 text-base dark:bg-gray-800 dark:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300',
+            'h-12 w-full rounded-2xl border border-(--cb-border-soft) bg-(--cb-surface-soft) px-4 text-base text-(--cb-text) shadow-inner transition-all duration-200 [&::placeholder]:text-(--cb-muted) focus-visible:border-brand-300 focus-visible:bg-(--cb-surface) focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-200/50 dark:border-(--cb-border-soft)',
             className,
           )}
           ref={ref}
           {...rest}
         />
-        {helpText && <p className="text-xs text-gray-500 dark:text-gray-400">{helpText}</p>}
+        {helpText && <p className="text-xs text-(--cb-muted)">{helpText}</p>}
       </div>
     )
   },
