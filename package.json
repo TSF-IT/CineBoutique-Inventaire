@@ -9,7 +9,7 @@
     "lint": "eslint . --ext .ts --cache --cache-location node_modules/.cache/eslint && echo // Added by ESLint setup",
     "lint:fix": "eslint . --ext .ts --fix && echo // Added by ESLint setup",
     "lint:report": "eslint . --ext .ts --format junit --output-file reports/eslint-junit.xml && echo // Added by ESLint setup",
-    "lint:sarif": "eslint . --ext .ts --format sarif --output-file reports/eslint.sarif && echo // Added by ESLint setup",
+    "lint:sarif": "eslint . --ext .ts --format @microsoft/eslint-formatter-sarif --output-file reports/eslint.sarif && echo // Added by ESLint setup",
     "lint:types": "eslint . --ext .ts --cache --cache-location node_modules/.cache/eslint && echo // Added by ESLint setup"
   },
   "devDependencies": {
@@ -19,7 +19,8 @@
     "eslint": "^9.38.0",
     "eslint-import-resolver-typescript": "^4.4.4",
     "eslint-plugin-import": "^2.32.0",
-    "eslint-formatter-junit": "^9.0.1"
+    "eslint-formatter-junit": "^9.0.1",
+    "@microsoft/eslint-formatter-sarif": "^3.1.0"
   },
   "overrides": {
     "sourcemap-codec": "npm:@jridgewell/sourcemap-codec@^1.5.0"
