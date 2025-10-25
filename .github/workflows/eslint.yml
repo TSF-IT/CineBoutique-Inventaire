@@ -9,6 +9,10 @@ on:
   # Added by ESLint setup
   pull_request:
 # Added by ESLint setup
+permissions:
+  contents: read
+  security-events: write
+# Added by ESLint setup
 jobs:
   # Added by ESLint setup
   eslint:
@@ -52,6 +56,8 @@ jobs:
       - name: Upload SARIF to Security tab
         # Added by ESLint setup
         uses: github/codeql-action/upload-sarif@v3
+        # Added by ESLint setup
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         # Added by ESLint setup
         with:
           # Added by ESLint setup
