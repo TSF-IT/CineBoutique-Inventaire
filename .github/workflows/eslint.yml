@@ -1,0 +1,58 @@
+# Added by ESLint setup
+name: ESLint (TS repo-wide)
+# Added by ESLint setup
+on:
+  # Added by ESLint setup
+  push:
+    # Added by ESLint setup
+    branches: [ main, master ]
+  # Added by ESLint setup
+  pull_request:
+# Added by ESLint setup
+jobs:
+  # Added by ESLint setup
+  eslint:
+    # Added by ESLint setup
+    runs-on: ubuntu-latest
+    # Added by ESLint setup
+    steps:
+      # Added by ESLint setup
+      - uses: actions/checkout@v4
+      # Added by ESLint setup
+      - uses: actions/setup-node@v4
+        # Added by ESLint setup
+        with:
+          # Added by ESLint setup
+          node-version: '20'
+          # Added by ESLint setup
+          cache: 'npm'
+      # Added by ESLint setup
+      - name: Install
+        # Added by ESLint setup
+        run: npm ci
+      # Added by ESLint setup
+      - name: ESLint JUnit
+        # Added by ESLint setup
+        run: npm run lint:report
+      # Added by ESLint setup
+      - name: ESLint SARIF
+        # Added by ESLint setup
+        run: npm run lint:sarif
+      # Added by ESLint setup
+      - name: Upload JUnit
+        # Added by ESLint setup
+        uses: actions/upload-artifact@v4
+        # Added by ESLint setup
+        with:
+          # Added by ESLint setup
+          name: eslint-junit
+          # Added by ESLint setup
+          path: reports/eslint-junit.xml
+      # Added by ESLint setup
+      - name: Upload SARIF to Security tab
+        # Added by ESLint setup
+        uses: github/codeql-action/upload-sarif@v3
+        # Added by ESLint setup
+        with:
+          # Added by ESLint setup
+          sarif_file: reports/eslint.sarif

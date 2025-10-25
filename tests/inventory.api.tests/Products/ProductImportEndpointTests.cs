@@ -163,7 +163,7 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
     }
 
     [SkippableFact]
-    public async Task ImportProducts_SkipsRowsWithoutEan()
+    public async Task ImportProducts_AllowsRowsWithoutEan()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
@@ -187,15 +187,13 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
         var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
         payload.Should().NotBeNull();
         payload!.Total.Should().Be(2);
+        payload.Inserted.Should().Be(2);
+        payload.Updated.Should().Be(0);
         payload.ErrorCount.Should().Be(0);
         payload.WouldInsert.Should().Be(0);
         payload.WouldUpdate.Should().Be(0);
         payload.Skipped.Should().BeFalse();
-        payload.SkippedLines.Should().ContainSingle();
-        var skipped = payload.SkippedLines[0];
-        skipped.Line.Should().Be(2);
-        skipped.Reason.Should().Be("MISSING_EAN");
-        skipped.Raw.Should().Be("\"\";\"SKU-100\";\"Produit Sans Code\"");
+        payload.SkippedLines.Should().BeEmpty();
         payload.Duplicates.Skus.Should().BeEmpty();
         payload.Duplicates.Eans.Should().BeEmpty();
 
@@ -205,6 +203,6 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
             Parameters = { new("shopId", shopId) }
         };
         var totalProducts = (long)await countCommand.ExecuteScalarAsync().ConfigureAwait(false);
-        totalProducts.Should().Be(1);
+        totalProducts.Should().Be(2);
     }
 }

@@ -941,11 +941,6 @@ RETURNING (xmax = 0) AS inserted;
                     errors.Add(new ProductImportError(lineNumber, "MISSING_SKU_COLUMN"));
                 }
 
-                if (!headerMap.ContainsKey(KnownColumns.Ean))
-                {
-                    errors.Add(new ProductImportError(lineNumber, "MISSING_EAN_COLUMN"));
-                }
-
                 if (!headerCaptured)
                 {
                     foreach (var key in headerMap.Keys)
@@ -1031,12 +1026,6 @@ RETURNING (xmax = 0) AS inserted;
             if (row.TryGetValue(KnownColumns.Name, out var nameValue) && !string.IsNullOrWhiteSpace(nameValue))
             {
                 name = nameValue;
-            }
-
-            if (string.IsNullOrWhiteSpace(ean))
-            {
-                skippedLines.Add(new ProductImportSkippedLine(lineNumber, line, "MISSING_EAN"));
-                continue;
             }
 
             if (row.TryGetValue(KnownColumns.Group, out var groupValue))

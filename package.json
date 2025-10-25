@@ -4,8 +4,20 @@
   "workspaces": [
     "src/inventory-web"
   ],
+  "scripts": {
+    "lint": "eslint . --ext .ts --cache --cache-location node_modules/.cache/eslint && echo // Added by ESLint setup",
+    "lint:fix": "eslint . --ext .ts --fix && echo // Added by ESLint setup",
+    "lint:report": "eslint . --ext .ts --format junit --output-file reports/eslint-junit.xml && echo // Added by ESLint setup",
+    "lint:sarif": "eslint . --ext .ts --format sarif --output-file reports/eslint.sarif && echo // Added by ESLint setup",
+    "lint:types": "eslint . --ext .ts --cache --cache-location node_modules/.cache/eslint && echo // Added by ESLint setup"
+  },
   "devDependencies": {
-    "@types/node": "^24.8.1"
+    "@types/node": "^24.8.1",
+    "@typescript-eslint/eslint-plugin": "^8.46.2",
+    "@typescript-eslint/parser": "^8.46.2",
+    "eslint": "^9.38.0",
+    "eslint-import-resolver-typescript": "^4.4.4",
+    "eslint-plugin-import": "^2.32.0"
   },
   "overrides": {
     "sourcemap-codec": "npm:@jridgewell/sourcemap-codec@^1.5.0"
