@@ -1,5 +1,6 @@
+import { clsx } from 'clsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import clsx from 'clsx'
+
 import {
   createLocation,
   updateLocation,
@@ -10,21 +11,22 @@ import {
 } from '../../api/adminApi'
 import { fetchLocations } from '../../api/inventoryApi'
 import { fetchShopUsers } from '../../api/shopUsers'
-import { Button } from '../../components/ui/Button'
-import { Input } from '../../components/ui/Input'
-import { FileUploadField } from '../../components/ui/FileUploadField'
 import { Card } from '../../components/Card'
 import { EmptyState } from '../../components/EmptyState'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
+import { Button } from '../../components/ui/Button'
+import { FileUploadField } from '../../components/ui/FileUploadField'
+import { Input } from '../../components/ui/Input'
 import { useAsync } from '../../hooks/useAsync'
 import type { Location } from '../../types/inventory'
-import type { ShopUser } from '@/types/user'
-import { useShop } from '@/state/ShopContext'
+
 import {
   CSV_ENCODING_OPTIONS,
   decodeCsvBuffer,
   type CsvEncoding,
 } from '@/features/import/csvEncoding'
+import { useShop } from '@/state/ShopContext'
+import type { ShopUser } from '@/types/user'
 
 type FeedbackState = { type: 'success' | 'error'; message: string } | null
 type AdminSection = 'locations' | 'users' | 'catalog'
@@ -561,7 +563,6 @@ const LocationListItem = ({ location, onSave, onDisable }: LocationListItemProps
   const [code, setCode] = useState(location.code)
   const [label, setLabel] = useState(location.label)
   const [saving, setSaving] = useState(false)
-  const [disabling, setDisabling] = useState(false)
   const [isDisabling, setIsDisabling] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const disableConfirmationDialogRef = useRef<HTMLDialogElement | null>(null)

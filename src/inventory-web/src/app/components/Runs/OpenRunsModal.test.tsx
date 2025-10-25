@@ -1,7 +1,9 @@
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { OpenRunsModal } from './OpenRunsModal'
+
 import type { OpenRunSummary } from '../../types/inventory'
+
+import { OpenRunsModal } from './OpenRunsModal'
 
 const buildRun = (overrides: Partial<OpenRunSummary>): OpenRunSummary => ({
   runId: 'run-default',

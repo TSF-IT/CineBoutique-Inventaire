@@ -1,9 +1,11 @@
+import { clsx } from 'clsx'
 import type { HTMLAttributes, ReactNode } from "react";
-import clsx from "clsx";
 import { Link } from "react-router-dom";
-import { ThemeToggle } from "./ThemeToggle";
-import { PageShell } from "./PageShell";
+
 import { useSwipeBackNavigation } from "../hooks/useSwipeBackNavigation";
+
+import { PageShell } from "./PageShell";
+import { ThemeToggle } from "./ThemeToggle";
 
 type PageProps = HTMLAttributes<HTMLDivElement> & {
   showHomeLink?: boolean;

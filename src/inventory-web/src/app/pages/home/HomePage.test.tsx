@@ -1,17 +1,11 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { MemoryRouter } from 'react-router-dom'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { useEffect } from 'react'
-import { HomePage } from './HomePage'
-import { ShopProvider } from '@/state/ShopContext'
-import type {
-  CompletedRunDetail,
-  ConflictZoneDetail,
-  InventorySummary,
-  Location,
-} from '../../types/inventory'
-import type { HttpError } from '@/lib/api/http'
+import { MemoryRouter } from 'react-router-dom'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+
+
+import { ThemeProvider } from '../../../theme/ThemeProvider'
 import {
   fetchInventorySummary,
   fetchLocationSummaries,
@@ -19,8 +13,18 @@ import {
   getConflictZoneDetail,
   getCompletedRunDetail,
 } from '../../api/inventoryApi'
-import { ThemeProvider } from '../../../theme/ThemeProvider'
 import { InventoryProvider, useInventory } from '../../contexts/InventoryContext'
+import type {
+  CompletedRunDetail,
+  ConflictZoneDetail,
+  InventorySummary,
+  Location,
+} from '../../types/inventory'
+
+import { HomePage } from './HomePage'
+
+import type { HttpError } from '@/lib/api/http'
+import { ShopProvider } from '@/state/ShopContext'
 import type { ShopUser } from '@/types/user'
 
 const navigateMock = vi.fn()

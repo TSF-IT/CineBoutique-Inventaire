@@ -1,9 +1,12 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ConflictZoneModal } from './ConflictZoneModal'
-import type { ConflictZoneSummary } from '../../types/inventory'
-import { getConflictZoneDetail } from '../../api/inventoryApi'
 import type { Mock } from 'vitest'
+
+import { getConflictZoneDetail } from '../../api/inventoryApi'
+import type { ConflictZoneSummary } from '../../types/inventory'
+
+import { ConflictZoneModal } from './ConflictZoneModal'
+
 
 vi.mock('../../api/inventoryApi', () => ({
   getConflictZoneDetail: vi.fn(),

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
+
 import http, { type HttpError } from './http'
 
 const API_URL = '/api/test'

@@ -1,13 +1,15 @@
 import { render, screen } from '@testing-library/react'
+import { useEffect } from 'react'
 import { MemoryRouter, Outlet, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { useEffect } from 'react'
-import type { Shop } from '@/types/shop'
-import type { ShopUser } from '@/types/user'
+
+import { AppRoutes } from '@/App'
+import type { InventoryContextValue } from '@/app/contexts/InventoryContext'
 import type { Location } from '@/app/types/inventory'
 import { CountType } from '@/app/types/inventory'
-import type { InventoryContextValue } from '@/app/contexts/InventoryContext'
 import { SELECTED_USER_STORAGE_PREFIX } from '@/lib/selectedUserStorage'
+import type { Shop } from '@/types/shop'
+import type { ShopUser } from '@/types/user'
 
 type UseShopValue = {
   shop: Shop | null
@@ -135,7 +137,6 @@ vi.mock('@/app/pages/admin/AdminLocationsPage', () => ({
 }))
 
 // Les mocks ci-dessus doivent être déclarés avant d'importer AppRoutes
-import { AppRoutes } from '@/App'
 
 describe('AppRoutes', () => {
   beforeEach(() => {

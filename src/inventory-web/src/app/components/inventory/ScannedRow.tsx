@@ -1,3 +1,4 @@
+import { clsx } from 'clsx'
 import {
   forwardRef,
   startTransition,
@@ -10,7 +11,6 @@ import {
   type FocusEvent,
   type KeyboardEvent,
 } from "react";
-import clsx from "clsx";
 
 export interface ScannedRowHandle {
   focusQuantity: () => void;

@@ -1,5 +1,6 @@
 import { useEffect, useReducer } from "react";
 import { useParams } from "react-router-dom";
+
 import { extractBadges } from "./attributeBadges";
 
 type Details = {

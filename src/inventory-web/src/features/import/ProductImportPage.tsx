@@ -5,12 +5,14 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { mapRowFromCsv, normalizeKey, KNOWN_KEYS } from "./csvMapping";
+
 import {
   CSV_ENCODING_OPTIONS,
   decodeCsvBuffer,
   type CsvEncoding,
 } from "./csvEncoding";
+import { mapRowFromCsv, normalizeKey, KNOWN_KEYS } from "./csvMapping";
+
 import { useShop } from "@/state/ShopContext";
 
 type ErrorItem = { Reason: string; Message?: string; Field?: string };

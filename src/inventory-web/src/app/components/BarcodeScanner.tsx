@@ -7,7 +7,7 @@ import {
   DecodeHintType,
   NotFoundException,
 } from "@zxing/library";
-import clsx from "clsx";
+import { clsx } from 'clsx'
 import {
   useCallback,
   useEffect,

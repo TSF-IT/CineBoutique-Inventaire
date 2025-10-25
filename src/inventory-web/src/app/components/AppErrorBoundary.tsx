@@ -1,7 +1,8 @@
 import type { ErrorInfo, ReactNode } from 'react'
 import { Component } from 'react'
-import { Button } from './ui/Button'
+
 import { Card } from './Card'
+import { Button } from './ui/Button'
 
 interface AppErrorBoundaryProps {
   children: ReactNode

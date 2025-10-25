@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { useProductsSearch } from "../../hooks/useProductsSearch";
+
 import { useProductsCount } from "../../hooks/useProductsCount";
+import { useProductsSearch } from "../../hooks/useProductsSearch";
 
 export function AdminProductsPage() {
   const [filter, setFilter] = useState("");

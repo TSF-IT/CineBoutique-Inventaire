@@ -1,12 +1,13 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, it, beforeEach, afterEach, vi, expect } from 'vitest'
-import { PageShell } from '../components/PageShell'
-import { MobileActionBar } from '../components/MobileActionBar'
+
+import { getConflictZoneDetail, getCompletedRunDetail } from '../api/inventoryApi'
 import { ConflictZoneModal } from '../components/Conflicts/ConflictZoneModal'
+import { MobileActionBar } from '../components/MobileActionBar'
+import { PageShell } from '../components/PageShell'
 import { CompletedRunsModal } from '../components/Runs/CompletedRunsModal'
 import type { ConflictZoneDetail, ConflictZoneSummary, CompletedRunDetail, CompletedRunSummary } from '../types/inventory'
-import { getConflictZoneDetail, getCompletedRunDetail } from '../api/inventoryApi'
 
 vi.mock('../api/inventoryApi', () => ({
   getConflictZoneDetail: vi.fn(),

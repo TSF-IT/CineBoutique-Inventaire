@@ -1,5 +1,6 @@
+import { clsx } from 'clsx'
 import { useMemo } from "react";
-import clsx from "clsx";
+
 import { useTheme } from "../../theme/ThemeProvider";
 
 export const ThemeToggle = () => {

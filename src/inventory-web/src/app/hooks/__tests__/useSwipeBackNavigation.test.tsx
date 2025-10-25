@@ -1,5 +1,6 @@
 import { fireEvent, render } from '@testing-library/react'
 import { describe, expect, it, beforeEach, vi } from 'vitest'
+
 import { useSwipeBackNavigation } from '../useSwipeBackNavigation'
 
 const navigateMock = vi.fn()

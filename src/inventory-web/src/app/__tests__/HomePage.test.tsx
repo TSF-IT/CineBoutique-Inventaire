@@ -1,15 +1,17 @@
 // Modifications : ajout d'un mock des zones pour vérifier le compteur de comptages terminés.
 import { render, screen, waitFor, within } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
 import { useEffect } from 'react'
+import { MemoryRouter } from 'react-router-dom'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+
 import { ThemeProvider } from '../../theme/ThemeProvider'
-import { HomePage } from '../pages/home/HomePage'
-import { ShopProvider } from '@/state/ShopContext'
-import type { InventorySummary, Location } from '../types/inventory'
-import type { LocationSummary } from '@/types/summary'
 import { InventoryProvider, useInventory } from '../contexts/InventoryContext'
+import { HomePage } from '../pages/home/HomePage'
+import type { InventorySummary, Location } from '../types/inventory'
+
+import { ShopProvider } from '@/state/ShopContext'
+import type { LocationSummary } from '@/types/summary'
 import type { ShopUser } from '@/types/user'
 
 const fetchInventorySummaryMock = vi.hoisted(() =>

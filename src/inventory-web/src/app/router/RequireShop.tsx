@@ -1,6 +1,7 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
-import { useShop } from '@/state/ShopContext'
+
 import { LoadingIndicator } from '@/app/components/LoadingIndicator'
+import { useShop } from '@/state/ShopContext'
 
 export default function RequireShop() {
   const { shop, isLoaded } = useShop()

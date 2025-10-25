@@ -1,6 +1,6 @@
+import { clsx } from 'clsx'
 import type { ButtonHTMLAttributes } from 'react'
 import { forwardRef } from 'react'
-import clsx from 'clsx'
 
 type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'outline' | 'danger'
 type ButtonSize = 'sm' | 'md' | 'lg'

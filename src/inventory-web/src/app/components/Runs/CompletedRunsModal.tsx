@@ -1,19 +1,22 @@
-import type { MouseEvent } from 'react'
+import { clsx } from 'clsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import clsx from 'clsx'
+import type { MouseEvent } from 'react'
+
 import { getCompletedRunDetail } from '../../api/inventoryApi'
 import type { CompletedRunDetail, CompletedRunSummary } from '../../types/inventory'
-import type { HttpError } from '@/lib/api/http'
-import { Button } from '../ui/Button'
 import { ErrorPanel } from '../ErrorPanel'
 import { LoadingIndicator } from '../LoadingIndicator'
 import { modalOverlayClassName } from '../Modal/modalOverlayClassName'
+import { Button } from '../ui/Button'
+
 import {
   formatZoneTitle,
   resolveZoneLabel,
   toValidLocationCode,
   toValidLocationLabel,
 } from './runLocation'
+
+import type { HttpError } from '@/lib/api/http'
 
 interface CompletedRunsModalProps {
   open: boolean

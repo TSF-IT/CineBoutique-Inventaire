@@ -1,6 +1,6 @@
+import { clsx } from 'clsx'
 import type { InputHTMLAttributes } from 'react'
 import { forwardRef, useId } from 'react'
-import clsx from 'clsx'
 
 type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'id'> & {
   id?: string

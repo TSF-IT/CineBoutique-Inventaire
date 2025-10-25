@@ -5,14 +5,16 @@ import { useEffect, useLayoutEffect } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import * as ReactRouterDom from 'react-router-dom'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+
+import * as inventoryApi from '../../../api/inventoryApi'
 import { InventoryProvider, useInventory, type InventoryContextValue } from '../../../contexts/InventoryContext'
-import { InventorySessionPage, aggregateItemsForCompletion } from '../InventorySessionPage'
 import { CountType } from '../../../types/inventory'
 import type { InventoryItem, Location, Product } from '../../../types/inventory'
-import type { ShopUser } from '@/types/user'
-import type { Shop } from '@/types/shop'
+import { InventorySessionPage, aggregateItemsForCompletion } from '../InventorySessionPage'
+
 import { ShopProvider, useShop } from '@/state/ShopContext'
-import * as inventoryApi from '../../../api/inventoryApi'
+import type { Shop } from '@/types/shop'
+import type { ShopUser } from '@/types/user'
 
 const getConflictZoneDetailMock = vi.spyOn(inventoryApi, 'getConflictZoneDetail')
 const fetchProductByEanMock = vi.spyOn(inventoryApi, 'fetchProductByEan')

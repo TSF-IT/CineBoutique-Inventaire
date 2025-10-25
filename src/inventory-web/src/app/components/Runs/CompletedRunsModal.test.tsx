@@ -1,7 +1,9 @@
 import { render, screen, within } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
-import { CompletedRunsModal } from './CompletedRunsModal'
+
 import type { CompletedRunSummary } from '../../types/inventory'
+
+import { CompletedRunsModal } from './CompletedRunsModal'
 
 const buildRun = (overrides: Partial<CompletedRunSummary>): CompletedRunSummary => ({
   runId: 'run-default',

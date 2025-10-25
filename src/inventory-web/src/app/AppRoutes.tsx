@@ -1,14 +1,12 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 
-// Ces deux-là sont des NAMED exports dans ton repo → import avec accolades
 import { HomePage } from '@/app/pages/home/HomePage'
-// Celui-ci est un default export dans ton repo → import sans accolades
-import SelectShopPage from '@/app/pages/select-shop/SelectShopPage'
+import { InventoryCountTypeStep } from '@/app/pages/inventory/InventoryCountTypeStep'
 import { InventoryLayout } from '@/app/pages/inventory/InventoryLayout'
 import { InventoryLocationStep } from '@/app/pages/inventory/InventoryLocationStep'
-import { InventoryCountTypeStep } from '@/app/pages/inventory/InventoryCountTypeStep'
 import { InventorySessionPage } from '@/app/pages/inventory/InventorySessionPage'
 import { ScanCameraPage } from '@/app/pages/inventory/ScanCameraPage'
+import { SelectShopPage } from '@/app/pages/select-shop/SelectShopPage'
 import RequireInventorySession from '@/app/router/RequireInventorySession'
 import RequireShop from '@/app/router/RequireShop'
 import RequireUser from '@/app/router/RequireUser'

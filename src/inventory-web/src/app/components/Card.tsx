@@ -1,5 +1,5 @@
+import { clsx } from 'clsx'
 import type { HTMLAttributes } from 'react'
-import clsx from 'clsx'
 
 type CardProps = HTMLAttributes<HTMLDivElement> & {
   padding?: 'tight' | 'default' | 'relaxed'

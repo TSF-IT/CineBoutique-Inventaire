@@ -1,3 +1,4 @@
+import { clsx } from 'clsx'
 import {
   ChangeEvent,
   DragEvent,
@@ -8,7 +9,6 @@ import {
   useRef,
   useState,
 } from 'react'
-import clsx from 'clsx'
 
 type FileUploadFieldProps = {
   name: string

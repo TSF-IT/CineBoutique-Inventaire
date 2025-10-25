@@ -1,11 +1,8 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
+
 import { ThemeProvider } from '../../../../theme/ThemeProvider'
-import { AdminLocationsPage } from '../AdminLocationsPage'
-import type { Location } from '../../../types/inventory'
-import type { ShopUser } from '@/types/user'
-import { fetchLocations } from '../../../api/inventoryApi'
 import {
   createLocation,
   updateLocation,
@@ -14,8 +11,13 @@ import {
   updateShopUser,
   disableShopUser,
 } from '../../../api/adminApi'
+import { fetchLocations } from '../../../api/inventoryApi'
 import { fetchShopUsers } from '../../../api/shopUsers'
+import type { Location } from '../../../types/inventory'
+import { AdminLocationsPage } from '../AdminLocationsPage'
+
 import { ShopProvider } from '@/state/ShopContext'
+import type { ShopUser } from '@/types/user'
 
 vi.mock('../../../api/inventoryApi', () => ({
   fetchLocations: vi.fn(),

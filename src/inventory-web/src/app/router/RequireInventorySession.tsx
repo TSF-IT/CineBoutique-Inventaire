@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react'
 import { Navigate, Outlet, useLocation } from 'react-router-dom'
+
 import { useInventory } from '@/app/contexts/InventoryContext'
 
 export default function RequireInventorySession(): ReactElement {

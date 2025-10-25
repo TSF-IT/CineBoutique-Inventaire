@@ -1,17 +1,18 @@
+import { z } from 'zod'
+
 import { CountType, LocationsSchema } from '../types/inventory'
-import { LocationSummaryListSchema, type LocationSummaryList } from '@/types/summary'
-import type { CompletedRunDetail, CompletedRunSummary, OpenRunSummary } from '../types/inventory'
-import type {
+import type { CompletedRunDetail, CompletedRunSummary, OpenRunSummary ,
   ConflictZoneDetail,
   ConflictZoneSummary,
   InventorySummary,
   Location,
   Product,
 } from '../types/inventory'
+
+import { API_BASE } from '@/lib/api/config'
 import http from '@/lib/api/http'
 import type { HttpError } from '@/lib/api/http'
-import { API_BASE } from '@/lib/api/config'
-import { z } from 'zod'
+import { LocationSummaryListSchema, type LocationSummaryList } from '@/types/summary'
 
 /* ------------------------------ HTTP helpers ------------------------------ */
 

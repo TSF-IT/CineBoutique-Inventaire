@@ -1,10 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { FetchShopsOptions } from '@/api/shops'
-import type { Shop } from '@/types/shop'
+
 import { SelectShopPage } from './SelectShopPage'
+
+import type { FetchShopsOptions } from '@/api/shops'
 import { ThemeProvider } from '@/theme/ThemeProvider'
+import type { Shop } from '@/types/shop'
 
 const fetchShopsMock = vi.hoisted(() => vi.fn<(options?: FetchShopsOptions) => Promise<Shop[]>>())
 

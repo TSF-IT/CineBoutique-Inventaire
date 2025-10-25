@@ -1,12 +1,13 @@
+import { clsx } from 'clsx'
 import type { MouseEvent } from 'react'
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import clsx from 'clsx'
+
 import { getConflictZoneDetail } from '../../api/inventoryApi'
+import { useOrientation } from '../../hooks/useOrientation'
 import type { ConflictZoneDetail, ConflictZoneItem, ConflictZoneSummary } from '../../types/inventory'
 import { LoadingIndicator } from '../LoadingIndicator'
-import { Button } from '../ui/Button'
-import { useOrientation } from '../../hooks/useOrientation'
 import { modalOverlayClassName } from '../Modal/modalOverlayClassName'
+import { Button } from '../ui/Button'
 
 interface ConflictZoneModalProps {
   open: boolean

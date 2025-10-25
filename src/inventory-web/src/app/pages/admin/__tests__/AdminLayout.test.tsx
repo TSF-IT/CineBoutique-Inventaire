@@ -1,10 +1,12 @@
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+
 import { AdminLayout } from '../AdminLayout'
-import { ThemeProvider } from '@/theme/ThemeProvider'
-import { ShopProvider } from '@/state/ShopContext'
+
 import { SHOP_STORAGE_KEY } from '@/lib/shopStorage'
+import { ShopProvider } from '@/state/ShopContext'
+import { ThemeProvider } from '@/theme/ThemeProvider'
 
 beforeEach(() => {
   window.localStorage.setItem(

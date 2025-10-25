@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react'
 import { createContext, useCallback, useContext, useMemo, useState } from 'react'
+
 import type { InventoryItem, InventoryLogEntry, InventoryLogEventType, Location, Product } from '../types/inventory'
+
 import type { ShopUser } from '@/types/user'
 
 export interface InventoryContextValue {

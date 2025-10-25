@@ -1,5 +1,5 @@
+import { clsx } from 'clsx'
 import type { HTMLAttributes, PropsWithChildren } from 'react'
-import clsx from 'clsx'
 
 export const SectionTitle = ({ className, children, ...props }: PropsWithChildren<HTMLAttributes<HTMLHeadingElement>>) => (
   <h2

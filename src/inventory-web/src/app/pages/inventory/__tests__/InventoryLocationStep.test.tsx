@@ -3,9 +3,11 @@ import type { ReactNode } from 'react'
 import { useEffect } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+
 import { InventoryProvider, useInventory } from '../../../contexts/InventoryContext'
-import { InventoryLocationStep } from '../InventoryLocationStep'
 import type { InventorySummary, Location } from '../../../types/inventory'
+import { InventoryLocationStep } from '../InventoryLocationStep'
+
 import type { ShopUser } from '@/types/user'
 
 const fetchLocationsMock = vi.hoisted(() => vi.fn())

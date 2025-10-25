@@ -1,4 +1,4 @@
-import clsx from 'clsx'
+import { clsx } from 'clsx'
 import { Link } from 'react-router-dom'
 import type { LinkProps } from 'react-router-dom'
 

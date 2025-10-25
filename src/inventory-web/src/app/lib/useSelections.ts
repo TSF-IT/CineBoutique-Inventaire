@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
-import { useShop } from '@/state/ShopContext'
+
 import { loadSelectedUserForShop } from '@/lib/selectedUserStorage'
+import { useShop } from '@/state/ShopContext'
 
 // On infère le type retourné par la fonction au lieu d'importer un type non exporté
 type SelectedUser = ReturnType<typeof loadSelectedUserForShop>

@@ -2,6 +2,7 @@
 import type { ChangeEvent, FocusEvent, PointerEvent, KeyboardEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+
 import {
   completeInventoryRun,
   fetchProductByEan,
@@ -11,19 +12,22 @@ import {
   type CompleteInventoryRunItem,
   type CompleteInventoryRunPayload,
 } from '../../api/inventoryApi'
+import { Card } from '../../components/Card'
+import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
+import { EmptyState } from '../../components/EmptyState'
+import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
-import { Card } from '../../components/Card'
-import { EmptyState } from '../../components/EmptyState'
-import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
 import { useInventory } from '../../contexts/InventoryContext'
-import type { HttpError } from '@/lib/api/http'
 import type { ConflictZoneItem, ConflictZoneSummary, InventoryItem, Product } from '../../types/inventory'
 import { CountType } from '../../types/inventory'
-import { useShop } from '@/state/ShopContext'
-import { LoadingIndicator } from '../../components/LoadingIndicator'
-import { useScanRejectionFeedback } from '@/hooks/useScanRejectionFeedback'
+
 import { ProductsModal, type ProductsModalItem } from '@/components/products/ProductsModal'
+import { useScanRejectionFeedback } from '@/hooks/useScanRejectionFeedback'
+import type { HttpError } from '@/lib/api/http'
+import { useShop } from '@/state/ShopContext'
+
+
 
 const DEV_API_UNREACHABLE_HINT =
   "Impossible de joindre l’API : vérifie que le backend tourne (curl http://localhost:8080/healthz) ou que le proxy Vite est actif."

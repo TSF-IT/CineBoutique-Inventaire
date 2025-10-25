@@ -1,6 +1,9 @@
 import { Outlet } from 'react-router-dom'
+
 import { Page } from '../../components/Page'
+
 import { AdminQuickActions } from './AdminQuickActions'
+
 import { useShop } from '@/state/ShopContext'
 
 export const AdminLayout = () => {

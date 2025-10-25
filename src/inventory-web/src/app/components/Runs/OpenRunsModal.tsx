@@ -1,8 +1,10 @@
 import type { MouseEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { formatZoneTitle, resolveZoneLabel, toValidLocationCode } from './runLocation'
+
 import type { OpenRunSummary } from '../../types/inventory'
 import { modalOverlayClassName } from '../Modal/modalOverlayClassName'
+
+import { formatZoneTitle, resolveZoneLabel, toValidLocationCode } from './runLocation'
 
 interface OpenRunsModalProps {
   open: boolean

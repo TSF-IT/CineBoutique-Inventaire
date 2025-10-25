@@ -1,12 +1,12 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { useEffect } from 'react'
 import { MemoryRouter, useLocation, type Location } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { useEffect } from 'react'
 
 import type { FetchShopsOptions } from '@/api/shops'
-import type { Shop } from '@/types/shop'
 import { SelectShopPage } from '@/app/pages/select-shop/SelectShopPage'
 import { ThemeProvider } from '@/theme/ThemeProvider'
+import type { Shop } from '@/types/shop'
 
 const fetchShopsMock = vi.hoisted(() => vi.fn<(options?: FetchShopsOptions) => Promise<Shop[]>>())
 const useShopMock = vi.hoisted(() =>

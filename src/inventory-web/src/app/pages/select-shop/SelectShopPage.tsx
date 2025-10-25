@@ -1,16 +1,17 @@
+import { clsx } from 'clsx'
 import { startTransition, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import clsx from 'clsx'
+
+import { buildEntityCards, type EntityCardModel, type EntityId } from './entities'
 
 import { fetchShops } from '@/api/shops'
-import { Page } from '@/app/components/Page'
 import { LoadingIndicator } from '@/app/components/LoadingIndicator'
+import { Page } from '@/app/components/Page'
 import { Button } from '@/app/components/ui/Button'
-import type { Shop } from '@/types/shop'
-import { useShop } from '@/state/ShopContext'
-import { clearSelectedUserForShop } from '@/lib/selectedUserStorage'
 import { useInventory } from '@/app/contexts/InventoryContext'
-import { buildEntityCards, type EntityCardModel, type EntityId } from './entities'
+import { clearSelectedUserForShop } from '@/lib/selectedUserStorage'
+import { useShop } from '@/state/ShopContext'
+import type { Shop } from '@/types/shop'
 
 const DEFAULT_ERROR_MESSAGE = "Impossible de charger les boutiques."
 const INVALID_GUID_ERROR_MESSAGE = 'Identifiant de boutique invalide. Vérifie le code et réessaie.'

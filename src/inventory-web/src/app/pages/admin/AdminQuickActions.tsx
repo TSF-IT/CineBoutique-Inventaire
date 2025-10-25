@@ -1,6 +1,6 @@
+import { clsx } from 'clsx'
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import clsx from 'clsx'
 
 type QuickAction = {
   to: string

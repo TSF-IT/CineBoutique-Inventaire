@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useProductSuggest } from '../../hooks/useProductSuggest'
+
 import { useProductsSearch } from '../../hooks/useProductsSearch'
+import { useProductSuggest } from '../../hooks/useProductSuggest'
+
 import { BarcodeCameraButton } from './BarcodeCameraButton'
 
 type Mode = 'scan' | 'camera' | 'manuel'
@@ -91,7 +93,11 @@ export function ProductScanSearch(props: { onPick?: (sku: string) => void }) {
             <ul>
               {list.map((x) => (
                 <li key={x.sku}>
-                  <button type="button" onClick={() => props.onPick?.(x.sku)}>
+                  <button
+                    type="button"
+                    aria-label={`Choisir ${x.name ?? x.sku}`}
+                    onClick={() => props.onPick?.(x.sku)}
+                  >
                     {x.ean ? `[${x.ean}] ` : ''}
                     {x.name} — {x.sku}
                   </button>
@@ -140,14 +146,18 @@ export function ProductScanSearch(props: { onPick?: (sku: string) => void }) {
                   <td>{p.ean ?? ''}</td>
                   <td>{p.sku}</td>
                   <td>{p.name}</td>
-                  <td>{p.group ?? ''}</td>
-                  <td>{p.subGroup ?? ''}</td>
-                  <td>
-                    <button type="button" onClick={() => props.onPick?.(p.sku)}>
-                      Choisir
-                    </button>
-                  </td>
-                </tr>
+              <td>{p.group ?? ''}</td>
+              <td>{p.subGroup ?? ''}</td>
+              <td>
+                <button
+                  type="button"
+                  aria-label={`Choisir ${p.name ?? p.sku}`}
+                  onClick={() => props.onPick?.(p.sku)}
+                >
+                  Choisir
+                </button>
+              </td>
+            </tr>
               ))}
               {!loadingSearch && rows.length === 0 && (
                 <tr>

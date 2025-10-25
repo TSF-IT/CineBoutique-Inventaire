@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+
 import { fetchInventorySummary, fetchLocations } from '../../api/inventoryApi'
-import { Button } from '../../components/ui/Button'
-import { Input } from '../../components/ui/Input'
 import { Card } from '../../components/Card'
 import { EmptyState } from '../../components/EmptyState'
 import { ErrorPanel } from '../../components/ErrorPanel'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
+import { Button } from '../../components/ui/Button'
+import { Input } from '../../components/ui/Input'
 import { useInventory } from '../../contexts/InventoryContext'
 import { CountType } from '../../types/inventory'
 import type { Location, LocationCountStatus } from '../../types/inventory'
 import { getLocationDisplayName, isLocationLabelRedundant } from '../../utils/locationDisplay'
+
 import type { HttpError } from '@/lib/api/http'
 import { useShop } from '@/state/ShopContext'
 

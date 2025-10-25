@@ -1,3 +1,6 @@
+import { BrowserMultiFormatReader } from '@zxing/browser'
+import { BarcodeFormat, DecodeHintType, NotFoundException } from '@zxing/library'
+import { clsx } from 'clsx'
 import {
   useCallback,
   useEffect,
@@ -7,19 +10,18 @@ import {
   type PointerEvent,
 } from 'react'
 import { useNavigate } from 'react-router-dom'
-import clsx from 'clsx'
-import { BrowserMultiFormatReader } from '@zxing/browser'
-import { BarcodeFormat, DecodeHintType, NotFoundException } from '@zxing/library'
-import { BarcodeScanner } from '../../components/BarcodeScanner'
-import { useInventory } from '../../contexts/InventoryContext'
-import { useShop } from '@/state/ShopContext'
-import { Button } from '../../components/ui/Button'
-import { ScannedRow, type ScannedRowHandle } from '../../components/inventory/ScannedRow'
-import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
-import { CountType, type ConflictZoneSummary, type Product } from '../../types/inventory'
+
 import { fetchProductByEan, startInventoryRun } from '../../api/inventoryApi'
-import type { HttpError } from '@/lib/api/http'
+import { BarcodeScanner } from '../../components/BarcodeScanner'
+import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
+import { ScannedRow, type ScannedRowHandle } from '../../components/inventory/ScannedRow'
+import { Button } from '../../components/ui/Button'
+import { useInventory } from '../../contexts/InventoryContext'
+import { CountType, type ConflictZoneSummary, type Product } from '../../types/inventory'
+
 import { useScanRejectionFeedback } from '@/hooks/useScanRejectionFeedback'
+import type { HttpError } from '@/lib/api/http'
+import { useShop } from '@/state/ShopContext'
 
 const MAX_SCAN_LENGTH = 32
 

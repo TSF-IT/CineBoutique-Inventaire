@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Stepper } from '../../components/Stepper'
+
 import { Page } from '../../components/Page'
+import { Stepper } from '../../components/Stepper'
 import { useInventory } from '../../contexts/InventoryContext'
+
 import { useShop } from '@/state/ShopContext'
 
 const STEPS = ['Zone', 'Comptage', 'Scan']

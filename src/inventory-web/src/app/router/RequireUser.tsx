@@ -1,16 +1,17 @@
 import { useEffect, useMemo, useReducer, useRef } from "react";
-import { Navigate, Outlet, useLocation } from "react-router-dom";
 import type { ReactElement } from "react";
-import { useShop } from "@/state/ShopContext";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
+
+import { fetchShopUsers } from "@/app/api/shopUsers";
+import { LoadingIndicator } from "@/app/components/LoadingIndicator";
+import { useInventory } from "@/app/contexts/InventoryContext";
 import {
   clearSelectedUserForShop,
   loadSelectedUserForShop,
   saveSelectedUserForShop,
   toShopUserFromSnapshot,
 } from "@/lib/selectedUserStorage";
-import { useInventory } from "@/app/contexts/InventoryContext";
-import { fetchShopUsers } from "@/app/api/shopUsers";
-import { LoadingIndicator } from "@/app/components/LoadingIndicator";
+import { useShop } from "@/state/ShopContext";
 
 type GuardState =
   | { status: "checking" }

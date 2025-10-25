@@ -1,5 +1,5 @@
+import { clsx } from 'clsx'
 import type { HTMLAttributes, ReactNode } from 'react'
-import clsx from 'clsx'
 
 type PageShellProps = HTMLAttributes<HTMLDivElement> & {
   header: ReactNode

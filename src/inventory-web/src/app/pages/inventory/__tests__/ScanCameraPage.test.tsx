@@ -4,12 +4,15 @@ import type { ReactNode } from 'react'
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+
 import { InventoryProvider, useInventory } from '../../../contexts/InventoryContext'
+import { CountType, type InventoryItem , Location } from '../../../types/inventory'
 import { ScanCameraPage } from '../ScanCameraPage'
-import { CountType, type InventoryItem } from '../../../types/inventory'
-import type { ShopUser } from '@/types/user'
+
 import type { Shop } from '@/types/shop'
-import type { Location } from '../../../types/inventory'
+import type { ShopUser } from '@/types/user'
+
+
 
 const fetchProductByEanMock = vi.hoisted(() => vi.fn())
 const startInventoryRunMock = vi.hoisted(() => vi.fn())

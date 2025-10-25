@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+
 import { LocationsSchema } from './inventory'
 
 const buildCountStatusPayload = (overrides: Record<string, unknown> = {}) => {

@@ -1,27 +1,29 @@
 // Modifications : chargement des zones pour le compteur terminé et panneau enrichi des runs ouverts.
+import { clsx } from 'clsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import clsx from 'clsx'
 import { Link, useNavigate } from 'react-router-dom'
+
 import { fetchInventorySummary, fetchLocationSummaries, fetchLocations } from '../../api/inventoryApi'
-import { Button } from '../../components/ui/Button'
 import { Card } from '../../components/Card'
+import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
 import { ErrorPanel } from '../../components/ErrorPanel'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { Page } from '../../components/Page'
-import { SectionTitle } from '../../components/SectionTitle'
-import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
 import { CompletedRunsModal } from '../../components/Runs/CompletedRunsModal'
 import { OpenRunsModal } from '../../components/Runs/OpenRunsModal'
-import { useAsync } from '../../hooks/useAsync'
-import { CountType } from '../../types/inventory'
-import type { ConflictZoneSummary, InventorySummary, Location, OpenRunSummary } from '../../types/inventory'
-import type { LocationSummary } from '@/types/summary'
-import type { HttpError } from '@/lib/api/http'
-import { useShop } from '@/state/ShopContext'
-import { BackToShopSelectionLink } from '@/app/components/BackToShopSelectionLink'
+import { SectionTitle } from '../../components/SectionTitle'
+import { Button } from '../../components/ui/Button'
 import { useInventory } from '../../contexts/InventoryContext'
+import { useAsync } from '../../hooks/useAsync'
+import type { ConflictZoneSummary, InventorySummary, Location, OpenRunSummary } from '../../types/inventory'
+import { CountType } from '../../types/inventory'
+
+import { BackToShopSelectionLink } from '@/app/components/BackToShopSelectionLink'
 import { ProductsCountCard } from '@/components/products/ProductsCountCard'
 import { ProductsModal } from '@/components/products/ProductsModal'
+import type { HttpError } from '@/lib/api/http'
+import { useShop } from '@/state/ShopContext'
+import type { LocationSummary } from '@/types/summary'
 
 const isHttpError = (value: unknown): value is HttpError =>
   typeof value === 'object' &&
@@ -312,7 +314,7 @@ export const HomePage = () => {
   const openRunsCount = displaySummary?.openRuns ?? 0
   const conflictCount = displaySummary?.conflicts ?? 0
   const openRunDetails = useMemo(() => displaySummary?.openRunDetails ?? [], [displaySummary])
-  const completedRunDetails = displaySummary?.completedRunDetails ?? []
+  const completedRunDetails = useMemo(() => displaySummary?.completedRunDetails ?? [], [displaySummary])
   const conflictZones = useMemo(() => displaySummary?.conflictZones ?? [], [displaySummary])
   const locations = useMemo(() => locationsData ?? [], [locationsData])
   const locationSummaries = useMemo(() => locationSummariesData ?? [], [locationSummariesData])

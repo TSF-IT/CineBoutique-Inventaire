@@ -8,8 +8,9 @@ import {
   useState,
   startTransition,
 } from 'react'
-import type { Shop } from '@/types/shop'
+
 import { clearShop, loadShop, saveShop } from '@/lib/shopStorage'
+import type { Shop } from '@/types/shop'
 
 type ShopState = {
   shop: Shop | null

@@ -3,15 +3,18 @@ import type { ReactNode } from 'react'
 import { useLayoutEffect } from 'react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, describe, expect, it } from 'vitest'
-import { InventoryLayout } from '../InventoryLayout'
+
 import { InventoryProvider, useInventory } from '../../../contexts/InventoryContext'
+import type { Location } from '../../../types/inventory'
+import { CountType } from '../../../types/inventory'
+import { InventoryLayout } from '../InventoryLayout'
+
+import { SHOP_STORAGE_KEY } from '@/lib/shopStorage'
 import { ShopProvider, useShop } from '@/state/ShopContext'
 import { ThemeProvider } from '@/theme/ThemeProvider'
 import type { Shop } from '@/types/shop'
 import type { ShopUser } from '@/types/user'
-import { SHOP_STORAGE_KEY } from '@/lib/shopStorage'
-import type { Location } from '../../../types/inventory'
-import { CountType } from '../../../types/inventory'
+
 
 const shop: Shop = { id: 'shop-test', name: 'Boutique test', kind: 'boutique' }
 

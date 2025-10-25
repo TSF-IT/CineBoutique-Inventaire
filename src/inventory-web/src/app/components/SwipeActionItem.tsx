@@ -1,7 +1,7 @@
+import { clsx } from 'clsx'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { useSwipeable } from 'react-swipeable'
-import clsx from 'clsx'
 
 interface SwipeActionItemProps {
   children: ReactNode

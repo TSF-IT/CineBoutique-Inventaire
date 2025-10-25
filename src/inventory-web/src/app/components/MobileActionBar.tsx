@@ -1,4 +1,5 @@
-import clsx from 'clsx'
+import { clsx } from 'clsx'
+
 import { Button } from './ui/Button'
 
 type ActionConfig = {

@@ -1,6 +1,6 @@
-import type { ShopUser } from '@/types/user'
-import http from '@/lib/api/http'
 import { API_BASE } from '@/lib/api/config'
+import http from '@/lib/api/http'
+import type { ShopUser } from '@/types/user'
 
 const sanitizeString = (value: unknown): string => (typeof value === 'string' ? value : String(value ?? '')).trim()
 

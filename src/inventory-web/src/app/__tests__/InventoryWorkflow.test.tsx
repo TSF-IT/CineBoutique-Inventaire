@@ -3,12 +3,16 @@ import type { ReactNode } from 'react'
 import { startTransition, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { MemoryRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { AppProviders } from '../providers/AppProviders'
-import { InventoryLayout } from '../pages/inventory/InventoryLayout'
+
+import type { HttpError } from '../../lib/api/http'
+import { SELECTED_USER_STORAGE_PREFIX } from '../../lib/selectedUserStorage'
+import type { StartInventoryRunPayload, StartInventoryRunResponse } from '../api/inventoryApi'
+import { useInventory } from '../contexts/InventoryContext'
 import { InventoryCountTypeStep } from '../pages/inventory/InventoryCountTypeStep'
+import { InventoryLayout } from '../pages/inventory/InventoryLayout'
 import { InventoryLocationStep } from '../pages/inventory/InventoryLocationStep'
 import { InventorySessionPage } from '../pages/inventory/InventorySessionPage'
-import { useInventory } from '../contexts/InventoryContext'
+import { AppProviders } from '../providers/AppProviders'
 import { CountType } from '../types/inventory'
 import type {
   ConflictZoneDetail,
@@ -16,10 +20,9 @@ import type {
   Location,
   CompleteInventoryRunPayload,
 } from '../types/inventory'
-import type { StartInventoryRunPayload, StartInventoryRunResponse } from '../api/inventoryApi'
-import type { HttpError } from '../../lib/api/http'
+
 import type { ShopUser } from '@/types/user'
-import { SELECTED_USER_STORAGE_PREFIX } from '../../lib/selectedUserStorage'
+
 
 const {
   fetchLocationsMock,

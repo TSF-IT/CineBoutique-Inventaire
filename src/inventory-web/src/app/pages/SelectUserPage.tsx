@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import http from '@/lib/api/http'
-import { API_BASE } from '@/lib/api/config'
-import { useShop } from '@/state/ShopContext'
-import { clearSelectedUserForShop, saveSelectedUserForShop } from '@/lib/selectedUserStorage'
 import { z } from 'zod'
-import { Page } from '@/app/components/Page'
-import { LoadingIndicator } from '@/app/components/LoadingIndicator'
-import { useInventory } from '@/app/contexts/InventoryContext'
-import { clearShop } from '@/lib/shopStorage'
+
 import { BackToShopSelectionLink } from '@/app/components/BackToShopSelectionLink'
+import { LoadingIndicator } from '@/app/components/LoadingIndicator'
+import { Page } from '@/app/components/Page'
+import { useInventory } from '@/app/contexts/InventoryContext'
+import { API_BASE } from '@/lib/api/config'
+import http from '@/lib/api/http'
+import { clearSelectedUserForShop, saveSelectedUserForShop } from '@/lib/selectedUserStorage'
+import { clearShop } from '@/lib/shopStorage'
+import { useShop } from '@/state/ShopContext'
 
 type ShopUser = {
   id: string

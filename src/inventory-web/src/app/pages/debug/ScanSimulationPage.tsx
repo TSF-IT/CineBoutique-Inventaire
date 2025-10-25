@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+
 import { BarcodeScanner } from '../../components/BarcodeScanner'
 import { Card } from '../../components/Card'
 import { Button } from '../../components/ui/Button'

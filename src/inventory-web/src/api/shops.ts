@@ -1,6 +1,7 @@
 import { z } from 'zod'
-import http from '@/lib/api/http'
+
 import { API_BASE } from '@/lib/api/config'
+import http from '@/lib/api/http'
 import type { Shop, ShopKind } from '@/types/shop'
 
 const ShopKindSchema = z.enum(['boutique', 'lumiere', 'camera'])
