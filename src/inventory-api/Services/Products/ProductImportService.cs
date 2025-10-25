@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Infrastructure.Logging;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
+using CineBoutique.Inventory.Api.Validation;
 using Dapper;
 using Microsoft.Extensions.Logging;
 using Npgsql;
@@ -745,19 +746,19 @@ RETURNING (xmax = 0) AS inserted;
 
     private string? NormalizeEan(string? ean)
     {
-        if (string.IsNullOrWhiteSpace(ean))
+        var normalized = InventoryCodeValidator.Normalize(ean);
+        if (normalized is null)
         {
             return null;
         }
 
-        var trimmed = ean.Trim();
-        if (trimmed.Length <= 13)
+        if (!InventoryCodeValidator.TryValidate(normalized, out var validationError))
         {
-            return trimmed;
+            _logger.LogDebug("Code importé ignoré: {Reason}", validationError);
+            return null;
         }
 
-        _logger.LogDebug("Code importé trop long ({Length} > 13), colonne EAN laissée vide.", trimmed.Length);
-        return null;
+        return normalized;
     }
 
     private static string? BuildCodeDigits(string? ean)

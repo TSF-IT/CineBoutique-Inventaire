@@ -68,24 +68,23 @@ const buildHttpMessage = (prefix: string, error: HttpError) => {
 
 const MAX_SCAN_LENGTH = 32
 
-const sanitizeScanValue = (value: string) => value.replace(/\r|\n/g, '')
+const sanitizeScanValue = (value: string) => value.normalize('NFKC').replace(/\r|\n/g, '')
 
 const normalizeIdentifier = (value: string | null | undefined) => {
   const trimmed = value?.trim()
   return trimmed && trimmed.length > 0 ? trimmed : null
 }
 
-const EAN_MIN_LENGTH = 8
-const EAN_MAX_LENGTH = 13
+const IDENTIFIER_MIN_LENGTH = 3
 
 const sanitizeEanForSubmission = (value: string | null | undefined): string | null => {
-  const normalized = normalizeIdentifier(value)
+  const normalized = normalizeIdentifier(value)?.normalize('NFKC')
   if (!normalized) {
     return null
   }
 
-  const digitsOnly = normalized.replace(/\D+/g, '')
-  return digitsOnly.length > 0 ? digitsOnly : null
+  const collapsed = normalized.replace(/\s+/g, ' ').toUpperCase()
+  return collapsed.length > 0 ? collapsed : null
 }
 
 const isValidEanForSubmission = (ean: string | null | undefined): ean is string => {
@@ -93,7 +92,11 @@ const isValidEanForSubmission = (ean: string | null | undefined): ean is string 
     return false
   }
 
-  return ean.length >= EAN_MIN_LENGTH && ean.length <= EAN_MAX_LENGTH
+  if (ean.length < IDENTIFIER_MIN_LENGTH || ean.length > MAX_SCAN_LENGTH) {
+    return false
+  }
+
+  return /^[\p{L}\p{N}'#°._ \-]+$/u.test(ean)
 }
 
 const dedupeConflictItems = (items: ConflictZoneItem[]): ConflictZoneItem[] => {

@@ -320,7 +320,7 @@ describe('InventorySessionPage - complétion', () => {
     completeInventoryRunMock.mockReset()
   })
 
-  it('affiche un message explicite lorsqu’un EAN invalide bloque la clôture', async () => {
+  it('affiche un message explicite lorsqu’un code contient un caractère interdit', async () => {
     const user = userEvent.setup()
     renderSessionPage(CountType.Count1)
 
@@ -329,7 +329,7 @@ describe('InventorySessionPage - complétion', () => {
     act(() => {
       inventoryControls.initializeItems?.([
         {
-          product: { ean: '2066B', name: 'Produit invalide', sku: 'SKU-INVALID' },
+          product: { ean: '@@@', name: 'Produit invalide', sku: 'SKU-INVALID' },
           quantity: 2,
           isManual: true,
         },
@@ -347,8 +347,37 @@ describe('InventorySessionPage - complétion', () => {
     await user.click(confirmButton)
 
     const errorMessage = await screen.findByText(/articles ont un EAN invalide/i)
-    expect(errorMessage.textContent).toContain('2066B')
+    expect(errorMessage.textContent).toContain('@@@')
     expect(completeInventoryRunMock).not.toHaveBeenCalled()
+  })
+
+  it('autorise la clôture avec un code alphanumérique court', async () => {
+    const user = userEvent.setup()
+    renderSessionPage(CountType.Count1)
+
+    await waitFor(() => expect(inventoryControls.initializeItems).toBeDefined())
+
+    act(() => {
+      inventoryControls.initializeItems?.([
+        {
+          product: { ean: '2066B', name: 'Produit catalogue', sku: 'SKU-2066B' },
+          quantity: 1,
+          isManual: false,
+        },
+      ])
+    })
+
+    const completeButton = await screen.findByTestId('btn-complete-run')
+    await user.click(completeButton)
+
+    const confirmButton = await screen.findByTestId('btn-confirm-complete')
+    await user.click(confirmButton)
+
+    await waitFor(() => expect(completeInventoryRunMock).toHaveBeenCalled())
+    const payload = completeInventoryRunMock.mock.calls[0]?.[1]
+    expect(payload?.items).toEqual([
+      expect.objectContaining({ ean: '2066B', quantity: 1 }),
+    ])
   })
 })
 

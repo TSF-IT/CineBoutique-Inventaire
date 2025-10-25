@@ -71,57 +71,62 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
     }
 
     [SkippableFact]
-    public async Task CreateProduct_ValidatesEanFormats()
+    public async Task CreateProduct_AcceptsExtendedCodeFormats()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
         var client = CreateClient();
 
-        var shortResponse = await client.PostAsJsonAsync(
+        var numericFive = "33488";
+        var numericFiveResponse = await client.PostAsJsonAsync(
             client.CreateRelativeUri("/api/products"),
-            new CreateProductRequest { Sku = "SKU-EAN-7", Name = "EAN court", Ean = "1234567" }
+            new CreateProductRequest { Sku = "SKU-CODE-5", Name = "Code numérique court", Ean = numericFive }
         ).ConfigureAwait(false);
-        await shortResponse.ShouldBeAsync(HttpStatusCode.BadRequest, "un EAN de 7 chiffres doit être rejeté").ConfigureAwait(false);
+        await numericFiveResponse.ShouldBeAsync(HttpStatusCode.Created, "un code numérique de 5 caractères doit être accepté").ConfigureAwait(false);
+        var numericFiveProduct = await numericFiveResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
+        numericFiveProduct.Should().NotBeNull();
+        numericFiveProduct!.Ean.Should().Be(numericFive);
 
-        var ean8 = "12345678";
-        var ean8Response = await client.PostAsJsonAsync(
+        var numericLong = "12345678901234567890";
+        var numericLongResponse = await client.PostAsJsonAsync(
             client.CreateRelativeUri("/api/products"),
-            new CreateProductRequest { Sku = "SKU-EAN-8", Name = "EAN8", Ean = ean8 }
+            new CreateProductRequest { Sku = "SKU-CODE-20", Name = "Code numérique long", Ean = numericLong }
         ).ConfigureAwait(false);
-        await ean8Response.ShouldBeAsync(HttpStatusCode.Created, "un EAN de 8 chiffres doit être accepté").ConfigureAwait(false);
-        var ean8Product = await ean8Response.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
-        ean8Product.Should().NotBeNull();
-        ean8Product!.Ean.Should().Be(ean8);
+        await numericLongResponse.ShouldBeAsync(HttpStatusCode.Created, "un code numérique de 20 caractères doit être accepté").ConfigureAwait(false);
 
-        var ean13 = "9876543210123";
-        var ean13Response = await client.PostAsJsonAsync(
+        var alphanumeric = "RFID_20A#";
+        var alphanumericResponse = await client.PostAsJsonAsync(
             client.CreateRelativeUri("/api/products"),
-            new CreateProductRequest { Sku = "SKU-EAN-13", Name = "EAN13", Ean = ean13 }
+            new CreateProductRequest { Sku = "SKU-CODE-MIX", Name = "Code mixte", Ean = alphanumeric }
         ).ConfigureAwait(false);
-        await ean13Response.ShouldBeAsync(HttpStatusCode.Created, "un EAN de 13 chiffres doit être accepté").ConfigureAwait(false);
+        await alphanumericResponse.ShouldBeAsync(HttpStatusCode.Created, "un code alphanumérique contenant des symboles autorisés doit être accepté").ConfigureAwait(false);
 
-        var longResponse = await client.PostAsJsonAsync(
+        var withDegreeSymbol = "LOT°123 45";
+        var degreeResponse = await client.PostAsJsonAsync(
             client.CreateRelativeUri("/api/products"),
-            new CreateProductRequest { Sku = "SKU-EAN-14", Name = "EAN long", Ean = "12345678901234" }
+            new CreateProductRequest { Sku = "SKU-CODE-DEG", Name = "Code avec degré", Ean = withDegreeSymbol }
         ).ConfigureAwait(false);
-        await longResponse.ShouldBeAsync(HttpStatusCode.BadRequest, "un EAN de 14 chiffres doit être rejeté").ConfigureAwait(false);
+        await degreeResponse.ShouldBeAsync(HttpStatusCode.Created, "un code contenant le symbole ° et des espaces doit être accepté").ConfigureAwait(false);
 
-        var nonNumericResponse = await client.PostAsJsonAsync(
+        var invalidSymbolResponse = await client.PostAsJsonAsync(
             client.CreateRelativeUri("/api/products"),
-            new CreateProductRequest { Sku = "SKU-EAN-ALPHA", Name = "EAN mixte", Ean = "12345ABC" }
+            new CreateProductRequest { Sku = "SKU-CODE-@", Name = "Code invalide", Ean = "BAD@CODE" }
         ).ConfigureAwait(false);
-        await nonNumericResponse.ShouldBeAsync(HttpStatusCode.BadRequest, "un EAN non numérique doit être rejeté").ConfigureAwait(false);
+        await invalidSymbolResponse.ShouldBeAsync(HttpStatusCode.BadRequest, "un code contenant des symboles non supportés doit être rejeté").ConfigureAwait(false);
+        var invalidMessage = await invalidSymbolResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
+        invalidMessage.Should().Contain("BAD@CODE");
 
-        var trimmedResponse = await client.PostAsJsonAsync(
+        var tooLongCode = new string('A', 65);
+        var tooLongResponse = await client.PostAsJsonAsync(
             client.CreateRelativeUri("/api/products"),
-            new CreateProductRequest { Sku = "SKU-EAN-TRIM", Name = "EAN trim", Ean = " 87654321 " }
+            new CreateProductRequest { Sku = "SKU-CODE-LONG", Name = "Code trop long", Ean = tooLongCode }
         ).ConfigureAwait(false);
-        await trimmedResponse.ShouldBeAsync(HttpStatusCode.Created, "un EAN valide entouré d'espaces doit être accepté").ConfigureAwait(false);
-        var trimmedProduct = await trimmedResponse.Content.ReadFromJsonAsync<ProductDto>().ConfigureAwait(false);
-        trimmedProduct.Should().NotBeNull();
-        trimmedProduct!.Ean.Should().Be("87654321");
+        await tooLongResponse.ShouldBeAsync(HttpStatusCode.BadRequest, "un code de plus de 64 caractères doit être rejeté").ConfigureAwait(false);
+        var tooLongMessage = await tooLongResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
+        tooLongMessage.Should().Contain(tooLongCode.Substring(0, 20));
     }
+
 
     [SkippableFact]
     public async Task CreateProduct_TrimsSkuNameAndEan()
@@ -323,3 +328,4 @@ public sealed class ProductEndpoints_ValidationAndConcurrencyTests : Integration
         fetchedProduct!.Ean.Should().Be(ean1);
     }
 }
+

@@ -78,7 +78,7 @@ public sealed class ProductLookup_ExtendedTests : IntegrationTestBase
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
 
         await Fixture.ResetAndSeedAsync(_ => Task.CompletedTask).ConfigureAwait(false);
-        // L'EAN est limité à 13 caractères en base : on simule un suffixe alpha en remplaçant le dernier chiffre.
+        // Historique : la base limitait jadis l'EAN à 13 caractères ; on vérifie toujours la résolution avec suffixe alpha.
         const string rawCodeWithSuffix = "355719131003S"; // 12 chiffres + suffixe alpha
         const string digitsOnly = "355719131003";
         await InsertProductAsync("LKP-DGT-001", "Code suffixé alpha", rawCodeWithSuffix, digitsOnly).ConfigureAwait(false);

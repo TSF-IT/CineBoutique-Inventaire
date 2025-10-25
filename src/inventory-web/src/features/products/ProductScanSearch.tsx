@@ -21,13 +21,13 @@ export function ProductScanSearch(props: { onPick?: (sku: string) => void }) {
   }, [mode])
 
   useEffect(() => {
-    if (q.trim().length >= 8 && suggest.length === 1 && props.onPick) {
+    if (q.trim().length >= 5 && suggest.length === 1 && props.onPick) {
       props.onPick(suggest[0].sku)
     }
   }, [q, suggest, props])
 
   useEffect(() => {
-    if (q.trim().length >= 8 && suggest.length === 1 && !props.onPick) {
+    if (q.trim().length >= 5 && suggest.length === 1 && !props.onPick) {
       nav(`/products/${encodeURIComponent(suggest[0].sku)}`)
     }
   }, [q, suggest, props, nav])
@@ -79,7 +79,7 @@ export function ProductScanSearch(props: { onPick?: (sku: string) => void }) {
             autoCapitalize="off"
             autoCorrect="off"
             autoComplete="off"
-            inputMode="numeric"
+            inputMode="text"
             onKeyDown={(e) => {
               if (e.key === 'Enter' && list.length >= 1 && props.onPick) {
                 props.onPick(list[0].sku)

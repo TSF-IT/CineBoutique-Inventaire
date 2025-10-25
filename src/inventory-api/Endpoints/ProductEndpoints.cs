@@ -10,12 +10,14 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
+using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Shops;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Services.Products;
+using CineBoutique.Inventory.Api.Validation;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper; // Requis pour CommandDefinition et les extensions Dapper.
 using FluentValidation.Results;
@@ -299,7 +301,13 @@ LIMIT @top;";
 
             var sanitizedSku = sku.Trim();
             var sanitizedName = request.Name?.Trim();
-            var sanitizedEan = string.IsNullOrWhiteSpace(request.Ean) ? null : request.Ean.Trim();
+            var sanitizedEan = InventoryCodeValidator.Normalize(request.Ean);
+            if (sanitizedEan is not null && !InventoryCodeValidator.TryValidate(sanitizedEan, out var eanError))
+            {
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, sanitizedSku, "EAN invalide", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                return Results.BadRequest(new { message = eanError });
+            }
+
             var sanitizedCodeDigits = CodeDigitsSanitizer.Build(sanitizedEan);
 
             if (string.IsNullOrWhiteSpace(sanitizedName))
@@ -312,12 +320,6 @@ LIMIT @top;";
             {
                 await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, sanitizedSku, "nom trop long", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le nom du produit ne peut pas dépasser 256 caractères." });
-            }
-
-            if (sanitizedEan is { Length: > 0 } && (sanitizedEan.Length is < 8 or > 13 || !sanitizedEan.All(char.IsDigit)))
-            {
-                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, sanitizedSku, "EAN invalide", "products.update.invalid", cancellationToken).ConfigureAwait(false);
-                return Results.BadRequest(new { message = "L'EAN doit contenir entre 8 et 13 chiffres." });
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -405,7 +407,13 @@ LIMIT @top;";
             }
 
             var sanitizedName = request.Name?.Trim();
-            var sanitizedEan = string.IsNullOrWhiteSpace(request.Ean) ? null : request.Ean.Trim();
+            var sanitizedEan = InventoryCodeValidator.Normalize(request.Ean);
+            if (sanitizedEan is not null && !InventoryCodeValidator.TryValidate(sanitizedEan, out var eanError))
+            {
+                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "EAN invalide", "products.update.invalid", cancellationToken).ConfigureAwait(false);
+                return Results.BadRequest(new { message = eanError });
+            }
+
             var sanitizedCodeDigits = CodeDigitsSanitizer.Build(sanitizedEan);
 
             if (string.IsNullOrWhiteSpace(sanitizedName))
@@ -418,12 +426,6 @@ LIMIT @top;";
             {
                 await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "nom trop long", "products.update.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le nom du produit ne peut pas dépasser 256 caractères." });
-            }
-
-            if (sanitizedEan is { Length: > 0 } && (sanitizedEan.Length is < 8 or > 13 || !sanitizedEan.All(char.IsDigit)))
-            {
-                await LogProductUpdateAttemptAsync(clock, auditLogger, httpContext, id.ToString("D"), "EAN invalide", "products.update.invalid", cancellationToken).ConfigureAwait(false);
-                return Results.BadRequest(new { message = "L'EAN doit contenir entre 8 et 13 chiffres." });
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -505,7 +507,13 @@ LIMIT @top;";
 
             var sanitizedSku = request.Sku?.Trim();
             var sanitizedName = request.Name?.Trim();
-            var sanitizedEan = string.IsNullOrWhiteSpace(request.Ean) ? null : request.Ean.Trim();
+            var sanitizedEan = InventoryCodeValidator.Normalize(request.Ean);
+            if (sanitizedEan is not null && !InventoryCodeValidator.TryValidate(sanitizedEan, out var eanError))
+            {
+                await LogProductCreationAttemptAsync(clock, auditLogger, httpContext, "avec un EAN invalide", "products.create.invalid", cancellationToken).ConfigureAwait(false);
+                return Results.BadRequest(new { message = eanError });
+            }
+
             var sanitizedCodeDigits = CodeDigitsSanitizer.Build(sanitizedEan);
 
             if (string.IsNullOrWhiteSpace(sanitizedSku))
@@ -530,12 +538,6 @@ LIMIT @top;";
             {
                 await LogProductCreationAttemptAsync(clock, auditLogger, httpContext, "avec un nom trop long", "products.create.invalid", cancellationToken).ConfigureAwait(false);
                 return Results.BadRequest(new { message = "Le nom du produit ne peut pas dépasser 256 caractères." });
-            }
-
-            if (sanitizedEan is { Length: > 0 } && (sanitizedEan.Length is < 8 or > 13 || !sanitizedEan.All(char.IsDigit)))
-            {
-                await LogProductCreationAttemptAsync(clock, auditLogger, httpContext, "avec un EAN invalide", "products.create.invalid", cancellationToken).ConfigureAwait(false);
-                return Results.BadRequest(new { message = "L'EAN doit contenir entre 8 et 13 chiffres." });
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -882,6 +884,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             System.Data.IDbConnection connection,
             CineBoutique.Inventory.Infrastructure.Locks.IImportLockService importLockService,
             string? dryRun,
+            string? mode,
             System.Threading.CancellationToken ct) =>
         {
             var lockHandle = await importLockService.TryAcquireForShopAsync(shopId, ct).ConfigureAwait(false);
@@ -892,9 +895,26 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
             {
                 await EndpointUtilities.EnsureConnectionOpenAsync(connection, ct).ConfigureAwait(false);
 
+                var importMode = ParseImportMode(mode);
+
                 // dryRun (bool)
                 bool isDryRun = false;
                 if (!string.IsNullOrWhiteSpace(dryRun) && bool.TryParse(dryRun, out var b)) isDryRun = b;
+
+                if (!isDryRun && importMode == CineBoutique.Inventory.Api.Models.ProductImportMode.ReplaceCatalogue)
+                {
+                    var hasCountLines = await HasCountLinesForShopAsync(shopId, connection, ct).ConfigureAwait(false);
+                    if (hasCountLines)
+                    {
+                        return Results.Json(
+                            new
+                            {
+                                reason = "catalog_locked",
+                                message = "Impossible de remplacer le catalogue : des comptages contiennent déjà des produits issus de ce CSV. Importez un fichier complémentaire pour ajouter de nouvelles références."
+                            },
+                            statusCode: StatusCodes.Status423Locked);
+                    }
+                }
 
                 // 25 MiB
                 const long maxCsvSizeBytes = 25L * 1024L * 1024L;
@@ -927,7 +947,7 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
 
                 var user = EndpointUtilities.GetAuthenticatedUserName(request.HttpContext);
                 var importService = request.HttpContext.RequestServices.GetRequiredService<CineBoutique.Inventory.Api.Services.Products.IProductImportService>();
-                var cmd = new CineBoutique.Inventory.Api.Models.ProductImportCommand(csvStream, isDryRun, user, shopId, CineBoutique.Inventory.Api.Models.ProductImportMode.ReplaceCatalogue);
+                var cmd = new CineBoutique.Inventory.Api.Models.ProductImportCommand(csvStream, isDryRun, user, shopId, importMode);
                 var result = await importService.ImportAsync(cmd, ct).ConfigureAwait(false);
 
                 return result.ResultType switch
@@ -937,6 +957,23 @@ RETURNING ""Id"", ""Sku"", ""Name"", ""Ean"";";
                     _                                                                          => Results.Ok(result.Response)
                 };
             }
+        }).RequireAuthorization();
+
+        app.MapGet("/api/shops/{shopId:guid}/products/import/status", async (
+            System.Guid shopId,
+            System.Data.IDbConnection connection,
+            System.Threading.CancellationToken ct) =>
+        {
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, ct).ConfigureAwait(false);
+
+            var hasCountLines = await HasCountLinesForShopAsync(shopId, connection, ct).ConfigureAwait(false);
+
+            return Results.Ok(new
+            {
+                canReplace = !hasCountLines,
+                lockReason = hasCountLines ? "counting_started" : null,
+                hasCountLines
+            });
         }).RequireAuthorization();
 
         // LISTE PAGINÉE/Tri/Filtre
@@ -1127,6 +1164,38 @@ LIMIT @Limit OFFSET @Offset;
 
             return Results.Ok(new { count, hasCatalog });
         }), catalogEndpointsPublic);
+    }
+
+    private static ProductImportMode ParseImportMode(string? mode)
+    {
+        if (string.Equals(mode, "merge", StringComparison.OrdinalIgnoreCase))
+        {
+            return ProductImportMode.Merge;
+        }
+
+        return ProductImportMode.ReplaceCatalogue;
+    }
+
+    private static async Task<bool> HasCountLinesForShopAsync(Guid shopId, IDbConnection connection, CancellationToken ct)
+    {
+        const string sql = @"SELECT EXISTS (
+    SELECT 1
+    FROM ""CountLine"" cl
+    JOIN ""CountingRun"" cr ON cr.""Id"" = cl.""CountingRunId""
+    JOIN ""Location"" l ON l.""Id"" = cr.""LocationId""
+    WHERE l.""ShopId"" = @ShopId
+);";
+
+        try
+        {
+            return await connection.ExecuteScalarAsync<bool>(
+                    new Dapper.CommandDefinition(sql, new { ShopId = shopId }, cancellationToken: ct))
+                .ConfigureAwait(false);
+        }
+        catch (PostgresException ex) when (ex.SqlState is PostgresErrorCodes.UndefinedTable or PostgresErrorCodes.UndefinedColumn)
+        {
+            return false;
+        }
     }
 
     private static bool IsShopScopeMissing(PostgresException ex)

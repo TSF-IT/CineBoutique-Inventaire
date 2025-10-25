@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ThemeProvider } from '../../../../theme/ThemeProvider'
@@ -44,6 +44,9 @@ const { fetchShopUsers: mockedFetchShopUsers } = vi.mocked({ fetchShopUsers })
 
 const testShop = { id: 'shop-123', name: 'Boutique test', kind: 'boutique' } as const
 
+const originalFetch = global.fetch
+let fetchStatusMock: ReturnType<typeof vi.fn>
+
 const renderAdminPage = async () => {
   render(
     <ThemeProvider>
@@ -67,6 +70,14 @@ const openUsersTab = async (user: ReturnType<typeof userEvent.setup>) => {
   const tabs = within(tablist).getAllByRole('tab')
   const target = tabs.find((tab) => tab.textContent?.includes('Utilisateurs')) ?? tabs[tabs.length - 1]
   await user.click(target as HTMLButtonElement)
+}
+
+const openCatalogTab = async (user: ReturnType<typeof userEvent.setup>) => {
+  const tabs = await screen.findAllByRole('tab', { name: /^Produits$/i })
+  if (tabs.length === 0) {
+    throw new Error('Onglet "Produits" introuvable')
+  }
+  await user.click(tabs[0] as HTMLButtonElement)
 }
 
 describe('AdminLocationsPage', () => {
@@ -94,6 +105,17 @@ describe('AdminLocationsPage', () => {
     mockedCreateShopUser.mockReset()
     mockedUpdateShopUser.mockReset()
     mockedDisableShopUser.mockReset()
+
+    fetchStatusMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ canReplace: true, lockReason: null, hasCountLines: false }),
+    } as Response)
+    global.fetch = fetchStatusMock as unknown as typeof global.fetch
+  })
+
+  afterEach(() => {
+    global.fetch = originalFetch
   })
 
   it('crée une nouvelle zone', async () => {
@@ -378,6 +400,158 @@ describe('AdminLocationsPage', () => {
           delete prototypeWithOverrides.close
         }
       }
+    }
+  })
+
+  it('verrouille le remplacement du catalogue quand des comptages existent', async () => {
+    const lockedFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ canReplace: false, lockReason: 'counting_started', hasCountLines: true }),
+    } as Response)
+
+    const previousFetch = global.fetch
+    global.fetch = lockedFetch as unknown as typeof global.fetch
+
+    try {
+      await renderAdminPage()
+
+      const user = userEvent.setup()
+      await openCatalogTab(user)
+
+      await waitFor(() => {
+        expect(lockedFetch).toHaveBeenCalledWith(
+          `/api/shops/${testShop.id}/products/import/status`
+        )
+      })
+
+      const replaceRadio = await screen.findByRole('radio', { name: /Remplacer le catalogue/i })
+      expect(replaceRadio).toBeDisabled()
+
+      const mergeRadio = screen.getByRole('radio', { name: /Compléter le catalogue/i })
+      expect(mergeRadio).toBeChecked()
+      expect(mergeRadio).not.toBeDisabled()
+
+      expect(await screen.findByText(/Remplacement verrouillé/i)).toBeInTheDocument()
+    } finally {
+      global.fetch = previousFetch
+    }
+  })
+
+  it("ajoute le paramètre de mode 'merge' lors d'un import complémentaire", async () => {
+    const previousFetch = global.fetch
+    const recordedCalls: { url: string; init?: RequestInit }[] = []
+
+    const fetchMock = vi.fn().mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+        recordedCalls.push({ url, init })
+
+        if (url.endsWith('/products/import/status')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ canReplace: true, lockReason: null, hasCountLines: false }),
+          } as Response
+        }
+
+        if (url.includes('/products/import')) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ inserted: 12, errorCount: 0 }),
+          } as Response
+        }
+
+        throw new Error(`Unexpected fetch: ${url}`)
+      },
+    )
+
+    global.fetch = fetchMock as unknown as typeof global.fetch
+
+    try {
+      await renderAdminPage()
+
+      const user = userEvent.setup()
+      await openCatalogTab(user)
+
+      await screen.findByRole('radio', { name: /Remplacer le catalogue/i })
+
+      const file = new File(['sku;ean;name'], 'catalog.csv', { type: 'text/csv' })
+      const fileInputs = screen.getAllByLabelText('Fichier CSV', { selector: 'input[type="file"]' })
+      const fileInput = fileInputs[fileInputs.length - 1]
+      await user.upload(fileInput, file)
+
+      const mergeRadio = screen.getByRole('radio', { name: /Compléter le catalogue/i })
+      await user.click(mergeRadio)
+
+      const submitButton = screen.getByRole('button', { name: 'Importer en complément' })
+      await user.click(submitButton)
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/products/import?'), expect.anything())
+      })
+
+      const importCall = recordedCalls.find(({ url }) => url.includes('/products/import?'))
+      expect(importCall).toBeDefined()
+      expect(importCall?.url).toContain('mode=merge')
+      expect(importCall?.init?.method ?? 'POST').toBe('POST')
+    } finally {
+      global.fetch = previousFetch
+    }
+  })
+
+  it("utilise le mode 'replace' par défaut lorsque le remplacement est autorisé", async () => {
+    const previousFetch = global.fetch
+    const fetchMock = vi.fn().mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+
+        if (url.endsWith('/products/import/status')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ canReplace: true, lockReason: null, hasCountLines: false }),
+          } as Response
+        }
+
+        if (url.includes('/products/import')) {
+          expect(url).toContain('mode=replace')
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ inserted: 5, errorCount: 0 }),
+          } as Response
+        }
+
+        throw new Error(`Unexpected fetch: ${url}`)
+      },
+    )
+
+    global.fetch = fetchMock as unknown as typeof global.fetch
+
+    try {
+      await renderAdminPage()
+
+      const user = userEvent.setup()
+      await openCatalogTab(user)
+
+      await screen.findByRole('radio', { name: /Remplacer le catalogue/i })
+
+      const file = new File(['sku;ean;name'], 'catalog.csv', { type: 'text/csv' })
+      const fileInputs = screen.getAllByLabelText('Fichier CSV', { selector: 'input[type="file"]' })
+      const fileInput = fileInputs[fileInputs.length - 1]
+      await user.upload(fileInput, file)
+
+      const formElement = fileInput.closest('form')
+      expect(formElement).not.toBeNull()
+      formElement?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }))
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/products/import?'), expect.anything())
+      })
+    } finally {
+      global.fetch = previousFetch
     }
   })
 })

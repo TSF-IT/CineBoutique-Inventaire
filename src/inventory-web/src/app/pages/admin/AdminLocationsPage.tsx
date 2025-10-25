@@ -96,12 +96,79 @@ type CatalogImportFeedback =
   | { type: 'info'; message: string }
   | { type: 'error'; message: string; details?: string[] }
 
+type ImportAccessStatus = {
+  canReplace: boolean
+  lockReason: string | null
+  hasCountLines: boolean
+}
+
 const CatalogImportPanel = ({ description }: { description: string }) => {
   const { shop } = useShop()
+  const [importStatus, setImportStatus] = useState<ImportAccessStatus | null>(null)
+  const [statusLoading, setStatusLoading] = useState(false)
+  const [statusError, setStatusError] = useState<string | null>(null)
+  const [importMode, setImportMode] = useState<'replace' | 'merge'>('replace')
   const [file, setFile] = useState<File | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [feedback, setFeedback] = useState<CatalogImportFeedback | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+
+  const fetchImportStatus = useCallback(async () => {
+    if (!shop?.id) {
+      setImportStatus(null)
+      setStatusError(null)
+      return
+    }
+
+    setStatusLoading(true)
+    setStatusError(null)
+
+    try {
+      const response = await fetch(`/api/shops/${shop.id}/products/import/status`)
+
+      if (response.status === 404) {
+        setImportStatus({ canReplace: true, lockReason: null, hasCountLines: false })
+        setStatusError(null)
+        return
+      }
+
+      if (!response.ok) {
+        throw new Error(`status ${response.status}`)
+      }
+
+      const payload = (await response.json()) as Record<string, unknown> | null
+      const record = payload ?? {}
+      const hasCountLines = typeof record.hasCountLines === 'boolean' ? record.hasCountLines : false
+      const canReplace = typeof record.canReplace === 'boolean' ? record.canReplace : !hasCountLines
+      const lockReason =
+        typeof record.lockReason === 'string' && record.lockReason.trim().length > 0
+          ? record.lockReason
+          : null
+
+      setImportStatus({ canReplace, lockReason, hasCountLines })
+    } catch (error) {
+      setImportStatus(null)
+      setStatusError("Impossible de récupérer l'état du catalogue.")
+    } finally {
+      setStatusLoading(false)
+    }
+  }, [shop?.id])
+
+  useEffect(() => {
+    void fetchImportStatus()
+  }, [fetchImportStatus])
+
+  useEffect(() => {
+    if (importStatus?.canReplace === false) {
+      setImportMode((previous) => (previous === 'merge' ? previous : 'merge'))
+    }
+  }, [importStatus?.canReplace])
+
+  useEffect(() => {
+    if (!shop?.id) {
+      setImportMode('replace')
+    }
+  }, [shop?.id])
 
   const handleFileChange = (nextFile: File | null) => {
     setFile(nextFile)
@@ -157,12 +224,24 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
       return
     }
 
+    if (importMode === 'replace' && importStatus?.canReplace === false) {
+      setFeedback({
+        type: 'error',
+        message: 'Le remplacement du catalogue est verrouillé. Choisissez “Compléter le catalogue” pour ajouter un fichier en complément.',
+      })
+      return
+    }
+
     setSubmitting(true)
     try {
       const fd = new FormData()
       fd.set('file', file)
 
-      const url = `/api/shops/${shop.id}/products/import?dryRun=false`
+      const params = new URLSearchParams({
+        dryRun: 'false',
+        mode: importMode === 'merge' ? 'merge' : 'replace',
+      })
+      const url = `/api/shops/${shop.id}/products/import?${params.toString()}`
       const response = await fetch(url, { method: 'POST', body: fd })
       const rawText = await response.text()
       const payload = rawText ? parseJson(rawText) : null
@@ -178,17 +257,32 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
         }
         setFeedback({ type: 'success', summary })
         resetFileInput()
+        await fetchImportStatus()
         return
       }
 
       if (response.status === 204) {
         setFeedback({ type: 'info', message: 'Aucun changement (fichier déjà importé).' })
         resetFileInput()
+        await fetchImportStatus()
         return
       }
 
       if (response.status === 423) {
-        setFeedback({ type: 'error', message: 'Un import est déjà en cours.' })
+        const reason = typeof record.reason === 'string' ? record.reason : ''
+        const message =
+          typeof record.message === 'string'
+            ? record.message
+            : reason === 'catalog_locked'
+              ? 'Le catalogue est verrouillé : importez un fichier complémentaire ou purgez les comptages avant de remplacer le catalogue.'
+              : 'Un import est déjà en cours.'
+
+        setFeedback({ type: 'error', message })
+
+        if (reason === 'catalog_locked') {
+          setImportMode('merge')
+          await fetchImportStatus()
+        }
         return
       }
 
@@ -244,6 +338,21 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
         </div>
       </div>
       <form className="flex flex-col gap-4" onSubmit={handleSubmit} encType="multipart/form-data">
+        {statusError && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-400/40 dark:bg-red-900/30 dark:text-red-100">
+            {statusError}
+          </div>
+        )}
+
+        {importStatus?.canReplace === false && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-400/10 dark:text-amber-200">
+            <p className="font-semibold">Remplacement verrouillé</p>
+            <p className="mt-1">
+              Des produits importés ont déjà été utilisés dans des comptages. Importez un fichier complémentaire pour ajouter ou mettre à jour des références.
+            </p>
+          </div>
+        )}
+
         <FileUploadField
           ref={fileInputRef}
           name="file"
@@ -252,15 +361,65 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
           file={file}
           onFileSelected={handleFileChange}
           disabled={submitting}
-          description="Glissez-déposez votre fichier ou cliquez pour parcourir vos dossiers."
+          description={
+            importMode === 'merge'
+              ? 'Votre fichier complétera le catalogue existant (ajouts et mises à jour).'
+              : 'Remplace entièrement le catalogue de la boutique par le contenu du fichier.'
+          }
         />
+
+        <fieldset className="rounded-lg border border-slate-200 bg-white/70 p-3 text-sm dark:border-slate-700 dark:bg-slate-900/40">
+          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Mode d'import
+          </legend>
+          {statusLoading && (
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Vérification du statut du catalogue…</p>
+          )}
+          <div className="mt-2 space-y-3">
+            <label className="flex cursor-pointer items-start gap-3">
+              <input
+                type="radio"
+                name="catalog-import-mode"
+                value="replace"
+                className="mt-1"
+                checked={importMode === 'replace'}
+                disabled={submitting || importStatus?.canReplace === false}
+                onChange={() => setImportMode('replace')}
+              />
+              <span>
+                <span className="font-medium text-slate-800 dark:text-slate-100">Remplacer le catalogue</span>
+                <span className="mt-1 block text-xs text-slate-600 dark:text-slate-400">
+                  Supprime les références existantes avant l'import. Disponible uniquement tant qu'aucun comptage n'a enregistré de produit.
+                </span>
+              </span>
+            </label>
+            <label className="flex cursor-pointer items-start gap-3">
+              <input
+                type="radio"
+                name="catalog-import-mode"
+                value="merge"
+                className="mt-1"
+                checked={importMode === 'merge'}
+                disabled={submitting}
+                onChange={() => setImportMode('merge')}
+              />
+              <span>
+                <span className="font-medium text-slate-800 dark:text-slate-100">Compléter le catalogue</span>
+                <span className="mt-1 block text-xs text-slate-600 dark:text-slate-400">
+                  Ajoute les nouveaux produits et met à jour les articles existants sans purger le catalogue actuel.
+                </span>
+              </span>
+            </label>
+          </div>
+        </fieldset>
+
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-          <Button
-            type="submit"
-            disabled={submitting || !file}
-            className="w-full sm:w-auto"
-          >
-            {submitting ? 'Import en cours…' : 'Importer le CSV'}
+          <Button type="submit" disabled={submitting || !file} className="w-full sm:w-auto">
+            {submitting
+              ? 'Import en cours…'
+              : importMode === 'merge'
+                ? 'Importer en complément'
+                : 'Importer le CSV'}
           </Button>
         </div>
       </form>

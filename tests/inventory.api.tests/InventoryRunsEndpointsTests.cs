@@ -378,6 +378,85 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
         releaseResponse.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
+    [SkippableFact]
+    public async Task CompleteRun_AcceptsExtendedCodeFormats()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        Guid shopId = Guid.Empty;
+        Guid locationId = Guid.Empty;
+        Guid operatorId = Guid.Empty;
+        const string shortCodeSku = "SKU-RUN-SHORT";
+        const string shortCode = "33488";
+        const string symbolCodeSku = "SKU-RUN-SYMBOL";
+        const string symbolCode = "LOT°123 45";
+
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.CreateShopAsync("Boutique Codes Étendus").ConfigureAwait(false);
+            locationId = await seeder.CreateLocationAsync(shopId, "LOC-EXT", "Zone Étendue").ConfigureAwait(false);
+            operatorId = await seeder.CreateShopUserAsync(shopId, "extended", "Opérateur Étendu").ConfigureAwait(false);
+            await seeder.CreateProductAsync(shopId, shortCodeSku, "Produit code court", shortCode).ConfigureAwait(false);
+            await seeder.CreateProductAsync(shopId, symbolCodeSku, "Produit code symbole", symbolCode).ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var client = CreateClient();
+        var startResponse = await client.PostAsJsonAsync(
+            client.CreateRelativeUri($"/api/inventories/{locationId}/start"),
+            new StartRunRequest(shopId, operatorId, 1)
+        ).ConfigureAwait(false);
+        await startResponse.ShouldBeAsync(HttpStatusCode.OK, "start run with extended codes");
+        var started = await startResponse.Content.ReadFromJsonAsync<StartInventoryRunResponse>().ConfigureAwait(false);
+        started.Should().NotBeNull();
+
+        var completeResponse = await CompleteRunAsync(
+            client,
+            locationId,
+            started!.RunId,
+            operatorId,
+            1,
+            (shortCode, 3m),
+            (symbolCode, 2m)
+        ).ConfigureAwait(false);
+
+        await completeResponse.ShouldBeAsync(HttpStatusCode.OK, "complete run with extended codes");
+        var payload = await completeResponse.Content.ReadFromJsonAsync<CompleteInventoryRunResponse>().ConfigureAwait(false);
+        payload.Should().NotBeNull();
+        payload!.ItemsCount.Should().Be(2);
+        payload.TotalQuantity.Should().Be(5m);
+    }
+
+    [SkippableFact]
+    public async Task CompleteRun_WithUnsupportedCodeCharacter_Returns400()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
+        var client = CreateClient();
+
+        var startResponse = await client.PostAsJsonAsync(
+            client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
+            new StartRunRequest(seeded.ShopId, seeded.PrimaryUserId, 1)
+        ).ConfigureAwait(false);
+        await startResponse.ShouldBeAsync(HttpStatusCode.OK, "start run for invalid code test");
+        var started = await startResponse.Content.ReadFromJsonAsync<StartInventoryRunResponse>().ConfigureAwait(false);
+        started.Should().NotBeNull();
+
+        var badCode = "BAD@CODE";
+        var completeResponse = await CompleteRunAsync(
+            client,
+            seeded.LocationId,
+            started!.RunId,
+            seeded.PrimaryUserId,
+            1,
+            (badCode, 1m)
+        ).ConfigureAwait(false);
+
+        completeResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        var message = await completeResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
+        message.Should().Contain("BAD@CODE");
+    }
+
     private async Task<(Guid ShopId, Guid LocationId, Guid PrimaryUserId, Guid SecondaryUserId, string ProductSku, string ProductEan)> SeedInventoryContextAsync()
     {
         Guid shopId = Guid.Empty;

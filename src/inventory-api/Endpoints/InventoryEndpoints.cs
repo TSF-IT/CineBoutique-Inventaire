@@ -11,6 +11,7 @@ using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Logging;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
+using CineBoutique.Inventory.Api.Validation;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
 using FluentValidation;
@@ -1428,26 +1429,26 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc{ownerValue}{oper
             for (var index = 0; index < rawItems.Length; index++)
             {
                 var item = rawItems[index];
-                var ean = item.Ean?.Trim();
-                if (string.IsNullOrWhiteSpace(ean))
+                var sanitizedEan = InventoryCodeValidator.Normalize(item.Ean);
+                if (sanitizedEan is null)
                 {
-                    additionalFailures.Add(new ValidationFailure($"items[{index}].ean", "Chaque ligne doit contenir un EAN."));
+                    additionalFailures.Add(new ValidationFailure($"items[{index}].ean", "Chaque ligne doit contenir un code produit."));
                     continue;
                 }
 
-                if (ean.Length is < 8 or > 13 || !ean.All(char.IsDigit))
+                if (!InventoryCodeValidator.TryValidate(sanitizedEan, out var eanError))
                 {
-                    additionalFailures.Add(new ValidationFailure($"items[{index}].ean", $"L'EAN {ean} est invalide. Il doit contenir entre 8 et 13 chiffres."));
+                    additionalFailures.Add(new ValidationFailure($"items[{index}].ean", eanError));
                     continue;
                 }
 
                 if (item.Quantity < 0)
                 {
-                    additionalFailures.Add(new ValidationFailure($"items[{index}].quantity", $"La quantité pour l'EAN {ean} doit être positive ou nulle."));
+                    additionalFailures.Add(new ValidationFailure($"items[{index}].quantity", $"La quantité pour le code {sanitizedEan} doit être positive ou nulle."));
                     continue;
                 }
 
-                sanitizedItems.Add(new SanitizedCountLine(ean, item.Quantity, item.IsManual));
+                sanitizedItems.Add(new SanitizedCountLine(sanitizedEan, item.Quantity, item.IsManual));
             }
 
             if (additionalFailures.Count > 0)
@@ -2351,19 +2352,25 @@ WHERE ""LocationId"" = @LocationId
             return $"UNK-{Guid.NewGuid():N}"[..32];
         }
 
-        var normalized = ean.Trim();
-        if (normalized.Length > 13)
+        var normalized = InventoryCodeValidator.Normalize(ean) ?? string.Empty;
+        if (normalized.Length == 0)
         {
-            normalized = normalized[^13..];
+            return $"UNK-{Guid.NewGuid():N}"[..32];
+        }
+
+        var suffixMaxLength = 32 - "UNK-".Length;
+        if (suffixMaxLength <= 0)
+        {
+            return $"UNK-{Guid.NewGuid():N}"[..32];
+        }
+
+        if (normalized.Length > suffixMaxLength)
+        {
+            normalized = normalized[^suffixMaxLength..];
         }
 
         var sku = $"UNK-{normalized}";
-        if (sku.Length <= 32)
-        {
-            return sku;
-        }
-
-        return sku[^32..];
+        return sku.Length <= 32 ? sku : sku[^32..];
     }
 
     private static async Task ManageInitialConflictsAsync(
