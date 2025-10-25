@@ -1,6 +1,7 @@
 export const KNOWN_KEYS = new Set(["sku","ean","name","groupe","sousGroupe"]);
 export const SYNONYMS: Record<string,string> = {
   "barcode_rfid": "ean",
+  "rfid": "ean",
   "ean13": "ean",
   "item": "sku",
   "code": "sku",

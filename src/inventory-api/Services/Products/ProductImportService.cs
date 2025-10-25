@@ -53,6 +53,7 @@ public sealed class ProductImportService : IProductImportService
         ["ean13"] = KnownColumns.Ean,
         ["barcode"] = KnownColumns.Ean,
         ["barcode_rfid"] = KnownColumns.Ean,
+        ["rfid"] = KnownColumns.Ean,
         ["name"] = KnownColumns.Name,
         ["descr"] = KnownColumns.Name,
         ["description"] = KnownColumns.Name,

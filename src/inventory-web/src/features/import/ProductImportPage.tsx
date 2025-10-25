@@ -70,13 +70,40 @@ export function ProductImportPage() {
     return { headers, rawHeaders, rows };
   }
 
+  function decodeCsvContent(result: string | ArrayBuffer | null): string {
+    if (typeof result === "string") {
+      return result;
+    }
+
+    if (!(result instanceof ArrayBuffer)) {
+      return "";
+    }
+
+    const bytes = new Uint8Array(result);
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      const fallbackLabels = ["windows-1252", "iso-8859-1"];
+      for (const label of fallbackLabels) {
+        try {
+          return new TextDecoder(label).decode(bytes);
+        } catch {
+          // Try next encoding.
+        }
+      }
+
+      // Last resort: default decoder without strict mode.
+      return new TextDecoder().decode(bytes);
+    }
+  }
+
   function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files && e.target.files[0] ? e.target.files[0] : null;
     setFile(f);
     if (f) {
       const reader = new FileReader();
       reader.onload = () => {
-        const txt = typeof reader.result === "string" ? reader.result : "";
+        const txt = decodeCsvContent(reader.result);
         const parsed = parseCsvSemicolon(txt, 10);
         if (!parsed) {
           setPreview(null);
@@ -97,7 +124,7 @@ export function ProductImportPage() {
         // reset des résultats serveurs
         setDryRunRes(null); setImportRes(null); setError(null);
       };
-      reader.readAsText(f, "utf-8");
+      reader.readAsArrayBuffer(f);
     } else {
       setPreview(null);
       setMappedPreview(null);

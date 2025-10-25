@@ -1,5 +1,5 @@
 // Modifications : forcer l'inclusion de runId=null lors de la complétion sans run existant.
-import type { KeyboardEvent, ChangeEvent, FocusEvent, PointerEvent } from 'react'
+import type { ChangeEvent, FocusEvent, PointerEvent, KeyboardEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -245,7 +245,6 @@ export const InventorySessionPage = () => {
   const completionConfirmButtonRef = useRef<HTMLButtonElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const logsDialogRef = useRef<HTMLDialogElement | null>(null)
-  const [recentScans, setRecentScans] = useState<string[]>([])
   const manualLookupIdRef = useRef(0)
   const lastSearchedInputRef = useRef<string | null>(null)
   const previousItemCountRef = useRef(items.length)
@@ -717,13 +716,6 @@ export const InventorySessionPage = () => {
 
       updateStatus(`Recherche du code ${value}`)
       setErrorMessage(null)
-      setRecentScans((previous) => {
-        if (!import.meta.env.DEV) {
-          return previous
-        }
-        const next = [value, ...previous.filter((item) => item !== value)]
-        return next.slice(0, 5)
-      })
 
       const result = await searchProductByEan(value)
 
@@ -841,20 +833,6 @@ export const InventorySessionPage = () => {
     updateStatus,
   ])
 
-  const handleInputKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLInputElement>) => {
-      if (event.key === 'Enter') {
-        event.preventDefault()
-        const value = normalizedScanValue
-        if (value) {
-          setScanValue('')
-          void handleDetected(value)
-        }
-      }
-    },
-    [handleDetected, normalizedScanValue],
-  )
-
   const handleInputChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       const { value } = event.target
@@ -928,7 +906,6 @@ export const InventorySessionPage = () => {
       clearSession()
       setScanValue('')
       setInputLookupStatus('idle')
-      setRecentScans([])
       const dialog = completionDialogRef.current
       if (dialog && typeof dialog.showModal === 'function') {
         dialog.showModal()
@@ -1240,24 +1217,20 @@ export const InventorySessionPage = () => {
                 ref={inputRef}
                 name="scanInput"
                 label="Scanner (douchette ou saisie)"
-                placeholder="Scannez un code EAN/RFID et validez avec Entrée"
+                placeholder="Saisissez ou scannez un code EAN/RFID"
                 value={scanValue}
                 onChange={handleInputChange}
-                onKeyDown={handleInputKeyDown}
                 inputMode="text"
                 maxLength={MAX_SCAN_LENGTH}
                 autoComplete="off"
                 aria-invalid={Boolean(scanInputError)}
                 autoFocus
               />
-              <p
-                className={`text-xs ${
-                  scanInputError ? 'text-rose-600 dark:text-rose-300' : 'text-slate-500 dark:text-slate-400'
-                }`}
-                aria-live="polite"
-              >
-                {scanInputError ?? 'Saisissez ou scannez un code EAN/RFID.'}
-              </p>
+              {scanInputError && (
+                <p className="text-xs text-rose-600 dark:text-rose-300" aria-live="polite">
+                  {scanInputError}
+                </p>
+              )}
             </div>
           </>
         )}
@@ -1267,18 +1240,6 @@ export const InventorySessionPage = () => {
           </p>
         )}
         {errorMessage && <p className="text-sm text-red-600 dark:text-red-300">{errorMessage}</p>}
-        {!isConflictResolutionMode && import.meta.env.DEV && recentScans.length > 0 && (
-          <div className="rounded-2xl border border-slate-300 bg-slate-100 p-3 text-xs text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300">
-            <p className="font-semibold">Derniers scans</p>
-            <ul className="mt-1 space-y-1">
-              {recentScans.map((value) => (
-                <li key={value} className="font-mono">
-                  {value}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
       </Card>
 
       <dialog

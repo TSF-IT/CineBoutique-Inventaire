@@ -83,6 +83,43 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task ImportProducts_WithRfidColumn_MapsToEan()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
+
+        Guid shopId = Guid.Empty;
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.GetDefaultShopIdAsync().ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add("X-Admin", "true");
+
+        const string csv = "\"rfid\";\"item\";\"descr\"\n" +
+                           "\"pmi_ac_hzfan\";\"SKU-RFID\";\"Anaphore - Sparadrap Transpore microperforé - Blanc\"\n";
+
+        using var content = new StringContent(csv, Encoding.Latin1, "text/csv");
+        var response = await client.PostAsync($"/api/shops/{shopId}/products/import", content).ConfigureAwait(false);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
+        await using var command = new NpgsqlCommand(
+            "SELECT \"Name\", \"Ean\" FROM \"Product\" WHERE \"ShopId\" = @shopId AND \"Sku\" = 'SKU-RFID';",
+            connection)
+        {
+            Parameters = { new("shopId", shopId) }
+        };
+
+        await using var reader = await command.ExecuteReaderAsync().ConfigureAwait(false);
+        var found = await reader.ReadAsync().ConfigureAwait(false);
+        found.Should().BeTrue("le produit importé doit être présent dans le catalogue");
+        reader.GetString(0).Should().Be("Anaphore - Sparadrap Transpore microperforé - Blanc");
+        reader.GetString(1).Should().Be("pmi_ac_hzfan");
+    }
+
+    [SkippableFact]
     public async Task ImportProducts_WithDuplicateSku_ReturnsValidationError()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
