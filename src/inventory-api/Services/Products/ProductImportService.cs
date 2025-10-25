@@ -42,6 +42,7 @@ public sealed class ProductImportService : IProductImportService
     };
     private static readonly ImmutableArray<string> EmptyUnknownColumns = ImmutableArray<string>.Empty;
     private static readonly ImmutableArray<ProductImportGroupProposal> EmptyProposedGroups = ImmutableArray<ProductImportGroupProposal>.Empty;
+    private static readonly ImmutableArray<ProductImportSkippedLine> EmptySkippedLines = ImmutableArray<ProductImportSkippedLine>.Empty;
 
     // Map d'équivalences d'entêtes → canonique (insensible à la casse)
     private static readonly Dictionary<string, string> HeaderSynonyms = new(StringComparer.OrdinalIgnoreCase)
@@ -197,7 +198,13 @@ public sealed class ProductImportService : IProductImportService
                     unknownColumns);
 
                 return new ProductImportResult(
-                    ProductImportResponse.Failure(totalLines, parseOutcome.Errors, unknownColumns, parseOutcome.ProposedGroups),
+                    ProductImportResponse.Failure(
+                        totalLines,
+                        parseOutcome.Errors,
+                        unknownColumns,
+                        parseOutcome.ProposedGroups,
+                        parseOutcome.SkippedLines,
+                        parseOutcome.Duplicates),
                     ProductImportResultType.ValidationFailed);
             }
 
@@ -234,7 +241,14 @@ public sealed class ProductImportService : IProductImportService
                     unknownColumns);
 
                 return new ProductImportResult(
-                    ProductImportResponse.DryRunResult(totalLines, preview.Created, unknownColumns, parseOutcome.ProposedGroups),
+                    ProductImportResponse.DryRunResult(
+                        totalLines,
+                        preview.Created,
+                        preview.Updated,
+                        unknownColumns,
+                        parseOutcome.ProposedGroups,
+                        parseOutcome.SkippedLines,
+                        parseOutcome.Duplicates),
                     ProductImportResultType.DryRun);
             }
 
@@ -285,7 +299,14 @@ public sealed class ProductImportService : IProductImportService
                     $"Import produits terminé : {upsertStats.Created} créations, {upsertStats.Updated} mises à jour.");
 
                 return new ProductImportResult(
-                    ProductImportResponse.Success(totalLines, upsertStats.Created, upsertStats.Updated, unknownColumns, parseOutcome.ProposedGroups),
+                    ProductImportResponse.Success(
+                        totalLines,
+                        upsertStats.Created,
+                        upsertStats.Updated,
+                        unknownColumns,
+                        parseOutcome.ProposedGroups,
+                        parseOutcome.SkippedLines,
+                        parseOutcome.Duplicates),
                     ProductImportResultType.Succeeded);
             }
             catch
@@ -869,7 +890,7 @@ RETURNING (xmax = 0) AS inserted;
     {
         var rows = new List<ProductCsvRow>();
         var errors = new List<ProductImportError>();
-        var seenSkus = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var skippedLines = new List<ProductImportSkippedLine>();
         var unknownColumns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var headerCaptured = false;
         var headerMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -918,6 +939,11 @@ RETURNING (xmax = 0) AS inserted;
                 if (!headerMap.ContainsKey(KnownColumns.Sku))
                 {
                     errors.Add(new ProductImportError(lineNumber, "MISSING_SKU_COLUMN"));
+                }
+
+                if (!headerMap.ContainsKey(KnownColumns.Ean))
+                {
+                    errors.Add(new ProductImportError(lineNumber, "MISSING_EAN_COLUMN"));
                 }
 
                 if (!headerCaptured)
@@ -1007,6 +1033,12 @@ RETURNING (xmax = 0) AS inserted;
                 name = nameValue;
             }
 
+            if (string.IsNullOrWhiteSpace(ean))
+            {
+                skippedLines.Add(new ProductImportSkippedLine(lineNumber, line, "MISSING_EAN"));
+                continue;
+            }
+
             if (row.TryGetValue(KnownColumns.Group, out var groupValue))
             {
                 group = NormalizeOptional(groupValue);
@@ -1045,12 +1077,6 @@ RETURNING (xmax = 0) AS inserted;
                 continue;
             }
 
-            if (!seenSkus.Add(sku))
-            {
-                errors.Add(new ProductImportError(lineNumber, "DUP_SKU_IN_FILE"));
-                continue;
-            }
-
             name = string.IsNullOrWhiteSpace(name) ? sku : name;
 
             var normalizedGroup = NormalizeOptional(group);
@@ -1071,7 +1097,9 @@ RETURNING (xmax = 0) AS inserted;
                 ean,
                 normalizedGroup,
                 normalizedSubGroup,
-                attributes));
+                attributes,
+                lineNumber,
+                line));
         }
 
         if (headers is null && errors.Count == 0)
@@ -1088,7 +1116,87 @@ RETURNING (xmax = 0) AS inserted;
             ? EmptyProposedGroups
             : proposedGroups.ToImmutableArray();
 
-        return new ProductCsvParseOutcome(rows, errors, totalLines, unknownColumnsImmutable, proposedGroupsImmutable);
+        var skippedLinesImmutable = skippedLines.Count == 0
+            ? EmptySkippedLines
+            : skippedLines.ToImmutableArray();
+
+        var duplicateReport = BuildDuplicateReport(rows);
+
+        return new ProductCsvParseOutcome(
+            rows,
+            errors,
+            totalLines,
+            unknownColumnsImmutable,
+            proposedGroupsImmutable,
+            skippedLinesImmutable,
+            duplicateReport);
+    }
+
+    private ProductImportDuplicateReport BuildDuplicateReport(IReadOnlyList<ProductCsvRow> rows)
+    {
+        if (rows.Count == 0)
+        {
+            return ProductImportDuplicateReport.Empty;
+        }
+
+        var duplicateSkus = rows
+            .GroupBy(row => row.Sku, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .Select(group => ProductImportDuplicateEntry.Create(
+                group.Key,
+                group.Select(row => row.LineNumber).OrderBy(n => n),
+                group.Select(row => row.RawLine)))
+            .OrderBy(entry => entry.Value, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var duplicateEans = rows
+            .Select(row => new
+            {
+                Row = row,
+                Key = NormalizeEanForDuplicates(row.Ean)
+            })
+            .Where(x => !string.IsNullOrWhiteSpace(x.Key))
+            .GroupBy(x => x.Key!, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .Select(group =>
+            {
+                var displayValue = group.First().Row.Ean ?? group.Key;
+                return ProductImportDuplicateEntry.Create(
+                    displayValue,
+                    group.Select(x => x.Row.LineNumber).OrderBy(n => n),
+                    group.Select(x => x.Row.RawLine));
+            })
+            .OrderBy(entry => entry.Value, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        if (duplicateSkus.Count == 0 && duplicateEans.Count == 0)
+        {
+            return ProductImportDuplicateReport.Empty;
+        }
+
+        return ProductImportDuplicateReport.Create(duplicateSkus, duplicateEans);
+    }
+
+    private static string? NormalizeEanForDuplicates(string? ean)
+    {
+        if (string.IsNullOrWhiteSpace(ean))
+        {
+            return null;
+        }
+
+        var normalized = InventoryCodeValidator.Normalize(ean);
+        if (normalized is not null)
+        {
+            return normalized;
+        }
+
+        var digits = DigitsOnlyRegex.Replace(ean, string.Empty);
+        if (digits.Length > 0)
+        {
+            return digits;
+        }
+
+        return ean.Trim();
     }
 
     private static List<string> ParseFields(string line)
@@ -1147,14 +1255,18 @@ RETURNING (xmax = 0) AS inserted;
         string? Ean,
         string? Group,
         string? SubGroup,
-        IReadOnlyDictionary<string, object?> Attributes);
+        IReadOnlyDictionary<string, object?> Attributes,
+        int LineNumber,
+        string RawLine);
 
     private sealed record ProductCsvParseOutcome(
         IReadOnlyList<ProductCsvRow> Rows,
         IReadOnlyList<ProductImportError> Errors,
         int TotalLines,
         ImmutableArray<string> UnknownColumns,
-        ImmutableArray<ProductImportGroupProposal> ProposedGroups)
+        ImmutableArray<ProductImportGroupProposal> ProposedGroups,
+        ImmutableArray<ProductImportSkippedLine> SkippedLines,
+        ProductImportDuplicateReport Duplicates)
     {
         public static ProductCsvParseOutcome CreateEmptyFile()
         {
@@ -1163,7 +1275,9 @@ RETURNING (xmax = 0) AS inserted;
                 new[] { new ProductImportError(0, "EMPTY_FILE") },
                 0,
                 EmptyUnknownColumns,
-                EmptyProposedGroups);
+                EmptyProposedGroups,
+                EmptySkippedLines,
+                ProductImportDuplicateReport.Empty);
         }
     }
 

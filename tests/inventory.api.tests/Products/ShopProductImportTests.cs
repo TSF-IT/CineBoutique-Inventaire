@@ -177,6 +177,7 @@ public sealed class ShopProductImportTests : IntegrationTestBase
             dryRunPayload.Inserted.Should().Be(0);
             // Le CSV de test contient deux lignes de données : la prévisualisation doit refléter ces deux insertions.
             dryRunPayload.WouldInsert.Should().Be(2);
+            dryRunPayload.WouldUpdate.Should().Be(0);
         }
 
         await using var verifyConnection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
@@ -212,6 +213,7 @@ public sealed class ShopProductImportTests : IntegrationTestBase
         payload.Should().NotBeNull();
         payload!.DryRun.Should().BeTrue();
         payload.WouldInsert.Should().Be(1);
+        payload.WouldUpdate.Should().Be(0);
         payload.ErrorCount.Should().Be(0);
         payload.UnknownColumns.Should().ContainSingle().Which.Should().Be("custom_meta");
 

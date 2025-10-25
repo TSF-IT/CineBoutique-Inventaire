@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -54,6 +53,7 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
         payload.Inserted.Should().Be(2);
         payload.Updated.Should().Be(0);
         payload.WouldInsert.Should().Be(0);
+        payload.WouldUpdate.Should().Be(0);
         payload.ErrorCount.Should().Be(0);
         payload.DryRun.Should().BeFalse();
         payload.Skipped.Should().BeFalse();
@@ -120,7 +120,7 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
     }
 
     [SkippableFact]
-    public async Task ImportProducts_WithDuplicateSku_ReturnsValidationError()
+    public async Task ImportProducts_WithDuplicateSku_ImportsAndReportsDuplicate()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
 
@@ -139,28 +139,72 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
                   "\"CODE-2\";\"SKU-900\";\"Produit B\"\n";
 
         using var content = new StringContent(csv, Encoding.UTF8, "text/csv");
-        var response = await client.PostAsync($"/api/shops/{shopId}/products/import", content).ConfigureAwait(false);
+        var response = await client.PostAsync($"/api/shops/{shopId}/products/import?mode=merge", content).ConfigureAwait(false);
 
-        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
         var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
         payload.Should().NotBeNull();
         payload!.Total.Should().Be(2);
-        payload.Inserted.Should().Be(0);
-        payload.Updated.Should().Be(0);
-        payload.WouldInsert.Should().Be(0);
-        payload.ErrorCount.Should().BeGreaterThan(0);
+        payload.ErrorCount.Should().Be(0);
         payload.DryRun.Should().BeFalse();
         payload.Skipped.Should().BeFalse();
-        payload.Errors.Should().Contain(error => error.Reason == "DUP_SKU_IN_FILE");
+        payload.WouldInsert.Should().Be(0);
+        payload.WouldUpdate.Should().Be(0);
+        payload.Errors.Should().BeEmpty();
         payload.UnknownColumns.Should().BeEmpty();
         payload.ProposedGroups.Should().BeEmpty();
+        payload.SkippedLines.Should().BeEmpty();
+        payload.Duplicates.Should().NotBeNull();
+        payload.Duplicates.Skus.Should().ContainSingle();
+        payload.Duplicates.Skus[0].Value.Should().Be("SKU-900");
+        payload.Duplicates.Skus[0].Lines.Should().Contain(new[] { 2, 3 });
+        payload.Duplicates.Eans.Should().BeEmpty();
+
+    }
+
+    [SkippableFact]
+    public async Task ImportProducts_SkipsRowsWithoutEan()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
+
+        Guid shopId = Guid.Empty;
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.GetDefaultShopIdAsync().ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add("X-Admin", "true");
+
+        var csv = "\"barcode_rfid\";\"item\";\"descr\"\n" +
+                  "\"\";\"SKU-100\";\"Produit Sans Code\"\n" +
+                  "\"3216549870123\";\"SKU-200\";\"Produit Avec Code\"\n";
+
+        using var content = new StringContent(csv, Encoding.UTF8, "text/csv");
+        var response = await client.PostAsync($"/api/shops/{shopId}/products/import", content).ConfigureAwait(false);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var payload = await response.Content.ReadFromJsonAsync<ProductImportResponse>().ConfigureAwait(false);
+        payload.Should().NotBeNull();
+        payload!.Total.Should().Be(2);
+        payload.ErrorCount.Should().Be(0);
+        payload.WouldInsert.Should().Be(0);
+        payload.WouldUpdate.Should().Be(0);
+        payload.Skipped.Should().BeFalse();
+        payload.SkippedLines.Should().ContainSingle();
+        var skipped = payload.SkippedLines[0];
+        skipped.Line.Should().Be(2);
+        skipped.Reason.Should().Be("MISSING_EAN");
+        skipped.Raw.Should().Be("\"\";\"SKU-100\";\"Produit Sans Code\"");
+        payload.Duplicates.Skus.Should().BeEmpty();
+        payload.Duplicates.Eans.Should().BeEmpty();
 
         await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
-        await using var command = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\" WHERE \"ShopId\" = @shopId AND \"Sku\" = 'LEGACY';", connection)
+        await using var countCommand = new NpgsqlCommand("SELECT COUNT(*) FROM \"Product\" WHERE \"ShopId\" = @shopId;", connection)
         {
             Parameters = { new("shopId", shopId) }
         };
-        var remaining = (long)await command.ExecuteScalarAsync().ConfigureAwait(false);
-        remaining.Should().Be(1);
+        var totalProducts = (long)await countCommand.ExecuteScalarAsync().ConfigureAwait(false);
+        totalProducts.Should().Be(1);
     }
 }
