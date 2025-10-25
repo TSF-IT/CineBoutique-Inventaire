@@ -1,48 +1,113 @@
-import { useEffect, useState } from "react";
+import { useEffect, useReducer } from "react";
 import { useParams } from "react-router-dom";
 import { extractBadges } from "./attributeBadges";
 
 type Details = {
   sku: string; ean?: string | null; name: string;
   group?: string | null; subGroup?: string | null;
-  attributes?: Record<string, any> | null;
+  attributes?: Record<string, unknown> | null;
+};
+
+type DetailsState = {
+  data: Details | null;
+  loading: boolean;
+  error: string | null;
+};
+
+type DetailsAction =
+  | { type: "start" }
+  | { type: "success"; data: Details | null }
+  | { type: "error"; message: string }
+  | { type: "not-found" };
+
+const initialState: DetailsState = {
+  data: null,
+  loading: true,
+  error: null,
+};
+
+const detailsReducer = (state: DetailsState, action: DetailsAction): DetailsState => {
+  switch (action.type) {
+    case "start":
+      return { ...state, loading: true, error: null };
+    case "success":
+      return { data: action.data, loading: false, error: null };
+    case "not-found":
+      return { data: null, loading: false, error: "Produit introuvable" };
+    case "error":
+      return { data: null, loading: false, error: action.message };
+    default:
+      return state;
+  }
 };
 
 export function ProductDetailsPage() {
   const { sku = "" } = useParams();
-  const [data, setData] = useState<Details | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [state, dispatch] = useReducer(detailsReducer, initialState);
 
   useEffect(() => {
-    let alive = true;
-    setLoading(true); setError(null);
-    fetch(`/api/products/${encodeURIComponent(sku)}/details`)
-      .then(async r => {
-        if (!alive) return;
-        if (r.status === 404) { setError("Produit introuvable"); setData(null); return; }
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        const js = await r.json();
-        setData(js ?? null);
-      })
-      .catch(e => { if (alive) setError(e.message || String(e)); })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+    const controller = new AbortController();
+    let cancelled = false;
+
+    dispatch({ type: "start" });
+
+    (async () => {
+      try {
+        const response = await fetch(`/api/products/${encodeURIComponent(sku)}/details`, {
+          signal: controller.signal,
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        if (response.status === 404) {
+          dispatch({ type: "not-found" });
+          return;
+        }
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const payload = (await response.json()) as Details | null;
+        dispatch({ type: "success", data: payload ?? null });
+      } catch (rawError) {
+        if (cancelled) {
+          return;
+        }
+
+        if ((rawError as DOMException)?.name === "AbortError") {
+          return;
+        }
+
+        const message =
+          rawError instanceof Error && rawError.message
+            ? rawError.message
+            : String(rawError);
+        dispatch({ type: "error", message });
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [sku]);
 
-  const attrs = data?.attributes && typeof data.attributes === "object" ? data.attributes : null;
+  const attrs = state.data?.attributes && typeof state.data.attributes === "object" ? state.data.attributes : null;
   const badges = extractBadges(attrs);
 
   return (
     <section style={{ display:"grid", gap: 12, maxWidth: 900 }}>
-      <h2 style={{ margin:0 }}>Produit {data?.sku ?? sku}</h2>
-      {loading && <div>Chargement…</div>}
-      {error && <div style={{ color:"#b00020" }}>Erreur : {error}</div>}
-      {!loading && !error && data && (
+      <h2 style={{ margin:0 }}>Produit {state.data?.sku ?? sku}</h2>
+      {state.loading && <div>Chargement…</div>}
+      {state.error && <div style={{ color:"#b00020" }}>Erreur : {state.error}</div>}
+      {!state.loading && !state.error && state.data && (
         <>
-          <div><strong>Nom</strong> : {data.name}</div>
-          <div><strong>EAN</strong> : {data.ean ?? "—"}</div>
-          <div><strong>Groupe</strong> : {data.group ?? "—"}{data.subGroup ? ` / ${data.subGroup}` : ""}</div>
+          <div><strong>Nom</strong> : {state.data.name}</div>
+          <div><strong>EAN</strong> : {state.data.ean ?? "—"}</div>
+          <div><strong>Groupe</strong> : {state.data.group ?? "—"}{state.data.subGroup ? ` / ${state.data.subGroup}` : ""}</div>
           {badges.length > 0 && (
             <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
               {badges.map(b => (

@@ -96,7 +96,7 @@ const isValidEanForSubmission = (ean: string | null | undefined): ean is string 
     return false
   }
 
-  return /^[\p{L}\p{N}'#°._ \-]+$/u.test(ean)
+  return /^[\p{L}\p{N}'#°._ -]+$/u.test(ean)
 }
 
 const dedupeConflictItems = (items: ConflictZoneItem[]): ConflictZoneItem[] => {
@@ -120,6 +120,7 @@ const dedupeConflictItems = (items: ConflictZoneItem[]): ConflictZoneItem[] => {
   return result
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const aggregateItemsForCompletion = (
   items: InventoryItem[],
 ): CompleteInventoryRunItem[] => {
@@ -237,7 +238,7 @@ export const InventorySessionPage = () => {
   const [status, setStatusState] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [scanValue, setScanValue] = useState('')
-  const [inputLookupStatus, setInputLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not-found' | 'error'>('idle')
+  const [, setInputLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not-found' | 'error'>('idle')
   const [completionLoading, setCompletionLoading] = useState(false)
   const completionDialogRef = useRef<HTMLDialogElement | null>(null)
   const completionConfirmationDialogRef = useRef<HTMLDialogElement | null>(null)

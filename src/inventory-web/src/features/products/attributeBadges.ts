@@ -6,7 +6,7 @@ const LABELS: Record<string, string> = {
   couleurSecondaire: "Couleur",
 };
 
-export function extractBadges(attributes: Record<string, any> | null | undefined): Badges {
+export function extractBadges(attributes: Record<string, unknown> | null | undefined): Badges {
   if (!attributes || typeof attributes !== "object") return [];
   const out: Badges = [];
   for (const [k, v] of Object.entries(attributes)) {

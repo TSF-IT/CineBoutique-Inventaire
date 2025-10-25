@@ -47,6 +47,8 @@ const VirtualizedRowGroup = React.forwardRef<HTMLDivElement, React.HTMLAttribute
   }
 );
 
+type VirtualListInstance = React.ElementRef<typeof VirtualList>;
+
 export type ProductsModalItem = Item
 
 export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: Props) {
@@ -57,9 +59,7 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
   const [data, setData] = React.useState<Response | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [pendingSelectionId, setPendingSelectionId] = React.useState<string | null>(null);
-  const listRef = React.useRef<{
-    scrollToItem?: (index: number) => void;
-  } | null>(null);
+  const listRef = React.useRef<VirtualListInstance | null>(null);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
 
   const isInteractive = typeof onSelect === "function";
@@ -343,12 +343,12 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
                         </div>
                       ) : canVirtualize ? (
                         <VirtualList
-                          ref={listRef as React.Ref<any>}
+                          ref={listRef}
                           height={Math.min(440, Math.max(220, itemCount * ROW_HEIGHT))}
                           itemCount={itemCount}
                           itemSize={ROW_HEIGHT}
                           width="100%"
-                          outerElementType={VirtualizedRowGroup as any}
+                          outerElementType={VirtualizedRowGroup}
                         >
                           {({
                             index,

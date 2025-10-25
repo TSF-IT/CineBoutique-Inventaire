@@ -159,12 +159,6 @@ export default function SelectUserPage() {
     navigate(redirectTo ?? '/', { replace: true })
   }
 
-  if (!isLoaded || !shop) return null
-
-  const shouldShowList = !loading && !err
-  const hasUsers = users.length > 0
-  const shopSelectionState = redirectTo ? { redirectTo } : undefined
-  const shopDisplayName = shop.name?.trim() || 'CinéBoutique'
   const handleReturnToShopSelection = useCallback(() => {
     if (!shop) {
       return
@@ -173,6 +167,13 @@ export default function SelectUserPage() {
     reset()
     setShop(null)
   }, [reset, setShop, shop])
+
+  if (!isLoaded || !shop) return null
+
+  const shouldShowList = !loading && !err
+  const hasUsers = users.length > 0
+  const shopSelectionState = redirectTo ? { redirectTo } : undefined
+  const shopDisplayName = shop.name?.trim() || 'CinéBoutique'
 
   return (
     <Page

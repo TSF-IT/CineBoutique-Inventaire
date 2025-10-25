@@ -88,9 +88,6 @@ describe('SelectShopPage', () => {
     kind: 'lumiere',
   }
 
-  const shopA = cineShop
-  const shopB = lumiereShop
-
   beforeEach(() => {
     fetchShopsMock.mockReset()
     setShopFn.mockReset()

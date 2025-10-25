@@ -14,14 +14,14 @@
     "dev:scan-sim": "vite --mode scan-sim",
     "build": "tsc -b && vite build",
     "pwa:build": "vite build",
-    "lint": "eslint .",
+    "lint": "eslint . --ext .ts --max-warnings=0",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "pwa:preview": "vite preview --https",
     "check:health": "node -e \"fetch('http://localhost:5173/api/healthz').then(r=>r.text()).then(console.log).catch(e=>{console.error(e);process.exit(1)})\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "ci:guard": "sh -c \"rg -n --hidden --glob '!node_modules' --glob '!package.json' '(Am\u00e9lie|Bruno|Elisa|Camille|David)\\b' src/inventory-web && exit 1 || true; rg -n --hidden --glob '!node_modules' --glob '!package.json' 'OperatorsContext|DEFAULT_OPERATORS' src/inventory-web && exit 1 || true\""
+    "ci:guard": "sh -c \"rg -n --hidden --glob '!node_modules' --glob '!package.json' '(Amélie|Bruno|Elisa|Camille|David)\\b' src/inventory-web && exit 1 || true; rg -n --hidden --glob '!node_modules' --glob '!package.json' 'OperatorsContext|DEFAULT_OPERATORS' src/inventory-web && exit 1 || true\""
   },
   "dependencies": {
     "@testing-library/jest-dom": "6.4.2",

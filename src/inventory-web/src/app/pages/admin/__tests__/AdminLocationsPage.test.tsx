@@ -440,10 +440,10 @@ describe('AdminLocationsPage', () => {
 
   it("ajoute le paramètre de mode 'merge' lors d'un import complémentaire", async () => {
     const previousFetch = global.fetch
-    const recordedCalls: { url: string; init?: RequestInit }[] = []
+    const recordedCalls: { url: string; _init?: RequestInit }[] = []
 
     const fetchMock = vi.fn().mockImplementation(
-      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      async (input: RequestInfo | URL, __init?: RequestInit): Promise<Response> => {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
         recordedCalls.push({ url, init })
 
@@ -504,7 +504,7 @@ describe('AdminLocationsPage', () => {
   it("utilise le mode 'replace' par défaut lorsque le remplacement est autorisé", async () => {
     const previousFetch = global.fetch
     const fetchMock = vi.fn().mockImplementation(
-      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      async (input: RequestInfo | URL, _init?: RequestInit): Promise<Response> => {
         const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
 
         if (url.endsWith('/products/import/status')) {

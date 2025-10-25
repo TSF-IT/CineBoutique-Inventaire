@@ -44,8 +44,14 @@ export function useProductsSearch(q: string, debounceMs = 200, opts?: {
         const js = await r.json();
         // On s’aligne sur la forme renvoyée : si c’est un tableau, on le prend tel quel.
         setRows(Array.isArray(js) ? js : (js?.items ?? []));
-      } catch (e: any) {
-        if (e?.name !== "AbortError") { setError(e); setRows([]); }
+      } catch (rawError) {
+        const isAbort =
+          rawError instanceof DOMException && rawError.name === "AbortError";
+        if (!isAbort) {
+          const error = rawError instanceof Error ? rawError : new Error(String(rawError));
+          setError(error);
+          setRows([]);
+        }
       } finally {
         setLoading(false);
       }

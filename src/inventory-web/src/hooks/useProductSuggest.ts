@@ -34,8 +34,14 @@ export function useProductSuggest(q: string, limit = 8, debounceMs = 150) {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const js = await r.json();
         setData(Array.isArray(js) ? js : []);
-      } catch (e: any) {
-        if (e?.name !== "AbortError") { setError(e); setData([]); }
+      } catch (rawError) {
+        const isAbort =
+          rawError instanceof DOMException && rawError.name === "AbortError";
+        if (!isAbort) {
+          const error = rawError instanceof Error ? rawError : new Error(String(rawError));
+          setError(error);
+          setData([]);
+        }
       } finally {
         setLoading(false);
       }

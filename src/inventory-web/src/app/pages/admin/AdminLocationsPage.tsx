@@ -167,7 +167,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
           : null
 
       setImportStatus({ canReplace, lockReason, hasCountLines })
-    } catch (error) {
+    } catch {
       setImportStatus(null)
       setStatusError("Impossible de récupérer l'état du catalogue.")
     } finally {
@@ -353,7 +353,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
         (typeof record.error === 'string' && record.error) ||
         (rawText && rawText.trim().length > 0 ? rawText : `Erreur inattendue (${response.status}).`)
       setFeedback({ type: 'error', message: fallbackMessage })
-    } catch (error) {
+    } catch {
       setFeedback({
         type: 'error',
         message: "L'import a échoué. Vérifiez votre connexion et réessayez.",
@@ -423,13 +423,16 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
 
         <fieldset className="rounded-lg border border-slate-200 bg-white/70 p-3 text-sm dark:border-slate-700 dark:bg-slate-900/40">
           <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Mode d'import
+            Mode d&apos;import
           </legend>
           {statusLoading && (
             <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Vérification du statut du catalogue…</p>
           )}
           <div className="mt-2 space-y-3">
-            <label className="flex cursor-pointer items-start gap-3">
+            <label
+              aria-label="Remplacer le catalogue"
+              className="flex cursor-pointer items-start gap-3"
+            >
               <input
                 type="radio"
                 name="catalog-import-mode"
@@ -442,11 +445,15 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
               <span>
                 <span className="font-medium text-slate-800 dark:text-slate-100">Remplacer le catalogue</span>
                 <span className="mt-1 block text-xs text-slate-600 dark:text-slate-400">
-                  Supprime les références existantes avant l'import. Disponible uniquement tant qu'aucun comptage n'a enregistré de produit.
+                  Supprime les références existantes avant l&apos;import. Disponible uniquement tant qu&apos;aucun
+                  comptage n&apos;a enregistré de produit.
                 </span>
               </span>
             </label>
-            <label className="flex cursor-pointer items-start gap-3">
+            <label
+              aria-label="Compléter le catalogue"
+              className="flex cursor-pointer items-start gap-3"
+            >
               <input
                 type="radio"
                 name="catalog-import-mode"
@@ -849,7 +856,7 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
               {`Désactiver ${user.displayName} ?`}
             </p>
             <p id={disableDialogDescriptionId} className="text-sm text-slate-600 dark:text-slate-300">
-              L'utilisateur ne pourra plus se connecter tant qu'il n'est pas recréé.
+              L&apos;utilisateur ne pourra plus se connecter tant qu&apos;il n&apos;est pas recréé.
             </p>
           </div>
           <div className="mt-6 flex justify-end gap-3">

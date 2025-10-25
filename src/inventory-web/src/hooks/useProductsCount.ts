@@ -12,8 +12,10 @@ export function useProductsCount(pollMs = 0) {
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const js = await r.json();
       setTotal(typeof js?.total === "number" ? js.total : null);
-    } catch (e: any) {
-      setError(e); setTotal(null);
+    } catch (rawError) {
+      const error = rawError instanceof Error ? rawError : new Error(String(rawError));
+      setError(error);
+      setTotal(null);
     } finally {
       setLoading(false);
     }

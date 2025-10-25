@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import type { ReactElement } from "react";
 import { useShop } from "@/state/ShopContext";
@@ -17,6 +17,27 @@ type GuardState =
   | { status: "loading" }
   | { status: "ready" }
   | { status: "redirect"; target: "select-user" | "select-shop" };
+
+type GuardAction =
+  | { type: "checking" }
+  | { type: "loading" }
+  | { type: "ready" }
+  | { type: "redirect"; target: "select-user" | "select-shop" };
+
+const guardReducer = (_state: GuardState, action: GuardAction): GuardState => {
+  switch (action.type) {
+    case "checking":
+      return { status: "checking" };
+    case "loading":
+      return { status: "loading" };
+    case "ready":
+      return { status: "ready" };
+    case "redirect":
+      return { status: "redirect", target: action.target };
+    default:
+      return _state;
+  }
+};
 
 const extractStoredUserId = (
   stored: ReturnType<typeof loadSelectedUserForShop>
@@ -42,7 +63,7 @@ export default function RequireUser(): ReactElement | null {
   const { shop, isLoaded } = useShop();
   const { selectedUser, setSelectedUser } = useInventory();
   const loc = useLocation();
-  const [state, setState] = useState<GuardState>({ status: "checking" });
+  const [state, dispatch] = useReducer(guardReducer, { status: "checking" });
   const resolvedUserIdRef = useRef<string | null>(null);
   const lastShopIdRef = useRef<string | null>(null);
   const shopId = shop?.id?.trim() || null;
@@ -62,12 +83,12 @@ export default function RequireUser(): ReactElement | null {
 
   useEffect(() => {
     if (!isLoaded) {
-      setState({ status: "checking" });
+      dispatch({ type: "checking" });
       return;
     }
 
     if (!shopId) {
-      setState({ status: "redirect", target: "select-shop" });
+      dispatch({ type: "redirect", target: "select-shop" });
       return;
     }
 
@@ -76,18 +97,18 @@ export default function RequireUser(): ReactElement | null {
 
     if (!storedUserId) {
       resolvedUserIdRef.current = null;
-      setState({ status: "redirect", target: "select-user" });
+      dispatch({ type: "redirect", target: "select-user" });
       return;
     }
 
     if (resolvedUserIdRef.current === storedUserId) {
-      setState({ status: "ready" });
+      dispatch({ type: "ready" });
       return;
     }
 
     if (selectedUserId && selectedUserId === storedUserId) {
       resolvedUserIdRef.current = storedUserId;
-      setState({ status: "ready" });
+      dispatch({ type: "ready" });
       return;
     }
 
@@ -100,7 +121,7 @@ export default function RequireUser(): ReactElement | null {
     }
 
     let cancelled = false;
-    setState({ status: "loading" });
+    dispatch({ type: "loading" });
     (async () => {
       try {
         const users = await fetchShopUsers(shopId);
@@ -112,14 +133,14 @@ export default function RequireUser(): ReactElement | null {
         if (!found) {
           clearSelectedUserForShop(shopId);
           resolvedUserIdRef.current = null;
-          setState({ status: "redirect", target: "select-user" });
+          dispatch({ type: "redirect", target: "select-user" });
           return;
         }
 
         resolvedUserIdRef.current = storedUserId;
         setSelectedUser(found);
         saveSelectedUserForShop(shopId, found);
-        setState({ status: "ready" });
+        dispatch({ type: "ready" });
       } catch (error) {
         if (cancelled) {
           return;
@@ -130,13 +151,13 @@ export default function RequireUser(): ReactElement | null {
         );
         if (shopNotFound) {
           resolvedUserIdRef.current = null;
-          setState({ status: "redirect", target: "select-shop" });
+          dispatch({ type: "redirect", target: "select-shop" });
           return;
         }
 
         clearSelectedUserForShop(shopId);
         resolvedUserIdRef.current = null;
-        setState({ status: "redirect", target: "select-user" });
+        dispatch({ type: "redirect", target: "select-user" });
       }
     })();
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useProductsSearch } from "../../hooks/useProductsSearch";
 import { useProductsCount } from "../../hooks/useProductsCount";
 
@@ -13,8 +13,6 @@ export function AdminProductsPage() {
 
   const count = rows.length;
   const [open, setOpen] = useState(count > 0);
-
-  useEffect(() => { setPage(1); }, [filter]);
 
   function onSort(next: "sku"|"name"|"ean") {
     setSortKey(k => {
@@ -52,7 +50,10 @@ export function AdminProductsPage() {
         </button>
         <input
           value={filter}
-          onChange={(e)=>setFilter(e.target.value)}
+          onChange={(e)=>{
+            setFilter(e.target.value);
+            setPage(1);
+          }}
           placeholder="Filtrer (contains)…"
           aria-label="Filtre produits (contains)"
           style={{ marginLeft: "auto" }}
