@@ -19,6 +19,11 @@ import { useAsync } from '../../hooks/useAsync'
 import type { Location } from '../../types/inventory'
 import type { ShopUser } from '@/types/user'
 import { useShop } from '@/state/ShopContext'
+import {
+  CSV_ENCODING_OPTIONS,
+  decodeCsvBuffer,
+  type CsvEncoding,
+} from '@/features/import/csvEncoding'
 
 type FeedbackState = { type: 'success' | 'error'; message: string } | null
 type AdminSection = 'locations' | 'users' | 'catalog'
@@ -85,10 +90,25 @@ const SectionSwitcher = ({ activeSection, onChange }: SectionSwitcherProps) => (
   </Card>
 )
 
+const encodingLabelFor = (encoding: string | null | undefined) => {
+  if (!encoding) {
+    return null
+  }
+  const option = CSV_ENCODING_OPTIONS.find((candidate) => candidate.value === encoding)
+  if (option) {
+    return option.label
+  }
+  if (encoding === 'latin1') {
+    return 'Latin-1 (alias ISO-8859-1)'
+  }
+  return encoding
+}
+
 type ImportSummary = {
   inserted: number
   errorCount: number
   unknownColumns: string[]
+  encoding?: string | null
 }
 
 type CatalogImportFeedback =
@@ -109,6 +129,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
   const [statusError, setStatusError] = useState<string | null>(null)
   const [importMode, setImportMode] = useState<'replace' | 'merge'>('replace')
   const [file, setFile] = useState<File | null>(null)
+  const [selectedEncoding, setSelectedEncoding] = useState<CsvEncoding>('auto')
   const [submitting, setSubmitting] = useState(false)
   const [feedback, setFeedback] = useState<CatalogImportFeedback | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -172,6 +193,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
 
   const handleFileChange = (nextFile: File | null) => {
     setFile(nextFile)
+    setSelectedEncoding('auto')
     setFeedback(null)
   }
 
@@ -180,6 +202,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
       fileInputRef.current.value = ''
     }
     setFile(null)
+    setSelectedEncoding('auto')
   }
 
   const toInteger = (value: unknown) => {
@@ -235,7 +258,17 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
     setSubmitting(true)
     try {
       const fd = new FormData()
-      fd.set('file', file)
+      const buffer = await file.arrayBuffer()
+      const decoded = decodeCsvBuffer(buffer, selectedEncoding)
+      const normalizedEncoding =
+        selectedEncoding === 'auto' ? decoded.detectedEncoding : selectedEncoding
+      const utf8File = new File(
+        [decoded.text],
+        file.name,
+        { type: 'text/csv;charset=utf-8' },
+      )
+
+      fd.set('file', utf8File)
 
       const params = new URLSearchParams({
         dryRun: 'false',
@@ -254,6 +287,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
           inserted: insertedCount > 0 ? insertedCount : fallbackTotal,
           errorCount: toInteger(record.errorCount),
           unknownColumns: toStringList(record.unknownColumns),
+          encoding: encodingLabelFor(normalizedEncoding),
         }
         setFeedback({ type: 'success', summary })
         resetFileInput()
@@ -368,6 +402,25 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
           }
         />
 
+        <label className="flex flex-col gap-2 text-sm font-medium text-slate-700 dark:text-slate-200">
+          <span>Encodage du fichier</span>
+          <select
+            value={selectedEncoding}
+            onChange={(event) => {
+              setSelectedEncoding(event.target.value as CsvEncoding)
+              setFeedback(null)
+            }}
+            disabled={submitting}
+            className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-700 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200"
+          >
+            {CSV_ENCODING_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <fieldset className="rounded-lg border border-slate-200 bg-white/70 p-3 text-sm dark:border-slate-700 dark:bg-slate-900/40">
           <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
             Mode d'import
@@ -444,10 +497,16 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
                   <dd className="text-slate-600">{feedback.summary.inserted}</dd>
                 </div>
                 <div>
-                  <dt className="font-medium text-slate-700">Erreurs détectées</dt>
-                  <dd className="text-slate-600">{feedback.summary.errorCount}</dd>
-                </div>
-              </dl>
+              <dt className="font-medium text-slate-700">Erreurs détectées</dt>
+              <dd className="text-slate-600">{feedback.summary.errorCount}</dd>
+            </div>
+            {feedback.summary.encoding && (
+              <div>
+                <dt className="font-medium text-slate-700">Encodage utilisé</dt>
+                <dd className="text-slate-600">{feedback.summary.encoding}</dd>
+              </div>
+            )}
+          </dl>
               {feedback.summary.unknownColumns.length > 0 && (
                 <div className="space-y-2">
                   <p className="font-medium text-slate-700">Colonnes inconnues</p>

@@ -33,12 +33,6 @@ const AdminLocationsPage = lazy(() =>
   })),
 )
 
-const ProductImportPage = lazy(() =>
-  import('./features/import/ProductImportPage').then((module) => ({
-    default: module.ProductImportPage,
-  })),
-)
-
 const BypassSelect = () => {
   const { shop, isLoaded } = useShop()
 
@@ -120,7 +114,6 @@ export const AppRoutes = () => {
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<AdminLocationsPage />} />
               <Route path="products" element={<AdminProductsPage />} />
-              <Route path="/admin/import" element={<ProductImportPage />} />
             </Route>
           </Route>
         </Route>

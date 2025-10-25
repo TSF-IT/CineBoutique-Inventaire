@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import http from '@/lib/api/http'
 import { API_BASE } from '@/lib/api/config'
 import { useShop } from '@/state/ShopContext'
-import { saveSelectedUserForShop } from '@/lib/selectedUserStorage'
+import { clearSelectedUserForShop, saveSelectedUserForShop } from '@/lib/selectedUserStorage'
 import { z } from 'zod'
 import { Page } from '@/app/components/Page'
 import { LoadingIndicator } from '@/app/components/LoadingIndicator'
@@ -36,11 +36,15 @@ type HttpLikeError = {
   status?: number
 }
 
+const userCardClasses =
+  'tile entity-card entity-card--idle flex w-full flex-col gap-1.5 px-4 py-3 text-left text-base text-(--cb-text) transition duration-200 ease-out will-change-transform hover:-translate-y-[1px] focus:outline-none'
+const userCardSubtitleClasses = 'text-sm text-(--cb-muted)'
+
 export default function SelectUserPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { shop, isLoaded } = useShop()
-  const { setSelectedUser } = useInventory()
+  const { shop, setShop, isLoaded } = useShop()
+  const { setSelectedUser, reset } = useInventory()
 
   const [users, setUsers] = useState<ShopUser[]>([])
   const [loading, setLoading] = useState(true)
@@ -160,22 +164,37 @@ export default function SelectUserPage() {
   const shouldShowList = !loading && !err
   const hasUsers = users.length > 0
   const shopSelectionState = redirectTo ? { redirectTo } : undefined
+  const shopDisplayName = shop.name?.trim() || 'CinéBoutique'
+  const handleReturnToShopSelection = useCallback(() => {
+    if (!shop) {
+      return
+    }
+    clearSelectedUserForShop(shop.id)
+    reset()
+    setShop(null)
+  }, [reset, setShop, shop])
 
   return (
     <Page
       className="gap-8"
       headerAction={
         <BackToShopSelectionLink
+          to="/select-shop"
+          label="Retour au choix de la boutique"
           state={shopSelectionState}
+          onClick={handleReturnToShopSelection}
+          className="sm:self-start"
         />
       }
     >
-      <main className="flex flex-1 flex-col justify-center gap-8">
-        <div>
-          <h1 className="cb-section-title text-3xl">
-            Merci de vous identifier
-          </h1>
-        </div>
+      <main className="flex flex-1 flex-col gap-8">
+        <section className="flex flex-col gap-4">
+          <p className="cb-kicker mt-1">{shopDisplayName}</p>
+          <h1 className="cb-section-title mt-3">Choisir un utilisateur</h1>
+          <p className="cb-section-subtitle mt-4 max-w-xl">
+            Sélectionnez votre profil pour poursuivre l’inventaire de la boutique.
+          </p>
+        </section>
 
         {loading && <LoadingIndicator label="Chargement des utilisateurs…" />}
 
@@ -192,19 +211,15 @@ export default function SelectUserPage() {
         {shouldShowList && (
           <div className="space-y-4">
             <ul className="cards">
-              {users.map(u => (
+              {users.map((u) => (
                 <li key={u.id}>
                   <button
                     type="button"
                     onClick={() => onPick(u)}
-                    className="block w-full rounded-3xl border border-(--cb-border-soft) bg-(--cb-surface-soft) px-5 py-4 text-left text-base text-(--cb-text) shadow-panel-soft transition hover:-translate-y-0.5 hover:border-brand-400/60 hover:shadow-panel focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2 focus-visible:ring-offset-(--cb-surface-soft)"
+                    className={userCardClasses}
                   >
-                    <span className="block text-lg font-medium">{u.displayName}</span>
-                    {u.email ? (
-                      <span className="mt-1 block text-sm text-(--cb-muted)">
-                        {u.email}
-                      </span>
-                    ) : null}
+                    <span className="text-lg font-semibold leading-tight">{u.displayName}</span>
+                    {u.email ? <span className={userCardSubtitleClasses}>{u.email}</span> : null}
                   </button>
                 </li>
               ))}

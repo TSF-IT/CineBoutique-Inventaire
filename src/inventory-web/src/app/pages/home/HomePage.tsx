@@ -161,7 +161,7 @@ const isRunOwnedByUser = (
 
 export const HomePage = () => {
   const navigate = useNavigate()
-  const { shop, setShop, isLoaded } = useShop()
+  const { shop, isLoaded } = useShop()
   const shopId = shop?.id ?? null
   const {
     selectedUser,
@@ -293,8 +293,9 @@ export const HomePage = () => {
   }, [executeLocationSummaries, executeLocations, executeSummary, shopId])
 
   const handleChangeShop = useCallback(() => {
-    setShop(null)
-  }, [setShop])
+    clearSession()
+    navigate('/select-user', { state: { redirectTo: '/' } })
+  }, [clearSession, navigate])
 
   const handleStartInventory = useCallback(() => {
     navigate('/inventory/location')
@@ -537,7 +538,16 @@ export const HomePage = () => {
   const currentYear = new Date().getFullYear()
 
   return (
-    <Page headerAction={<BackToShopSelectionLink onClick={handleChangeShop} className="sm:self-start" />}>
+    <Page
+      headerAction={
+        <BackToShopSelectionLink
+          to="/select-user"
+          label="Retour au choix de l’utilisateur"
+          onClick={handleChangeShop}
+          className="sm:self-start"
+        />
+      }
+    >
       <section className="flex flex-col gap-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex-1">
