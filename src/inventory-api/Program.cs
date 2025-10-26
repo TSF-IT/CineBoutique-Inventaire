@@ -13,6 +13,7 @@ using CineBoutique.Inventory.Api.Infrastructure.Shops;
 using CineBoutique.Inventory.Api.Hosting;
 using CineBoutique.Inventory.Api.Services;
 using CineBoutique.Inventory.Api.Services.Products;
+using CineBoutique.Inventory.Api.Services.Products.Import;
 using FluentValidation;
 using CineBoutique.Inventory.Infrastructure.Database;
 using CineBoutique.Inventory.Infrastructure.DependencyInjection;
@@ -294,6 +295,10 @@ builder.Services.AddSingleton<IProductLookupMetrics>(sp =>
     var meterFactory = sp.GetService<IMeterFactory>();
     return meterFactory is null ? new NullProductLookupMetrics() : new ProductLookupMetrics(meterFactory);
 });
+builder.Services.AddScoped<IProductImportReader, ProductImportReader>();
+builder.Services.AddScoped<IProductImportValidator, ProductImportValidator>();
+builder.Services.AddScoped<IProductImportWriter, ProductImportWriter>();
+builder.Services.AddScoped<IProductImportHistoryStore, DapperProductImportHistoryStore>();
 builder.Services.AddScoped<IProductImportService, ProductImportService>();
 
 // --- CORS ---
