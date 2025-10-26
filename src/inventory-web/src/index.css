@@ -3,8 +3,8 @@
 @source "../index.html";
 @source "./**/*.{ts,tsx}";
 @theme {
-  /* Reprends ici tes tokens (ex: --color-brand-500, etc.) et
-     ajoute:  --shadow-soft: 0 10px 30px -15px rgba(15,23,42,.35);  */
+  /* Reprenez ici vos tokens (ex: --color-brand-500, etc.) et
+     ajoutez: --shadow-soft: 0 10px 30px -15px rgba(15,23,42,.35); */
   --color-brand-50: #eef2ff;
   --color-brand-100: #e0e7ff;
   --color-brand-200: #c7d2fe;

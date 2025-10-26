@@ -32,7 +32,7 @@ export default function AppRoutes() {
             </Route>
           </Route>
 
-          {/* Admin: à toi de décider si RequireUser est nécessaire ou non. Si oui, laisse ici. */}
+          {/* Admin : à vous de décider si RequireUser est nécessaire ou non. Si oui, laissez-le ici. */}
           {/* <Route path="/admin" element={<AdminLayout />}>
                <Route index element={<AdminLocationsPage />} />
              </Route> */}

@@ -334,7 +334,7 @@ export const SelectShopPage = () => {
         <div>
           <h1 className="cb-section-title text-3xl sm:text-4xl">Choisir une entité</h1>
           <p className="cb-section-subtitle mt-3">
-            Sélectionne ton entité pour continuer vers l’identification.
+            Sélectionnez votre entité pour poursuivre l’identification.
           </p>
         </div>
 
@@ -346,7 +346,7 @@ export const SelectShopPage = () => {
             role="alert"
           >
             <p className="font-semibold">{errorMessage ?? DEFAULT_ERROR_MESSAGE}</p>
-            <p className="mt-1">Vérifie ta connexion puis réessaie.</p>
+            <p className="mt-1">Vérifiez votre connexion puis réessayez.</p>
             <Button className="mt-4" variant="secondary" onClick={handleRetry}>
               Réessayer
             </Button>

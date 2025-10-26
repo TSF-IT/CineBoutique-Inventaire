@@ -14,7 +14,7 @@ namespace CineBoutique.Inventory.Api.Infrastructure.Audit;
 
 /// <summary>
 /// Pont facultatif qui convertit l'AuditEntry du domaine en une ligne texte pour le logger API.
-/// Utile uniquement si tu veux aussi écrire dans audit_logs en plus de la table Audit.
+/// Utile uniquement si vous souhaitez aussi écrire dans audit_logs en plus de la table Audit.
 /// </summary>
 public sealed class DomainAuditBridgeLogger : IDomainAuditLogger
 {

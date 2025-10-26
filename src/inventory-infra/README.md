@@ -4,7 +4,7 @@
 
 Les migrations FluentMigrator sont exécutées automatiquement lorsque le service `api` démarre. Pour les déclencher dans un environnement Docker :
 
-1. Assure-toi que le volume PostgreSQL est prêt :
+1. Assurez-vous que le volume PostgreSQL est prêt :
    ```bash
    docker compose up -d db
    ```
@@ -12,7 +12,7 @@ Les migrations FluentMigrator sont exécutées automatiquement lorsque le servic
    ```bash
    docker compose up --build api
    ```
-3. Une fois les migrations appliquées et les logs `Now listening on:` visibles, tu peux laisser l'API tourner ou interrompre le conteneur avec `Ctrl+C`. Pour arrêter et nettoyer les ressources créées uniquement pour la migration, exécute :
+3. Une fois les migrations appliquées et les logs `Now listening on:` visibles, vous pouvez laisser l'API tourner ou interrompre le conteneur avec `Ctrl+C`. Pour arrêter et nettoyer les ressources créées uniquement pour la migration, exécutez :
    ```bash
    docker compose down
    ```

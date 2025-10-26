@@ -20,7 +20,7 @@ function buildHttpError(message: string, res: Response, body?: string, extra?: R
   return err
 }
 
-// ajout en haut si tu veux un type dédié (optionnel)
+// ajout en haut si vous souhaitez un type dédié (optionnel)
 export class AbortedRequestError extends Error {
   status = 499 as number; // code "client closed request" officieux
   url: string;
