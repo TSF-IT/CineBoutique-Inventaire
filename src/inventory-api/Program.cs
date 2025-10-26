@@ -23,6 +23,7 @@ using FluentValidation.AspNetCore;
 using FluentMigrator.Runner;
 using FluentMigrator.Runner.Processors;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
@@ -33,6 +34,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 using Npgsql;
+using Microsoft.OpenApi.Models;
 using Serilog; // requis pour UseSerilog()
 using CineBoutique.Inventory.Api.Infrastructure.Health;
 using AppLog = CineBoutique.Inventory.Api.Hosting.Log;
@@ -101,52 +103,93 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<IShopResolver, DefaultShopResolver>();
 builder.Services.Configure<AppSettingsOptions>(builder.Configuration.GetSection("AppSettings"));
 
-builder.Services
-    .AddAuthentication(options =>
+var useAdminHeaderAuth = builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing");
+
+var authenticationBuilder = builder.Services.AddAuthentication(options =>
+{
+    if (useAdminHeaderAuth)
     {
         options.DefaultAuthenticateScheme = AdminHeaderAuthenticationHandler.SchemeName;
         options.DefaultChallengeScheme = AdminHeaderAuthenticationHandler.SchemeName;
-    })
-    .AddScheme<AuthenticationSchemeOptions, AdminHeaderAuthenticationHandler>(
+    }
+    else
+    {
+        options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    }
+});
+
+if (useAdminHeaderAuth)
+{
+    authenticationBuilder.AddScheme<AuthenticationSchemeOptions, AdminHeaderAuthenticationHandler>(
         AdminHeaderAuthenticationHandler.SchemeName,
-        options => { });
+        _ => { });
+}
+else
+{
+    var authority = builder.Configuration["Authentication:Authority"];
+    var audience = builder.Configuration["Authentication:Audience"];
+
+    if (string.IsNullOrWhiteSpace(authority))
+    {
+        throw new InvalidOperationException("Authentication:Authority must be configured outside Development or Testing environments.");
+    }
+
+    if (string.IsNullOrWhiteSpace(audience))
+    {
+        throw new InvalidOperationException("Authentication:Audience must be configured outside Development or Testing environments.");
+    }
+
+    authenticationBuilder.AddJwtBearer(options =>
+    {
+        options.Authority = authority;
+        options.Audience = audience;
+    });
+}
 
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("Admin", policy =>
     {
-        policy.RequireAssertion(context =>
+        if (useAdminHeaderAuth)
         {
-            if (context.User?.Identity?.IsAuthenticated == true)
+            policy.RequireAssertion(context =>
             {
-                if (context.User.IsInRole("Admin"))
+                if (context.User?.Identity?.IsAuthenticated == true)
                 {
-                    return true;
-                }
+                    if (context.User.IsInRole("Admin"))
+                    {
+                        return true;
+                    }
 
-                if (context.User.HasClaim(claim =>
-                        string.Equals(claim.Type, "is_admin", StringComparison.OrdinalIgnoreCase) &&
-                        string.Equals(claim.Value, "true", StringComparison.OrdinalIgnoreCase)))
-                {
-                    return true;
-                }
-            }
-
-            if (context.Resource is HttpContext httpContext &&
-                httpContext.Request.Headers.TryGetValue("X-Admin", out var headerValues))
-            {
-                foreach (var value in headerValues)
-                {
-                    if (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(value, "1", StringComparison.OrdinalIgnoreCase))
+                    if (context.User.HasClaim(claim =>
+                            string.Equals(claim.Type, "is_admin", StringComparison.OrdinalIgnoreCase) &&
+                            string.Equals(claim.Value, "true", StringComparison.OrdinalIgnoreCase)))
                     {
                         return true;
                     }
                 }
-            }
 
-            return false;
-        });
+                if (context.Resource is HttpContext httpContext &&
+                    httpContext.Request.Headers.TryGetValue("X-Admin", out var headerValues))
+                {
+                    foreach (var value in headerValues)
+                    {
+                        if (string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(value, "1", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            });
+        }
+        else
+        {
+            policy.RequireRole("Admin");
+        }
     });
 });
 
@@ -156,6 +199,25 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "CinéBoutique Inventory API", Version = "v1" });
     c.SupportNonNullableReferenceTypes();
+    var bearerScheme = new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Description = "JWT Bearer authentication",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        Reference = new OpenApiReference
+        {
+            Type = ReferenceType.SecurityScheme,
+            Id = "Bearer"
+        }
+    };
+    c.AddSecurityDefinition("Bearer", bearerScheme);
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement
+    {
+        { bearerScheme, System.Array.Empty<string>() }
+    });
 
     var asmName = System.Reflection.Assembly.GetExecutingAssembly().GetName().Name;
     var xmlPath = System.IO.Path.Combine(AppContext.BaseDirectory, $"{asmName}.xml");
