@@ -51,7 +51,8 @@ const fetchInventorySummaryMock = vi.hoisted(() =>
 )
 
 const fetchLocationsMock = vi.hoisted(() =>
-  vi.fn(async (shopId: string, _options?: { includeDisabled?: boolean }): Promise<Location[]> => {
+  vi.fn(async (shopId: string, options?: { includeDisabled?: boolean }): Promise<Location[]> => {
+    void options
     expect(shopId).toBeTruthy()
     return [
       {

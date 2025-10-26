@@ -151,7 +151,8 @@ const {
     },
   ]
   return {
-    fetchLocationsMock: vi.fn(async (shopId: string, _options?: { includeDisabled?: boolean }): Promise<Location[]> => {
+    fetchLocationsMock: vi.fn(async (shopId: string, options?: { includeDisabled?: boolean }): Promise<Location[]> => {
+      void options
       expect(shopId).toBeTruthy()
       return [
         { ...reserveLocation },
@@ -192,7 +193,8 @@ const {
         startedAtUtc: new Date().toISOString(),
       }),
     releaseInventoryRunMock: vi.fn(async () => {}),
-    fetchShopUsersMock: vi.fn(async (shopId: string, _options?: { includeDisabled?: boolean }): Promise<ShopUser[]> => {
+    fetchShopUsersMock: vi.fn(async (shopId: string, options?: { includeDisabled?: boolean }): Promise<ShopUser[]> => {
+      void options
       expect(shopId).toBeTruthy()
       return shopUsers
     }),
@@ -306,7 +308,8 @@ describe("Workflow d'inventaire", () => {
     fetchShopUsersMock.mockReset()
     fetchShopUsersMock.mockResolvedValue(shopUsers)
     fetchLocationsMock.mockReset()
-    fetchLocationsMock.mockImplementation(async (shopId: string, _options?: { includeDisabled?: boolean }): Promise<Location[]> => {
+    fetchLocationsMock.mockImplementation(async (shopId: string, options?: { includeDisabled?: boolean }): Promise<Location[]> => {
+      void options
       expect(shopId).toBeTruthy()
       return [
         { ...reserveLocation },

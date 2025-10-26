@@ -1,5 +1,5 @@
 // src/inventory-web/src/lib/api/http.ts
-import { getInventoryHttpContextSnapshot } from '@/app/contexts/InventoryContext'
+import { getInventoryHttpContextSnapshot } from '@/app/contexts/inventoryHttpContext'
 import { loadSelectedShopUser } from '@/lib/selectedUserStorage'
 import { loadShop } from '@/lib/shopStorage'
 

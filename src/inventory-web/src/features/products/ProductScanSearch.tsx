@@ -137,7 +137,7 @@ export function ProductScanSearch(props: { onPick?: (sku: string) => void }) {
                 <th style={{ textAlign: 'left' }}>Nom</th>
                 <th style={{ textAlign: 'left' }}>Groupe</th>
                 <th style={{ textAlign: 'left' }}>Sous-groupe</th>
-                <th />
+                <th style={{ textAlign: 'left' }}>Actions</th>
               </tr>
             </thead>
             <tbody>

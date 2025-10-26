@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import type { InventoryItem, InventoryLogEntry, InventoryLogEventType, Location, Product } from '../types/inventory'
 
 import type { ShopUser } from '@/types/user'
+import { resetInventoryHttpContextSnapshot, syncInventoryHttpContextSnapshot } from './inventoryHttpContext'
 
 export interface InventoryContextValue {
   selectedUser: ShopUser | null
@@ -48,47 +49,6 @@ const INITIAL_STATE: InventoryState = {
 
 const InventoryContext = createContext<InventoryContextValue | undefined>(undefined)
 
-const sanitizeSessionId = (value: string | null): string | null => {
-  if (typeof value !== 'string') {
-    return null
-  }
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : null
-}
-
-export type InventoryHttpContextSnapshot = {
-  selectedUser: ShopUser | null
-  sessionId: string | null
-}
-
-const DEFAULT_HTTP_CONTEXT_SNAPSHOT: InventoryHttpContextSnapshot = {
-  selectedUser: null,
-  sessionId: null,
-}
-
-let currentHttpContextSnapshot: InventoryHttpContextSnapshot = { ...DEFAULT_HTTP_CONTEXT_SNAPSHOT }
-
-const syncHttpContextSnapshot = (state: InventoryState) => {
-  currentHttpContextSnapshot = {
-    selectedUser: state.selectedUser,
-    sessionId: sanitizeSessionId(state.sessionId),
-  }
-}
-
-export const getInventoryHttpContextSnapshot = (): InventoryHttpContextSnapshot => ({
-  selectedUser: currentHttpContextSnapshot.selectedUser,
-  sessionId: currentHttpContextSnapshot.sessionId,
-})
-
-export const __setInventoryHttpContextSnapshotForTests = (
-  snapshot: InventoryHttpContextSnapshot,
-) => {
-  currentHttpContextSnapshot = {
-    selectedUser: snapshot.selectedUser,
-    sessionId: sanitizeSessionId(snapshot.sessionId),
-  }
-}
-
 const createInventoryItemId = () => {
   if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
     return globalThis.crypto.randomUUID()
@@ -116,12 +76,15 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<InventoryState>(INITIAL_STATE)
 
   useEffect(() => {
-    syncHttpContextSnapshot(state)
+    syncInventoryHttpContextSnapshot({
+      selectedUser: state.selectedUser,
+      sessionId: state.sessionId,
+    })
   }, [state])
 
   useEffect(
     () => () => {
-      syncHttpContextSnapshot(INITIAL_STATE)
+      resetInventoryHttpContextSnapshot()
     },
     [],
   )

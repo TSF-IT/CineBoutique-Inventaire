@@ -44,6 +44,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
+using CineBoutique.Inventory.Api.Infrastructure.Swagger;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -207,25 +208,40 @@ builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new() { Title = "CinéBoutique Inventory API", Version = "v1" });
     c.SupportNonNullableReferenceTypes();
-    var bearerScheme = new OpenApiSecurityScheme
+    var appTokenScheme = new OpenApiSecurityScheme
     {
-        Name = "Authorization",
-        Description = "JWT Bearer authentication",
+        Name = SwaggerSecuritySchemeNames.AppToken,
+        Description = "Token d'application requis via l'en-tête X-App-Token.",
         In = ParameterLocation.Header,
-        Type = SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT",
+        Type = SecuritySchemeType.ApiKey,
         Reference = new OpenApiReference
         {
             Type = ReferenceType.SecurityScheme,
-            Id = "Bearer"
+            Id = SwaggerSecuritySchemeNames.AppToken
         }
     };
-    c.AddSecurityDefinition("Bearer", bearerScheme);
+    c.AddSecurityDefinition(SwaggerSecuritySchemeNames.AppToken, appTokenScheme);
+
+    var adminScheme = new OpenApiSecurityScheme
+    {
+        Name = SwaggerSecuritySchemeNames.Admin,
+        Description = "En-tête X-Admin requis avec la valeur true pour les opérations administrateur.",
+        In = ParameterLocation.Header,
+        Type = SecuritySchemeType.ApiKey,
+        Reference = new OpenApiReference
+        {
+            Type = ReferenceType.SecurityScheme,
+            Id = SwaggerSecuritySchemeNames.Admin
+        }
+    };
+    c.AddSecurityDefinition(SwaggerSecuritySchemeNames.Admin, adminScheme);
+
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
-        { bearerScheme, System.Array.Empty<string>() }
+        { appTokenScheme, System.Array.Empty<string>() }
     });
+
+    c.OperationFilter<AppTokenSecurityRequirementOperationFilter>();
 
     var asmName = System.Reflection.Assembly.GetExecutingAssembly().GetName().Name;
     var xmlPath = System.IO.Path.Combine(AppContext.BaseDirectory, $"{asmName}.xml");
