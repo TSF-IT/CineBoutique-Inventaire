@@ -151,7 +151,8 @@ internal static class AdminEndpoints
                    op.Summary = "Met à jour un produit par SKU (POST compat).";
                    op.Description = "Modifie le nom et/ou l'EAN du produit identifié par son SKU.";
                    return op;
-               });
+               })
+               .RequireAuthorization("Admin");
 
             app.MapPut("/api/products/{code}", updateBySku)
                .WithName("UpdateProductBySku")
@@ -159,7 +160,8 @@ internal static class AdminEndpoints
                .Produces<ProductDto>(StatusCodes.Status200OK)
                .Produces(StatusCodes.Status400BadRequest)
                .Produces(StatusCodes.Status404NotFound)
-               .Produces(StatusCodes.Status409Conflict);
+               .Produces(StatusCodes.Status409Conflict)
+               .RequireAuthorization("Admin");
 
             // --- MAJ par Id (GUID) ---
 
@@ -249,7 +251,8 @@ internal static class AdminEndpoints
                .Produces<ProductDto>(StatusCodes.Status200OK)
                .Produces(StatusCodes.Status400BadRequest)
                .Produces(StatusCodes.Status404NotFound)
-               .Produces(StatusCodes.Status409Conflict);
+               .Produces(StatusCodes.Status409Conflict)
+               .RequireAuthorization("Admin");
 
             app.MapPut("/api/products/by-id/{id:guid}", updateById)
                .WithName("UpdateProductById")
@@ -257,7 +260,8 @@ internal static class AdminEndpoints
                .Produces<ProductDto>(StatusCodes.Status200OK)
                .Produces(StatusCodes.Status400BadRequest)
                .Produces(StatusCodes.Status404NotFound)
-               .Produces(StatusCodes.Status409Conflict);
+               .Produces(StatusCodes.Status409Conflict)
+               .RequireAuthorization("Admin");
         }
 
         private static void MapCreateProductEndpoint(IEndpointRouteBuilder app)
@@ -396,7 +400,8 @@ internal static class AdminEndpoints
                 op.Summary = "Crée un nouveau produit.";
                 op.Description = "Permet l'ajout manuel d'un produit en spécifiant son SKU, son nom et éventuellement un code EAN.";
                 return op;
-            });
+            })
+            .RequireAuthorization("Admin");
         }
 
         private static void MapSearchProductsEndpoint(IEndpointRouteBuilder app)
@@ -519,7 +524,8 @@ internal static class AdminEndpoints
                 };
 
                 return operation;
-            });
+            })
+            .RequireAuthorization("Admin");
         }
 
         private static void MapGetProductEndpoint(IEndpointRouteBuilder app)
@@ -601,7 +607,8 @@ internal static class AdminEndpoints
                 op.Summary = "Recherche un produit par code scanné (SKU, code brut, chiffres).";
                 op.Description = "Résout d'abord par SKU exact, puis par code brut (EAN/Code) et enfin par chiffres extraits. Retourne 409 en cas de collisions sur CodeDigits.";
                 return op;
-            });
+            })
+            .RequireAuthorization("Admin");
         }
 
         private static async Task LogProductCreationAttemptAsync(

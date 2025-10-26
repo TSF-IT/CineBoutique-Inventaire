@@ -4,12 +4,14 @@ using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Services;
 using CineBoutique.Inventory.Api.Services.Exceptions;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace CineBoutique.Inventory.Api.Controllers;
 
 [ApiController]
+[Authorize("Admin")]
 [Route("api/[controller]")]
 public sealed class ShopsController : ControllerBase
 {

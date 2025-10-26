@@ -105,7 +105,7 @@ internal static class ImportEndpoints
                     _                                                                          => Results.Ok(result.Response)
                 };
             }
-        }).RequireAuthorization();
+        }).RequireAuthorization("Admin");
 
         app.MapGet("/api/shops/{shopId:guid}/products/import/status", async (
             System.Guid shopId,
@@ -122,7 +122,7 @@ internal static class ImportEndpoints
                 lockReason = hasCountLines ? "counting_started" : null,
                 hasCountLines
             });
-        }).RequireAuthorization();
+        }).RequireAuthorization("Admin");
     }
 
     private static ProductImportMode ParseImportMode(string? mode)
