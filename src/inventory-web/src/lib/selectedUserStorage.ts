@@ -172,6 +172,16 @@ export const loadSelectedUserForShop = (shopId: string): StoredSelectedUserSnaps
   return null
 }
 
+export const loadSelectedShopUser = (shopId: string): ShopUser | null => {
+  const snapshot = loadSelectedUserForShop(shopId)
+  if (!snapshot) {
+    return null
+  }
+
+  const fallbackShopId = sanitizeString(shopId) || shopId
+  return toShopUserFromSnapshot(snapshot, fallbackShopId)
+}
+
 export const clearSelectedUserForShop = (shopId: string) => {
   const storage = getSessionStorage()
   if (!storage) {

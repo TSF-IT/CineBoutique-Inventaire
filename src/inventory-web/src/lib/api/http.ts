@@ -1,4 +1,6 @@
 // src/inventory-web/src/lib/api/http.ts
+import { getInventoryHttpContextSnapshot } from '@/app/contexts/InventoryContext'
+import { loadSelectedShopUser } from '@/lib/selectedUserStorage'
 import { loadShop } from '@/lib/shopStorage'
 
 export interface HttpError extends Error {
@@ -75,6 +77,77 @@ const shouldJsonStringify = (value: unknown): value is Record<string, unknown> |
   return isPlainObject(value)
 }
 
+const sanitizeHeaderValue = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null
+  }
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+export function buildHeaders(input?: HeadersInit): Headers {
+  const headers = new Headers(input ?? {})
+
+  const appToken = sanitizeHeaderValue((import.meta.env as { VITE_APP_TOKEN?: unknown })?.VITE_APP_TOKEN ?? null)
+  if (appToken && !headers.has('X-App-Token')) {
+    headers.set('X-App-Token', appToken)
+  }
+
+  const httpContext = getInventoryHttpContextSnapshot()
+  const contextUser = httpContext.selectedUser ?? null
+  const contextSessionId = sanitizeHeaderValue(httpContext.sessionId)
+
+  let shopId: string | null = null
+  let operator = contextUser ?? null
+
+  try {
+    const shop = loadShop()
+    shopId = sanitizeHeaderValue(shop?.id ?? null)
+  } catch {
+    shopId = null
+  }
+
+  if (!operator && shopId) {
+    operator = loadSelectedShopUser(shopId)
+  }
+
+  const operatorId = operator ? sanitizeHeaderValue(operator.id) : null
+  const operatorDisplayName = operator ? sanitizeHeaderValue(operator.displayName) : null
+  const operatorLogin = operator ? sanitizeHeaderValue(operator.login) : null
+  const operatorShopId = operator ? sanitizeHeaderValue(operator.shopId) ?? shopId : shopId
+  const preferredOperatorName = operatorDisplayName ?? operatorLogin ?? operatorId
+
+  if (operator && operatorId) {
+    headers.set('X-Operator-Id', operatorId)
+  }
+
+  if (operator && preferredOperatorName) {
+    headers.set('X-Operator-Name', preferredOperatorName)
+  }
+
+  if (operator && operatorLogin) {
+    headers.set('X-Operator-Login', operatorLogin)
+  }
+
+  if (operator && operatorShopId) {
+    headers.set('X-Operator-ShopId', operatorShopId)
+  }
+
+  if (operator) {
+    headers.delete('X-Admin')
+    if (operator.isAdmin) {
+      headers.set('X-Admin', 'true')
+    }
+  }
+
+  const sessionId = contextSessionId ?? null
+  if (sessionId) {
+    headers.set('X-Session-Id', sessionId)
+  }
+
+  return headers
+}
+
 export default async function http<TBody = unknown>(
   url: string,
   init: HttpRequestInit<TBody> = {},
@@ -97,7 +170,7 @@ export default async function http<TBody = unknown>(
   }
 
   // 2) Préparer les headers et le body
-  const headers = new Headers(init.headers ?? {})
+  const headers = buildHeaders(init.headers)
   const rawBody = init.body
   let body: BodyInit | null | undefined = rawBody as BodyInit | null | undefined
 
