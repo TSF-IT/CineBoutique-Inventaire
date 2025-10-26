@@ -1,3 +1,4 @@
+using System;
 using CineBoutique.Inventory.Domain.Auditing;
 using CineBoutique.Inventory.Infrastructure.Auditing;
 using CineBoutique.Inventory.Infrastructure.Database;
@@ -27,8 +28,19 @@ public static class ServiceCollectionExtensions
         }
 
         services.AddSingleton(new DatabaseOptions(connectionString));
+        services.AddSingleton(sp =>
+        {
+            var builder = new NpgsqlDataSourceBuilder(connectionString);
+
+            var csb = builder.ConnectionStringBuilder;
+            csb.Pooling = true;
+
+            builder.EnableRetry(maxAttempts: 5, maxDelay: TimeSpan.FromSeconds(5));
+
+            return builder.Build();
+        });
         services.AddSingleton<IDbConnectionFactory, NpgsqlConnectionFactory>();
-        services.AddScoped<NpgsqlConnection>(_ => new NpgsqlConnection(connectionString));
+        services.AddScoped<NpgsqlConnection>(sp => sp.GetRequiredService<NpgsqlDataSource>().CreateConnection());
 
         services
             .AddFluentMigratorCore()

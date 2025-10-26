@@ -263,6 +263,21 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc{ownerValue}{oper
         };
     }
 
+    public Task<CompleteRunResult> CompleteRunAsync(CompleteRunParameters parameters, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+
+        return Task.FromResult(new CompleteRunResult
+        {
+            Error = new RepositoryError
+            {
+                Title = "Fonctionnalité non disponible",
+                Detail = "CompleteRunAsync n'est pas encore implémenté.",
+                StatusCode = 500
+            }
+        });
+    }
+
     private static string? Normalize(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 

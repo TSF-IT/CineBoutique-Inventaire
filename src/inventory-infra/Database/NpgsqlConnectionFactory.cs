@@ -4,22 +4,20 @@ namespace CineBoutique.Inventory.Infrastructure.Database;
 
 public sealed class NpgsqlConnectionFactory : IDbConnectionFactory
 {
-    private readonly DatabaseOptions _options;
+    private readonly NpgsqlDataSource _dataSource;
 
-    public NpgsqlConnectionFactory(DatabaseOptions options)
+    public NpgsqlConnectionFactory(NpgsqlDataSource dataSource)
     {
-        _options = options ?? throw new ArgumentNullException(nameof(options));
+        _dataSource = dataSource ?? throw new ArgumentNullException(nameof(dataSource));
     }
 
     public NpgsqlConnection CreateConnection()
     {
-        return new NpgsqlConnection(_options.ConnectionString);
+        return _dataSource.CreateConnection();
     }
 
     public async Task<NpgsqlConnection> CreateOpenConnectionAsync(CancellationToken cancellationToken)
     {
-        var connection = CreateConnection();
-        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-        return connection;
+        return await _dataSource.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
     }
 }
