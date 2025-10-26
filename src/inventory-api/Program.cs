@@ -525,6 +525,8 @@ else
     app.UseCors(PublicApiCorsPolicy);
 }
 
+app.UseMiddleware<AppTokenGuardMiddleware>();
+
 if (app.Environment.IsDevelopment() || app.Environment.IsEnvironment("Testing"))
 {
     app.UseSwagger();
