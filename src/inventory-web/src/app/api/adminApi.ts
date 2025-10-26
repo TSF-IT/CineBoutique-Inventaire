@@ -18,9 +18,11 @@ export const createLocation = async (payload: LocationPayload): Promise<Location
   return data as Location
 }
 
+type LocationUpdatePayload = LocationPayload & { disabled?: boolean }
+
 export const updateLocation = async (
   id: string,
-  payload: Partial<LocationPayload>,
+  payload: Partial<LocationUpdatePayload>,
 ): Promise<Location> => {
   const data = await http(`${API_BASE}/locations/${id}`, {
     method: 'PUT',
@@ -52,7 +54,7 @@ type ShopUserPayload = {
   isAdmin: boolean
 }
 
-type ShopUserUpdatePayload = ShopUserPayload & { id: string }
+type ShopUserUpdatePayload = ShopUserPayload & { id: string; disabled?: boolean }
 
 export const createShopUser = async (shopId: string, payload: ShopUserPayload): Promise<ShopUser> => {
   const data = await http(buildShopUsersUrl(shopId), {

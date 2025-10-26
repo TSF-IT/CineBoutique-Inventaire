@@ -1152,18 +1152,21 @@ type LocationListItemProps = {
     payload: { code: string; label: string }
   ) => Promise<void>;
   onDisable: (id: string) => Promise<void>;
+  onEnable: (id: string) => Promise<void>;
 };
 
 const LocationListItem = ({
   location,
   onSave,
   onDisable,
+  onEnable,
 }: LocationListItemProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [code, setCode] = useState(location.code);
   const [label, setLabel] = useState(location.label);
   const [saving, setSaving] = useState(false);
   const [isDisabling, setIsDisabling] = useState(false);
+  const [isEnabling, setIsEnabling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const disableConfirmationDialogRef = useRef<HTMLDialogElement | null>(null);
   const disableConfirmButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -1254,6 +1257,23 @@ const LocationListItem = ({
     }
   };
 
+  const handleEnable = async () => {
+    if (!isDisabled || isEnabling) {
+      return;
+    }
+    setError(null);
+    setIsEnabling(true);
+    try {
+      await onEnable(location.id);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Impossible de réactiver la zone.";
+      setError(message);
+    } finally {
+      setIsEnabling(false);
+    }
+  };
+
   return (
     <div
       data-testid="location-card"
@@ -1329,16 +1349,25 @@ const LocationListItem = ({
               variant="secondary"
               onClick={() => setIsEditing(true)}
               className="sm:self-start"
-              disabled={isDisabled || saving || isDisabling}
+              disabled={isDisabled || saving || isDisabling || isEnabling}
             >
               Modifier
             </Button>
-            {!isDisabled && (
+            {isDisabled ? (
+              <Button
+                variant="ghost"
+                className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+                onClick={handleEnable}
+                disabled={saving || isDisabling || isEnabling}
+              >
+                Réactiver
+              </Button>
+            ) : (
               <Button
                 variant="ghost"
                 className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                 onClick={handleOpenDisableDialog}
-                disabled={saving || isDisabling}
+                disabled={saving || isDisabling || isEnabling}
               >
                 Désactiver
               </Button>
@@ -1401,15 +1430,17 @@ type UserListItemProps = {
     payload: { login: string; displayName: string; isAdmin: boolean }
   ) => Promise<void>;
   onDisable: (id: string) => Promise<void>;
+  onEnable: (id: string) => Promise<void>;
 };
 
-const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
+const UserListItem = ({ user, onSave, onDisable, onEnable }: UserListItemProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [login, setLogin] = useState(user.login);
   const [displayName, setDisplayName] = useState(user.displayName);
   const [isAdmin, setIsAdmin] = useState(user.isAdmin);
   const [saving, setSaving] = useState(false);
   const [disabling, setDisabling] = useState(false);
+  const [enabling, setEnabling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const disableConfirmationDialogRef = useRef<HTMLDialogElement | null>(null);
   const disableConfirmButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -1522,6 +1553,23 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
     void performDisable();
   }, [performDisable]);
 
+  const handleEnable = useCallback(async () => {
+    if (!isDisabled || enabling) {
+      return;
+    }
+    setError(null);
+    setEnabling(true);
+    try {
+      await onEnable(user.id);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "La réactivation a échoué.";
+      setError(message);
+    } finally {
+      setEnabling(false);
+    }
+  }, [enabling, isDisabled, onEnable, user.id]);
+
   return (
     <div
       className={clsx(
@@ -1545,7 +1593,7 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
               autoComplete="off"
               autoCorrect="off"
               spellCheck={false}
-              disabled={saving || disabling}
+              disabled={saving || disabling || enabling}
             />
             <Input
               label="Nom affiché"
@@ -1554,7 +1602,7 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
               onChange={(event) => setDisplayName(event.target.value)}
               containerClassName="flex-1"
               autoComplete="name"
-              disabled={saving || disabling}
+              disabled={saving || disabling || enabling}
             />
           </div>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1564,7 +1612,7 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
                 checked={isAdmin}
                 onChange={(event) => setIsAdmin(event.target.checked)}
                 className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500 dark:border-slate-600"
-                disabled={saving || disabling}
+                disabled={saving || disabling || enabling}
               />
               Administrateur
             </label>
@@ -1572,7 +1620,7 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
               <Button
                 type="submit"
                 className="py-3"
-                disabled={saving || disabling}
+                disabled={saving || disabling || enabling}
               >
                 {saving ? "Enregistrement…" : "Enregistrer"}
               </Button>
@@ -1580,7 +1628,7 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
                 type="button"
                 variant="ghost"
                 onClick={handleCancel}
-                disabled={saving || disabling}
+                disabled={saving || disabling || enabling}
               >
                 Annuler
               </Button>
@@ -1614,23 +1662,28 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
             <Button
               variant="secondary"
               onClick={() => setIsEditing(true)}
-              disabled={isDisabled || saving || disabling}
+              disabled={isDisabled || saving || disabling || enabling}
             >
               Modifier
             </Button>
-            {!isDisabled ? (
+            {isDisabled ? (
+              <Button
+                variant="ghost"
+                className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-300"
+                onClick={handleEnable}
+                disabled={saving || disabling || enabling}
+              >
+                Réactiver
+              </Button>
+            ) : (
               <Button
                 variant="ghost"
                 className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                 onClick={handleOpenDisableDialog}
-                disabled={saving || disabling}
+                disabled={saving || disabling || enabling}
               >
                 Désactiver
               </Button>
-            ) : (
-              <span className="text-sm text-slate-500 dark:text-slate-400">
-                Compte désactivé
-              </span>
             )}
           </div>
           {error && (
@@ -1785,6 +1838,25 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
     }
   };
 
+  const handleEnableLocation = async (id: string) => {
+    setLocationFeedback(null);
+    try {
+      const enabled = await updateLocation(id, { disabled: false });
+      setData(
+        (prev) =>
+          prev?.map((item) => (item.id === enabled.id ? enabled : item)) ?? []
+      );
+      setLocationFeedback({ type: "success", message: "Zone réactivée." });
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Impossible de réactiver cette zone.";
+      setLocationFeedback({ type: "error", message });
+      throw new Error(message);
+    }
+  };
+
   const handleUpdateLocation = async (
     id: string,
     payload: { code: string; label: string }
@@ -1902,6 +1974,7 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
                 location={locationItem}
                 onSave={handleUpdateLocation}
                 onDisable={handleDisableLocation}
+                onEnable={handleEnableLocation}
               />
             ))
           )}
@@ -2079,6 +2152,44 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
     }
   };
 
+  const handleEnableUser = async (id: string): Promise<void> => {
+    setUserFeedback(null);
+    if (!shop?.id) {
+      const message = "Boutique introuvable. Veuillez recharger la page.";
+      setUserFeedback({ type: "error", message });
+      throw new Error(message);
+    }
+
+    const currentUser = data?.find((item) => item.id === id);
+    if (!currentUser) {
+      const message = "Utilisateur introuvable dans la liste locale.";
+      setUserFeedback({ type: "error", message });
+      throw new Error(message);
+    }
+
+    try {
+      const enabled = await updateShopUser(shop.id, {
+        id,
+        login: currentUser.login,
+        displayName: currentUser.displayName,
+        isAdmin: currentUser.isAdmin,
+        disabled: false,
+      });
+      setData(
+        (prev) =>
+          prev?.map((item) => (item.id === enabled.id ? enabled : item)) ?? []
+      );
+      setUserFeedback({ type: "success", message: "Utilisateur réactivé." });
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Impossible de réactiver l'utilisateur.";
+      setUserFeedback({ type: "error", message });
+      throw new Error(message);
+    }
+  };
+
   const handleRefresh = () => {
     if (!shop?.id) {
       setUserFeedback({
@@ -2201,6 +2312,7 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
                 user={user}
                 onSave={handleUpdateUser}
                 onDisable={handleDisableUser}
+                onEnable={handleEnableUser}
               />
             ))
           )}
