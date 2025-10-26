@@ -25,6 +25,7 @@ import {
   decodeCsvBuffer,
   type CsvEncoding,
 } from "@/features/import/csvEncoding";
+import { normalizeKey } from "@/features/import/csvMapping";
 import { useShop } from "@/state/ShopContext";
 import type { ShopUser } from "@/types/user";
 
@@ -120,14 +121,30 @@ const encodingLabelFor = (encoding: string | null | undefined) => {
 };
 
 type ImportSummary = {
+  total: number | null;
   inserted: number;
+  updated: number | null;
   errorCount: number;
+  warningCount: number;
+  alreadyPresent: number;
   unknownColumns: string[];
   encoding?: string | null;
+  mode: "replace" | "merge";
+};
+
+type ImportResultSeverity = "success" | "warning" | "error";
+
+type CatalogImportResultFeedback = {
+  type: "result";
+  severity: ImportResultSeverity;
+  message: string;
+  summary: ImportSummary;
+  errorDetails: string[];
+  warningDetails: string[];
 };
 
 type CatalogImportFeedback =
-  | { type: "success"; summary: ImportSummary }
+  | CatalogImportResultFeedback
   | { type: "info"; message: string }
   | { type: "error"; message: string; details?: string[] };
 
@@ -305,6 +322,251 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
       .filter((item): item is string => item.length > 0);
   };
 
+  const toSkippedLineList = (value: unknown): string[] => {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value
+      .map((entry) => {
+        if (typeof entry === "string") {
+          const trimmed = entry.trim();
+          return trimmed.length > 0 ? trimmed : "";
+        }
+
+        if (entry && typeof entry === "object") {
+          const record = entry as Record<string, unknown>;
+          const lineNumber = toInteger(record.line ?? record.Line);
+          const reason =
+            typeof record.reason === "string"
+              ? record.reason
+              : typeof record.Reason === "string"
+              ? record.Reason
+              : "";
+          const rawValue =
+            typeof record.raw === "string"
+              ? record.raw
+              : typeof record.Raw === "string"
+              ? record.Raw
+              : "";
+
+          const parts: string[] = [];
+          if (lineNumber > 0) {
+            parts.push(`Ligne ${lineNumber}`);
+          }
+          if (reason) {
+            parts.push(reason);
+          }
+          if (parts.length === 0 && rawValue) {
+            parts.push(rawValue);
+          }
+
+          return parts.join(" — ").trim();
+        }
+
+        return "";
+      })
+      .filter((entry): entry is string => entry.length > 0);
+  };
+
+  const toDuplicateWarningList = (value: unknown): string[] => {
+    if (!value || typeof value !== "object") {
+      return [];
+    }
+
+    const record = value as Record<string, unknown>;
+    const entries = new Set<string>();
+
+    const normalizeLines = (linesValue: unknown): number[] => {
+      if (!Array.isArray(linesValue)) {
+        return [];
+      }
+      return linesValue
+        .map((item) => {
+          if (typeof item === "number" && Number.isFinite(item)) {
+            return Math.trunc(item);
+          }
+          if (typeof item === "string") {
+            const parsed = Number.parseInt(item, 10);
+            return Number.isNaN(parsed) ? null : parsed;
+          }
+          return null;
+        })
+        .filter((item): item is number => item !== null);
+    };
+
+    const collect = (rawList: unknown, label: "SKU" | "EAN") => {
+      if (!Array.isArray(rawList)) {
+        return;
+      }
+      rawList.forEach((entry) => {
+        if (typeof entry === "string") {
+          const formatted = entry.trim();
+          if (formatted.length > 0) {
+            entries.add(
+              label === "SKU"
+                ? `Doublon SKU ${formatted}`
+                : `Doublon EAN ${formatted}`
+            );
+          }
+          return;
+        }
+
+        if (!entry || typeof entry !== "object") {
+          return;
+        }
+        const item = entry as Record<string, unknown>;
+        const valueText =
+          typeof item.value === "string"
+            ? item.value
+            : typeof item.Value === "string"
+            ? item.Value
+            : "";
+        if (!valueText) {
+          return;
+        }
+        const lines = normalizeLines(item.lines ?? item.Lines);
+        const suffix =
+          lines.length > 0 ? ` (lignes ${lines.join(", ")})` : "";
+        const prefix = label === "SKU" ? "Doublon SKU" : "Doublon EAN";
+        entries.add(`${prefix} ${valueText}${suffix}`);
+      });
+    };
+
+    collect(record.skus ?? record.Skus, "SKU");
+    collect(record.eans ?? record.Eans, "EAN");
+
+    return Array.from(entries);
+  };
+
+  const splitCsvLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = "";
+    let inQuotes = false;
+    for (let index = 0; index < line.length; index += 1) {
+      const char = line[index];
+      if (char === '"') {
+        if (inQuotes && index + 1 < line.length && line[index + 1] === '"') {
+          current += '"';
+          index += 1;
+        } else {
+          inQuotes = !inQuotes;
+        }
+        continue;
+      }
+      if (char === ";" && !inQuotes) {
+        result.push(current);
+        current = "";
+        continue;
+      }
+      current += char;
+    }
+    result.push(current);
+    return result;
+  };
+
+  type MissingCsvValue = { line: number; raw: string; reason: string };
+
+  const sanitizeCsvForImport = (
+    text: string
+  ): { sanitizedText: string; missingEanRecords: MissingCsvValue[] } => {
+    const normalizedText = text.replace(/\r/g, "");
+    const lines = normalizedText.split("\n");
+    const sanitizedLines: string[] = [];
+    const missingEanRecords: MissingCsvValue[] = [];
+
+    let headerFields: string[] | null = null;
+    let headerLength = 0;
+    let eanIndex: number | null = null;
+    let headerLine: string | null = null;
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const rawLine = lines[index];
+      const trimmed = rawLine.trim();
+
+      if (!headerFields) {
+        if (trimmed.length === 0) {
+          continue;
+        }
+        headerLine = rawLine;
+        sanitizedLines.push(rawLine);
+
+        const parts = splitCsvLine(rawLine);
+        headerFields = parts;
+        headerLength = parts.length;
+        const headerMap = new Map<string, number>();
+        parts.forEach((value, position) => {
+          const normalized = normalizeKey(value);
+          if (!normalized || headerMap.has(normalized)) {
+            return;
+          }
+          headerMap.set(normalized, position);
+        });
+
+        eanIndex = headerMap.get("ean") ?? null;
+        continue;
+      }
+
+      if (trimmed.length === 0) {
+        continue;
+      }
+
+      const parts = splitCsvLine(rawLine);
+      while (parts.length < headerLength) {
+        parts.push("");
+      }
+
+      if (
+        eanIndex !== null &&
+        eanIndex < parts.length &&
+        (parts[eanIndex] ?? "").trim().length === 0
+      ) {
+        missingEanRecords.push({
+          line: index + 1,
+          raw: rawLine,
+          reason: "EAN manquant",
+        });
+        continue;
+      }
+
+      sanitizedLines.push(rawLine);
+    }
+
+    if (sanitizedLines.length === 0 && headerLine) {
+      sanitizedLines.push(headerLine);
+    }
+
+    return {
+      sanitizedText:
+        sanitizedLines.length > 0 ? sanitizedLines.join("\n") : normalizedText,
+      missingEanRecords,
+    };
+  };
+
+  const readFileAsArrayBuffer = async (input: File): Promise<ArrayBuffer> => {
+    if (typeof input.arrayBuffer === "function") {
+      return input.arrayBuffer();
+    }
+
+    return await new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (reader.result instanceof ArrayBuffer) {
+          resolve(reader.result);
+          return;
+        }
+        if (typeof reader.result === "string") {
+          resolve(new TextEncoder().encode(reader.result).buffer);
+          return;
+        }
+        reject(new Error("Lecture du fichier impossible."));
+      };
+      reader.onerror = () => {
+        reject(reader.error ?? new Error("Lecture du fichier impossible."));
+      };
+      reader.readAsArrayBuffer(input);
+    });
+  };
+
   const parseJson = (text: string) => {
     try {
       return JSON.parse(text) as Record<string, unknown>;
@@ -342,16 +604,23 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
       return;
     }
 
+    const modeUsed = importMode;
     setSubmitting(true);
     try {
       const fd = new FormData();
-      const buffer = await file.arrayBuffer();
+      const buffer = await readFileAsArrayBuffer(file);
       const decoded = decodeCsvBuffer(buffer, selectedEncoding);
+      const sanitization = sanitizeCsvForImport(decoded.text);
+      const missingEanRecords = sanitization.missingEanRecords;
       const normalizedEncoding =
         selectedEncoding === "auto"
           ? decoded.detectedEncoding
           : selectedEncoding;
-      const utf8File = new File([decoded.text], file.name, {
+      const payloadText =
+        sanitization.sanitizedText.trim().length > 0
+          ? sanitization.sanitizedText
+          : decoded.text;
+      const utf8File = new File([payloadText], file.name, {
         type: "text/csv;charset=utf-8",
       });
 
@@ -368,36 +637,81 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
       const record = (payload ?? {}) as Record<string, unknown>;
 
       if (response.status === 200) {
+        const missingEanDetails = missingEanRecords.map(
+          (record) => `Ligne ${record.line} — ${record.reason}`
+        );
         const responseErrors = [
           ...toImportErrorList(record.errors),
           ...toImportErrorList(record.Errors),
         ];
-
-        const errorCount = Math.max(
-          toInteger(record.errorCount),
-          toInteger(record.ErrorCount)
+        const skippedLines = [
+          ...toSkippedLineList(record.skippedLines),
+          ...toSkippedLineList(record.SkippedLines),
+        ];
+        const errorDetails = Array.from(
+          new Set([...responseErrors, ...skippedLines, ...missingEanDetails])
         );
 
-        if (responseErrors.length > 0 || errorCount > 0) {
-          setFeedback({
-            type: "error",
-            message:
-              responseErrors.length > 0
-                ? "Certaines lignes n'ont pas pu être importées."
-                : "Le serveur a signalé des erreurs pendant l'import.",
-            details: responseErrors.length > 0 ? responseErrors : undefined,
-          });
-          return;
-        }
+        const duplicateWarnings = toDuplicateWarningList(
+          record.duplicates ?? record.Duplicates
+        );
+        const messageWarnings = [
+          ...toStringList(record.warningMessages),
+          ...toStringList(record.WarningMessages),
+          ...toStringList(record.warnings),
+          ...toStringList(record.Warnings),
+        ];
+        const warningDetails = Array.from(
+          new Set([...duplicateWarnings, ...messageWarnings])
+        );
+
+        const errorCount = errorDetails.length;
+        const warningCount = warningDetails.length;
 
         const insertedCount = Math.max(
           toInteger(record.inserted),
           toInteger(record.Inserted)
         );
-        const fallbackTotal = Math.max(
-          toInteger(record.total),
-          toInteger(record.Total)
+        const updatedCount = Math.max(
+          toInteger(record.updated),
+          toInteger(record.Updated)
         );
+        const totalFromRecord = (() => {
+          const candidates: unknown[] = [record.total, record.Total];
+          for (const candidate of candidates) {
+            if (
+              typeof candidate === "number" ||
+              (typeof candidate === "string" && candidate.trim().length > 0)
+            ) {
+              return toInteger(candidate);
+            }
+          }
+          return null;
+        })();
+        const totalCount =
+          totalFromRecord ??
+          (insertedCount > 0 || updatedCount > 0 || errorDetails.length > 0
+            ? insertedCount + Math.max(updatedCount, 0) + errorDetails.length
+            : null);
+        const effectiveInserted =
+          insertedCount > 0
+            ? insertedCount
+            : totalCount !== null
+            ? Math.max(
+                totalCount - Math.max(updatedCount, 0) - errorDetails.length,
+                0
+              )
+            : 0;
+        const alreadyPresentCount =
+          totalCount !== null
+            ? Math.max(
+                totalCount -
+                  effectiveInserted -
+                  Math.max(updatedCount, 0) -
+                  errorDetails.length,
+                0
+              )
+            : 0;
         const unknownColumns = Array.from(
           new Set([
             ...toStringList(record.unknownColumns),
@@ -405,12 +719,53 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
           ])
         );
         const summary: ImportSummary = {
-          inserted: insertedCount > 0 ? insertedCount : fallbackTotal,
+          total: totalCount,
+          inserted: effectiveInserted,
+          updated: updatedCount > 0 ? updatedCount : null,
           errorCount,
+          warningCount,
+          alreadyPresent: alreadyPresentCount,
           unknownColumns,
           encoding: encodingLabelFor(normalizedEncoding),
+          mode: modeUsed,
         };
-        setFeedback({ type: "success", summary });
+
+        if (errorCount > 0) {
+          setFeedback({
+            type: "result",
+            severity: "error",
+            message:
+              "Import terminé avec erreurs. Les lignes listées n'ont pas été importées.",
+            summary,
+            errorDetails,
+            warningDetails,
+          });
+          return;
+        }
+
+        if (warningCount > 0) {
+          setFeedback({
+            type: "result",
+            severity: "warning",
+            message:
+              "Import terminé avec avertissements. Les éléments listés ont été importés.",
+            summary,
+            errorDetails,
+            warningDetails,
+          });
+          resetFileInput();
+          await fetchImportStatus();
+          return;
+        }
+
+        setFeedback({
+          type: "result",
+          severity: "success",
+          message: "Import terminé avec succès.",
+          summary,
+          errorDetails,
+          warningDetails,
+        });
         resetFileInput();
         await fetchImportStatus();
         return;
@@ -641,71 +996,16 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
           </Button>
         </div>
       </form>
-      {feedback && (
-        <div
-          role={feedback.type === "error" ? "alert" : "status"}
-          className={clsx(
-            "rounded-lg border p-4 text-sm",
-            feedback.type === "success" &&
-              "border-emerald-200 bg-emerald-50 text-emerald-800",
-            feedback.type === "info" &&
-              "border-slate-200 bg-slate-50 text-slate-700",
-            feedback.type === "error" && "border-red-200 bg-red-50 text-red-700"
-          )}
-        >
-          {feedback.type === "success" ? (
-            <div className="space-y-3">
-              <p className="font-medium">Import terminé avec succès.</p>
-              <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-                <div>
-                  <dt className="font-medium text-slate-700">
-                    Produits importés
-                  </dt>
-                  <dd className="text-slate-600">
-                    {feedback.summary.inserted}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="font-medium text-slate-700">
-                    Erreurs détectées
-                  </dt>
-                  <dd className="text-slate-600">
-                    {feedback.summary.errorCount}
-                  </dd>
-                </div>
-                {feedback.summary.encoding && (
-                  <div>
-                    <dt className="font-medium text-slate-700">
-                      Encodage utilisé
-                    </dt>
-                    <dd className="text-slate-600">
-                      {feedback.summary.encoding}
-                    </dd>
-                  </div>
-                )}
-              </dl>
-              {feedback.summary.unknownColumns.length > 0 && (
-                <div className="space-y-2">
-                  <p className="font-medium text-slate-700">
-                    Colonnes inconnues
-                  </p>
-                  <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
-                    {feedback.summary.unknownColumns.map((column) => (
-                      <li
-                        key={column}
-                        className="max-w-full truncate"
-                        title={column}
-                      >
-                        {column}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          ) : feedback.type === "info" ? (
+      {feedback &&
+        (feedback.type === "info" ? (
+          <div
+            role="status"
+            className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200"
+          >
             <p className="font-medium">{feedback.message}</p>
-          ) : (
+          </div>
+        ) : feedback.type === "error" ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-400/40 dark:bg-red-900/30 dark:text-red-100" role="alert">
             <div className="space-y-2">
               <p className="font-medium">{feedback.message}</p>
               {feedback.details && feedback.details.length > 0 && (
@@ -718,9 +1018,129 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
                 </ul>
               )}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        ) : (
+          <div
+            role={feedback.severity === "error" ? "alert" : "status"}
+            className={clsx(
+              "rounded-lg border p-4 text-sm",
+              feedback.severity === "success" &&
+                "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-400/40 dark:bg-emerald-900/20 dark:text-emerald-100",
+              feedback.severity === "warning" &&
+                "border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-400/10 dark:text-amber-200",
+              feedback.severity === "error" &&
+                "border-red-200 bg-red-50 text-red-700 dark:border-red-400/40 dark:bg-red-900/30 dark:text-red-100"
+            )}
+          >
+            <div className="space-y-3">
+              <p className="font-medium">{feedback.message}</p>
+              <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                {feedback.summary.total !== null && (
+                  <div>
+                    <dt className="font-medium text-slate-700 dark:text-slate-200">
+                      Total lignes
+                    </dt>
+                    <dd className="text-slate-600 dark:text-slate-300">
+                      {feedback.summary.total}
+                    </dd>
+                  </div>
+                )}
+                <div>
+                  <dt className="font-medium text-slate-700 dark:text-slate-200">
+                    Produits ajoutés
+                  </dt>
+                  <dd className="text-slate-600 dark:text-slate-300">
+                    {feedback.summary.inserted}
+                  </dd>
+                </div>
+                {feedback.summary.mode === "merge" &&
+                  feedback.summary.alreadyPresent > 0 && (
+                  <div>
+                    <dt className="font-medium text-slate-700 dark:text-slate-200">
+                      Déjà présents dans le catalogue
+                    </dt>
+                    <dd className="text-slate-600 dark:text-slate-300">
+                      {feedback.summary.alreadyPresent}
+                    </dd>
+                  </div>
+                )}
+                {feedback.summary.mode === "merge" &&
+                  feedback.summary.alreadyPresent > 0 && (
+                  <div>
+                    <dt className="font-medium text-slate-700 dark:text-slate-200">
+                      Déjà présents en base
+                    </dt>
+                    <dd className="text-slate-600 dark:text-slate-300">
+                      {feedback.summary.alreadyPresent}
+                    </dd>
+                  </div>
+                )}
+                {feedback.summary.encoding && (
+                  <div>
+                    <dt className="font-medium text-slate-700 dark:text-slate-200">
+                      Encodage utilisé
+                    </dt>
+                    <dd className="text-slate-600 dark:text-slate-300">
+                      {feedback.summary.encoding}
+                    </dd>
+                  </div>
+                )}
+              </dl>
+              {feedback.summary.unknownColumns.length > 0 && (
+                <div className="space-y-2">
+                  <p className="font-medium">Colonnes inconnues</p>
+                  <ul className="list-disc space-y-1 pl-5 text-sm">
+                    {feedback.summary.unknownColumns.map((column) => (
+                      <li
+                        key={column}
+                        className="max-w-full truncate"
+                        title={column}
+                      >
+                        {column}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {feedback.errorDetails.length > 0 && (
+                <div className="space-y-2">
+                  <p className="font-medium">
+                    {`${feedback.errorDetails.length} ${
+                      feedback.errorDetails.length > 1
+                        ? "Lignes en erreur (non importées)"
+                        : "Ligne en erreur (non importée)"
+                    }`}
+                  </p>
+                  <ul className="list-disc space-y-1 pl-5 text-sm">
+                    {feedback.errorDetails.map((detail) => (
+                      <li key={detail} className="max-w-full wrap-break-word">
+                        {detail}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {feedback.warningDetails.length > 0 && (
+                <div className="space-y-2">
+                  <p className="font-medium">
+                    {`${feedback.warningDetails.length} ${
+                      feedback.warningDetails.length > 1
+                        ? "Avertissements"
+                        : "Avertissement"
+                    }`}
+                  </p>
+                  <ul className="list-disc space-y-1 pl-5 text-sm">
+                    {feedback.warningDetails.map((detail) => (
+                      <li key={detail} className="max-w-full wrap-break-word">
+                        {detail}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
     </Card>
   );
 };

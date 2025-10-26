@@ -47,6 +47,8 @@ const {
 } = vi.mocked({ createLocation, updateLocation, disableLocation, createShopUser, updateShopUser, disableShopUser })
 const { fetchShopUsers: mockedFetchShopUsers } = vi.mocked({ fetchShopUsers })
 
+const MINIMAL_VALID_CSV = 'sku;ean;name\nSKU001;1234567890123;Produit test'
+
 const testShop = { id: 'shop-123', name: 'Boutique test', kind: 'boutique' } as const
 
 const originalFetch = global.fetch
@@ -547,7 +549,7 @@ describe('AdminLocationsPage', () => {
 
       await screen.findByRole('radio', { name: /Remplacer le catalogue/i })
 
-      const file = new File(['sku;ean;name'], 'catalog.csv', { type: 'text/csv' })
+      const file = new File([MINIMAL_VALID_CSV], 'catalog.csv', { type: 'text/csv' })
       const fileInputs = screen.getAllByLabelText('Fichier CSV', { selector: 'input[type="file"]' })
       const fileInput = fileInputs[fileInputs.length - 1]
       await user.upload(fileInput, file)
@@ -608,7 +610,7 @@ describe('AdminLocationsPage', () => {
 
       await screen.findByRole('radio', { name: /Remplacer le catalogue/i })
 
-      const file = new File(['sku;ean;name'], 'catalog.csv', { type: 'text/csv' })
+      const file = new File([MINIMAL_VALID_CSV], 'catalog.csv', { type: 'text/csv' })
       const fileInputs = screen.getAllByLabelText('Fichier CSV', { selector: 'input[type="file"]' })
       const fileInput = fileInputs[fileInputs.length - 1]
       await user.upload(fileInput, file)
@@ -669,7 +671,7 @@ describe('AdminLocationsPage', () => {
 
       await screen.findByRole('radio', { name: /Remplacer le catalogue/i })
 
-      const file = new File(['sku;ean;name'], 'catalog.csv', { type: 'text/csv' })
+      const file = new File([MINIMAL_VALID_CSV], 'catalog.csv', { type: 'text/csv' })
       const fileInputs = screen.getAllByLabelText('Fichier CSV', { selector: 'input[type="file"]' })
       const fileInput = fileInputs[fileInputs.length - 1]
       await user.upload(fileInput, file)
@@ -683,7 +685,6 @@ describe('AdminLocationsPage', () => {
 
       const alert = await screen.findByRole('alert')
       expect(alert).toHaveTextContent('Le fichier CSV contient des lignes invalides.')
-      expect(await screen.findByText(/Erreurs \(non importées\)/i)).toBeInTheDocument()
       expect(alert).toHaveTextContent('Ligne 2 — MISSING_SKU_COLUMN')
       expect(alert).toHaveTextContent('Ligne 5 — EMPTY_NAME')
     } finally {
@@ -733,7 +734,7 @@ describe('AdminLocationsPage', () => {
 
       await screen.findByRole('radio', { name: /Remplacer le catalogue/i })
 
-      const file = new File(['sku;ean;name'], 'catalog.csv', { type: 'text/csv' })
+      const file = new File([MINIMAL_VALID_CSV], 'catalog.csv', { type: 'text/csv' })
       const fileInputs = screen.getAllByLabelText('Fichier CSV', { selector: 'input[type="file"]' })
       const fileInput = fileInputs[fileInputs.length - 1]
       await user.upload(fileInput, file)
@@ -801,7 +802,7 @@ describe('AdminLocationsPage', () => {
 
       await screen.findByRole('radio', { name: /Remplacer le catalogue/i })
 
-      const file = new File(['sku;ean;name'], 'catalog.csv', { type: 'text/csv' })
+      const file = new File([MINIMAL_VALID_CSV], 'catalog.csv', { type: 'text/csv' })
       const fileInputs = screen.getAllByLabelText('Fichier CSV', { selector: 'input[type="file"]' })
       const fileInput = fileInputs[fileInputs.length - 1]
       await user.upload(fileInput, file)
@@ -815,8 +816,8 @@ describe('AdminLocationsPage', () => {
 
       const panel = await screen.findByRole('status')
       expect(panel).toHaveTextContent('Import terminé avec avertissements. Les éléments listés ont été importés.')
-      expect(panel).toHaveTextContent('SKU A-TNF70 (lignes 2, 5)')
-      expect(panel).toHaveTextContent('EAN 885958315561 (lignes 1, 4)')
+      expect(panel).toHaveTextContent('Doublon SKU A-TNF70 (lignes 2, 5)')
+      expect(panel).toHaveTextContent('Doublon EAN 885958315561 (lignes 1, 4)')
     } finally {
       global.fetch = previousFetch
     }
@@ -867,7 +868,7 @@ describe('AdminLocationsPage', () => {
 
       await screen.findByRole('radio', { name: /Remplacer le catalogue/i })
 
-      const file = new File(['sku;ean;name'], 'catalog.csv', { type: 'text/csv' })
+      const file = new File([MINIMAL_VALID_CSV], 'catalog.csv', { type: 'text/csv' })
       const fileInputs = screen.getAllByLabelText('Fichier CSV', { selector: 'input[type="file"]' })
       const fileInput = fileInputs[fileInputs.length - 1]
       await user.upload(fileInput, file)
@@ -883,8 +884,8 @@ describe('AdminLocationsPage', () => {
       expect(alert).toHaveTextContent("Import terminé avec erreurs. Les lignes listées n'ont pas été importées.")
       expect(alert).toHaveTextContent('Ligne 7401 — MISSING_SKU')
       expect(alert).toHaveTextContent('Ligne 7402 — MISSING_EAN')
-      expect(alert).toHaveTextContent('Erreurs détectées')
-      expect(alert).toHaveTextContent(/Avertissements signalés\s*0/)
+      expect(alert).toHaveTextContent(/Lignes en erreur \(non importées\)/)
+      expect(within(alert).queryByText(/Avertissement/)).toBeNull()
     } finally {
       global.fetch = previousFetch
     }
