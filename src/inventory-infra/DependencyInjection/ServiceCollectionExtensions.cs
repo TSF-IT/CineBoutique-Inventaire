@@ -35,8 +35,6 @@ public static class ServiceCollectionExtensions
             var csb = builder.ConnectionStringBuilder;
             csb.Pooling = true;
 
-            builder.EnableRetry(maxAttempts: 5, maxDelay: TimeSpan.FromSeconds(5));
-
             return builder.Build();
         });
         services.AddSingleton<IDbConnectionFactory, NpgsqlConnectionFactory>();
