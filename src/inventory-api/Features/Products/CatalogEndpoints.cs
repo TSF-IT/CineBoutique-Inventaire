@@ -441,9 +441,7 @@ LIMIT @top;";
     {
         ArgumentNullException.ThrowIfNull(builder);
 
-        return catalogEndpointsPublic
-            ? builder.AllowAnonymous()
-            : builder.RequireAuthorization();
+        return builder.RequireAuthorization();
     }
 
     private static bool IsShopScopeMissing(PostgresException ex)

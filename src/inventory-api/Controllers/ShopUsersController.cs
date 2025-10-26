@@ -11,7 +11,6 @@ using Microsoft.AspNetCore.Mvc;
 namespace CineBoutique.Inventory.Api.Controllers;
 
 [ApiController]
-[Authorize("Admin")]
 [Route("api/shops/{shopId:guid}/users")]
 public sealed class ShopUsersController : ControllerBase
 {
@@ -27,6 +26,7 @@ public sealed class ShopUsersController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<IReadOnlyList<ShopUserDto>>> GetAsync(
@@ -46,6 +46,7 @@ public sealed class ShopUsersController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize("Admin")]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
@@ -74,6 +75,7 @@ public sealed class ShopUsersController : ControllerBase
     }
 
     [HttpPut]
+    [Authorize("Admin")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
@@ -106,6 +108,7 @@ public sealed class ShopUsersController : ControllerBase
     }
 
     [HttpDelete]
+    [Authorize("Admin")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ShopUserDto>> DeleteAsync(Guid shopId, [FromBody] DeleteShopUserRequest request, CancellationToken cancellationToken)

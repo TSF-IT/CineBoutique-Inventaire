@@ -11,7 +11,6 @@ using Microsoft.AspNetCore.Mvc;
 namespace CineBoutique.Inventory.Api.Controllers;
 
 [ApiController]
-[Authorize("Admin")]
 [Route("api/[controller]")]
 public sealed class ShopsController : ControllerBase
 {
@@ -27,6 +26,7 @@ public sealed class ShopsController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<ShopDto>>> GetAsync([FromQuery] string? kind, CancellationToken cancellationToken)
     {
@@ -35,6 +35,7 @@ public sealed class ShopsController : ControllerBase
     }
 
     [HttpPost]
+    [Authorize("Admin")]
     [ProducesResponseType(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<ShopDto>> CreateAsync([FromBody] CreateShopRequest request, CancellationToken cancellationToken)
@@ -57,6 +58,7 @@ public sealed class ShopsController : ControllerBase
     }
 
     [HttpPut]
+    [Authorize("Admin")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
@@ -84,6 +86,7 @@ public sealed class ShopsController : ControllerBase
     }
 
     [HttpDelete]
+    [Authorize("Admin")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
