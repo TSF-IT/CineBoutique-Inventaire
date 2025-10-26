@@ -61,6 +61,8 @@ const {
 const { fetchShopUsers: mockedFetchShopUsers } = vi.mocked({ fetchShopUsers });
 
 const MINIMAL_VALID_CSV = "sku;ean;name\nSKU001;1234567890123;Produit test";
+const CSV_WITH_MISSING_EAN =
+  "sku;ean;name\nSKU001;1234567890123;Produit test\nSKU002;;Produit sans code";
 
 const testShop = {
   id: "shop-123",
@@ -1141,12 +1143,21 @@ describe("AdminLocationsPage", () => {
               status: 200,
               text: async () =>
                 JSON.stringify({
-                  inserted: 7400,
+                  inserted: 7398,
+                  updated: 2,
                   total: 7402,
                   skippedLines: [
                     { line: 7401, reason: "MISSING_SKU" },
                     { line: 7402, reason: "MISSING_EAN" },
                   ],
+                  duplicates: {
+                    skus: [{ value: "A-TNF70", lines: [7343, 7400, 7401] }],
+                    eans: [
+                      { value: "24719", lines: [1657, 1658] },
+                      { value: "5905954595389", lines: [5469, 5470] },
+                      { value: "5905954595433", lines: [5474, 5475] },
+                    ],
+                  },
                 }),
             } as Response;
           }
@@ -1193,9 +1204,111 @@ describe("AdminLocationsPage", () => {
       expect(alert).toHaveTextContent("Ligne 7401 — MISSING_SKU");
       expect(alert).toHaveTextContent("Ligne 7402 — MISSING_EAN");
       expect(alert).toHaveTextContent(/Lignes en erreur \(non importées\)/);
-      expect(within(alert).queryByText(/Avertissement/)).toBeNull();
+      expect(alert).toHaveTextContent(/4 Avertissements/);
+      const importedTerm = within(alert).getByText("Produits importés");
+      expect(importedTerm.nextElementSibling?.textContent).toBe("7400");
+      const creationsTerm = within(alert).getByText("Créations");
+      expect(creationsTerm.nextElementSibling?.textContent).toBe("7398");
+      expect(within(alert).queryByText("Mises à jour")).toBeNull();
+      const duplicatesTerm = within(alert).getByText("Doublons réécrits");
+      expect(duplicatesTerm.nextElementSibling?.textContent).toBe("2");
     } finally {
       global.fetch = previousFetch;
     }
   });
 });
+
+  it("ajuste le total en incluant les lignes filtrées pour EAN manquant", async () => {
+    const previousFetch = global.fetch;
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(
+        async (
+          input: RequestInfo | URL,
+          init?: RequestInit
+        ): Promise<Response> => {
+          const url =
+            typeof input === "string"
+              ? input
+              : input instanceof URL
+              ? input.toString()
+              : input.url;
+
+          if (url.endsWith("/products/import/status")) {
+            return {
+              ok: true,
+              status: 200,
+              json: async () => ({
+                canReplace: true,
+                lockReason: null,
+                hasCountLines: false,
+              }),
+            } as Response;
+          }
+
+          if (url.includes("/products/import")) {
+            expect(init?.method ?? "POST").toBe("POST");
+            return {
+              ok: true,
+              status: 200,
+              text: async () =>
+                JSON.stringify({
+                  inserted: 1,
+                  total: 1,
+                }),
+            } as Response;
+          }
+
+          throw new Error(`Unexpected fetch: ${url}`);
+        }
+      );
+
+    global.fetch = fetchMock as unknown as typeof global.fetch;
+
+    try {
+      await renderAdminPage();
+
+      const user = userEvent.setup();
+      await openCatalogTab(user);
+
+      await screen.findByRole("radio", { name: /Remplacer le catalogue/i });
+
+      const file = new File([CSV_WITH_MISSING_EAN], "catalog.csv", {
+        type: "text/csv",
+      });
+      const fileInputs = screen.getAllByLabelText("Fichier CSV", {
+        selector: 'input[type="file"]',
+      });
+      const fileInput = fileInputs[fileInputs.length - 1];
+      await user.upload(fileInput, file);
+
+      const submitButton = screen.getByRole("button", {
+        name: "Importer le CSV",
+      });
+      await user.click(submitButton);
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(
+          expect.stringContaining("/products/import?"),
+          expect.anything()
+        );
+      });
+
+      const alert = await screen.findByRole("alert");
+      expect(alert).toHaveTextContent(
+        "Import terminé avec erreurs. Les lignes listées n'ont pas été importées."
+      );
+      expect(alert).toHaveTextContent("Ligne 3 — EAN manquant");
+
+      const totalTerm = within(alert).getByText("Total lignes");
+      expect(totalTerm.nextElementSibling?.textContent).toBe("2");
+      const importedTerm = within(alert).getByText("Produits importés");
+      expect(importedTerm.nextElementSibling?.textContent).toBe("1");
+      const creationsTerm = within(alert).getByText("Créations");
+      expect(creationsTerm.nextElementSibling?.textContent).toBe("1");
+      expect(within(alert).queryByText("Mises à jour")).toBeNull();
+      expect(within(alert).queryByText("Doublons réécrits")).toBeNull();
+    } finally {
+      global.fetch = previousFetch;
+    }
+  });

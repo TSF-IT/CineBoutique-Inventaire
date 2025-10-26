@@ -122,8 +122,10 @@ const encodingLabelFor = (encoding: string | null | undefined) => {
 
 type ImportSummary = {
   total: number | null;
+  imported: number;
   inserted: number;
   updated: number | null;
+  duplicateRewrites: number;
   errorCount: number;
   warningCount: number;
   alreadyPresent: number;
@@ -437,6 +439,60 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
     return Array.from(entries);
   };
 
+  const countDuplicateSkuRewrites = (value: unknown): number => {
+    if (!value || typeof value !== "object") {
+      return 0;
+    }
+
+    const record = value as Record<string, unknown>;
+    const rawList = record.skus ?? record.Skus;
+    if (!Array.isArray(rawList)) {
+      return 0;
+    }
+
+    let total = 0;
+
+    rawList.forEach((entry) => {
+      if (typeof entry === "string") {
+        const formatted = entry.trim();
+        if (formatted.length > 0) {
+          total += 1;
+        }
+        return;
+      }
+
+      if (!entry || typeof entry !== "object") {
+        return;
+      }
+
+      const item = entry as Record<string, unknown>;
+      const rawLines = item.lines ?? item.Lines;
+
+      let occurrences = 0;
+      if (Array.isArray(rawLines)) {
+        occurrences = rawLines.reduce<number>((acc, current) => {
+          if (typeof current === "number" && Number.isFinite(current)) {
+            return acc + 1;
+          }
+          if (typeof current === "string" && current.trim().length > 0) {
+            return acc + 1;
+          }
+          return acc;
+        }, 0);
+      }
+
+      if (occurrences === 0) {
+        occurrences = 2;
+      }
+
+      if (occurrences > 1) {
+        total += occurrences - 1;
+      }
+    });
+
+    return total;
+  };
+
   const splitCsvLine = (line: string): string[] => {
     const result: string[] = [];
     let current = "";
@@ -639,21 +695,27 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
         const missingEanDetails = missingEanRecords.map(
           (record) => `Ligne ${record.line} — ${record.reason}`
         );
-        const responseErrors = [
+        const missingEanCount = missingEanRecords.length;
+        const responseErrorsRaw = [
           ...toImportErrorList(record.errors),
           ...toImportErrorList(record.Errors),
         ];
-        const skippedLines = [
+        const skippedLinesRaw = [
           ...toSkippedLineList(record.skippedLines),
           ...toSkippedLineList(record.SkippedLines),
         ];
+        const serverErrorEntries = Array.from(
+          new Set([...responseErrorsRaw, ...skippedLinesRaw])
+        );
+        const serverErrorCount = serverErrorEntries.length;
         const errorDetails = Array.from(
-          new Set([...responseErrors, ...skippedLines, ...missingEanDetails])
+          new Set([...serverErrorEntries, ...missingEanDetails])
         );
 
-        const duplicateWarnings = toDuplicateWarningList(
-          record.duplicates ?? record.Duplicates
-        );
+        const duplicateReportRaw = record.duplicates ?? record.Duplicates;
+        const duplicateWarnings = toDuplicateWarningList(duplicateReportRaw);
+        const duplicateRewriteCount =
+          countDuplicateSkuRewrites(duplicateReportRaw);
         const messageWarnings = [
           ...toStringList(record.warningMessages),
           ...toStringList(record.WarningMessages),
@@ -667,15 +729,15 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
         const errorCount = errorDetails.length;
         const warningCount = warningDetails.length;
 
-        const insertedCount = Math.max(
+        const insertedCountRaw = Math.max(
           toInteger(record.inserted),
           toInteger(record.Inserted)
         );
-        const updatedCount = Math.max(
+        const updatedCountRaw = Math.max(
           toInteger(record.updated),
           toInteger(record.Updated)
         );
-        const totalFromRecord = (() => {
+        const serverTotalFromRecord = (() => {
           const candidates: unknown[] = [record.total, record.Total];
           for (const candidate of candidates) {
             if (
@@ -687,27 +749,61 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
           }
           return null;
         })();
-        const totalCount =
-          totalFromRecord ??
-          (insertedCount > 0 || updatedCount > 0 || errorDetails.length > 0
-            ? insertedCount + Math.max(updatedCount, 0) + errorDetails.length
-            : null);
-        const effectiveInserted =
-          insertedCount > 0
-            ? insertedCount
-            : totalCount !== null
-            ? Math.max(
-                totalCount - Math.max(updatedCount, 0) - errorDetails.length,
+        const serverTotal =
+          serverTotalFromRecord ??
+          (insertedCountRaw +
+            Math.max(updatedCountRaw, 0) +
+            serverErrorCount);
+        const sanitizedTotal = serverTotal ?? 0;
+        const fallbackInserted =
+          insertedCountRaw > 0
+            ? insertedCountRaw
+            : Math.max(
+                sanitizedTotal -
+                  Math.max(updatedCountRaw, 0) -
+                  serverErrorCount,
                 0
-              )
-            : 0;
+              );
+        const fallbackUpdatedRaw = Math.max(updatedCountRaw, 0);
+        const fallbackUpdated =
+          fallbackUpdatedRaw > 0
+            ? fallbackUpdatedRaw
+            : Math.max(
+                sanitizedTotal - fallbackInserted - serverErrorCount,
+                0
+              );
+        const importedCountRaw =
+          insertedCountRaw + Math.max(updatedCountRaw, 0);
+        const totalCount =
+          serverTotal !== null
+            ? serverTotal + missingEanCount
+            : missingEanCount > 0
+            ? missingEanCount
+            : null;
+        const importedFromTotal =
+          totalCount !== null ? Math.max(totalCount - errorCount, 0) : null;
+        const duplicateRewriteForSummary = duplicateRewriteCount;
+        const updatesExcludingDuplicates = Math.max(
+          fallbackUpdated - duplicateRewriteForSummary,
+          0
+        );
+        const displayUpdated =
+          updatesExcludingDuplicates > 0 ? updatesExcludingDuplicates : null;
+        const importedBreakdownTotal =
+          fallbackInserted +
+          updatesExcludingDuplicates +
+          duplicateRewriteForSummary;
+        const fallbackImported = Math.max(
+          importedCountRaw,
+          fallbackInserted + fallbackUpdated,
+          importedBreakdownTotal
+        );
+        const effectiveImported =
+          importedFromTotal ?? fallbackImported;
         const alreadyPresentCount =
-          totalCount !== null
+          serverTotal !== null
             ? Math.max(
-                totalCount -
-                  effectiveInserted -
-                  Math.max(updatedCount, 0) -
-                  errorDetails.length,
+                sanitizedTotal - effectiveImported - serverErrorCount,
                 0
               )
             : 0;
@@ -719,8 +815,10 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
         );
         const summary: ImportSummary = {
           total: totalCount,
-          inserted: effectiveInserted,
-          updated: updatedCount > 0 ? updatedCount : null,
+          imported: effectiveImported,
+          inserted: fallbackInserted,
+          updated: displayUpdated,
+          duplicateRewrites: duplicateRewriteForSummary,
           errorCount,
           warningCount,
           alreadyPresent: alreadyPresentCount,
@@ -1049,12 +1147,40 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
                 )}
                 <div>
                   <dt className="font-medium text-slate-700 dark:text-slate-200">
-                    Produits ajoutés
+                    Produits importés
+                  </dt>
+                  <dd className="text-slate-600 dark:text-slate-300">
+                    {feedback.summary.imported}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="font-medium text-slate-700 dark:text-slate-200">
+                    Créations
                   </dt>
                   <dd className="text-slate-600 dark:text-slate-300">
                     {feedback.summary.inserted}
                   </dd>
                 </div>
+                {feedback.summary.updated !== null && (
+                  <div>
+                    <dt className="font-medium text-slate-700 dark:text-slate-200">
+                      Mises à jour
+                    </dt>
+                    <dd className="text-slate-600 dark:text-slate-300">
+                      {feedback.summary.updated}
+                    </dd>
+                  </div>
+                )}
+                {feedback.summary.duplicateRewrites > 0 && (
+                  <div>
+                    <dt className="font-medium text-slate-700 dark:text-slate-200">
+                      Doublons réécrits
+                    </dt>
+                    <dd className="text-slate-600 dark:text-slate-300">
+                      {feedback.summary.duplicateRewrites}
+                    </dd>
+                  </div>
+                )}
                 {feedback.summary.mode === "merge" &&
                   feedback.summary.alreadyPresent > 0 && (
                     <div>
