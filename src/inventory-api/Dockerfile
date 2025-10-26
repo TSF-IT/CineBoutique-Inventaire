@@ -33,11 +33,11 @@ ENV ASPNETCORE_URLS=http://+:8080
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
- && groupadd --system app \
- && useradd --system --gid app --create-home --home-dir /home/app app
+ && if ! getent group app >/dev/null; then groupadd --system app; fi \
+ && if ! id app >/dev/null 2>&1; then useradd --system --gid app --create-home --home-dir /home/app app; fi
 
 COPY --from=build /app/publish .
-RUN chown -R app:app /app
+RUN chown -R app:app /app && mkdir -p /home/app && chown -R app:app /home/app
 
 USER app
 

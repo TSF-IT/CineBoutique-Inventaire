@@ -103,7 +103,7 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<IShopResolver, DefaultShopResolver>();
 builder.Services.Configure<AppSettingsOptions>(builder.Configuration.GetSection("AppSettings"));
 
-var useAdminHeaderAuth = builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing");
+var useAdminHeaderAuth = builder.Configuration.GetValue<bool?>("Authentication:UseAdminHeader") ?? true;
 
 var authenticationBuilder = builder.Services.AddAuthentication(options =>
 {
@@ -121,9 +121,10 @@ var authenticationBuilder = builder.Services.AddAuthentication(options =>
 
 if (useAdminHeaderAuth)
 {
-    authenticationBuilder.AddScheme<AuthenticationSchemeOptions, AdminHeaderAuthenticationHandler>(
+    var appToken = builder.Configuration["Authentication:AppToken"];
+    authenticationBuilder.AddScheme<AdminHeaderAuthenticationOptions, AdminHeaderAuthenticationHandler>(
         AdminHeaderAuthenticationHandler.SchemeName,
-        _ => { });
+        options => options.AppToken = appToken);
 }
 else
 {

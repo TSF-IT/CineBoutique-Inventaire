@@ -1,19 +1,19 @@
+using System;
 using System.Collections.Generic;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 
 namespace CineBoutique.Inventory.Api.Infrastructure.Authentication;
 
-public sealed class AdminHeaderAuthenticationHandler : AuthenticationHandler<AuthenticationSchemeOptions>
+public sealed class AdminHeaderAuthenticationHandler : AuthenticationHandler<AdminHeaderAuthenticationOptions>
 {
     public const string SchemeName = "AdminHeader";
 
     public AdminHeaderAuthenticationHandler(
-        IOptionsMonitor<AuthenticationSchemeOptions> options,
+        Microsoft.Extensions.Options.IOptionsMonitor<AdminHeaderAuthenticationOptions> options,
         ILoggerFactory logger,
         UrlEncoder encoder)
         : base(options, logger, encoder)
@@ -22,6 +22,11 @@ public sealed class AdminHeaderAuthenticationHandler : AuthenticationHandler<Aut
 
     protected override Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        if (!string.IsNullOrEmpty(Options.AppToken) && !IsValidAppToken())
+        {
+            return Task.FromResult(AuthenticateResult.Fail("Missing or invalid X-App-Token header."));
+        }
+
         var claims = new List<Claim>();
 
         if (TryReadAdminHeader(out var isAdmin) && isAdmin)
@@ -35,6 +40,24 @@ public sealed class AdminHeaderAuthenticationHandler : AuthenticationHandler<Aut
         var ticket = new AuthenticationTicket(principal, Scheme.Name);
 
         return Task.FromResult(AuthenticateResult.Success(ticket));
+    }
+
+    private bool IsValidAppToken()
+    {
+        if (!Request.Headers.TryGetValue("X-App-Token", out var values))
+        {
+            return false;
+        }
+
+        foreach (var value in values)
+        {
+            if (string.Equals(value, Options.AppToken, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private bool TryReadAdminHeader(out bool isAdmin)

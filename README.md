@@ -14,111 +14,158 @@ Ce dépôt monorepo regroupe l'ensemble des composants nécessaires à la future
 
 Chaque projet .NET cible .NET 8 et applique des analyzers configurés en avertissements bloquants.
 
-## Démarrage rapide en local
+## Environnements et configuration
 
-Une stack Docker Compose est fournie pour orchestrer l'API ASP.NET Core, la base PostgreSQL et la PWA React servie par Nginx.
+| Environnement | Authentification par défaut | Migrations & seed | Observabilité | CORS |
+| --- | --- | --- | --- | --- |
+| Développement (`dotnet` local) | Schéma `AdminHeader` (entête `X-Admin: true` pour obtenir le rôle admin). Une clé partagée optionnelle peut être définie via `Authentication:AppToken` et transmise dans `X-App-Token`. | Migrations FluentMigrator appliquées au démarrage, `InventoryDataSeeder` insère boutiques + zones si `AppSettings:SeedOnStartup=true` | Swagger (`/swagger`), diagnostics (`/api/_diag/*`) et métriques Prometheus (`/metrics`) accessibles sans jeton | Origines `http://localhost:5173` et `http://127.0.0.1:5173` autorisées |
+| Docker Compose | Identique au développement (`ASPNETCORE_ENVIRONMENT=Docker` est traité comme mode dev) | `APPLY_MIGRATIONS=true` et `AppSettings__SeedOnStartup=true` dans `docker-compose.yml` appliquent migrations + seed à chaque démarrage | Swagger exposé sur `http://localhost:8080/swagger`, `/metrics` anonyme, healthchecks prêts pour du monitoring | La PWA est servie via Nginx sur `http://localhost` |
+| Production | JWT Bearer (`Authentication:Authority` & `Authentication:Audience`) | Aucune migration automatique : lancer l'API avec `APPLY_MIGRATIONS=true` (et `DISABLE_MIGRATIONS=false`) lors d'une montée de version | Swagger désactivé; `/metrics` et `/api/_diag/*` nécessitent un rôle `Admin`; journaux Serilog + OpenTelemetry prêts à être collectés | Renseignez `AllowedOrigins` avec les domaines front |
 
-### Flux de développement
+Configurer systématiquement `ConnectionStrings__Default` (PostgreSQL). L'API s'appuie exclusivement sur FluentMigrator pour les évolutions de schéma : n'appliquez pas de scripts SQL manuels en dehors des migrations versionnées.
+
+### Variables essentielles (production)
+
+- `ConnectionStrings__Default=Host=<host>;Port=5432;Database=inventory;Username=<user>;Password=<pwd>` : unique connexion PostgreSQL.
+- `Authentication__Authority=https://idp.exemple.com/realms/...` et `Authentication__Audience=cineboutique-inventory-api`.
+- `AllowedOrigins__0=https://inventaire.exemple.com` (multipliez l'index pour plusieurs domaines).
+- `APPLY_MIGRATIONS=true` / `DISABLE_MIGRATIONS=false` lors d'une montée de version (repassez `APPLY_MIGRATIONS=false` une fois l'opération terminée).
+- `AppSettings__SeedOnStartup=false` (valeur par défaut) pour bloquer les seeds de démonstration en production.
+- `AppSettings__CatalogEndpointsPublic=false` si vous devez forcer l'authentification sur les endpoints catalogue.
+- `DISABLE_SERILOG=true` uniquement si vous déléguez entièrement la journalisation à l'hébergeur.
+
+## Authentification et autorisations
+
+Par défaut, l'API utilise le schéma `AdminHeader` sur tous les environnements :
+
+- envoyer `X-Admin: true` accorde le rôle administrateur (sinon l'utilisateur est considéré comme non-admin mais tout de même authentifié) ;
+- si `Authentication:AppToken` est renseigné, chaque requête doit aussi véhiculer `X-App-Token: <valeur>` pour être acceptée (permet de restreindre l'accès au frontend maison) ;
+- pour revenir à un mode JWT classique, positionnez `Authentication:UseAdminHeader=false` et fournissez `Authentication:Authority` + `Authentication:Audience`. Les opérations protégées exigent alors un rôle `Admin` via la claim `role` ou `is_admin=true`.
 
 ```bash
-docker compose down -v --remove-orphans
-docker compose up --build -d
-curl -i http://localhost:8080/api/ping  # doit répondre 200 + {"message":"pong"}
-npm -w src/inventory-web run dev
+curl https://inventaire.exemple.com/api/shops \
+  -H "X-App-Token: ${APP_TOKEN}" \
+  -H "X-Admin: true"
 ```
 
-> ℹ️ Le conteneur API tourne avec `ASPNETCORE_ENVIRONMENT=Production`, mais la configuration CORS autorise par défaut les appels provenant du front en développement (`localhost:5173`).
+> Astuce : en mode JWT (`Authentication:UseAdminHeader=false`), l'exemple ci-dessus devient `Authorization: Bearer ${JWT_ADMIN}` sans les entêtes custom.
 
-```bash
-docker compose up --build -d
+Les seeds injectent toujours des comptes `ShopUser` avec un secret vide pour permettre aux frontends de fonctionner sans fournisseur d'identité.
+
+## CORS
+
+Deux politiques sont définies : `AllowDev` (en développement) autorise uniquement `http://localhost:5173` et `http://127.0.0.1:5173`. `PublicApi` lit la section `AllowedOrigins` ; si la liste est vide, toutes les origines sont acceptées (les méthodes restent limitées). Pour définir des domaines explicitement :
+
+```json
+"AllowedOrigins": [
+  "https://inventaire.exemple.com",
+  "https://pwa.exemple.com"
+]
 ```
 
-Avant de lancer la stack, tu peux valider la configuration Compose pour détecter toute erreur d'indentation ou de syntaxe :
+ou, côté variables d'environnement, `AllowedOrigins__0=https://inventaire.exemple.com`. Le prévol (`OPTIONS`) est mis en cache pendant 1 heure.
 
-```bash
-docker compose config -q
+## Observabilité et diagnostics
+
+| Endpoint | Description | Authentification |
+| --- | --- | --- |
+| `GET /health` | Sonde liveness ASP.NET Core | Anonyme |
+| `GET /ready` | Vérifie l'accès PostgreSQL (`SELECT 1`) et renvoie 503 en cas de défaillance | Anonyme |
+| `GET /api/health` | Retourne un résumé applicatif (utilisateurs, runs orphelins) | Anonyme |
+| `GET /api/_diag/info` | Version, environnement, chaîne de connexion masquée | Dev : anonyme, Prod : rôle `Admin` |
+| `GET /api/_diag/ping-db` | Ping SQL détaillé avec temps de réponse | Dev : anonyme, Prod : rôle `Admin` |
+| `GET /metrics` | Export Prometheus via `OpenTelemetry.Exporter.Prometheus.AspNetCore` | Dev/Docker : anonyme, Prod : rôle `Admin` |
+| `GET /__debug/env`, `GET /__debug/db` | Helpers supplémentaires disponibles uniquement en `Development` | Anonyme |
+
+Pour brancher un collecteur Prometheus :
+
+```yaml
+scrape_configs:
+  - job_name: cineboutique-inventory
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['inventory-api:8080']
+    authorization:
+      type: Bearer
+      credentials: ${CINEBOUTIQUE_ADMIN_JWT}
 ```
 
-Une fois les conteneurs démarrés :
+En mode dev ou Compose, l'autorisation peut être omise. En production, exposez `/metrics` derrière un reverse proxy qui ajoute l'entête ou fournissez un JWT d'administrateur.
 
-- API : http://localhost:8080/swagger
-- Front PWA : http://localhost:3000
+## Démarrage via Docker Compose
 
-Les migrations FluentMigrator et le seed automatisé (zones `B1` à `B20` et `S1` à `S19`) sont exécutés automatiquement au démarrage lorsque `AppSettings:SeedOnStartup` vaut `true` (activé par défaut en environnement `Development`). Aucun produit, session ou comptage n'est désormais prérempli : seules les 39 zones standards, les 5 boutiques de démonstration et les comptes utilisateurs associés générés par le seeder sont créés.
+Une stack Compose orchestre PostgreSQL (`db`), l'API (`api`) et la PWA servie par Nginx (`web`). Les fichiers `docker-compose.yml` et `docker-compose.override.yml` sont chargés automatiquement.
 
-Les boutiques sont stockées dans la table `Shop` et leurs collaborateurs dans `ShopUser`. Chaque zone d'inventaire référence sa boutique via `Location.ShopId`, tandis que les runs créés par l'API conservent l'opérateur responsable dans `CountingRun.OwnerUserId`.
+### Étapes
+
+1. Valider la configuration : `docker compose config -q`.
+2. Redémarrer proprement si nécessaire : `docker compose down -v --remove-orphans`.
+3. Construire et lancer : `docker compose up --build -d`.
+4. Contrôler l'état : `docker compose ps`.
+5. Vérifier la santé :
+   ```bash
+   curl http://localhost:8080/ready
+   curl http://localhost:8080/api/health | jq
+   ```
+6. Accéder à la PWA : http://localhost ; Swagger : http://localhost:8080/swagger.
+
+Les migrations FluentMigrator et le seed de démonstration s'exécutent automatiquement grâce aux variables `APPLY_MIGRATIONS=true` et `AppSettings__SeedOnStartup=true`. Pour du développement front avec hot reload, lancer `npm -w src/inventory-web run dev` ; Vite proxe `/api` vers la variable `DEV_BACKEND_ORIGIN` (par défaut `http://localhost:8080`).
 
 ### Vérifications rapides du seed
 
+Dans une session `psql` :
+
 ```sql
--- Vérifier les boutiques créées automatiquement
-SELECT "Name"
-FROM "Shop"
-ORDER BY "Name";
-
--- Lister les zones créées automatiquement
-SELECT "Code", "Label"
-FROM "Location"
-ORDER BY "Code";
-
--- Vérifier que seules les zones sont présentes
-SELECT COUNT(*) AS "ZoneCount"
-FROM "Location";
-
--- Vérifier l'association des zones à leur boutique
-SELECT DISTINCT "ShopId"
-FROM "Location";
+SELECT "Name" FROM "Shop" ORDER BY "Name";
+SELECT "Code", "Label" FROM "Location" ORDER BY "Code";
+SELECT COUNT(*) AS "ZoneCount" FROM "Location";
+SELECT DISTINCT "ShopId" FROM "Location";
 ```
 
-### Reseed dev
+### Réamorcer les données de démonstration
 
 ```bash
 docker compose down -v --remove-orphans
-docker compose up -d --build
+docker compose up --build -d
 # ou, pour ne réinitialiser que les données :
-docker compose exec db sh -lc "psql -U postgres -d cineboutique -c 'TRUNCATE TABLE \"CountLine\" RESTART IDENTITY CASCADE;'"
-docker compose exec db sh -lc "psql -U postgres -d cineboutique -c 'TRUNCATE TABLE \"CountingRun\" RESTART IDENTITY CASCADE;'"
-docker compose exec db sh -lc "psql -U postgres -d cineboutique -c 'TRUNCATE TABLE \"InventorySession\" RESTART IDENTITY CASCADE;'"
-docker compose exec db sh -lc "psql -U postgres -d cineboutique -c 'TRUNCATE TABLE \"Product\" RESTART IDENTITY CASCADE;'"
+docker compose exec db psql -U postgres -d inventory -c "TRUNCATE TABLE \"CountLine\" RESTART IDENTITY CASCADE;"
+docker compose exec db psql -U postgres -d inventory -c "TRUNCATE TABLE \"CountingRun\" RESTART IDENTITY CASCADE;"
+docker compose exec db psql -U postgres -d inventory -c "TRUNCATE TABLE \"InventorySession\" RESTART IDENTITY CASCADE;"
+docker compose exec db psql -U postgres -d inventory -c "TRUNCATE TABLE \"Product\" RESTART IDENTITY CASCADE;"
 ```
 
-> 💡 Si un volume de données persiste d'une exécution précédente, créez manuellement la base :
->
-> ```bash
-> docker exec -it cineboutique-inventaire-db-1 psql -U postgres -d postgres -c "CREATE DATABASE cineboutique;"
-> ```
-
-Pour vérifier la santé et la connectivité de l'API :
+Si le volume persiste, recréez la base :
 
 ```bash
-curl http://localhost:8080/health
-curl http://localhost:8080/ready
-curl http://localhost:8080/api/locations
+docker exec -it inventory-db psql -U postgres -d postgres -c "CREATE DATABASE inventory;"
 ```
 
-Les comptes de démonstration sont initialisés par le seeder (`InventoryDataSeeder`). En développement et sur CI, les secrets sont
-laissés vides : un login suffit (par exemple `administrateur` ou `utilisateur1`). En production, chaque compte doit disposer d'un
-secret haché (Argon2id ou bcrypt).
+### Accès frontend
 
-L'endpoint `POST /api/auth/login` retourne un JWT court si le couple login/secret est valide. Les endpoints principaux actuellent
-exposés sont :
+- PWA servie par Nginx : http://localhost (ports 80/443 exposés).
+- Serveur de développement Vite : `npm -w src/inventory-web run dev` (http://localhost:5173). Ajustez `DEV_BACKEND_ORIGIN` si l'API n'est pas accessible sur `http://localhost:8080`.
 
-- `GET /health` : liveness simple.
-- `GET /ready` : vérifie l'accès à PostgreSQL (`SELECT 1`).
-- `GET /locations` : liste les zones d'inventaire et l'état d'occupation courant (filtrable par type de comptage).
-- `GET /api/products/{code}` : résolution hiérarchique (SKU strict, code brut, puis chiffres) avec 409 en cas d'ambiguïté.
-- `POST /api/products` : création manuelle d'un produit (SKU, nom, EAN optionnel).
-- `POST /api/auth/login` : authentification boutique + login + secret (JWT).
-- `POST /api/inventories/{locationId}/restart` : clôture les runs actifs d'une zone pour redémarrer un comptage.
-- `POST /api/inventories/{locationId}/complete` : clôture un comptage en enregistrant les quantités scannées (produits connus ou inconnus).
-- `GET/POST/PUT/DELETE /api/shops` : gestion des boutiques (suppression refusée si des utilisateurs ou zones y sont rattachés).
-- `GET/POST/PUT/DELETE /api/shops/{shopId}/users` : gestion des comptes d'une boutique (DELETE réalise une désactivation logique).
-- `GET /api/inventories/summary` : retourne l'état agrégé des inventaires (sessions actives, runs ouverts, zones en conflit).
-- `GET /api/conflicts/{locationId}` : expose le comparatif Comptage 1 / Comptage 2 pour une zone en conflit (EAN, quantités et delta).
+## Endpoints essentiels
+
+| Méthode | Chemin | Description | Auth |
+| --- | --- | --- | --- |
+| `GET` | `/api/health` | Ping applicatif (utilisateurs, runs orphelins) | Anonyme |
+| `GET` | `/api/locations` | Liste les zones et leur statut courant | Public tant que `AppSettings__CatalogEndpointsPublic=true` |
+| `GET` | `/api/inventories/summary?shopId=<uuid>` | Agrégat des sessions, runs ouverts et conflits | Public tant que `AppSettings__CatalogEndpointsPublic=true` |
+| `POST` | `/api/inventories/{locationId}/start` | Ouvre un comptage pour une zone donnée | Public tant que `AppSettings__CatalogEndpointsPublic=true` |
+| `POST` | `/api/inventories/{locationId}/complete` | Clôture un run et enregistre les quantités | Public tant que `AppSettings__CatalogEndpointsPublic=true` |
+| `POST` | `/api/inventories/{locationId}/restart` | Termine les runs ouverts avant relance | Public tant que `AppSettings__CatalogEndpointsPublic=true` |
+| `GET` | `/api/conflicts/{locationId}` | Détail des deltas à arbitrer pour une zone | Public tant que `AppSettings__CatalogEndpointsPublic=true` |
+| `GET` | `/api/products/search?code=<value>&limit=<n>` | Recherche combinée (SKU, EAN, digits) | Public tant que `AppSettings__CatalogEndpointsPublic=true` |
+| `GET` | `/api/shops/{shopId}/products` | Catalogue contextualisé par boutique | Public tant que `AppSettings__CatalogEndpointsPublic=true` |
+| `POST` | `/api/shops/{shopId}/products/import` | Remplace le catalogue depuis un CSV | Rôle `Admin` requis |
+| `GET` | `/api/shops/{shopId}/products/import/status` | Suivi temps réel d'un import en cours | Rôle `Admin` requis |
+
+Les endpoints d'exploitation restent ouverts tant que `AppSettings__CatalogEndpointsPublic=true` (valeur par défaut pour faciliter les pilotes). Passez l'option à `false` pour les soumettre à l'authentification JWT.
 
 ### Finaliser un comptage d'inventaire
 
-Le front appelle l'endpoint `POST /api/inventories/{locationId}/complete` pour indiquer la fin d'un comptage sur une zone donnée. Le payload attendu est le suivant :
+Le front appelle `POST /api/inventories/{locationId}/complete` pour indiquer la fin d'un comptage. Exemple de payload :
 
 ```json
 {
@@ -126,16 +173,8 @@ Le front appelle l'endpoint `POST /api/inventories/{locationId}/complete` pour i
   "countType": 1,
   "ownerUserId": "3b9934f1-4f0e-4ab3-8a2c-1f0182c2b4c8",
   "items": [
-    {
-      "ean": "3057065988108",
-      "quantity": 3,
-      "isManual": false
-    },
-    {
-      "ean": "0001",
-      "quantity": 1,
-      "isManual": true
-    }
+    { "ean": "3057065988108", "quantity": 3, "isManual": false },
+    { "ean": "0001", "quantity": 1, "isManual": true }
   ]
 }
 ```
@@ -154,72 +193,18 @@ La réponse contient l'identifiant du run clôturé ainsi que les agrégats util
 }
 ```
 
-> ℹ️ Les résumés retournés par `GET /api/inventories/summary` et `GET /api/locations` exposent désormais
-> `ownerUserId` (UUID du collaborateur) et `ownerDisplayName` (libellé à afficher) pour identifier le
-> responsable de chaque comptage en cours ou terminé. Le front se base exclusivement sur ces
-> propriétés pour déterminer les droits d'accès et pour afficher les libellés utilisateur.
-
-### Recherche produit étendue
-
-- `GET /api/products/{code}` applique une résolution hiérarchique :
-  1. correspondance stricte sur le SKU ;
-  2. correspondance stricte sur le code brut (EAN ou code interne) ;
-  3. recherche sur `CodeDigits` (extraction des chiffres).
-
-  En cas d'ambiguïté, l'API retourne un `409 Conflict` contenant l'ensemble des correspondances.
-
-```bash
-curl -s http://localhost:8080/api/products/3057065988108 | jq
-```
-
-```json
-{
-  "id": "d3d0c0af-bd27-4d68-8d2b-1989e2a59f8f",
-  "sku": "CB-0001",
-  "name": "Café grains 1kg",
-  "ean": "3057065988108"
-}
-```
-
-```bash
-curl -i http://localhost:8080/api/products/000123
-```
-
-```http
-HTTP/1.1 409 Conflict
-Content-Type: application/json; charset=utf-8
-
-{
-  "matches": [
-    { "sku": "CB-0001", "code": "3057065988108" },
-    { "sku": "CB-0002", "code": "000123" }
-  ]
-}
-```
-
-- `GET /api/products/search?code={value}&limit={n}` renvoie un tableau fusionné (sans doublon) des stratégies ci-dessus. Le paramètre `code` est obligatoire, `limit` est optionnel (défaut `20`, minimum `1`).
-
-```bash
-curl -s "http://localhost:8080/api/products/search?code=0001&limit=5" | jq
-```
-
-```json
-[
-  { "sku": "CB-0001", "code": "CB-0001", "name": "Café grains 1kg" },
-  { "sku": "CB-0101", "code": "0001", "name": "Bonbon réglisse" }
-]
-```
+Les résumés retournés par `GET /api/inventories/summary` et `GET /api/locations` exposent `ownerUserId` et `ownerDisplayName` afin d'identifier l'opérateur responsable.
 
 ### Import CSV du catalogue produits
 
-L'endpoint `POST /api/shops/{shopId}/products/import` remplace l'intégralité du catalogue de l'entité ciblée.
+L'endpoint `POST /api/shops/{shopId}/products/import` remplace l'intégralité du catalogue de la boutique ciblée.
 
-- Format attendu : fichier CSV encodé en `latin-1` avec séparateur `;` et en-têtes `barcode_rfid;item;descr`.
-- Le champ `descr` est directement mappé sur la colonne `Name` des produits ; aucun champ `Description` distinct n'est stocké en base.
+- Format attendu : fichier CSV encodé en `latin-1`, séparateur `;`, en-têtes `barcode_rfid;item;descr`.
+- Le champ `descr` est mappé sur `Product.Name`.
 - Idempotence : l'import est ignoré (`204 No Content`) si le fichier a déjà été appliqué.
-- Paramètre `dryRun=true|false` (par défaut `false`) pour valider le fichier sans rien écrire ; la réponse contient `dryRun: true` et les compteurs calculés.
+- Paramètre `dryRun=true|false` (par défaut `false`) pour valider le fichier sans rien écrire.
 - Verrouillage optimiste : une exécution en cours renvoie `423 Locked` avec `{ "reason": "import_in_progress" }`.
-- Taille maximale : 25 Mio. Un fichier plus volumineux renvoie `413 Payload Too Large`.
+- Taille maximale : 25 Mio (`413 Payload Too Large` sinon).
 
 ```bash
 curl -X POST \
@@ -261,6 +246,7 @@ curl -s -X POST \
 ```
 
 ## Configuration applicative
+
 
 - Chaîne de connexion PostgreSQL : `ConnectionStrings:Default` (surchargée dans Docker via variable d'environnement `ConnectionStrings__Default`).
 - Paramètres généraux : `AppSettings` (ex. `SeedOnStartup`).
@@ -330,3 +316,5 @@ Pour vérifier les mises à jour disponibles, exécutez la commande suivante :
 ```bash
 dotnet list package --outdated
 ```
+
+
