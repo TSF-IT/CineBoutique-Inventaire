@@ -15,4 +15,6 @@ public sealed class UpdateShopUserRequest
     public string DisplayName { get; set; } = string.Empty;
 
     public bool IsAdmin { get; set; }
+
+    public bool? Disabled { get; set; }
 }

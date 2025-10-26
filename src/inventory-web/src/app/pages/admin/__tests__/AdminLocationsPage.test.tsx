@@ -166,6 +166,7 @@ describe('AdminLocationsPage', () => {
 
   it('désactive une zone et la masque par défaut', async () => {
     mockedDisableLocation.mockResolvedValue({ ...baseLocation, disabled: true })
+    mockedUpdateLocation.mockResolvedValue({ ...baseLocation, disabled: false })
 
     await renderAdminPage()
 
@@ -206,6 +207,16 @@ describe('AdminLocationsPage', () => {
       expect(disabledCards.length).toBeGreaterThan(0)
       const [disabledCard] = disabledCards
       expect(within(disabledCard).getByText('Désactivée')).toBeInTheDocument()
+      const reactivateButton = within(disabledCard).getByRole('button', { name: 'Réactiver' })
+      await user.click(reactivateButton)
+
+      await waitFor(() => {
+        expect(mockedUpdateLocation).toHaveBeenCalledWith(baseLocation.id, { disabled: false })
+      })
+      expect(await screen.findByText('Zone réactivée.')).toBeInTheDocument()
+      await waitFor(() => {
+        expect(within(disabledCard).queryByText('Désactivée')).not.toBeInTheDocument()
+      })
     } finally {
       if (dialogPrototype) {
         const prototypeWithOverrides = dialogPrototype as {
@@ -411,6 +422,7 @@ describe('AdminLocationsPage', () => {
 
     mockedFetchShopUsers.mockResolvedValue([existingUser])
     mockedDisableShopUser.mockResolvedValue(disabledUser)
+    mockedUpdateShopUser.mockResolvedValue(existingUser)
 
     const dialogPrototype = window.HTMLDialogElement?.prototype
     const originalShowModal = dialogPrototype?.showModal
@@ -454,6 +466,35 @@ describe('AdminLocationsPage', () => {
       expect(await screen.findByText('Utilisateur désactivé.')).toBeInTheDocument()
       await waitFor(() => {
         expect(screen.queryByText('Bruno Caron')).not.toBeInTheDocument()
+      })
+
+      const toggle = screen.getByLabelText('Masquer les utilisateurs désactivés')
+      await user.click(toggle)
+
+      const allCards = await screen.findAllByTestId('user-card')
+      const disabledCard = allCards.find(
+        (card) => card.getAttribute('data-user-id') === existingUser.id,
+      ) as HTMLElement | undefined
+      expect(disabledCard).toBeDefined()
+      if (!disabledCard) {
+        throw new Error('Carte utilisateur désactivé introuvable')
+      }
+      const reactivateButton = within(disabledCard).getByRole('button', { name: 'Réactiver' })
+      mockedUpdateShopUser.mockResolvedValueOnce(existingUser)
+      await user.click(reactivateButton)
+
+      await waitFor(() => {
+        expect(mockedUpdateShopUser).toHaveBeenCalledWith(testShop.id, {
+          id: existingUser.id,
+          login: existingUser.login,
+          displayName: existingUser.displayName,
+          isAdmin: existingUser.isAdmin,
+          disabled: false,
+        })
+      })
+      expect(await screen.findByText('Utilisateur réactivé.')).toBeInTheDocument()
+      await waitFor(() => {
+        expect(within(disabledCard).queryByRole('button', { name: 'Réactiver' })).not.toBeInTheDocument()
       })
     } finally {
       if (dialogPrototype) {

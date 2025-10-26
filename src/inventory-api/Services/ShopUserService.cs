@@ -103,7 +103,8 @@ public sealed class ShopUserService : IShopUserService
             UPDATE "ShopUser"
             SET "Login" = @Login,
                 "DisplayName" = @DisplayName,
-                "IsAdmin" = @IsAdmin
+                "IsAdmin" = @IsAdmin,
+                "Disabled" = COALESCE(@Disabled, "Disabled")
             WHERE "Id" = @Id AND "ShopId" = @ShopId
             RETURNING "Id", "ShopId", "Login", "DisplayName", "IsAdmin", "Disabled";
             """;
@@ -117,7 +118,8 @@ public sealed class ShopUserService : IShopUserService
                             ShopId = shopId,
                             Login = trimmedLogin,
                             DisplayName = trimmedDisplayName,
-                            request.IsAdmin
+                            request.IsAdmin,
+                            request.Disabled
                         },
                         transaction,
                         cancellationToken: cancellationToken))
