@@ -14,6 +14,7 @@ using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Validation;
 using CineBoutique.Inventory.Infrastructure.Database;
+using CineBoutique.Inventory.Infrastructure.Database.Inventory;
 using Dapper;
 using FluentValidation;
 using FluentValidation.Results;
@@ -47,7 +48,7 @@ internal static class SessionsEndpoints
             Guid locationId,
             StartRunRequest request,
             IValidator<StartRunRequest> validator,
-            IDbConnection connection,
+            ISessionRepository sessionRepository,
             CancellationToken cancellationToken) =>
         {
             if (request is null)
@@ -64,206 +65,49 @@ internal static class SessionsEndpoints
                 return EndpointUtilities.ValidationProblem(validationResult);
             }
 
-            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
-
-            const string selectLocationSql =
-                "SELECT \"Id\", \"ShopId\", \"Code\", \"Label\", \"Disabled\" FROM \"Location\" WHERE \"Id\" = @LocationId AND \"ShopId\" = @ShopId LIMIT 1;";
-
-            var location = await connection
-                .QuerySingleOrDefaultAsync<LocationMetadataRow>(
-                    new CommandDefinition(
-                        selectLocationSql,
-                        new { LocationId = locationId, ShopId = request.ShopId },
-                        cancellationToken: cancellationToken))
+            var startResult = await sessionRepository
+                .StartRunAsync(
+                    new StartRunParameters
+                    {
+                        LocationId = locationId,
+                        ShopId = request.ShopId,
+                        OwnerUserId = request.OwnerUserId,
+                        CountType = request.CountType
+                    },
+                    cancellationToken)
                 .ConfigureAwait(false);
 
-            if (location is null)
+            return startResult.Status switch
             {
-                return EndpointUtilities.Problem(
+                StartRunStatus.LocationNotFound => EndpointUtilities.Problem(
                     "Ressource introuvable",
                     "La zone demandée est introuvable.",
-                    StatusCodes.Status404NotFound);
-            }
-
-            if (location.Disabled)
-            {
-                return EndpointUtilities.Problem(
+                    StatusCodes.Status404NotFound),
+                StartRunStatus.LocationDisabled => EndpointUtilities.Problem(
                     "Zone désactivée",
                     "La zone demandée est désactivée et ne peut pas démarrer de comptage.",
-                    StatusCodes.Status409Conflict);
-            }
-
-            var columnsState = await InventoryEndpointSupport.DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
-
-            if (connection is not NpgsqlConnection npgsqlConnection)
-            {
-                return Results.Problem(
-                    "La connexion à la base de données n'est pas compatible avec PostgreSQL.",
-                    statusCode: StatusCodes.Status500InternalServerError);
-            }
-
-            if (!await InventoryEndpointSupport.ValidateUserBelongsToShop(npgsqlConnection, request.OwnerUserId, location.ShopId, cancellationToken).ConfigureAwait(false))
-            {
-                return InventoryEndpointSupport.BadOwnerUser(request.OwnerUserId, location.ShopId);
-            }
-
-            const string selectOwnerDisplayNameSql =
-                "SELECT \"DisplayName\" FROM \"ShopUser\" WHERE \"Id\" = @OwnerUserId LIMIT 1;";
-
-            var ownerDisplayName = await connection
-                .ExecuteScalarAsync<string?>(
-                    new CommandDefinition(selectOwnerDisplayNameSql, new { OwnerUserId = request.OwnerUserId }, cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
-
-            ownerDisplayName = string.IsNullOrWhiteSpace(ownerDisplayName)
-                ? null
-                : ownerDisplayName.Trim();
-
-            var shouldPersistOperatorDisplayName = columnsState.HasOperatorDisplayName &&
-                                                    !columnsState.OperatorDisplayNameIsNullable;
-            var storedOperatorDisplayName = shouldPersistOperatorDisplayName
-                ? ownerDisplayName ?? request.OwnerUserId.ToString("D")
-                : null;
-
-            var activeOperatorSql = InventoryEndpointSupport.BuildOperatorSqlFragments("cr", "owner", columnsState);
-
-            var selectActiveSql = $@"SELECT
-    cr.""Id""                AS ""RunId"",
-    cr.""InventorySessionId"" AS ""InventorySessionId"",
-    cr.""StartedAtUtc""       AS ""StartedAtUtc"",
-    {(columnsState.HasOwnerUserId ? "cr.\"OwnerUserId\"" : "NULL::uuid")} AS ""OwnerUserId"",
-    {activeOperatorSql.Projection} AS ""OperatorDisplayName""
-FROM ""CountingRun"" cr
-{InventoryEndpointSupport.AppendJoinClause(activeOperatorSql.JoinClause)}
-WHERE cr.""LocationId"" = @LocationId
-  AND cr.""CountType"" = @CountType
-  AND cr.""CompletedAtUtc"" IS NULL
-ORDER BY cr.""StartedAtUtc"" DESC
-LIMIT 1;";
-
-            var existingRun = await connection
-                .QuerySingleOrDefaultAsync<ActiveCountingRunRow?>(
-                    new CommandDefinition(
-                        selectActiveSql,
-                        new { LocationId = locationId, CountType = request.CountType },
-                        cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
-
-            if (existingRun is { } active)
-            {
-                if (columnsState.HasOwnerUserId && active.OwnerUserId is Guid ownerId && ownerId != request.OwnerUserId)
+                    StatusCodes.Status409Conflict),
+                StartRunStatus.OwnerInvalid => InventoryEndpointSupport.BadOwnerUser(startResult.OwnerUserId, startResult.ShopId),
+                StartRunStatus.ConflictOtherOwner => EndpointUtilities.Problem(
+                    "Conflit",
+                    $"Comptage déjà en cours par {FormatOwnerLabel(startResult.ConflictingOwnerLabel)}.",
+                    StatusCodes.Status409Conflict),
+                StartRunStatus.Success when startResult.Run is not null => Results.Ok(new StartInventoryRunResponse
                 {
-                    var ownerLabel = active.OperatorDisplayName ?? "un autre utilisateur";
-                    return EndpointUtilities.Problem(
-                        "Conflit",
-                        $"Comptage déjà en cours par {ownerLabel}.",
-                        StatusCodes.Status409Conflict);
-                }
-
-                if (!columnsState.HasOwnerUserId && !string.IsNullOrWhiteSpace(active.OperatorDisplayName) &&
-                    !string.IsNullOrWhiteSpace(ownerDisplayName) &&
-                    !string.Equals(active.OperatorDisplayName.Trim(), ownerDisplayName, StringComparison.OrdinalIgnoreCase))
-                {
-                    return EndpointUtilities.Problem(
-                        "Conflit",
-                        $"Comptage déjà en cours par {active.OperatorDisplayName}.",
-                        StatusCodes.Status409Conflict);
-                }
-
-                return Results.Ok(new StartInventoryRunResponse
-                {
-                    RunId = active.RunId,
-                    InventorySessionId = active.InventorySessionId,
-                    LocationId = locationId,
-                    CountType = request.CountType,
-                    OwnerUserId = columnsState.HasOwnerUserId
-                        ? active.OwnerUserId ?? request.OwnerUserId
-                        : request.OwnerUserId,
-                    OwnerDisplayName = ownerDisplayName,
-                    OperatorDisplayName = active.OperatorDisplayName ?? ownerDisplayName,
-                    StartedAtUtc = TimeUtil.ToUtcOffset(active.StartedAtUtc)
-                });
-            }
-
-            if (connection is not DbConnection dbConnection)
-            {
-                return Results.Problem(
-                    "La connexion à la base de données n'est pas compatible avec les transactions.",
-                    statusCode: StatusCodes.Status500InternalServerError);
-            }
-
-            var transaction = await dbConnection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-
-            try
-            {
-                var now = DateTimeOffset.UtcNow;
-
-                const string insertSessionSql =
-                    "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@Id, @Name, @StartedAtUtc);";
-
-                var sessionId = Guid.NewGuid();
-                await connection
-                    .ExecuteAsync(
-                        new CommandDefinition(
-                            insertSessionSql,
-                            new
-                            {
-                                Id = sessionId,
-                                Name = $"Session zone {location.Code}",
-                                StartedAtUtc = now
-                            },
-                            transaction,
-                            cancellationToken: cancellationToken))
-                    .ConfigureAwait(false);
-
-                var runId = Guid.NewGuid();
-
-                var ownerColumn = columnsState.HasOwnerUserId ? ", \"OwnerUserId\"" : string.Empty;
-                var ownerValue = columnsState.HasOwnerUserId ? ", @OwnerUserId" : string.Empty;
-                var operatorColumn = shouldPersistOperatorDisplayName ? ", \"OperatorDisplayName\"" : string.Empty;
-                var operatorValue = shouldPersistOperatorDisplayName ? ", @OperatorDisplayName" : string.Empty;
-
-                var insertRunSql = $@"INSERT INTO ""CountingRun"" (""Id"", ""InventorySessionId"", ""LocationId"", ""CountType"", ""StartedAtUtc""{ownerColumn}{operatorColumn})
-VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc{ownerValue}{operatorValue});";
-
-                var insertParameters = new
-                {
-                    Id = runId,
-                    SessionId = sessionId,
-                    LocationId = locationId,
-                    CountType = request.CountType,
-                    StartedAtUtc = now,
-                    OwnerUserId = request.OwnerUserId,
-                    OperatorDisplayName = storedOperatorDisplayName
-                };
-
-                await connection
-                    .ExecuteAsync(
-                        new CommandDefinition(
-                            insertRunSql,
-                            insertParameters,
-                            transaction,
-                            cancellationToken: cancellationToken))
-                    .ConfigureAwait(false);
-
-                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-
-                return Results.Ok(new StartInventoryRunResponse
-                {
-                    RunId = runId,
-                    InventorySessionId = sessionId,
-                    LocationId = locationId,
-                    CountType = request.CountType,
-                    OwnerUserId = request.OwnerUserId,
-                    OwnerDisplayName = ownerDisplayName,
-                    OperatorDisplayName = ownerDisplayName ?? storedOperatorDisplayName,
-                    StartedAtUtc = now
-                });
-            }
-            finally
-            {
-                await transaction.DisposeAsync().ConfigureAwait(false);
-            }
+                    RunId = startResult.Run.RunId,
+                    InventorySessionId = startResult.Run.InventorySessionId,
+                    LocationId = startResult.Run.LocationId,
+                    CountType = startResult.Run.CountType,
+                    OwnerUserId = startResult.Run.OwnerUserId,
+                    OwnerDisplayName = startResult.Run.OwnerDisplayName,
+                    OperatorDisplayName = startResult.Run.OperatorDisplayName,
+                    StartedAtUtc = TimeUtil.ToUtcOffset(startResult.Run.StartedAtUtc)
+                }),
+                _ => Results.Problem(
+                    "Erreur inattendue",
+                    "Une erreur est survenue lors du démarrage du run.",
+                    StatusCodes.Status500InternalServerError)
+            };
         })
         .WithName("StartInventoryRun")
         .WithTags("Inventories")
@@ -278,6 +122,9 @@ VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc{ownerValue}{oper
             return op;
         });
     }
+
+    private static string FormatOwnerLabel(string? label) =>
+        string.IsNullOrWhiteSpace(label) ? "un autre utilisateur" : label.Trim();
 
     private static void MapCompleteEndpoint(IEndpointRouteBuilder app)
     {

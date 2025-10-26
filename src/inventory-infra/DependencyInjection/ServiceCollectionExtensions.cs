@@ -1,6 +1,7 @@
 using CineBoutique.Inventory.Domain.Auditing;
 using CineBoutique.Inventory.Infrastructure.Auditing;
 using CineBoutique.Inventory.Infrastructure.Database;
+using CineBoutique.Inventory.Infrastructure.Database.Inventory;
 using CineBoutique.Inventory.Infrastructure.Database.Products;
 using CineBoutique.Inventory.Infrastructure.Seeding;
 using CineBoutique.Inventory.Infrastructure.Locks;
@@ -43,6 +44,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IProductLookupRepository, ProductLookupRepository>();
         services.AddScoped<IProductGroupRepository, ProductGroupRepository>();
         services.AddScoped<IProductSuggestionRepository, ProductSuggestionRepository>();
+        services.AddScoped<IRunRepository, RunRepository>();
+        services.AddScoped<ISessionRepository, SessionRepository>();
         services.AddSingleton<IImportLockService, InMemoryImportLockService>();
 
         return services;
