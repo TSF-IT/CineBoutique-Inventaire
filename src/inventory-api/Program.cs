@@ -510,30 +510,33 @@ app.MapProductEndpoints();
 app.MapControllers();
 
 // Voir l'environnement et quelques flags runtime
-app.MapGet("/__debug/env", (IConfiguration cfg, IWebHostEnvironment e) =>
+if (app.Environment.IsDevelopment())
 {
-    return Results.Ok(new
+    app.MapGet("/__debug/env", (IConfiguration cfg, IWebHostEnvironment e) =>
     {
-        Environment = e.EnvironmentName,
-        DetailedErrors = cfg["ASPNETCORE_DETAILEDERRORS"],
-        ApplyMigrations = cfg["APPLY_MIGRATIONS"],
-        DisableMigrations = cfg["DISABLE_MIGRATIONS"]
-    });
-}).AllowAnonymous();
+        return Results.Ok(new
+        {
+            Environment = e.EnvironmentName,
+            DetailedErrors = cfg["ASPNETCORE_DETAILEDERRORS"],
+            ApplyMigrations = cfg["APPLY_MIGRATIONS"],
+            DisableMigrations = cfg["DISABLE_MIGRATIONS"]
+        });
+    }).AllowAnonymous();
 
-// Valider la chaîne de connexion effective et ping DB
-app.MapGet("/__debug/db", async (IDbConnection connection) =>
-{
-    try
+    // Valider la chaîne de connexion effective et ping DB
+    app.MapGet("/__debug/db", async (IDbConnection connection) =>
     {
-        var version = await connection.ExecuteScalarAsync<string>("select version();").ConfigureAwait(false);
-        return Results.Ok(new { ok = true, version });
-    }
-    catch (Exception ex)
-    {
-        return Results.Problem(detail: ex.ToString(), title: "db_ping_failed");
-    }
-}).AllowAnonymous();
+        try
+        {
+            var version = await connection.ExecuteScalarAsync<string>("select version();").ConfigureAwait(false);
+            return Results.Ok(new { ok = true, version });
+        }
+        catch (Exception ex)
+        {
+            return Results.Problem(detail: ex.ToString(), title: "db_ping_failed");
+        }
+    }).AllowAnonymous();
+}
 
 await app.RunAsync().ConfigureAwait(false);
 

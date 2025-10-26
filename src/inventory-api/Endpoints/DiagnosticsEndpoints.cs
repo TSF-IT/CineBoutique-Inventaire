@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 
 namespace CineBoutique.Inventory.Api.Endpoints;
@@ -18,7 +19,17 @@ internal static class DiagnosticsEndpoints
     {
         ArgumentNullException.ThrowIfNull(app);
 
+        var env = app.ServiceProvider.GetRequiredService<IWebHostEnvironment>();
         var diag = app.MapGroup("/api/_diag");
+
+        if (env.IsDevelopment())
+        {
+            diag.AllowAnonymous();
+        }
+        else
+        {
+            diag.RequireAuthorization("Admin");
+        }
 
         diag.MapGet("/info", (IConfiguration cfg, IWebHostEnvironment env) =>
         {
