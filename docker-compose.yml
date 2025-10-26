@@ -25,13 +25,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    # Vérifie l'état de préparation de l'API avant d'exposer le service
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost/index.html"]
-      interval: 10s
-      timeout: 3s
-      retries: 6
-      start_period: 15s
     environment:
       ASPNETCORE_ENVIRONMENT: Docker
       ASPNETCORE_DETAILEDERRORS: "true"

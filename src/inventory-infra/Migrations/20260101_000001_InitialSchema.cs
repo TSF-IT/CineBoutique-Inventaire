@@ -202,8 +202,7 @@ public sealed class InitialSchema : Migration
         Execute.Sql(@"CREATE INDEX IF NOT EXISTS ix_product_attributes_gin ON ""Product"" USING GIN (""Attributes"");");
         Execute.Sql(@"CREATE INDEX IF NOT EXISTS ix_product_sku_trgm ON ""Product"" USING GIN (LOWER(""Sku"") gin_trgm_ops);");
         Execute.Sql(@"CREATE INDEX IF NOT EXISTS ix_product_ean_trgm ON ""Product"" USING GIN (LOWER(""Ean"") gin_trgm_ops);");
-        Execute.Sql(@"CREATE INDEX IF NOT EXISTS ix_product_name_trgm ON ""Product"" USING GIN (immutable_unaccent(LOWER(""Name"")) gin_trgm_ops);");
-        Execute.Sql(@"CREATE INDEX IF NOT EXISTS ""IX_Product_Shop_Name_trgm"" ON ""Product"" USING GIN (""ShopId"", immutable_unaccent(LOWER(""Name"")) gin_trgm_ops);");
+        Execute.Sql(@"CREATE INDEX IF NOT EXISTS ""IX_Product_Shop_Name_trgm"" ON ""Product"" USING GIN (immutable_unaccent(LOWER(""Name"")) gin_trgm_ops);");
     }
 
     private void CreateLocationTable()

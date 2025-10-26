@@ -164,7 +164,7 @@ erDiagram
 | `Shop` | `Id` | `ck_shop_kind_allowed`, index unique `UQ_Shop_LowerName`, index `ix_shop_kind` sur `lower(Kind)`. |
 | `ShopUser` | `Id` | Index unique `UQ_ShopUser_Shop_LowerLogin`, contrainte `uq_shopuser_shopid_displayname`, index `ix_shopuser_shopid_displayname`. |
 | `ProductGroup` | `Id` | Contrainte `uq_productgroup_code`, auto-FK `FK_ProductGroup_ProductGroup_ParentId`, index GIN `ix_productgroup_label_trgm`. |
-| `Product` | `Id` | Index unique `UX_Product_Shop_LowerSku`, index partiel `IX_Product_Shop_Ean`, index `IX_Product_Shop_LowerSku`, `IX_Product_Shop_LowerEan`, `IX_Product_Shop_CodeDigits`, `ix_product_codedigits`, GIN `ix_product_attributes_gin`, `ix_product_sku_trgm`, `ix_product_ean_trgm`, `ix_product_name_trgm`, `IX_Product_Shop_Name_trgm`. |
+| `Product` | `Id` | Index unique `UX_Product_Shop_LowerSku`, index partiel `IX_Product_Shop_Ean`, index `IX_Product_Shop_LowerSku`, `IX_Product_Shop_LowerEan`, `IX_Product_Shop_CodeDigits`, `ix_product_codedigits`, GIN `ix_product_attributes_gin`, `ix_product_sku_trgm`, `ix_product_ean_trgm`, `IX_Product_Shop_Name_trgm`. |
 | `Location` | `Id` | Index unique `UQ_Location_Shop_Code`, index `IX_Location_ShopId_Code`. |
 | `InventorySession` | `Id` | — |
 | `CountingRun` | `Id` | Index partiel `IX_CountingRun_Location_CountType_Open`, index unique `ux_countingrun_active_triplet`, index `ix_countingrun_owneruserid`. |

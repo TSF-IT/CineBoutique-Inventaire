@@ -29,14 +29,19 @@ WORKDIR /app
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
 
-# Outils min pour healthcheck (image basée Debian)
+# Outils min pour healthcheck + création d'un utilisateur non-root
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl ca-certificates \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd --system app \
+ && useradd --system --gid app --create-home --home-dir /home/app app
+
+COPY --from=build /app/publish .
+RUN chown -R app:app /app
+
+USER app
 
 # Healthcheck intégré à l'image (évite de le redéfinir dans compose)
 HEALTHCHECK --interval=5s --timeout=2s --start-period=10s --retries=15 \
   CMD curl -fsS http://localhost:8080/health >/dev/null || exit 1
-
-COPY --from=build /app/publish .
 ENTRYPOINT ["dotnet", "CineBoutique.Inventory.Api.dll"]
