@@ -32,6 +32,7 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 src/inventory-web/dist/
+src/inventory-web/dev-dist/
 src/inventory-web/assets/*
 !src/inventory-web/assets/README.md
 src/inventory-web/public/assets/*
