@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 
@@ -123,6 +123,7 @@ describe('AdminLocationsPage', () => {
   })
 
   afterEach(() => {
+    cleanup()
     global.fetch = originalFetch
   })
 
@@ -167,25 +168,60 @@ describe('AdminLocationsPage', () => {
     await renderAdminPage()
 
     const user = userEvent.setup()
-    const locationCard = await screen.findByTestId('location-card')
+    const dialogPrototype = window.HTMLDialogElement?.prototype
+    const originalShowModal = dialogPrototype?.showModal
+    const originalClose = dialogPrototype?.close
+    if (dialogPrototype) {
+      dialogPrototype.showModal = function showModal() {
+        this.setAttribute('open', 'true')
+      }
+      dialogPrototype.close = function close() {
+        this.removeAttribute('open')
+      }
+    }
+
+    const locationCards = await screen.findAllByTestId('location-card')
+    expect(locationCards.length).toBeGreaterThan(0)
+    const [locationCard] = locationCards
     const disableButton = within(locationCard).getByRole('button', { name: 'Désactiver' })
     await user.click(disableButton)
 
-    const confirmDialog = await screen.findByRole('dialog', { name: `Désactiver ${baseLocation.code} ?` })
-    const confirmButton = within(confirmDialog).getByRole('button', { name: 'Confirmer la désactivation' })
-    await user.click(confirmButton)
+    try {
+      const confirmDialog = await screen.findByRole('dialog', { name: `Désactiver ${baseLocation.code} ?` })
+      const confirmButton = within(confirmDialog).getByRole('button', { name: 'Confirmer la désactivation' })
+      await user.click(confirmButton)
 
-    expect(mockedDisableLocation).toHaveBeenCalledWith(baseLocation.id)
-    expect(await screen.findByText('Zone désactivée.')).toBeInTheDocument()
-    await waitFor(() => {
-      expect(screen.queryByTestId('location-card')).not.toBeInTheDocument()
-    })
+      expect(mockedDisableLocation).toHaveBeenCalledWith(baseLocation.id)
+      expect(await screen.findByText('Zone désactivée.')).toBeInTheDocument()
+      await waitFor(() => {
+        expect(screen.queryByTestId('location-card')).not.toBeInTheDocument()
+      })
 
-    const toggle = screen.getByLabelText('Masquer les zones désactivées')
-    await user.click(toggle)
+      const toggle = screen.getByLabelText('Masquer les zones désactivées')
+      await user.click(toggle)
 
-    const disabledCard = await screen.findByTestId('location-card')
-    expect(within(disabledCard).getByText('Désactivée')).toBeInTheDocument()
+      const disabledCards = await screen.findAllByTestId('location-card')
+      expect(disabledCards.length).toBeGreaterThan(0)
+      const [disabledCard] = disabledCards
+      expect(within(disabledCard).getByText('Désactivée')).toBeInTheDocument()
+    } finally {
+      if (dialogPrototype) {
+        const prototypeWithOverrides = dialogPrototype as {
+          showModal?: (() => void) | undefined
+          close?: (() => void) | undefined
+        }
+        if (originalShowModal) {
+          prototypeWithOverrides.showModal = originalShowModal
+        } else {
+          delete prototypeWithOverrides.showModal
+        }
+        if (originalClose) {
+          prototypeWithOverrides.close = originalClose
+        } else {
+          delete prototypeWithOverrides.close
+        }
+      }
+    }
   })
   it('met à jour le code et le libellé d’une zone existante', async () => {
     const updatedLocation: Location = {
@@ -584,6 +620,271 @@ describe('AdminLocationsPage', () => {
       await waitFor(() => {
         expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/products/import?'), expect.anything())
       })
+    } finally {
+      global.fetch = previousFetch
+    }
+  })
+
+  it("affiche une erreur détaillée quand l'import renvoie un statut 400", async () => {
+    const previousFetch = global.fetch
+    const fetchMock = vi.fn().mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+
+        if (url.endsWith('/products/import/status')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ canReplace: true, lockReason: null, hasCountLines: false }),
+          } as Response
+        }
+
+        if (url.includes('/products/import')) {
+          expect(init?.method ?? 'POST').toBe('POST')
+          return {
+            ok: false,
+            status: 400,
+            text: async () =>
+              JSON.stringify({
+                errors: [
+                  { line: 2, reason: 'MISSING_SKU_COLUMN' },
+                  { line: 5, reason: 'EMPTY_NAME' },
+                ],
+                unknownColumns: ['colonne_inconnue'],
+              }),
+          } as Response
+        }
+
+        throw new Error(`Unexpected fetch: ${url}`)
+      },
+    )
+
+    global.fetch = fetchMock as unknown as typeof global.fetch
+
+    try {
+      await renderAdminPage()
+
+      const user = userEvent.setup()
+      await openCatalogTab(user)
+
+      await screen.findByRole('radio', { name: /Remplacer le catalogue/i })
+
+      const file = new File(['sku;ean;name'], 'catalog.csv', { type: 'text/csv' })
+      const fileInputs = screen.getAllByLabelText('Fichier CSV', { selector: 'input[type="file"]' })
+      const fileInput = fileInputs[fileInputs.length - 1]
+      await user.upload(fileInput, file)
+
+      const submitButton = screen.getByRole('button', { name: 'Importer le CSV' })
+      await user.click(submitButton)
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/products/import?'), expect.anything())
+      })
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent('Le fichier CSV contient des lignes invalides.')
+      expect(await screen.findByText(/Erreurs \(non importées\)/i)).toBeInTheDocument()
+      expect(alert).toHaveTextContent('Ligne 2 — MISSING_SKU_COLUMN')
+      expect(alert).toHaveTextContent('Ligne 5 — EMPTY_NAME')
+    } finally {
+      global.fetch = previousFetch
+    }
+  })
+
+  it("bascule en erreur si la réponse 200 contient des erreurs d'import", async () => {
+    const previousFetch = global.fetch
+    const fetchMock = vi.fn().mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+
+        if (url.endsWith('/products/import/status')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ canReplace: true, lockReason: null, hasCountLines: false }),
+          } as Response
+        }
+
+        if (url.includes('/products/import')) {
+          expect(init?.method ?? 'POST').toBe('POST')
+          return {
+            ok: true,
+            status: 200,
+            text: async () =>
+              JSON.stringify({
+                inserted: 0,
+                errors: [{ line: 3, reason: 'INVALID_EAN' }],
+                errorCount: 1,
+              }),
+          } as Response
+        }
+
+        throw new Error(`Unexpected fetch: ${url}`)
+      },
+    )
+
+    global.fetch = fetchMock as unknown as typeof global.fetch
+
+    try {
+      await renderAdminPage()
+
+      const user = userEvent.setup()
+      await openCatalogTab(user)
+
+      await screen.findByRole('radio', { name: /Remplacer le catalogue/i })
+
+      const file = new File(['sku;ean;name'], 'catalog.csv', { type: 'text/csv' })
+      const fileInputs = screen.getAllByLabelText('Fichier CSV', { selector: 'input[type="file"]' })
+      const fileInput = fileInputs[fileInputs.length - 1]
+      await user.upload(fileInput, file)
+
+      const submitButton = screen.getByRole('button', { name: 'Importer le CSV' })
+      await user.click(submitButton)
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/products/import?'), expect.anything())
+      })
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent("Import terminé avec erreurs. Les lignes listées n'ont pas été importées.")
+      expect(alert).toHaveTextContent('Ligne 3 — INVALID_EAN')
+    } finally {
+      global.fetch = previousFetch
+    }
+  })
+
+  it('signale les doublons renvoyés par le serveur après un import 200', async () => {
+    const previousFetch = global.fetch
+    const fetchMock = vi.fn().mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+
+        if (url.endsWith('/products/import/status')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ canReplace: true, lockReason: null, hasCountLines: false }),
+          } as Response
+        }
+
+        if (url.includes('/products/import')) {
+          expect(init?.method ?? 'POST').toBe('POST')
+          return {
+            ok: true,
+            status: 200,
+            text: async () =>
+              JSON.stringify({
+                inserted: 10,
+                duplicates: {
+                  skus: [
+                    { value: 'A-TNF70', lines: [2, 5] },
+                  ],
+                  eans: [
+                    { value: '885958315561', lines: [1, 4] },
+                  ],
+                },
+              }),
+          } as Response
+        }
+
+        throw new Error(`Unexpected fetch: ${url}`)
+      },
+    )
+
+    global.fetch = fetchMock as unknown as typeof global.fetch
+
+    try {
+      await renderAdminPage()
+
+      const user = userEvent.setup()
+      await openCatalogTab(user)
+
+      await screen.findByRole('radio', { name: /Remplacer le catalogue/i })
+
+      const file = new File(['sku;ean;name'], 'catalog.csv', { type: 'text/csv' })
+      const fileInputs = screen.getAllByLabelText('Fichier CSV', { selector: 'input[type="file"]' })
+      const fileInput = fileInputs[fileInputs.length - 1]
+      await user.upload(fileInput, file)
+
+      const submitButton = screen.getByRole('button', { name: 'Importer le CSV' })
+      await user.click(submitButton)
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/products/import?'), expect.anything())
+      })
+
+      const panel = await screen.findByRole('status')
+      expect(panel).toHaveTextContent('Import terminé avec avertissements. Les éléments listés ont été importés.')
+      expect(panel).toHaveTextContent('SKU A-TNF70 (lignes 2, 5)')
+      expect(panel).toHaveTextContent('EAN 885958315561 (lignes 1, 4)')
+    } finally {
+      global.fetch = previousFetch
+    }
+  })
+
+  it("compte les lignes ignorées comme erreurs dans une réponse 200", async () => {
+    const previousFetch = global.fetch
+    const fetchMock = vi.fn().mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+
+        if (url.endsWith('/products/import/status')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ canReplace: true, lockReason: null, hasCountLines: false }),
+          } as Response
+        }
+
+        if (url.includes('/products/import')) {
+          expect(init?.method ?? 'POST').toBe('POST')
+          return {
+            ok: true,
+            status: 200,
+            text: async () =>
+              JSON.stringify({
+                inserted: 7400,
+                total: 7402,
+                skippedLines: [
+                  { line: 7401, reason: 'MISSING_SKU' },
+                  { line: 7402, reason: 'MISSING_EAN' },
+                ],
+              }),
+          } as Response
+        }
+
+        throw new Error(`Unexpected fetch: ${url}`)
+      },
+    )
+
+    global.fetch = fetchMock as unknown as typeof global.fetch
+
+    try {
+      await renderAdminPage()
+
+      const user = userEvent.setup()
+      await openCatalogTab(user)
+
+      await screen.findByRole('radio', { name: /Remplacer le catalogue/i })
+
+      const file = new File(['sku;ean;name'], 'catalog.csv', { type: 'text/csv' })
+      const fileInputs = screen.getAllByLabelText('Fichier CSV', { selector: 'input[type="file"]' })
+      const fileInput = fileInputs[fileInputs.length - 1]
+      await user.upload(fileInput, file)
+
+      const submitButton = screen.getByRole('button', { name: 'Importer le CSV' })
+      await user.click(submitButton)
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/products/import?'), expect.anything())
+      })
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent("Import terminé avec erreurs. Les lignes listées n'ont pas été importées.")
+      expect(alert).toHaveTextContent('Ligne 7401 — MISSING_SKU')
+      expect(alert).toHaveTextContent('Ligne 7402 — MISSING_EAN')
+      expect(alert).toHaveTextContent('Erreurs détectées')
+      expect(alert).toHaveTextContent(/Avertissements signalés\s*0/)
     } finally {
       global.fetch = previousFetch
     }

@@ -109,15 +109,18 @@ const encodingLabelFor = (encoding: string | null | undefined) => {
 
 type ImportSummary = {
   inserted: number
+  total: number
   errorCount: number
+  warningCount: number
   unknownColumns: string[]
   encoding?: string | null
+  warnings: string[]
+  errors: string[]
 }
 
 type CatalogImportFeedback =
-  | { type: 'success'; summary: ImportSummary }
-  | { type: 'info'; message: string }
-  | { type: 'error'; message: string; details?: string[] }
+  | { type: 'result'; severity: 'success' | 'warning' | 'error'; summary: ImportSummary; message: string }
+  | { type: 'message'; severity: 'info' | 'error'; message: string; details?: string[] }
 
 type ImportAccessStatus = {
   canReplace: boolean
@@ -219,12 +222,201 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
     return 0
   }
 
-  const toStringList = (value: unknown) => {
-    if (!Array.isArray(value)) {
+const toStringList = (value: unknown) => {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value
+    .map((item) => (typeof item === 'string' ? item.trim() : ''))
+    .filter((item): item is string => item.length > 0)
+}
+
+const readFileAsArrayBuffer = async (file: File): Promise<ArrayBuffer> => {
+  if (typeof file.arrayBuffer === 'function') {
+    return file.arrayBuffer()
+  }
+
+  if (typeof (file as Blob).stream === 'function') {
+    const reader = (file as Blob).stream().getReader()
+    const chunks: Uint8Array[] = []
+    let total = 0
+
+    while (true) {
+      // eslint-disable-next-line no-await-in-loop
+      const { done, value } = await reader.read()
+      if (done) {
+        break
+      }
+      if (value) {
+        chunks.push(value)
+        total += value.length
+      }
+    }
+
+    const buffer = new Uint8Array(total)
+    let offset = 0
+    for (const chunk of chunks) {
+      buffer.set(chunk, offset)
+      offset += chunk.length
+    }
+
+    return buffer.buffer
+  }
+
+  return await new Promise<ArrayBuffer>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => {
+      reject(reader.error ?? new Error('Impossible de lire le fichier.'))
+    }
+    reader.onload = () => {
+      const result = reader.result
+      if (result instanceof ArrayBuffer) {
+        resolve(result)
+        return
+      }
+
+      if (typeof result === 'string') {
+        const encoder = new TextEncoder()
+        resolve(encoder.encode(result).buffer)
+        return
+      }
+
+      resolve(new ArrayBuffer(0))
+    }
+    reader.readAsArrayBuffer(file)
+  })
+}
+
+const toSkippedDetails = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') {
+        return ''
+      }
+      const record = entry as Record<string, unknown>
+      const reason =
+        typeof record.reason === 'string'
+          ? record.reason.trim()
+          : typeof record.Reason === 'string'
+            ? record.Reason.trim()
+            : ''
+      const rawValue =
+        typeof record.raw === 'string'
+          ? record.raw.trim()
+          : typeof record.Raw === 'string'
+            ? record.Raw.trim()
+            : ''
+      const line =
+        typeof record.line === 'number'
+          ? record.line
+          : typeof record.Line === 'number'
+            ? record.Line
+            : null
+
+      const reasonLabel = reason || rawValue || 'Ligne ignorée'
+      if (typeof line === 'number' && Number.isFinite(line) && line > 0) {
+        return `Ligne ${line} — ${reasonLabel}`
+      }
+
+      return reasonLabel
+    })
+    .map((item) => item.trim())
+    .filter((item): item is string => item.length > 0)
+}
+
+const buildUniqueList = (values: string[]): string[] => {
+  const unique: string[] = []
+  values.forEach((value) => {
+    const next = value.trim()
+    if (next.length > 0 && !unique.includes(next)) {
+      unique.push(next)
+    }
+  })
+  return unique
+}
+
+const toImportErrorList = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value
+      .map((entry) => {
+        if (typeof entry === 'string') {
+          return entry.trim()
+        }
+
+        if (entry && typeof entry === 'object') {
+          const record = entry as Record<string, unknown>
+          const reason =
+            typeof record.reason === 'string'
+              ? record.reason
+              : typeof record.Reason === 'string'
+                ? record.Reason
+                : ''
+          const lineNumber =
+            typeof record.line === 'number'
+              ? record.line
+              : typeof record.Line === 'number'
+                ? record.Line
+                : null
+          const rawValue =
+            typeof record.raw === 'string'
+              ? record.raw
+              : typeof record.Raw === 'string'
+                ? record.Raw
+                : ''
+
+          const parts: string[] = []
+          if (typeof lineNumber === 'number' && Number.isFinite(lineNumber) && lineNumber > 0) {
+            parts.push(`Ligne ${lineNumber}`)
+          }
+          if (reason) {
+            parts.push(reason)
+          }
+          if (parts.length === 0 && rawValue) {
+            parts.push(rawValue)
+          }
+
+          return parts.join(' — ').trim()
+        }
+
+        return ''
+      })
+      .filter((item): item is string => item.length > 0)
+  }
+
+  const toDuplicatesList = (value: unknown): string[] => {
+    if (!value || typeof value !== 'object') {
       return []
     }
-    return value
-      .map((item) => (typeof item === 'string' ? item.trim() : ''))
+
+    const record = value as Record<string, unknown>
+    const rawSkus = Array.isArray(record.skus) ? record.skus : Array.isArray(record.Skus) ? record.Skus : []
+    const rawEans = Array.isArray(record.eans) ? record.eans : Array.isArray(record.Eans) ? record.Eans : []
+
+    const formatEntry = (label: 'SKU' | 'EAN', entry: unknown) => {
+      if (!entry || typeof entry !== 'object') {
+        return ''
+      }
+      const item = entry as Record<string, unknown>
+      const valueText = typeof item.value === 'string' ? item.value : typeof item.Value === 'string' ? item.Value : ''
+      const rawLines = Array.isArray(item.lines) ? item.lines : Array.isArray(item.Lines) ? item.Lines : []
+      const numericLines = rawLines.filter((line): line is number => typeof line === 'number' && Number.isFinite(line))
+      const uniqueLines = Array.from(new Set(numericLines)).sort((a, b) => a - b)
+      const lineLabel = uniqueLines.length > 0 ? ` (lignes ${uniqueLines.join(', ')})` : ''
+      const trimmedValue = valueText.trim()
+      if (!trimmedValue) {
+        return ''
+      }
+      return `${label} ${trimmedValue}${lineLabel}`
+    }
+
+    return [...rawSkus.map((item) => formatEntry('SKU', item)), ...rawEans.map((item) => formatEntry('EAN', item))]
+      .map((item) => item.trim())
       .filter((item): item is string => item.length > 0)
   }
 
@@ -241,18 +433,19 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
     setFeedback(null)
 
     if (!shop?.id) {
-      setFeedback({ type: 'error', message: 'Boutique introuvable. Veuillez recharger la page.' })
+      setFeedback({ type: 'message', severity: 'error', message: 'Boutique introuvable. Veuillez recharger la page.' })
       return
     }
 
     if (!file) {
-      setFeedback({ type: 'error', message: "Sélectionnez un fichier CSV avant de lancer l'import." })
+      setFeedback({ type: 'message', severity: 'error', message: "Sélectionnez un fichier CSV avant de lancer l'import." })
       return
     }
 
     if (importMode === 'replace' && importStatus?.canReplace === false) {
       setFeedback({
-        type: 'error',
+        type: 'message',
+        severity: 'error',
         message: 'Le remplacement du catalogue est verrouillé. Choisissez “Compléter le catalogue” pour ajouter un fichier en complément.',
       })
       return
@@ -261,7 +454,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
     setSubmitting(true)
     try {
       const fd = new FormData()
-      const buffer = await file.arrayBuffer()
+      const buffer = await readFileAsArrayBuffer(file)
       const decoded = decodeCsvBuffer(buffer, selectedEncoding)
       const normalizedEncoding =
         selectedEncoding === 'auto' ? decoded.detectedEncoding : selectedEncoding
@@ -284,22 +477,78 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
       const record = (payload ?? {}) as Record<string, unknown>
 
       if (response.status === 200) {
-        const insertedCount = toInteger(record.inserted)
-        const fallbackTotal = toInteger(record.total)
+        const errorDetails = Array.from(
+          new Set([
+            ...toImportErrorList(record.errors),
+            ...toImportErrorList(record.Errors),
+          ]),
+        )
+        const skippedDetails = toSkippedDetails(record.skippedLines ?? record.SkippedLines)
+        const duplicateDetails = toDuplicatesList(record.duplicates ?? record.Duplicates)
+        const unknownColumns = Array.from(
+          new Set([
+            ...toStringList(record.unknownColumns),
+            ...toStringList(record.UnknownColumns),
+          ]),
+        )
+        const errorsList = buildUniqueList([...errorDetails, ...skippedDetails])
+        const errorCount = Math.max(errorsList.length, toInteger(record.errorCount), toInteger(record.ErrorCount))
+        const warningCount = duplicateDetails.length
+        const insertedCount = Math.max(toInteger(record.inserted), toInteger(record.Inserted))
+        const fallbackTotal = Math.max(toInteger(record.total), toInteger(record.Total))
+        const insertedValue = insertedCount > 0 ? insertedCount : fallbackTotal
+        const totalValue = Math.max(fallbackTotal, insertedValue)
+
         const summary: ImportSummary = {
-          inserted: insertedCount > 0 ? insertedCount : fallbackTotal,
-          errorCount: toInteger(record.errorCount),
-          unknownColumns: toStringList(record.unknownColumns),
+          inserted: insertedValue,
+          total: totalValue,
+          errorCount,
+          warningCount,
+          unknownColumns,
           encoding: encodingLabelFor(normalizedEncoding),
+          warnings: duplicateDetails,
+          errors: errorsList,
         }
-        setFeedback({ type: 'success', summary })
-        resetFileInput()
-        await fetchImportStatus()
+
+        const severity: 'success' | 'warning' | 'error' =
+          summary.errorCount > 0 ? 'error' : summary.warningCount > 0 ? 'warning' : 'success'
+
+        let message =
+          typeof record.message === 'string'
+            ? record.message.trim()
+            : typeof record.error === 'string'
+              ? record.error.trim()
+              : ''
+
+        if (!message) {
+          if (severity === 'error') {
+            message = "Import terminé avec erreurs. Les lignes listées n'ont pas été importées."
+          } else if (severity === 'warning') {
+            message =
+              summary.warningCount > 1
+                ? 'Import terminé avec avertissements. Les éléments listés ont été importés.'
+                : 'Import terminé avec avertissement. L’élément listé a été importé.'
+          } else {
+            message = 'Import terminé avec succès.'
+          }
+        }
+
+        setFeedback({
+          type: 'result',
+          severity,
+          summary,
+          message,
+        })
+
+        if (severity !== 'error') {
+          resetFileInput()
+          await fetchImportStatus()
+        }
         return
       }
 
       if (response.status === 204) {
-        setFeedback({ type: 'info', message: 'Aucun changement (fichier déjà importé).' })
+        setFeedback({ type: 'message', severity: 'info', message: 'Aucun changement (fichier déjà importé).' })
         resetFileInput()
         await fetchImportStatus()
         return
@@ -314,7 +563,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
               ? 'Le catalogue est verrouillé : importez un fichier complémentaire ou purgez les comptages avant de remplacer le catalogue.'
               : 'Un import est déjà en cours.'
 
-        setFeedback({ type: 'error', message })
+        setFeedback({ type: 'message', severity: 'error', message })
 
         if (reason === 'catalog_locked') {
           setImportMode('merge')
@@ -324,29 +573,62 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
       }
 
       if (response.status === 413) {
-        setFeedback({ type: 'error', message: 'Fichier trop volumineux (25 MiB max).' })
+        setFeedback({ type: 'message', severity: 'error', message: 'Fichier trop volumineux (25 MiB max).' })
         return
       }
 
       if (response.status === 400) {
-        const aggregatedDetails = [
-          ...toStringList(record.errors),
-          ...toStringList(record.errorMessages),
-          ...toStringList(record.details),
+        const structuredErrors = [
+          ...toImportErrorList(record.errors),
+          ...toImportErrorList(record.Errors),
         ]
-        const uniqueDetails = Array.from(new Set(aggregatedDetails))
+        const otherDetails = [
+          ...toStringList(record.errorMessages ?? record.ErrorMessages),
+          ...toStringList(record.details ?? record.Details),
+        ]
+        const skippedDetails = toSkippedDetails(record.skippedLines ?? record.SkippedLines)
+        const unknownColumns = Array.from(
+          new Set([
+            ...toStringList(record.unknownColumns),
+            ...toStringList(record.UnknownColumns),
+          ]),
+        )
+        const duplicateDetails = toDuplicatesList(record.duplicates ?? record.Duplicates)
+        const combinedErrors = buildUniqueList([...structuredErrors, ...otherDetails, ...skippedDetails])
+        const errorCount = Math.max(combinedErrors.length, toInteger(record.errorCount), toInteger(record.ErrorCount))
+        const warningCount = duplicateDetails.length
+        const insertedCount = Math.max(toInteger(record.inserted), toInteger(record.Inserted))
+        const fallbackTotal = Math.max(toInteger(record.total), toInteger(record.Total))
+        const insertedValue = insertedCount > 0 ? insertedCount : fallbackTotal
+        const totalValue = Math.max(fallbackTotal, insertedValue)
+
+        const summary: ImportSummary = {
+          inserted: insertedValue,
+          total: totalValue,
+          errorCount,
+          warningCount,
+          unknownColumns,
+          encoding: encodingLabelFor(normalizedEncoding),
+          warnings: duplicateDetails,
+          errors: combinedErrors,
+        }
+
         const message =
           typeof record.message === 'string'
             ? record.message
             : typeof record.error === 'string'
               ? record.error
-              : rawText && rawText.trim().length > 0
-                ? rawText
-                : 'Le fichier CSV est invalide.'
+              : combinedErrors.length > 0
+                ? 'Le fichier CSV contient des lignes invalides.'
+                : rawText && rawText.trim().length > 0
+                  ? rawText
+                  : 'Le fichier CSV est invalide.'
+
         setFeedback({
-          type: 'error',
+          type: 'result',
+          severity: 'error',
+          summary,
           message,
-          details: uniqueDetails.length > 0 ? uniqueDetails : undefined,
         })
         return
       }
@@ -355,15 +637,27 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
         (typeof record.message === 'string' && record.message) ||
         (typeof record.error === 'string' && record.error) ||
         (rawText && rawText.trim().length > 0 ? rawText : `Erreur inattendue (${response.status}).`)
-      setFeedback({ type: 'error', message: fallbackMessage })
-    } catch {
+      setFeedback({ type: 'message', severity: 'error', message: fallbackMessage })
+    } catch (error) {
       setFeedback({
-        type: 'error',
+        type: 'message',
+        severity: 'error',
         message: "L'import a échoué. Vérifiez votre connexion et réessayez.",
       })
-    } finally {
+  } finally {
       setSubmitting(false)
     }
+  }
+
+  const resultPanelClasses: Record<'success' | 'warning' | 'error', string> = {
+    success: 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-400/40 dark:bg-emerald-900/30 dark:text-emerald-100',
+    warning: 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-400/10 dark:text-amber-200',
+    error: 'border-red-200 bg-red-50 text-red-700 dark:border-red-400/40 dark:bg-red-900/30 dark:text-red-100',
+  }
+
+  const messagePanelClasses: Record<'info' | 'error', string> = {
+    info: 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-600/50 dark:bg-slate-900/40 dark:text-slate-200',
+    error: 'border-red-200 bg-red-50 text-red-700 dark:border-red-400/40 dark:bg-red-900/30 dark:text-red-100',
   }
 
   return (
@@ -486,41 +780,44 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
           </Button>
         </div>
       </form>
-      {feedback && (
-        <div
-          role={feedback.type === 'error' ? 'alert' : 'status'}
-          className={clsx(
-            'rounded-lg border p-4 text-sm',
-            feedback.type === 'success' && 'border-emerald-200 bg-emerald-50 text-emerald-800',
-            feedback.type === 'info' && 'border-slate-200 bg-slate-50 text-slate-700',
-            feedback.type === 'error' && 'border-red-200 bg-red-50 text-red-700',
-          )}
-        >
-          {feedback.type === 'success' ? (
+      {feedback &&
+        (feedback.type === 'result' ? (
+          <div
+            role={feedback.severity === 'error' ? 'alert' : 'status'}
+            className={clsx('rounded-lg border p-4 text-sm', resultPanelClasses[feedback.severity])}
+          >
             <div className="space-y-3">
-              <p className="font-medium">
-                Import terminé avec succès.
-              </p>
+              <p className="font-medium">{feedback.message}</p>
               <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                 <div>
-                  <dt className="font-medium text-slate-700">Produits importés</dt>
-                  <dd className="text-slate-600">{feedback.summary.inserted}</dd>
+                  <dt className="font-medium text-slate-700 dark:text-slate-200">Produits importés</dt>
+                  <dd className="text-slate-600 dark:text-slate-300">{feedback.summary.inserted}</dd>
+                </div>
+                {feedback.summary.total > 0 && (
+                  <div>
+                    <dt className="font-medium text-slate-700 dark:text-slate-200">Lignes du fichier</dt>
+                    <dd className="text-slate-600 dark:text-slate-300">{feedback.summary.total}</dd>
+                  </div>
+                )}
+                <div>
+                  <dt className="font-medium text-slate-700 dark:text-slate-200">Erreurs détectées</dt>
+                  <dd className="text-slate-600 dark:text-slate-300">{feedback.summary.errorCount}</dd>
                 </div>
                 <div>
-              <dt className="font-medium text-slate-700">Erreurs détectées</dt>
-              <dd className="text-slate-600">{feedback.summary.errorCount}</dd>
-            </div>
-            {feedback.summary.encoding && (
-              <div>
-                <dt className="font-medium text-slate-700">Encodage utilisé</dt>
-                <dd className="text-slate-600">{feedback.summary.encoding}</dd>
-              </div>
-            )}
-          </dl>
+                  <dt className="font-medium text-slate-700 dark:text-slate-200">Avertissements signalés</dt>
+                  <dd className="text-slate-600 dark:text-slate-300">{feedback.summary.warningCount}</dd>
+                </div>
+                {feedback.summary.encoding && (
+                  <div>
+                    <dt className="font-medium text-slate-700 dark:text-slate-200">Encodage utilisé</dt>
+                    <dd className="text-slate-600 dark:text-slate-300">{feedback.summary.encoding}</dd>
+                  </div>
+                )}
+              </dl>
               {feedback.summary.unknownColumns.length > 0 && (
                 <div className="space-y-2">
-                  <p className="font-medium text-slate-700">Colonnes inconnues</p>
-                  <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
+                  <p className="font-medium text-slate-700 dark:text-slate-200">Colonnes inconnues</p>
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
                     {feedback.summary.unknownColumns.map((column) => (
                       <li key={column} className="max-w-full truncate" title={column}>
                         {column}
@@ -529,10 +826,43 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
                   </ul>
                 </div>
               )}
+              {feedback.summary.warnings.length > 0 && (
+                <div className="space-y-2">
+                  <p className="font-medium text-slate-700 dark:text-slate-200">Avertissements (importés)</p>
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+                    {feedback.summary.warnings.map((warning) => (
+                      <li key={warning} className="max-w-full break-words">
+                        {warning}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Les éléments listés ont bien été intégrés.
+                  </p>
+                </div>
+              )}
+              {feedback.summary.errors.length > 0 && (
+                <div className="space-y-2">
+                  <p className="font-medium text-slate-700 dark:text-slate-200">Erreurs (non importées)</p>
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+                    {feedback.summary.errors.map((detail) => (
+                      <li key={detail} className="max-w-full break-words">
+                        {detail}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Les lignes listées n'ont pas été ajoutées au catalogue.
+                  </p>
+                </div>
+              )}
             </div>
-          ) : feedback.type === 'info' ? (
-            <p className="font-medium">{feedback.message}</p>
-          ) : (
+          </div>
+        ) : (
+          <div
+            role={feedback.severity === 'error' ? 'alert' : 'status'}
+            className={clsx('rounded-lg border p-4 text-sm', messagePanelClasses[feedback.severity])}
+          >
             <div className="space-y-2">
               <p className="font-medium">{feedback.message}</p>
               {feedback.details && feedback.details.length > 0 && (
@@ -545,9 +875,8 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
                 </ul>
               )}
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        ))}
     </Card>
   )
 }
