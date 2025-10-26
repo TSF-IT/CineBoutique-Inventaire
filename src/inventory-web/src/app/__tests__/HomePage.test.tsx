@@ -1,4 +1,3 @@
-// Modifications : ajout d'un mock des zones pour vérifier le compteur de comptages terminés.
 import { render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { useEffect } from 'react'

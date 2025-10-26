@@ -1,4 +1,3 @@
-// Modifications : déplacement des endpoints de santé (/health, /ready, /healthz) et du writer JSON dédié.
 using System;
 using System.Data;
 using System.Linq;

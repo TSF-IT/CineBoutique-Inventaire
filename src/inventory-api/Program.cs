@@ -1,4 +1,3 @@
-// Modifications : simplification de Program.cs via des extensions et intégration du mapping conflits.
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using System.Data;
 using System.Diagnostics.Metrics;

@@ -1,4 +1,3 @@
-// Modifications : externalisation des endpoints inventaire avec ajout de la génération de conflits lors des clôtures.
 using System;
 using System.Collections.Generic;
 using System.Data;

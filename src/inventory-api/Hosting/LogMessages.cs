@@ -1,4 +1,3 @@
-// Modifications : isolement des messages LoggerMessage générés pour alléger Program.cs.
 using System;
 using Microsoft.Extensions.Logging;
 

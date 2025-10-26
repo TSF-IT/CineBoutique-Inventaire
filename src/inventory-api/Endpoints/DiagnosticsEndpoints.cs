@@ -1,4 +1,3 @@
-// Modifications : extraction du groupe d'endpoints /api/_diag depuis Program.cs pour clarifier le bootstrap.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

@@ -1,4 +1,3 @@
-// Modifications : forcer l'inclusion de runId=null lors de la complétion sans run existant.
 import type { ChangeEvent, FocusEvent, PointerEvent, KeyboardEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'

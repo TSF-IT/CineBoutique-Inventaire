@@ -1,4 +1,3 @@
-// Modifications : déplacement de l'utilitaire de conversion temporelle pour clarifier Program.cs.
 using System;
 
 namespace CineBoutique.Inventory.Api.Infrastructure;

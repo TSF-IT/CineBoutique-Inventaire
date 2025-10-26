@@ -1,4 +1,3 @@
-// Modifications : chargement des zones pour le compteur terminé et panneau enrichi des runs ouverts.
 import { clsx } from 'clsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'

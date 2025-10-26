@@ -1,4 +1,3 @@
-// Modifications : activation du scroll interne et amélioration de l’overlay du panneau coulissant.
 import { clsx } from 'clsx'
 import type { ReactNode } from 'react'
 

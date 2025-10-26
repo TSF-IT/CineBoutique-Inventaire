@@ -1,4 +1,3 @@
-// Modifications : centralisation des utilitaires partagés entre les endpoints minimal API.
 using System;
 using System.Collections.Generic;
 using System.Data;

@@ -1,4 +1,3 @@
-// Modifications : extraction des enregistrements/classes internes utilisés par Dapper pour les requêtes API.
 using System;
 
 namespace CineBoutique.Inventory.Api.Models;
