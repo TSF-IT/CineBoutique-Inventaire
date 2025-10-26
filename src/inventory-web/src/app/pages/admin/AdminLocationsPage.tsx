@@ -1,5 +1,5 @@
-import { clsx } from 'clsx'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { clsx } from "clsx";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   createLocation,
@@ -8,58 +8,68 @@ import {
   updateShopUser,
   disableShopUser,
   disableLocation,
-} from '../../api/adminApi'
-import { fetchLocations } from '../../api/inventoryApi'
-import { fetchShopUsers } from '../../api/shopUsers'
-import { Card } from '../../components/Card'
-import { EmptyState } from '../../components/EmptyState'
-import { LoadingIndicator } from '../../components/LoadingIndicator'
-import { Button } from '../../components/ui/Button'
-import { FileUploadField } from '../../components/ui/FileUploadField'
-import { Input } from '../../components/ui/Input'
-import { useAsync } from '../../hooks/useAsync'
-import type { Location } from '../../types/inventory'
+} from "../../api/adminApi";
+import { fetchLocations } from "../../api/inventoryApi";
+import { fetchShopUsers } from "../../api/shopUsers";
+import { Card } from "../../components/Card";
+import { EmptyState } from "../../components/EmptyState";
+import { LoadingIndicator } from "../../components/LoadingIndicator";
+import { Button } from "../../components/ui/Button";
+import { FileUploadField } from "../../components/ui/FileUploadField";
+import { Input } from "../../components/ui/Input";
+import { useAsync } from "../../hooks/useAsync";
+import type { Location } from "../../types/inventory";
 
 import {
   CSV_ENCODING_OPTIONS,
   decodeCsvBuffer,
   type CsvEncoding,
-} from '@/features/import/csvEncoding'
-import { useShop } from '@/state/ShopContext'
-import type { ShopUser } from '@/types/user'
+} from "@/features/import/csvEncoding";
+import { useShop } from "@/state/ShopContext";
+import type { ShopUser } from "@/types/user";
 
-type FeedbackState = { type: 'success' | 'error'; message: string } | null
-type AdminSection = 'locations' | 'users' | 'catalog'
+type FeedbackState = { type: "success" | "error"; message: string } | null;
+type AdminSection = "locations" | "users" | "catalog";
 
-const ADMIN_SECTIONS: { id: AdminSection; label: string; description: string }[] = [
+const ADMIN_SECTIONS: {
+  id: AdminSection;
+  label: string;
+  description: string;
+}[] = [
   {
-    id: 'locations',
-    label: 'Zones',
-    description: 'Ajustez les codes visibles sur les étiquettes et leurs libellés associés.',
+    id: "locations",
+    label: "Zones",
+    description:
+      "Ajustez les codes visibles sur les étiquettes et leurs libellés associés.",
   },
   {
-    id: 'users',
-    label: 'Utilisateurs',
-    description: 'Créez, mettez à jour ou désactivez les comptes des personnes autorisées à inventorier.',
+    id: "users",
+    label: "Utilisateurs",
+    description:
+      "Créez, mettez à jour ou désactivez les comptes des personnes autorisées à inventorier.",
   },
   {
-    id: 'catalog',
-    label: 'Produits',
-    description: 'Importez ou simulez un import CSV pour mettre à jour le catalogue de la boutique.',
+    id: "catalog",
+    label: "Produits",
+    description:
+      "Importez ou simulez un import CSV pour mettre à jour le catalogue de la boutique.",
   },
-]
+];
 
 type SectionSwitcherProps = {
-  activeSection: AdminSection
-  onChange: (section: AdminSection) => void
-}
+  activeSection: AdminSection;
+  onChange: (section: AdminSection) => void;
+};
 
 const SectionSwitcher = ({ activeSection, onChange }: SectionSwitcherProps) => (
   <Card className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
     <div>
-      <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Paramétrage rapide</h2>
+      <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+        Paramétrage rapide
+      </h2>
       <p className="text-sm text-slate-600 dark:text-slate-400">
-        Choisissez la rubrique à modifier. Les actions sont pensées pour un usage tactile ou souris.
+        Choisissez la rubrique à modifier. Les actions sont pensées pour un
+        usage tactile ou souris.
       </p>
     </div>
     <div className="flex justify-start sm:justify-end">
@@ -69,7 +79,7 @@ const SectionSwitcher = ({ activeSection, onChange }: SectionSwitcherProps) => (
         className="inline-grid w-full min-w-[200px] grid-flow-col auto-cols-fr gap-1 rounded-full bg-slate-100 p-0.5 text-sm font-semibold text-slate-600 shadow-inner dark:bg-slate-800 dark:text-slate-300 sm:w-auto"
       >
         {ADMIN_SECTIONS.map(({ id, label }) => {
-          const isActive = id === activeSection
+          const isActive = id === activeSection;
           return (
             <button
               key={id}
@@ -77,598 +87,435 @@ const SectionSwitcher = ({ activeSection, onChange }: SectionSwitcherProps) => (
               role="tab"
               aria-selected={isActive}
               className={clsx(
-                'rounded-full px-3 py-1.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400',
+                "rounded-full px-3 py-1.5 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400",
                 isActive
-                  ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white'
-                  : 'hover:text-slate-900 dark:hover:text-white',
+                  ? "bg-white text-slate-900 shadow-sm dark:bg-slate-700 dark:text-white"
+                  : "hover:text-slate-900 dark:hover:text-white"
               )}
               onClick={() => onChange(id)}
             >
               {label}
             </button>
-          )
+          );
         })}
       </div>
     </div>
   </Card>
-)
+);
 
 const encodingLabelFor = (encoding: string | null | undefined) => {
   if (!encoding) {
-    return null
+    return null;
   }
-  const option = CSV_ENCODING_OPTIONS.find((candidate) => candidate.value === encoding)
+  const option = CSV_ENCODING_OPTIONS.find(
+    (candidate) => candidate.value === encoding
+  );
   if (option) {
-    return option.label
+    return option.label;
   }
-  if (encoding === 'latin1') {
-    return 'Latin-1 (alias ISO-8859-1)'
+  if (encoding === "latin1") {
+    return "Latin-1 (alias ISO-8859-1)";
   }
-  return encoding
-}
+  return encoding;
+};
 
 type ImportSummary = {
-  inserted: number
-  total: number
-  errorCount: number
-  warningCount: number
-  unknownColumns: string[]
-  encoding?: string | null
-  warnings: string[]
-  errors: string[]
-}
+  inserted: number;
+  errorCount: number;
+  unknownColumns: string[];
+  encoding?: string | null;
+};
 
 type CatalogImportFeedback =
-  | { type: 'result'; severity: 'success' | 'warning' | 'error'; summary: ImportSummary; message: string }
-  | { type: 'message'; severity: 'info' | 'error'; message: string; details?: string[] }
+  | { type: "success"; summary: ImportSummary }
+  | { type: "info"; message: string }
+  | { type: "error"; message: string; details?: string[] };
 
 type ImportAccessStatus = {
-  canReplace: boolean
-  lockReason: string | null
-  hasCountLines: boolean
-}
+  canReplace: boolean;
+  lockReason: string | null;
+  hasCountLines: boolean;
+};
 
 const CatalogImportPanel = ({ description }: { description: string }) => {
-  const { shop } = useShop()
-  const [importStatus, setImportStatus] = useState<ImportAccessStatus | null>(null)
-  const [statusLoading, setStatusLoading] = useState(false)
-  const [statusError, setStatusError] = useState<string | null>(null)
-  const [importMode, setImportMode] = useState<'replace' | 'merge'>('replace')
-  const [file, setFile] = useState<File | null>(null)
-  const [selectedEncoding, setSelectedEncoding] = useState<CsvEncoding>('auto')
-  const [submitting, setSubmitting] = useState(false)
-  const [feedback, setFeedback] = useState<CatalogImportFeedback | null>(null)
-  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const { shop } = useShop();
+  const [importStatus, setImportStatus] = useState<ImportAccessStatus | null>(
+    null
+  );
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [statusError, setStatusError] = useState<string | null>(null);
+  const [importMode, setImportMode] = useState<"replace" | "merge">("replace");
+  const [file, setFile] = useState<File | null>(null);
+  const [selectedEncoding, setSelectedEncoding] = useState<CsvEncoding>("auto");
+  const [submitting, setSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState<CatalogImportFeedback | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const fetchImportStatus = useCallback(async () => {
     if (!shop?.id) {
-      setImportStatus(null)
-      setStatusError(null)
-      return
+      setImportStatus(null);
+      setStatusError(null);
+      return;
     }
 
-    setStatusLoading(true)
-    setStatusError(null)
+    setStatusLoading(true);
+    setStatusError(null);
 
     try {
-      const response = await fetch(`/api/shops/${shop.id}/products/import/status`)
+      const response = await fetch(
+        `/api/shops/${shop.id}/products/import/status`
+      );
 
       if (response.status === 404) {
-        setImportStatus({ canReplace: true, lockReason: null, hasCountLines: false })
-        setStatusError(null)
-        return
+        setImportStatus({
+          canReplace: true,
+          lockReason: null,
+          hasCountLines: false,
+        });
+        setStatusError(null);
+        return;
       }
 
       if (!response.ok) {
-        throw new Error(`status ${response.status}`)
+        throw new Error(`status ${response.status}`);
       }
 
-      const payload = (await response.json()) as Record<string, unknown> | null
-      const record = payload ?? {}
-      const hasCountLines = typeof record.hasCountLines === 'boolean' ? record.hasCountLines : false
-      const canReplace = typeof record.canReplace === 'boolean' ? record.canReplace : !hasCountLines
+      const payload = (await response.json()) as Record<string, unknown> | null;
+      const record = payload ?? {};
+      const hasCountLines =
+        typeof record.hasCountLines === "boolean"
+          ? record.hasCountLines
+          : false;
+      const canReplace =
+        typeof record.canReplace === "boolean"
+          ? record.canReplace
+          : !hasCountLines;
       const lockReason =
-        typeof record.lockReason === 'string' && record.lockReason.trim().length > 0
+        typeof record.lockReason === "string" &&
+        record.lockReason.trim().length > 0
           ? record.lockReason
-          : null
+          : null;
 
-      setImportStatus({ canReplace, lockReason, hasCountLines })
+      setImportStatus({ canReplace, lockReason, hasCountLines });
     } catch {
-      setImportStatus(null)
-      setStatusError("Impossible de récupérer l'état du catalogue.")
+      setImportStatus(null);
+      setStatusError("Impossible de récupérer l'état du catalogue.");
     } finally {
-      setStatusLoading(false)
+      setStatusLoading(false);
     }
-  }, [shop?.id])
+  }, [shop?.id]);
 
   useEffect(() => {
-    void fetchImportStatus()
-  }, [fetchImportStatus])
+    void fetchImportStatus();
+  }, [fetchImportStatus]);
 
   useEffect(() => {
     if (importStatus?.canReplace === false) {
-      setImportMode((previous) => (previous === 'merge' ? previous : 'merge'))
+      setImportMode((previous) => (previous === "merge" ? previous : "merge"));
     }
-  }, [importStatus?.canReplace])
+  }, [importStatus?.canReplace]);
 
   useEffect(() => {
     if (!shop?.id) {
-      setImportMode('replace')
+      setImportMode("replace");
     }
-  }, [shop?.id])
+  }, [shop?.id]);
 
   const handleFileChange = (nextFile: File | null) => {
-    setFile(nextFile)
-    setSelectedEncoding('auto')
-    setFeedback(null)
-  }
+    setFile(nextFile);
+    setSelectedEncoding("auto");
+    setFeedback(null);
+  };
 
   const resetFileInput = () => {
     if (fileInputRef.current) {
-      fileInputRef.current.value = ''
+      fileInputRef.current.value = "";
     }
-    setFile(null)
-    setSelectedEncoding('auto')
-  }
+    setFile(null);
+    setSelectedEncoding("auto");
+  };
 
   const toInteger = (value: unknown) => {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return Math.trunc(value)
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return Math.trunc(value);
     }
-    if (typeof value === 'string') {
-      const parsed = Number.parseInt(value, 10)
-      return Number.isNaN(parsed) ? 0 : parsed
+    if (typeof value === "string") {
+      const parsed = Number.parseInt(value, 10);
+      return Number.isNaN(parsed) ? 0 : parsed;
     }
-    return 0
-  }
+    return 0;
+  };
 
-const toStringList = (value: unknown) => {
-  if (!Array.isArray(value)) {
-    return []
-  }
-  return value
-    .map((item) => (typeof item === 'string' ? item.trim() : ''))
-    .filter((item): item is string => item.length > 0)
-}
-
-const readFileAsArrayBuffer = async (file: File): Promise<ArrayBuffer> => {
-  if (typeof file.arrayBuffer === 'function') {
-    return file.arrayBuffer()
-  }
-
-  if (typeof (file as Blob).stream === 'function') {
-    const reader = (file as Blob).stream().getReader()
-    const chunks: Uint8Array[] = []
-    let total = 0
-
-    while (true) {
-      // eslint-disable-next-line no-await-in-loop
-      const { done, value } = await reader.read()
-      if (done) {
-        break
-      }
-      if (value) {
-        chunks.push(value)
-        total += value.length
-      }
+  const toStringList = (value: unknown) => {
+    if (!Array.isArray(value)) {
+      return [];
     }
+    return value
+      .map((item) => (typeof item === "string" ? item.trim() : ""))
+      .filter((item): item is string => item.length > 0);
+  };
 
-    const buffer = new Uint8Array(total)
-    let offset = 0
-    for (const chunk of chunks) {
-      buffer.set(chunk, offset)
-      offset += chunk.length
+  const toImportErrorList = (value: unknown): string[] => {
+    if (!Array.isArray(value)) {
+      return [];
     }
-
-    return buffer.buffer
-  }
-
-  return await new Promise<ArrayBuffer>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onerror = () => {
-      reject(reader.error ?? new Error('Impossible de lire le fichier.'))
-    }
-    reader.onload = () => {
-      const result = reader.result
-      if (result instanceof ArrayBuffer) {
-        resolve(result)
-        return
-      }
-
-      if (typeof result === 'string') {
-        const encoder = new TextEncoder()
-        resolve(encoder.encode(result).buffer)
-        return
-      }
-
-      resolve(new ArrayBuffer(0))
-    }
-    reader.readAsArrayBuffer(file)
-  })
-}
-
-const toSkippedDetails = (value: unknown): string[] => {
-  if (!Array.isArray(value)) {
-    return []
-  }
-
-  return value
-    .map((entry) => {
-      if (!entry || typeof entry !== 'object') {
-        return ''
-      }
-      const record = entry as Record<string, unknown>
-      const reason =
-        typeof record.reason === 'string'
-          ? record.reason.trim()
-          : typeof record.Reason === 'string'
-            ? record.Reason.trim()
-            : ''
-      const rawValue =
-        typeof record.raw === 'string'
-          ? record.raw.trim()
-          : typeof record.Raw === 'string'
-            ? record.Raw.trim()
-            : ''
-      const line =
-        typeof record.line === 'number'
-          ? record.line
-          : typeof record.Line === 'number'
-            ? record.Line
-            : null
-
-      const reasonLabel = reason || rawValue || 'Ligne ignorée'
-      if (typeof line === 'number' && Number.isFinite(line) && line > 0) {
-        return `Ligne ${line} — ${reasonLabel}`
-      }
-
-      return reasonLabel
-    })
-    .map((item) => item.trim())
-    .filter((item): item is string => item.length > 0)
-}
-
-const buildUniqueList = (values: string[]): string[] => {
-  const unique: string[] = []
-  values.forEach((value) => {
-    const next = value.trim()
-    if (next.length > 0 && !unique.includes(next)) {
-      unique.push(next)
-    }
-  })
-  return unique
-}
-
-const toImportErrorList = (value: unknown): string[] => {
-  if (!Array.isArray(value)) {
-    return []
-  }
-  return value
+    return value
       .map((entry) => {
-        if (typeof entry === 'string') {
-          return entry.trim()
+        if (typeof entry === "string") {
+          return entry.trim();
         }
 
-        if (entry && typeof entry === 'object') {
-          const record = entry as Record<string, unknown>
+        if (entry && typeof entry === "object") {
+          const record = entry as Record<string, unknown>;
           const reason =
-            typeof record.reason === 'string'
+            typeof record.reason === "string"
               ? record.reason
-              : typeof record.Reason === 'string'
-                ? record.Reason
-                : ''
-          const lineNumber =
-            typeof record.line === 'number'
+              : typeof record.Reason === "string"
+              ? record.Reason
+              : "";
+          const lineValue =
+            typeof record.line === "number"
               ? record.line
-              : typeof record.Line === 'number'
-                ? record.Line
-                : null
+              : typeof record.Line === "number"
+              ? record.Line
+              : null;
           const rawValue =
-            typeof record.raw === 'string'
+            typeof record.raw === "string"
               ? record.raw
-              : typeof record.Raw === 'string'
-                ? record.Raw
-                : ''
+              : typeof record.Raw === "string"
+              ? record.Raw
+              : "";
 
-          const parts: string[] = []
-          if (typeof lineNumber === 'number' && Number.isFinite(lineNumber) && lineNumber > 0) {
-            parts.push(`Ligne ${lineNumber}`)
+          const parts: string[] = [];
+          if (lineValue && Number.isFinite(lineValue)) {
+            parts.push(`Ligne ${lineValue}`);
           }
           if (reason) {
-            parts.push(reason)
+            parts.push(reason);
           }
           if (parts.length === 0 && rawValue) {
-            parts.push(rawValue)
+            parts.push(rawValue);
           }
 
-          return parts.join(' — ').trim()
+          return parts.join(" — ").trim();
         }
 
-        return ''
+        return "";
       })
-      .filter((item): item is string => item.length > 0)
-  }
-
-  const toDuplicatesList = (value: unknown): string[] => {
-    if (!value || typeof value !== 'object') {
-      return []
-    }
-
-    const record = value as Record<string, unknown>
-    const rawSkus = Array.isArray(record.skus) ? record.skus : Array.isArray(record.Skus) ? record.Skus : []
-    const rawEans = Array.isArray(record.eans) ? record.eans : Array.isArray(record.Eans) ? record.Eans : []
-
-    const formatEntry = (label: 'SKU' | 'EAN', entry: unknown) => {
-      if (!entry || typeof entry !== 'object') {
-        return ''
-      }
-      const item = entry as Record<string, unknown>
-      const valueText = typeof item.value === 'string' ? item.value : typeof item.Value === 'string' ? item.Value : ''
-      const rawLines = Array.isArray(item.lines) ? item.lines : Array.isArray(item.Lines) ? item.Lines : []
-      const numericLines = rawLines.filter((line): line is number => typeof line === 'number' && Number.isFinite(line))
-      const uniqueLines = Array.from(new Set(numericLines)).sort((a, b) => a - b)
-      const lineLabel = uniqueLines.length > 0 ? ` (lignes ${uniqueLines.join(', ')})` : ''
-      const trimmedValue = valueText.trim()
-      if (!trimmedValue) {
-        return ''
-      }
-      return `${label} ${trimmedValue}${lineLabel}`
-    }
-
-    return [...rawSkus.map((item) => formatEntry('SKU', item)), ...rawEans.map((item) => formatEntry('EAN', item))]
-      .map((item) => item.trim())
-      .filter((item): item is string => item.length > 0)
-  }
+      .filter((item): item is string => item.length > 0);
+  };
 
   const parseJson = (text: string) => {
     try {
-      return JSON.parse(text) as Record<string, unknown>
+      return JSON.parse(text) as Record<string, unknown>;
     } catch {
-      return null
+      return null;
     }
-  }
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setFeedback(null)
+    event.preventDefault();
+    setFeedback(null);
 
     if (!shop?.id) {
-      setFeedback({ type: 'message', severity: 'error', message: 'Boutique introuvable. Veuillez recharger la page.' })
-      return
+      setFeedback({
+        type: "error",
+        message: "Boutique introuvable. Veuillez recharger la page.",
+      });
+      return;
     }
 
     if (!file) {
-      setFeedback({ type: 'message', severity: 'error', message: "Sélectionnez un fichier CSV avant de lancer l'import." })
-      return
-    }
-
-    if (importMode === 'replace' && importStatus?.canReplace === false) {
       setFeedback({
-        type: 'message',
-        severity: 'error',
-        message: 'Le remplacement du catalogue est verrouillé. Choisissez “Compléter le catalogue” pour ajouter un fichier en complément.',
-      })
-      return
+        type: "error",
+        message: "Sélectionnez un fichier CSV avant de lancer l'import.",
+      });
+      return;
     }
 
-    setSubmitting(true)
-    try {
-      const fd = new FormData()
-      const buffer = await readFileAsArrayBuffer(file)
-      const decoded = decodeCsvBuffer(buffer, selectedEncoding)
-      const normalizedEncoding =
-        selectedEncoding === 'auto' ? decoded.detectedEncoding : selectedEncoding
-      const utf8File = new File(
-        [decoded.text],
-        file.name,
-        { type: 'text/csv;charset=utf-8' },
-      )
+    if (importMode === "replace" && importStatus?.canReplace === false) {
+      setFeedback({
+        type: "error",
+        message:
+          "Le remplacement du catalogue est verrouillé. Choisissez “Compléter le catalogue” pour ajouter un fichier en complément.",
+      });
+      return;
+    }
 
-      fd.set('file', utf8File)
+    setSubmitting(true);
+    try {
+      const fd = new FormData();
+      const buffer = await file.arrayBuffer();
+      const decoded = decodeCsvBuffer(buffer, selectedEncoding);
+      const normalizedEncoding =
+        selectedEncoding === "auto"
+          ? decoded.detectedEncoding
+          : selectedEncoding;
+      const utf8File = new File([decoded.text], file.name, {
+        type: "text/csv;charset=utf-8",
+      });
+
+      fd.set("file", utf8File);
 
       const params = new URLSearchParams({
-        dryRun: 'false',
-        mode: importMode === 'merge' ? 'merge' : 'replace',
-      })
-      const url = `/api/shops/${shop.id}/products/import?${params.toString()}`
-      const response = await fetch(url, { method: 'POST', body: fd })
-      const rawText = await response.text()
-      const payload = rawText ? parseJson(rawText) : null
-      const record = (payload ?? {}) as Record<string, unknown>
+        dryRun: "false",
+        mode: importMode === "merge" ? "merge" : "replace",
+      });
+      const url = `/api/shops/${shop.id}/products/import?${params.toString()}`;
+      const response = await fetch(url, { method: "POST", body: fd });
+      const rawText = await response.text();
+      const payload = rawText ? parseJson(rawText) : null;
+      const record = (payload ?? {}) as Record<string, unknown>;
 
       if (response.status === 200) {
-        const errorDetails = Array.from(
-          new Set([
-            ...toImportErrorList(record.errors),
-            ...toImportErrorList(record.Errors),
-          ]),
-        )
-        const skippedDetails = toSkippedDetails(record.skippedLines ?? record.SkippedLines)
-        const duplicateDetails = toDuplicatesList(record.duplicates ?? record.Duplicates)
+        const responseErrors = [
+          ...toImportErrorList(record.errors),
+          ...toImportErrorList(record.Errors),
+        ];
+
+        const errorCount = Math.max(
+          toInteger(record.errorCount),
+          toInteger(record.ErrorCount)
+        );
+
+        if (responseErrors.length > 0 || errorCount > 0) {
+          setFeedback({
+            type: "error",
+            message:
+              responseErrors.length > 0
+                ? "Certaines lignes n'ont pas pu être importées."
+                : "Le serveur a signalé des erreurs pendant l'import.",
+            details: responseErrors.length > 0 ? responseErrors : undefined,
+          });
+          return;
+        }
+
+        const insertedCount = Math.max(
+          toInteger(record.inserted),
+          toInteger(record.Inserted)
+        );
+        const fallbackTotal = Math.max(
+          toInteger(record.total),
+          toInteger(record.Total)
+        );
         const unknownColumns = Array.from(
           new Set([
             ...toStringList(record.unknownColumns),
             ...toStringList(record.UnknownColumns),
-          ]),
-        )
-        const errorsList = buildUniqueList([...errorDetails, ...skippedDetails])
-        const errorCount = Math.max(errorsList.length, toInteger(record.errorCount), toInteger(record.ErrorCount))
-        const warningCount = duplicateDetails.length
-        const insertedCount = Math.max(toInteger(record.inserted), toInteger(record.Inserted))
-        const fallbackTotal = Math.max(toInteger(record.total), toInteger(record.Total))
-        const insertedValue = insertedCount > 0 ? insertedCount : fallbackTotal
-        const totalValue = Math.max(fallbackTotal, insertedValue)
-
+          ])
+        );
         const summary: ImportSummary = {
-          inserted: insertedValue,
-          total: totalValue,
+          inserted: insertedCount > 0 ? insertedCount : fallbackTotal,
           errorCount,
-          warningCount,
           unknownColumns,
           encoding: encodingLabelFor(normalizedEncoding),
-          warnings: duplicateDetails,
-          errors: errorsList,
-        }
-
-        const severity: 'success' | 'warning' | 'error' =
-          summary.errorCount > 0 ? 'error' : summary.warningCount > 0 ? 'warning' : 'success'
-
-        let message =
-          typeof record.message === 'string'
-            ? record.message.trim()
-            : typeof record.error === 'string'
-              ? record.error.trim()
-              : ''
-
-        if (!message) {
-          if (severity === 'error') {
-            message = "Import terminé avec erreurs. Les lignes listées n'ont pas été importées."
-          } else if (severity === 'warning') {
-            message =
-              summary.warningCount > 1
-                ? 'Import terminé avec avertissements. Les éléments listés ont été importés.'
-                : 'Import terminé avec avertissement. L’élément listé a été importé.'
-          } else {
-            message = 'Import terminé avec succès.'
-          }
-        }
-
-        setFeedback({
-          type: 'result',
-          severity,
-          summary,
-          message,
-        })
-
-        if (severity !== 'error') {
-          resetFileInput()
-          await fetchImportStatus()
-        }
-        return
+        };
+        setFeedback({ type: "success", summary });
+        resetFileInput();
+        await fetchImportStatus();
+        return;
       }
 
       if (response.status === 204) {
-        setFeedback({ type: 'message', severity: 'info', message: 'Aucun changement (fichier déjà importé).' })
-        resetFileInput()
-        await fetchImportStatus()
-        return
+        setFeedback({
+          type: "info",
+          message: "Aucun changement (fichier déjà importé).",
+        });
+        resetFileInput();
+        await fetchImportStatus();
+        return;
       }
 
       if (response.status === 423) {
-        const reason = typeof record.reason === 'string' ? record.reason : ''
+        const reason = typeof record.reason === "string" ? record.reason : "";
         const message =
-          typeof record.message === 'string'
+          typeof record.message === "string"
             ? record.message
-            : reason === 'catalog_locked'
-              ? 'Le catalogue est verrouillé : importez un fichier complémentaire ou purgez les comptages avant de remplacer le catalogue.'
-              : 'Un import est déjà en cours.'
+            : reason === "catalog_locked"
+            ? "Le catalogue est verrouillé : importez un fichier complémentaire ou purgez les comptages avant de remplacer le catalogue."
+            : "Un import est déjà en cours.";
 
-        setFeedback({ type: 'message', severity: 'error', message })
+        setFeedback({ type: "error", message });
 
-        if (reason === 'catalog_locked') {
-          setImportMode('merge')
-          await fetchImportStatus()
+        if (reason === "catalog_locked") {
+          setImportMode("merge");
+          await fetchImportStatus();
         }
-        return
+        return;
       }
 
       if (response.status === 413) {
-        setFeedback({ type: 'message', severity: 'error', message: 'Fichier trop volumineux (25 MiB max).' })
-        return
+        setFeedback({
+          type: "error",
+          message: "Fichier trop volumineux (25 MiB max).",
+        });
+        return;
       }
 
       if (response.status === 400) {
         const structuredErrors = [
           ...toImportErrorList(record.errors),
           ...toImportErrorList(record.Errors),
-        ]
-        const otherDetails = [
+        ];
+        const aggregatedDetails = [
+          ...structuredErrors,
           ...toStringList(record.errorMessages ?? record.ErrorMessages),
           ...toStringList(record.details ?? record.Details),
-        ]
-        const skippedDetails = toSkippedDetails(record.skippedLines ?? record.SkippedLines)
-        const unknownColumns = Array.from(
-          new Set([
-            ...toStringList(record.unknownColumns),
-            ...toStringList(record.UnknownColumns),
-          ]),
-        )
-        const duplicateDetails = toDuplicatesList(record.duplicates ?? record.Duplicates)
-        const combinedErrors = buildUniqueList([...structuredErrors, ...otherDetails, ...skippedDetails])
-        const errorCount = Math.max(combinedErrors.length, toInteger(record.errorCount), toInteger(record.ErrorCount))
-        const warningCount = duplicateDetails.length
-        const insertedCount = Math.max(toInteger(record.inserted), toInteger(record.Inserted))
-        const fallbackTotal = Math.max(toInteger(record.total), toInteger(record.Total))
-        const insertedValue = insertedCount > 0 ? insertedCount : fallbackTotal
-        const totalValue = Math.max(fallbackTotal, insertedValue)
-
-        const summary: ImportSummary = {
-          inserted: insertedValue,
-          total: totalValue,
-          errorCount,
-          warningCount,
-          unknownColumns,
-          encoding: encodingLabelFor(normalizedEncoding),
-          warnings: duplicateDetails,
-          errors: combinedErrors,
-        }
-
+          ...toStringList(record.unknownColumns ?? record.UnknownColumns),
+        ];
+        const uniqueDetails = Array.from(new Set(aggregatedDetails));
         const message =
-          typeof record.message === 'string'
+          typeof record.message === "string"
             ? record.message
-            : typeof record.error === 'string'
-              ? record.error
-              : combinedErrors.length > 0
-                ? 'Le fichier CSV contient des lignes invalides.'
-                : rawText && rawText.trim().length > 0
-                  ? rawText
-                  : 'Le fichier CSV est invalide.'
-
+            : typeof record.error === "string"
+            ? record.error
+            : structuredErrors.length > 0
+            ? "Le fichier CSV contient des lignes invalides."
+            : rawText && rawText.trim().length > 0
+            ? rawText
+            : "Le fichier CSV est invalide.";
         setFeedback({
-          type: 'result',
-          severity: 'error',
-          summary,
+          type: "error",
           message,
-        })
-        return
+          details: uniqueDetails.length > 0 ? uniqueDetails : undefined,
+        });
+        return;
       }
 
       const fallbackMessage =
-        (typeof record.message === 'string' && record.message) ||
-        (typeof record.error === 'string' && record.error) ||
-        (rawText && rawText.trim().length > 0 ? rawText : `Erreur inattendue (${response.status}).`)
-      setFeedback({ type: 'message', severity: 'error', message: fallbackMessage })
-    } catch (error) {
+        (typeof record.message === "string" && record.message) ||
+        (typeof record.error === "string" && record.error) ||
+        (rawText && rawText.trim().length > 0
+          ? rawText
+          : `Erreur inattendue (${response.status}).`);
+      setFeedback({ type: "error", message: fallbackMessage });
+    } catch {
       setFeedback({
-        type: 'message',
-        severity: 'error',
+        type: "error",
         message: "L'import a échoué. Vérifiez votre connexion et réessayez.",
-      })
-  } finally {
-      setSubmitting(false)
+      });
+    } finally {
+      setSubmitting(false);
     }
-  }
-
-  const resultPanelClasses: Record<'success' | 'warning' | 'error', string> = {
-    success: 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-400/40 dark:bg-emerald-900/30 dark:text-emerald-100',
-    warning: 'border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-400/10 dark:text-amber-200',
-    error: 'border-red-200 bg-red-50 text-red-700 dark:border-red-400/40 dark:bg-red-900/30 dark:text-red-100',
-  }
-
-  const messagePanelClasses: Record<'info' | 'error', string> = {
-    info: 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-600/50 dark:bg-slate-900/40 dark:text-slate-200',
-    error: 'border-red-200 bg-red-50 text-red-700 dark:border-red-400/40 dark:bg-red-900/30 dark:text-red-100',
-  }
+  };
 
   return (
     <Card className="flex flex-col gap-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Catalogue produits (CSV)</h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400">{description}</p>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+            Catalogue produits (CSV)
+          </h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            {description}
+          </p>
         </div>
       </div>
-      <form className="flex flex-col gap-4" onSubmit={handleSubmit} encType="multipart/form-data">
+      <form
+        className="flex flex-col gap-4"
+        onSubmit={handleSubmit}
+        encType="multipart/form-data"
+      >
         {statusError && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-400/40 dark:bg-red-900/30 dark:text-red-100">
             {statusError}
@@ -679,7 +526,9 @@ const toImportErrorList = (value: unknown): string[] => {
           <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-400/10 dark:text-amber-200">
             <p className="font-semibold">Remplacement verrouillé</p>
             <p className="mt-1">
-              Des produits importés ont déjà été utilisés dans des comptages. Importez un fichier complémentaire pour ajouter ou mettre à jour des références.
+              Des produits importés ont déjà été utilisés dans des comptages.
+              Importez un fichier complémentaire pour ajouter ou mettre à jour
+              des références.
             </p>
           </div>
         )}
@@ -693,9 +542,9 @@ const toImportErrorList = (value: unknown): string[] => {
           onFileSelected={handleFileChange}
           disabled={submitting}
           description={
-            importMode === 'merge'
-              ? 'Votre fichier complétera le catalogue existant (ajouts et mises à jour).'
-              : 'Remplace entièrement le catalogue de la boutique par le contenu du fichier.'
+            importMode === "merge"
+              ? "Votre fichier complétera le catalogue existant (ajouts et mises à jour)."
+              : "Remplace entièrement le catalogue de la boutique par le contenu du fichier."
           }
         />
 
@@ -704,8 +553,8 @@ const toImportErrorList = (value: unknown): string[] => {
           <select
             value={selectedEncoding}
             onChange={(event) => {
-              setSelectedEncoding(event.target.value as CsvEncoding)
-              setFeedback(null)
+              setSelectedEncoding(event.target.value as CsvEncoding);
+              setFeedback(null);
             }}
             disabled={submitting}
             className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-700 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200"
@@ -723,7 +572,9 @@ const toImportErrorList = (value: unknown): string[] => {
             Mode d&apos;import
           </legend>
           {statusLoading && (
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Vérification du statut du catalogue…</p>
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              Vérification du statut du catalogue…
+            </p>
           )}
           <div className="mt-2 space-y-3">
             <label
@@ -735,15 +586,18 @@ const toImportErrorList = (value: unknown): string[] => {
                 name="catalog-import-mode"
                 value="replace"
                 className="mt-1"
-                checked={importMode === 'replace'}
+                checked={importMode === "replace"}
                 disabled={submitting || importStatus?.canReplace === false}
-                onChange={() => setImportMode('replace')}
+                onChange={() => setImportMode("replace")}
               />
               <span>
-                <span className="font-medium text-slate-800 dark:text-slate-100">Remplacer le catalogue</span>
+                <span className="font-medium text-slate-800 dark:text-slate-100">
+                  Remplacer le catalogue
+                </span>
                 <span className="mt-1 block text-xs text-slate-600 dark:text-slate-400">
-                  Supprime les références existantes avant l&apos;import. Disponible uniquement tant qu&apos;aucun
-                  comptage n&apos;a enregistré de produit.
+                  Supprime les références existantes avant l&apos;import.
+                  Disponible uniquement tant qu&apos;aucun comptage n&apos;a
+                  enregistré de produit.
                 </span>
               </span>
             </label>
@@ -756,14 +610,17 @@ const toImportErrorList = (value: unknown): string[] => {
                 name="catalog-import-mode"
                 value="merge"
                 className="mt-1"
-                checked={importMode === 'merge'}
+                checked={importMode === "merge"}
                 disabled={submitting}
-                onChange={() => setImportMode('merge')}
+                onChange={() => setImportMode("merge")}
               />
               <span>
-                <span className="font-medium text-slate-800 dark:text-slate-100">Compléter le catalogue</span>
+                <span className="font-medium text-slate-800 dark:text-slate-100">
+                  Compléter le catalogue
+                </span>
                 <span className="mt-1 block text-xs text-slate-600 dark:text-slate-400">
-                  Ajoute les nouveaux produits et met à jour les articles existants sans purger le catalogue actuel.
+                  Ajoute les nouveaux produits et met à jour les articles
+                  existants sans purger le catalogue actuel.
                 </span>
               </span>
             </label>
@@ -771,221 +628,219 @@ const toImportErrorList = (value: unknown): string[] => {
         </fieldset>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-          <Button type="submit" disabled={submitting || !file} className="w-full sm:w-auto">
+          <Button
+            type="submit"
+            disabled={submitting || !file}
+            className="w-full sm:w-auto"
+          >
             {submitting
-              ? 'Import en cours…'
-              : importMode === 'merge'
-                ? 'Importer en complément'
-                : 'Importer le CSV'}
+              ? "Import en cours…"
+              : importMode === "merge"
+              ? "Importer en complément"
+              : "Importer le CSV"}
           </Button>
         </div>
       </form>
-      {feedback &&
-        (feedback.type === 'result' ? (
-          <div
-            role={feedback.severity === 'error' ? 'alert' : 'status'}
-            className={clsx('rounded-lg border p-4 text-sm', resultPanelClasses[feedback.severity])}
-          >
+      {feedback && (
+        <div
+          role={feedback.type === "error" ? "alert" : "status"}
+          className={clsx(
+            "rounded-lg border p-4 text-sm",
+            feedback.type === "success" &&
+              "border-emerald-200 bg-emerald-50 text-emerald-800",
+            feedback.type === "info" &&
+              "border-slate-200 bg-slate-50 text-slate-700",
+            feedback.type === "error" && "border-red-200 bg-red-50 text-red-700"
+          )}
+        >
+          {feedback.type === "success" ? (
             <div className="space-y-3">
-              <p className="font-medium">{feedback.message}</p>
+              <p className="font-medium">Import terminé avec succès.</p>
               <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
                 <div>
-                  <dt className="font-medium text-slate-700 dark:text-slate-200">Produits importés</dt>
-                  <dd className="text-slate-600 dark:text-slate-300">{feedback.summary.inserted}</dd>
-                </div>
-                {feedback.summary.total > 0 && (
-                  <div>
-                    <dt className="font-medium text-slate-700 dark:text-slate-200">Lignes du fichier</dt>
-                    <dd className="text-slate-600 dark:text-slate-300">{feedback.summary.total}</dd>
-                  </div>
-                )}
-                <div>
-                  <dt className="font-medium text-slate-700 dark:text-slate-200">Erreurs détectées</dt>
-                  <dd className="text-slate-600 dark:text-slate-300">{feedback.summary.errorCount}</dd>
+                  <dt className="font-medium text-slate-700">
+                    Produits importés
+                  </dt>
+                  <dd className="text-slate-600">
+                    {feedback.summary.inserted}
+                  </dd>
                 </div>
                 <div>
-                  <dt className="font-medium text-slate-700 dark:text-slate-200">Avertissements signalés</dt>
-                  <dd className="text-slate-600 dark:text-slate-300">{feedback.summary.warningCount}</dd>
+                  <dt className="font-medium text-slate-700">
+                    Erreurs détectées
+                  </dt>
+                  <dd className="text-slate-600">
+                    {feedback.summary.errorCount}
+                  </dd>
                 </div>
                 {feedback.summary.encoding && (
                   <div>
-                    <dt className="font-medium text-slate-700 dark:text-slate-200">Encodage utilisé</dt>
-                    <dd className="text-slate-600 dark:text-slate-300">{feedback.summary.encoding}</dd>
+                    <dt className="font-medium text-slate-700">
+                      Encodage utilisé
+                    </dt>
+                    <dd className="text-slate-600">
+                      {feedback.summary.encoding}
+                    </dd>
                   </div>
                 )}
               </dl>
               {feedback.summary.unknownColumns.length > 0 && (
                 <div className="space-y-2">
-                  <p className="font-medium text-slate-700 dark:text-slate-200">Colonnes inconnues</p>
-                  <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
+                  <p className="font-medium text-slate-700">
+                    Colonnes inconnues
+                  </p>
+                  <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600">
                     {feedback.summary.unknownColumns.map((column) => (
-                      <li key={column} className="max-w-full truncate" title={column}>
+                      <li
+                        key={column}
+                        className="max-w-full truncate"
+                        title={column}
+                      >
                         {column}
                       </li>
                     ))}
                   </ul>
                 </div>
               )}
-              {feedback.summary.warnings.length > 0 && (
-                <div className="space-y-2">
-                  <p className="font-medium text-slate-700 dark:text-slate-200">Avertissements (importés)</p>
-                  <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
-                    {feedback.summary.warnings.map((warning) => (
-                      <li key={warning} className="max-w-full break-words">
-                        {warning}
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Les éléments listés ont bien été intégrés.
-                  </p>
-                </div>
-              )}
-              {feedback.summary.errors.length > 0 && (
-                <div className="space-y-2">
-                  <p className="font-medium text-slate-700 dark:text-slate-200">Erreurs (non importées)</p>
-                  <ul className="list-disc space-y-1 pl-5 text-sm text-slate-600 dark:text-slate-300">
-                    {feedback.summary.errors.map((detail) => (
-                      <li key={detail} className="max-w-full break-words">
-                        {detail}
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Les lignes listées n'ont pas été ajoutées au catalogue.
-                  </p>
-                </div>
-              )}
             </div>
-          </div>
-        ) : (
-          <div
-            role={feedback.severity === 'error' ? 'alert' : 'status'}
-            className={clsx('rounded-lg border p-4 text-sm', messagePanelClasses[feedback.severity])}
-          >
+          ) : feedback.type === "info" ? (
+            <p className="font-medium">{feedback.message}</p>
+          ) : (
             <div className="space-y-2">
               <p className="font-medium">{feedback.message}</p>
               {feedback.details && feedback.details.length > 0 && (
                 <ul className="list-disc space-y-1 pl-5 text-sm">
                   {feedback.details.map((detail) => (
-                    <li key={detail} className="max-w-full break-words">
+                    <li key={detail} className="max-w-full wrap-break-word">
                       {detail}
                     </li>
                   ))}
                 </ul>
               )}
             </div>
-          </div>
-        ))}
+          )}
+        </div>
+      )}
     </Card>
-  )
-}
+  );
+};
 
 type LocationListItemProps = {
-  location: Location
-  onSave: (id: string, payload: { code: string; label: string }) => Promise<void>
-  onDisable: (id: string) => Promise<void>
-}
+  location: Location;
+  onSave: (
+    id: string,
+    payload: { code: string; label: string }
+  ) => Promise<void>;
+  onDisable: (id: string) => Promise<void>;
+};
 
-const LocationListItem = ({ location, onSave, onDisable }: LocationListItemProps) => {
-  const [isEditing, setIsEditing] = useState(false)
-  const [code, setCode] = useState(location.code)
-  const [label, setLabel] = useState(location.label)
-  const [saving, setSaving] = useState(false)
-  const [isDisabling, setIsDisabling] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const disableConfirmationDialogRef = useRef<HTMLDialogElement | null>(null)
-  const disableConfirmButtonRef = useRef<HTMLButtonElement | null>(null)
-  const disableDialogTitleId = `disable-location-dialog-title-${location.id}`
-  const disableDialogDescriptionId = `disable-location-dialog-description-${location.id}`
-  const isDisabled = location.disabled
+const LocationListItem = ({
+  location,
+  onSave,
+  onDisable,
+}: LocationListItemProps) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [code, setCode] = useState(location.code);
+  const [label, setLabel] = useState(location.label);
+  const [saving, setSaving] = useState(false);
+  const [isDisabling, setIsDisabling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const disableConfirmationDialogRef = useRef<HTMLDialogElement | null>(null);
+  const disableConfirmButtonRef = useRef<HTMLButtonElement | null>(null);
+  const disableDialogTitleId = `disable-location-dialog-title-${location.id}`;
+  const disableDialogDescriptionId = `disable-location-dialog-description-${location.id}`;
+  const isDisabled = location.disabled;
 
   useEffect(() => {
     if (!isEditing) {
-      setCode(location.code)
-      setLabel(location.label)
-      setError(null)
+      setCode(location.code);
+      setLabel(location.label);
+      setError(null);
     }
-  }, [isEditing, location.code, location.label])
+  }, [isEditing, location.code, location.label]);
 
   const handleCancel = () => {
-    setCode(location.code)
-    setLabel(location.label)
-    setError(null)
-    setIsEditing(false)
-  }
+    setCode(location.code);
+    setLabel(location.label);
+    setError(null);
+    setIsEditing(false);
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setError(null)
+    event.preventDefault();
+    setError(null);
 
-    const nextCode = code.trim().toUpperCase()
-    const nextLabel = label.trim()
+    const nextCode = code.trim().toUpperCase();
+    const nextLabel = label.trim();
 
     if (!nextCode) {
-      setError('Le code est requis.')
-      return
+      setError("Le code est requis.");
+      return;
     }
 
     if (!nextLabel) {
-      setError('Le libellé est requis.')
-      return
+      setError("Le libellé est requis.");
+      return;
     }
 
     if (nextCode === location.code && nextLabel === location.label) {
-      setIsEditing(false)
-      return
+      setIsEditing(false);
+      return;
     }
 
-    setSaving(true)
+    setSaving(true);
     try {
-      await onSave(location.id, { code: nextCode, label: nextLabel })
-      setIsEditing(false)
+      await onSave(location.id, { code: nextCode, label: nextLabel });
+      setIsEditing(false);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'La mise à jour a échoué.'
-      setError(message)
+      const message =
+        err instanceof Error ? err.message : "La mise à jour a échoué.";
+      setError(message);
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   const handleOpenDisableDialog = () => {
-    setError(null)
-    const dialog = disableConfirmationDialogRef.current
-    if (!dialog) return
-    dialog.showModal()
+    setError(null);
+    const dialog = disableConfirmationDialogRef.current;
+    if (!dialog) return;
+    dialog.showModal();
     requestAnimationFrame(() => {
-      disableConfirmButtonRef.current?.focus()
-    })
-  }
+      disableConfirmButtonRef.current?.focus();
+    });
+  };
 
   const handleCancelDisableDialog = () => {
-    disableConfirmationDialogRef.current?.close()
-  }
+    disableConfirmationDialogRef.current?.close();
+  };
 
   const handleConfirmDisableDialog = async () => {
     if (isDisabling) {
-      return
+      return;
     }
-    setIsDisabling(true)
+    setIsDisabling(true);
     try {
-      await onDisable(location.id)
-      disableConfirmationDialogRef.current?.close()
+      await onDisable(location.id);
+      disableConfirmationDialogRef.current?.close();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Impossible de désactiver la zone.'
-      setError(message)
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Impossible de désactiver la zone.";
+      setError(message);
     } finally {
-      setIsDisabling(false)
+      setIsDisabling(false);
     }
-  }
+  };
 
   return (
     <div
       data-testid="location-card"
       data-location-id={location.id}
       className={clsx(
-        'flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition dark:border-slate-700 dark:bg-slate-900/70',
-        isDisabled && 'opacity-80',
+        "flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition dark:border-slate-700 dark:bg-slate-900/70",
+        isDisabled && "opacity-80"
       )}
     >
       {isEditing ? (
@@ -1011,12 +866,23 @@ const LocationListItem = ({ location, onSave, onDisable }: LocationListItemProps
               disabled={saving || isDisabling}
             />
           </div>
-          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+          {error && (
+            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          )}
           <div className="flex flex-col gap-2 sm:flex-row">
-            <Button type="submit" className="py-3" disabled={saving || isDisabling}>
-              {saving ? 'Enregistrement…' : 'Enregistrer'}
+            <Button
+              type="submit"
+              className="py-3"
+              disabled={saving || isDisabling}
+            >
+              {saving ? "Enregistrement…" : "Enregistrer"}
             </Button>
-            <Button type="button" variant="ghost" onClick={handleCancel} disabled={saving || isDisabling}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={handleCancel}
+              disabled={saving || isDisabling}
+            >
               Annuler
             </Button>
           </div>
@@ -1025,14 +891,18 @@ const LocationListItem = ({ location, onSave, onDisable }: LocationListItemProps
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-3">
-              <p className="text-sm font-semibold uppercase tracking-widest text-brand-500">{location.code}</p>
+              <p className="text-sm font-semibold uppercase tracking-widest text-brand-500">
+                {location.code}
+              </p>
               {isDisabled && (
                 <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                   Désactivée
                 </span>
               )}
             </div>
-            <p className="break-words text-lg font-semibold text-slate-900 dark:text-white">{location.label}</p>
+            <p className="wrap-break-word text-lg font-semibold text-slate-900 dark:text-white">
+              {location.label}
+            </p>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <Button
@@ -1071,12 +941,21 @@ const LocationListItem = ({ location, onSave, onDisable }: LocationListItemProps
             <p id={disableDialogTitleId} className="text-lg font-semibold">
               {`Désactiver ${location.code} ?`}
             </p>
-            <p id={disableDialogDescriptionId} className="text-sm text-slate-600 dark:text-slate-300">
-              La zone désactivée ne sera plus proposée lors des inventaires tant qu&apos;elle n&apos;est pas réactivée.
+            <p
+              id={disableDialogDescriptionId}
+              className="text-sm text-slate-600 dark:text-slate-300"
+            >
+              La zone désactivée ne sera plus proposée lors des inventaires tant
+              qu&apos;elle n&apos;est pas réactivée.
             </p>
           </div>
           <div className="mt-6 flex justify-end gap-3">
-            <Button type="button" variant="secondary" onClick={handleCancelDisableDialog} disabled={isDisabling}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleCancelDisableDialog}
+              disabled={isDisabling}
+            >
               Annuler
             </Button>
             <Button
@@ -1086,135 +965,148 @@ const LocationListItem = ({ location, onSave, onDisable }: LocationListItemProps
               className="bg-red-600 text-white shadow-soft hover:bg-red-500 focus-visible:ring-2 focus-visible:ring-red-300 dark:bg-red-500 dark:hover:bg-red-400"
               disabled={isDisabling}
             >
-              {isDisabling ? 'Désactivation…' : 'Confirmer la désactivation'}
+              {isDisabling ? "Désactivation…" : "Confirmer la désactivation"}
             </Button>
           </div>
         </Card>
       </dialog>
     </div>
-  )
-}
+  );
+};
 
 type UserListItemProps = {
-  user: ShopUser
-  onSave: (id: string, payload: { login: string; displayName: string; isAdmin: boolean }) => Promise<void>
-  onDisable: (id: string) => Promise<void>
-}
+  user: ShopUser;
+  onSave: (
+    id: string,
+    payload: { login: string; displayName: string; isAdmin: boolean }
+  ) => Promise<void>;
+  onDisable: (id: string) => Promise<void>;
+};
 
 const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
-  const [isEditing, setIsEditing] = useState(false)
-  const [login, setLogin] = useState(user.login)
-  const [displayName, setDisplayName] = useState(user.displayName)
-  const [isAdmin, setIsAdmin] = useState(user.isAdmin)
-  const [saving, setSaving] = useState(false)
-  const [disabling, setDisabling] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const disableConfirmationDialogRef = useRef<HTMLDialogElement | null>(null)
-  const disableConfirmButtonRef = useRef<HTMLButtonElement | null>(null)
-  const disableDialogTitleId = `disable-user-dialog-title-${user.id}`
-  const disableDialogDescriptionId = `disable-user-dialog-description-${user.id}`
-  const disableConfirmationMessage = `Désactiver ${user.displayName} ? L'utilisateur ne pourra plus se connecter tant qu'il n'est pas recréé.`
-  const isDisabled = user.disabled
+  const [isEditing, setIsEditing] = useState(false);
+  const [login, setLogin] = useState(user.login);
+  const [displayName, setDisplayName] = useState(user.displayName);
+  const [isAdmin, setIsAdmin] = useState(user.isAdmin);
+  const [saving, setSaving] = useState(false);
+  const [disabling, setDisabling] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const disableConfirmationDialogRef = useRef<HTMLDialogElement | null>(null);
+  const disableConfirmButtonRef = useRef<HTMLButtonElement | null>(null);
+  const disableDialogTitleId = `disable-user-dialog-title-${user.id}`;
+  const disableDialogDescriptionId = `disable-user-dialog-description-${user.id}`;
+  const disableConfirmationMessage = `Désactiver ${user.displayName} ? L'utilisateur ne pourra plus se connecter tant qu'il n'est pas recréé.`;
+  const isDisabled = user.disabled;
 
   useEffect(() => {
     if (!isEditing) {
-      setLogin(user.login)
-      setDisplayName(user.displayName)
-      setIsAdmin(user.isAdmin)
-      setError(null)
+      setLogin(user.login);
+      setDisplayName(user.displayName);
+      setIsAdmin(user.isAdmin);
+      setError(null);
     }
-  }, [isEditing, user.displayName, user.isAdmin, user.login])
+  }, [isEditing, user.displayName, user.isAdmin, user.login]);
 
   const handleCancel = () => {
-    setLogin(user.login)
-    setDisplayName(user.displayName)
-    setIsAdmin(user.isAdmin)
-    setError(null)
-    setIsEditing(false)
-  }
+    setLogin(user.login);
+    setDisplayName(user.displayName);
+    setIsAdmin(user.isAdmin);
+    setError(null);
+    setIsEditing(false);
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setError(null)
+    event.preventDefault();
+    setError(null);
 
-    const nextLogin = login.trim()
-    const nextDisplayName = displayName.trim()
+    const nextLogin = login.trim();
+    const nextDisplayName = displayName.trim();
 
     if (!nextLogin) {
-      setError("L'identifiant est requis.")
-      return
+      setError("L'identifiant est requis.");
+      return;
     }
 
     if (!nextDisplayName) {
-      setError('Le nom affiché est requis.')
-      return
+      setError("Le nom affiché est requis.");
+      return;
     }
 
-    if (nextLogin === user.login && nextDisplayName === user.displayName && isAdmin === user.isAdmin) {
-      setIsEditing(false)
-      return
+    if (
+      nextLogin === user.login &&
+      nextDisplayName === user.displayName &&
+      isAdmin === user.isAdmin
+    ) {
+      setIsEditing(false);
+      return;
     }
 
-    setSaving(true)
+    setSaving(true);
     try {
-      await onSave(user.id, { login: nextLogin, displayName: nextDisplayName, isAdmin })
-      setIsEditing(false)
+      await onSave(user.id, {
+        login: nextLogin,
+        displayName: nextDisplayName,
+        isAdmin,
+      });
+      setIsEditing(false);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'La mise à jour a échoué.'
-      setError(message)
+      const message =
+        err instanceof Error ? err.message : "La mise à jour a échoué.";
+      setError(message);
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   const performDisable = useCallback(async () => {
     if (isDisabled) {
-      return
+      return;
     }
-    setError(null)
-    setDisabling(true)
+    setError(null);
+    setDisabling(true);
     try {
-      await onDisable(user.id)
+      await onDisable(user.id);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'La désactivation a échoué.'
-      setError(message)
+      const message =
+        err instanceof Error ? err.message : "La désactivation a échoué.";
+      setError(message);
     } finally {
-      setDisabling(false)
+      setDisabling(false);
     }
-  }, [isDisabled, onDisable, user.id])
+  }, [isDisabled, onDisable, user.id]);
 
   const handleOpenDisableDialog = useCallback(() => {
     if (isDisabled) {
-      return
+      return;
     }
-    const dialog = disableConfirmationDialogRef.current
-    if (dialog && typeof dialog.showModal === 'function') {
-      dialog.showModal()
+    const dialog = disableConfirmationDialogRef.current;
+    if (dialog && typeof dialog.showModal === "function") {
+      dialog.showModal();
       requestAnimationFrame(() => {
-        disableConfirmButtonRef.current?.focus()
-      })
-      return
+        disableConfirmButtonRef.current?.focus();
+      });
+      return;
     }
 
     if (window.confirm(disableConfirmationMessage)) {
-      void performDisable()
+      void performDisable();
     }
-  }, [disableConfirmationMessage, isDisabled, performDisable])
+  }, [disableConfirmationMessage, isDisabled, performDisable]);
 
   const handleCancelDisableDialog = useCallback(() => {
-    disableConfirmationDialogRef.current?.close()
-  }, [])
+    disableConfirmationDialogRef.current?.close();
+  }, []);
 
   const handleConfirmDisableDialog = useCallback(() => {
-    disableConfirmationDialogRef.current?.close()
-    void performDisable()
-  }, [performDisable])
+    disableConfirmationDialogRef.current?.close();
+    void performDisable();
+  }, [performDisable]);
 
   return (
     <div
       className={clsx(
-        'flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition dark:border-slate-700 dark:bg-slate-900/70',
-        isDisabled && 'opacity-80',
+        "flex h-full flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition dark:border-slate-700 dark:bg-slate-900/70",
+        isDisabled && "opacity-80"
       )}
       data-testid="user-card"
       data-user-id={user.id}
@@ -1257,24 +1149,39 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
               Administrateur
             </label>
             <div className="flex flex-col gap-2 sm:flex-row">
-              <Button type="submit" className="py-3" disabled={saving || disabling}>
-                {saving ? 'Enregistrement…' : 'Enregistrer'}
+              <Button
+                type="submit"
+                className="py-3"
+                disabled={saving || disabling}
+              >
+                {saving ? "Enregistrement…" : "Enregistrer"}
               </Button>
-              <Button type="button" variant="ghost" onClick={handleCancel} disabled={saving || disabling}>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={handleCancel}
+                disabled={saving || disabling}
+              >
                 Annuler
               </Button>
             </div>
           </div>
-          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+          {error && (
+            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+          )}
         </form>
       ) : (
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
           <div className="min-w-0 space-y-1">
-            <p className="text-sm font-semibold uppercase tracking-widest text-brand-500 break-words">{user.login}</p>
-            <p className="text-lg font-semibold text-slate-900 dark:text-white break-words">{user.displayName}</p>
+            <p className="text-sm font-semibold uppercase tracking-widest text-brand-500 wrap-break-word">
+              {user.login}
+            </p>
+            <p className="text-lg font-semibold text-slate-900 dark:text-white wrap-break-word">
+              {user.displayName}
+            </p>
             <div className="flex flex-wrap gap-2">
               <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                {user.isAdmin ? 'Administrateur' : 'Standard'}
+                {user.isAdmin ? "Administrateur" : "Standard"}
               </span>
               {isDisabled && (
                 <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500 dark:bg-slate-800 dark:text-slate-300">
@@ -1284,7 +1191,11 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
             </div>
           </div>
           <div className="flex flex-col gap-2 sm:flex-row sm:flex-none sm:items-center">
-            <Button variant="secondary" onClick={() => setIsEditing(true)} disabled={isDisabled || saving || disabling}>
+            <Button
+              variant="secondary"
+              onClick={() => setIsEditing(true)}
+              disabled={isDisabled || saving || disabling}
+            >
               Modifier
             </Button>
             {!isDisabled ? (
@@ -1297,10 +1208,16 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
                 Désactiver
               </Button>
             ) : (
-              <span className="text-sm text-slate-500 dark:text-slate-400">Compte désactivé</span>
+              <span className="text-sm text-slate-500 dark:text-slate-400">
+                Compte désactivé
+              </span>
             )}
           </div>
-          {error && <p className="text-sm text-red-600 dark:text-red-400 sm:ml-auto sm:w-full sm:text-right">{error}</p>}
+          {error && (
+            <p className="text-sm text-red-600 dark:text-red-400 sm:ml-auto sm:w-full sm:text-right">
+              {error}
+            </p>
+          )}
         </div>
       )}
       <dialog
@@ -1315,12 +1232,21 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
             <p id={disableDialogTitleId} className="text-lg font-semibold">
               {`Désactiver ${user.displayName} ?`}
             </p>
-            <p id={disableDialogDescriptionId} className="text-sm text-slate-600 dark:text-slate-300">
-              L&apos;utilisateur ne pourra plus se connecter tant qu&apos;il n&apos;est pas recréé.
+            <p
+              id={disableDialogDescriptionId}
+              className="text-sm text-slate-600 dark:text-slate-300"
+            >
+              L&apos;utilisateur ne pourra plus se connecter tant qu&apos;il
+              n&apos;est pas recréé.
             </p>
           </div>
           <div className="mt-6 flex justify-end gap-3">
-            <Button type="button" variant="secondary" onClick={handleCancelDisableDialog} disabled={disabling}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleCancelDisableDialog}
+              disabled={disabling}
+            >
               Annuler
             </Button>
             <Button
@@ -1330,113 +1256,148 @@ const UserListItem = ({ user, onSave, onDisable }: UserListItemProps) => {
               className="bg-red-600 text-white shadow-soft hover:bg-red-500 focus-visible:ring-2 focus-visible:ring-red-300 dark:bg-red-500 dark:hover:bg-red-400"
               disabled={disabling}
             >
-              {disabling ? 'Désactivation…' : 'Confirmer la désactivation'}
+              {disabling ? "Désactivation…" : "Confirmer la désactivation"}
             </Button>
           </div>
         </Card>
       </dialog>
     </div>
-  )
-}
+  );
+};
 
 type LocationsPanelProps = {
-  description: string
-}
+  description: string;
+};
 
 const LocationsPanel = ({ description }: LocationsPanelProps) => {
-  const { shop } = useShop()
+  const { shop } = useShop();
 
   const loadLocations = useCallback(() => {
     if (!shop?.id) {
-      return Promise.resolve<Location[]>([])
+      return Promise.resolve<Location[]>([]);
     }
-    return fetchLocations(shop.id, { includeDisabled: true })
-  }, [shop?.id])
+    return fetchLocations(shop.id, { includeDisabled: true });
+  }, [shop?.id]);
 
-  const { data, loading, error, execute, setData } = useAsync(loadLocations, [loadLocations], {
-    initialValue: [],
-    immediate: Boolean(shop?.id),
-  })
+  const { data, loading, error, execute, setData } = useAsync(
+    loadLocations,
+    [loadLocations],
+    {
+      initialValue: [],
+      immediate: Boolean(shop?.id),
+    }
+  );
 
-  const [newLocationCode, setNewLocationCode] = useState('')
-  const [newLocationLabel, setNewLocationLabel] = useState('')
-  const [creatingLocation, setCreatingLocation] = useState(false)
-  const [locationFeedback, setLocationFeedback] = useState<FeedbackState>(null)
-  const [hideDisabledLocations, setHideDisabledLocations] = useState(true)
+  const [newLocationCode, setNewLocationCode] = useState("");
+  const [newLocationLabel, setNewLocationLabel] = useState("");
+  const [creatingLocation, setCreatingLocation] = useState(false);
+  const [locationFeedback, setLocationFeedback] = useState<FeedbackState>(null);
+  const [hideDisabledLocations, setHideDisabledLocations] = useState(true);
 
   const sortedLocations = useMemo(
     () => [...(data ?? [])].sort((a, b) => a.code.localeCompare(b.code)),
-    [data],
-  )
+    [data]
+  );
 
   const visibleLocations = useMemo(
-    () => (hideDisabledLocations ? sortedLocations.filter((item) => !item.disabled) : sortedLocations),
-    [hideDisabledLocations, sortedLocations],
-  )
+    () =>
+      hideDisabledLocations
+        ? sortedLocations.filter((item) => !item.disabled)
+        : sortedLocations,
+    [hideDisabledLocations, sortedLocations]
+  );
 
   const handleCreateLocation = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
-      event.preventDefault()
-      setLocationFeedback(null)
+      event.preventDefault();
+      setLocationFeedback(null);
 
-      const code = newLocationCode.trim().toUpperCase()
-      const label = newLocationLabel.trim()
+      const code = newLocationCode.trim().toUpperCase();
+      const label = newLocationLabel.trim();
 
       if (!code || !label) {
-        setLocationFeedback({ type: 'error', message: 'Code et libellé sont requis.' })
-        return
+        setLocationFeedback({
+          type: "error",
+          message: "Code et libellé sont requis.",
+        });
+        return;
       }
 
-      setCreatingLocation(true)
+      setCreatingLocation(true);
       try {
-        const created = await createLocation({ code, label })
-        setData((prev) => ([...(prev ?? []), created]))
-        setNewLocationCode('')
-        setNewLocationLabel('')
-        setLocationFeedback({ type: 'success', message: 'Zone créée avec succès.' })
+        const created = await createLocation({ code, label });
+        setData((prev) => [...(prev ?? []), created]);
+        setNewLocationCode("");
+        setNewLocationLabel("");
+        setLocationFeedback({
+          type: "success",
+          message: "Zone créée avec succès.",
+        });
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Impossible de créer la zone. Réessayez.'
-        setLocationFeedback({ type: 'error', message })
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Impossible de créer la zone. Réessayez.";
+        setLocationFeedback({ type: "error", message });
       } finally {
-        setCreatingLocation(false)
+        setCreatingLocation(false);
       }
     },
-    [newLocationCode, newLocationLabel, setData],
-  )
+    [newLocationCode, newLocationLabel, setData]
+  );
 
   const handleDisableLocation = async (id: string) => {
-    setLocationFeedback(null)
+    setLocationFeedback(null);
     try {
-      const disabled = await disableLocation(id)
-      setData((prev) => prev?.map((item) => (item.id === disabled.id ? disabled : item)) ?? [])
-      setLocationFeedback({ type: 'success', message: 'Zone désactivée.' })
+      const disabled = await disableLocation(id);
+      setData(
+        (prev) =>
+          prev?.map((item) => (item.id === disabled.id ? disabled : item)) ?? []
+      );
+      setLocationFeedback({ type: "success", message: "Zone désactivée." });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Impossible de désactiver cette zone.'
-      setLocationFeedback({ type: 'error', message })
-      throw new Error(message)
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Impossible de désactiver cette zone.";
+      setLocationFeedback({ type: "error", message });
+      throw new Error(message);
     }
-  }
+  };
 
-  const handleUpdateLocation = async (id: string, payload: { code: string; label: string }) => {
-    setLocationFeedback(null)
+  const handleUpdateLocation = async (
+    id: string,
+    payload: { code: string; label: string }
+  ) => {
+    setLocationFeedback(null);
     try {
-      const updated = await updateLocation(id, payload)
-      setData((prev) => prev?.map((item) => (item.id === updated.id ? updated : item)) ?? [])
-      setLocationFeedback({ type: 'success', message: 'Zone mise à jour.' })
+      const updated = await updateLocation(id, payload);
+      setData(
+        (prev) =>
+          prev?.map((item) => (item.id === updated.id ? updated : item)) ?? []
+      );
+      setLocationFeedback({ type: "success", message: "Zone mise à jour." });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Impossible de mettre à jour cette zone.'
-      setLocationFeedback({ type: 'error', message })
-      throw new Error(message)
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Impossible de mettre à jour cette zone.";
+      setLocationFeedback({ type: "error", message });
+      throw new Error(message);
     }
-  }
+  };
 
   return (
     <Card className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Zones</h2>
-            <p className="text-sm text-slate-600 dark:text-slate-400">{description}</p>
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+              Zones
+            </h2>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              {description}
+            </p>
           </div>
           <Button variant="ghost" onClick={() => execute()}>
             Actualiser
@@ -1453,7 +1414,9 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
           name="newLocationCode"
           placeholder="Ex. A01"
           value={newLocationCode}
-          onChange={(event) => setNewLocationCode(event.target.value.toUpperCase())}
+          onChange={(event) =>
+            setNewLocationCode(event.target.value.toUpperCase())
+          }
           containerClassName="sm:w-32"
           maxLength={12}
           autoComplete="off"
@@ -1462,15 +1425,15 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
           label="Libellé"
           name="newLocationLabel"
           placeholder="Ex. Réserve, Comptoir"
-      value={newLocationLabel}
-      onChange={(event) => setNewLocationLabel(event.target.value)}
-      containerClassName="flex-1"
-      autoComplete="off"
-    />
-    <Button type="submit" disabled={creatingLocation} className="py-3">
-      {creatingLocation ? 'Création…' : 'Ajouter'}
-    </Button>
-  </form>
+          value={newLocationLabel}
+          onChange={(event) => setNewLocationLabel(event.target.value)}
+          containerClassName="flex-1"
+          autoComplete="off"
+        />
+        <Button type="submit" disabled={creatingLocation} className="py-3">
+          {creatingLocation ? "Création…" : "Ajouter"}
+        </Button>
+      </form>
       <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
         <input
           type="checkbox"
@@ -1483,16 +1446,21 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
       {locationFeedback && (
         <p
           className={`text-sm ${
-            locationFeedback.type === 'success'
-              ? 'text-emerald-600 dark:text-emerald-400'
-              : 'text-red-600 dark:text-red-400'
+            locationFeedback.type === "success"
+              ? "text-emerald-600 dark:text-emerald-400"
+              : "text-red-600 dark:text-red-400"
           }`}
         >
           {locationFeedback.message}
         </p>
       )}
       {loading && <LoadingIndicator label="Chargement des zones" />}
-      {Boolean(error) && <EmptyState title="Erreur" description="Les zones n'ont pas pu être chargées." />}
+      {Boolean(error) && (
+        <EmptyState
+          title="Erreur"
+          description="Les zones n'ont pas pu être chargées."
+        />
+      )}
       {!loading && !error && (
         <div className="grid grid-cols-1 gap-4">
           {visibleLocations.length === 0 ? (
@@ -1502,7 +1470,10 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
                 description="Toutes les zones sont désactivées. Décochez l'option ci-dessus pour les afficher."
               />
             ) : (
-              <EmptyState title="Aucune zone" description="Ajoutez votre première zone pour démarrer." />
+              <EmptyState
+                title="Aucune zone"
+                description="Ajoutez votre première zone pour démarrer."
+              />
             )
           ) : (
             visibleLocations.map((locationItem) => (
@@ -1517,162 +1488,210 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
         </div>
       )}
     </Card>
-  )
-}
+  );
+};
 
 type UsersPanelProps = {
-  description: string
-  isActive: boolean
-}
+  description: string;
+  isActive: boolean;
+};
 
 const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
-  const { shop } = useShop()
+  const { shop } = useShop();
 
   const loadUsers = useCallback(() => {
     if (!shop?.id) {
-      return Promise.resolve<ShopUser[]>([])
+      return Promise.resolve<ShopUser[]>([]);
     }
-    return fetchShopUsers(shop.id, { includeDisabled: true })
-  }, [shop?.id])
+    return fetchShopUsers(shop.id, { includeDisabled: true });
+  }, [shop?.id]);
 
-  const { data, loading, error, execute, setData } = useAsync(loadUsers, [loadUsers], {
-    initialValue: [],
-    immediate: false,
-  })
+  const { data, loading, error, execute, setData } = useAsync(
+    loadUsers,
+    [loadUsers],
+    {
+      initialValue: [],
+      immediate: false,
+    }
+  );
 
-  const [hasRequested, setHasRequested] = useState(false)
-  const [newUserLogin, setNewUserLogin] = useState('')
-  const [newUserDisplayName, setNewUserDisplayName] = useState('')
-  const [newUserIsAdmin, setNewUserIsAdmin] = useState(false)
-  const [creatingUser, setCreatingUser] = useState(false)
-  const [userFeedback, setUserFeedback] = useState<FeedbackState>(null)
-  const [hideDisabledUsers, setHideDisabledUsers] = useState(true)
+  const [hasRequested, setHasRequested] = useState(false);
+  const [newUserLogin, setNewUserLogin] = useState("");
+  const [newUserDisplayName, setNewUserDisplayName] = useState("");
+  const [newUserIsAdmin, setNewUserIsAdmin] = useState(false);
+  const [creatingUser, setCreatingUser] = useState(false);
+  const [userFeedback, setUserFeedback] = useState<FeedbackState>(null);
+  const [hideDisabledUsers, setHideDisabledUsers] = useState(true);
 
   useEffect(() => {
-    setHasRequested(false)
-    setData([])
-  }, [setData, shop?.id])
+    setHasRequested(false);
+    setData([]);
+  }, [setData, shop?.id]);
 
   useEffect(() => {
     if (!isActive) {
-      return
+      return;
     }
     if (!shop?.id) {
-      return
+      return;
     }
     if (hasRequested) {
-      return
+      return;
     }
-    setHasRequested(true)
-    void execute().catch(() => undefined)
-  }, [execute, hasRequested, isActive, shop?.id])
+    setHasRequested(true);
+    void execute().catch(() => undefined);
+  }, [execute, hasRequested, isActive, shop?.id]);
 
   const sortedUsers = useMemo(() => {
-    const list = data ?? []
-    return [...list].sort((a, b) => a.displayName.localeCompare(b.displayName, 'fr', { sensitivity: 'base' }))
-  }, [data])
+    const list = data ?? [];
+    return [...list].sort((a, b) =>
+      a.displayName.localeCompare(b.displayName, "fr", { sensitivity: "base" })
+    );
+  }, [data]);
 
   const visibleUsers = useMemo(
-    () => (hideDisabledUsers ? sortedUsers.filter((user) => !user.disabled) : sortedUsers),
-    [hideDisabledUsers, sortedUsers],
-  )
+    () =>
+      hideDisabledUsers
+        ? sortedUsers.filter((user) => !user.disabled)
+        : sortedUsers,
+    [hideDisabledUsers, sortedUsers]
+  );
 
   const handleCreateUser = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    setUserFeedback(null)
+    event.preventDefault();
+    setUserFeedback(null);
 
-    const login = newUserLogin.trim()
-    const displayName = newUserDisplayName.trim()
+    const login = newUserLogin.trim();
+    const displayName = newUserDisplayName.trim();
 
     if (!shop?.id) {
-      setUserFeedback({ type: 'error', message: 'Sélectionnez une boutique avant de créer un utilisateur.' })
-      return
+      setUserFeedback({
+        type: "error",
+        message: "Sélectionnez une boutique avant de créer un utilisateur.",
+      });
+      return;
     }
 
     if (!login || !displayName) {
-      setUserFeedback({ type: 'error', message: 'Identifiant et nom affiché sont requis.' })
-      return
+      setUserFeedback({
+        type: "error",
+        message: "Identifiant et nom affiché sont requis.",
+      });
+      return;
     }
 
-    setCreatingUser(true)
+    setCreatingUser(true);
     try {
-      const created = await createShopUser(shop.id, { login, displayName, isAdmin: newUserIsAdmin })
-      setData((prev) => ([...(prev ?? []), created]))
-      setNewUserLogin('')
-      setNewUserDisplayName('')
-      setNewUserIsAdmin(false)
-      setUserFeedback({ type: 'success', message: 'Utilisateur créé avec succès.' })
+      const created = await createShopUser(shop.id, {
+        login,
+        displayName,
+        isAdmin: newUserIsAdmin,
+      });
+      setData((prev) => [...(prev ?? []), created]);
+      setNewUserLogin("");
+      setNewUserDisplayName("");
+      setNewUserIsAdmin(false);
+      setUserFeedback({
+        type: "success",
+        message: "Utilisateur créé avec succès.",
+      });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Impossible de créer l'utilisateur. Réessayez."
-      setUserFeedback({ type: 'error', message })
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Impossible de créer l'utilisateur. Réessayez.";
+      setUserFeedback({ type: "error", message });
     } finally {
-      setCreatingUser(false)
+      setCreatingUser(false);
     }
-  }
+  };
 
   const handleUpdateUser = async (
     id: string,
-    payload: { login: string; displayName: string; isAdmin: boolean },
+    payload: { login: string; displayName: string; isAdmin: boolean }
   ): Promise<void> => {
-    setUserFeedback(null)
+    setUserFeedback(null);
     if (!shop?.id) {
-      const message = 'Boutique introuvable. Veuillez recharger la page.'
-      setUserFeedback({ type: 'error', message })
-      throw new Error(message)
+      const message = "Boutique introuvable. Veuillez recharger la page.";
+      setUserFeedback({ type: "error", message });
+      throw new Error(message);
     }
 
     try {
-      const updated = await updateShopUser(shop.id, { id, ...payload })
-      setData((prev) => prev?.map((item) => (item.id === updated.id ? updated : item)) ?? [])
-      setUserFeedback({ type: 'success', message: 'Utilisateur mis à jour.' })
+      const updated = await updateShopUser(shop.id, { id, ...payload });
+      setData(
+        (prev) =>
+          prev?.map((item) => (item.id === updated.id ? updated : item)) ?? []
+      );
+      setUserFeedback({ type: "success", message: "Utilisateur mis à jour." });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Impossible de mettre à jour l'utilisateur." 
-      setUserFeedback({ type: 'error', message })
-      throw new Error(message)
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Impossible de mettre à jour l'utilisateur.";
+      setUserFeedback({ type: "error", message });
+      throw new Error(message);
     }
-  }
+  };
 
   const handleDisableUser = async (id: string): Promise<void> => {
-    setUserFeedback(null)
+    setUserFeedback(null);
     if (!shop?.id) {
-      const message = 'Boutique introuvable. Veuillez recharger la page.'
-      setUserFeedback({ type: 'error', message })
-      throw new Error(message)
+      const message = "Boutique introuvable. Veuillez recharger la page.";
+      setUserFeedback({ type: "error", message });
+      throw new Error(message);
     }
 
     try {
-      const disabled = await disableShopUser(shop.id, id)
-      setData((prev) => prev?.map((item) => (item.id === disabled.id ? disabled : item)) ?? [])
-      setUserFeedback({ type: 'success', message: 'Utilisateur désactivé.' })
+      const disabled = await disableShopUser(shop.id, id);
+      setData(
+        (prev) =>
+          prev?.map((item) => (item.id === disabled.id ? disabled : item)) ?? []
+      );
+      setUserFeedback({ type: "success", message: "Utilisateur désactivé." });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Impossible de désactiver l'utilisateur."
-      setUserFeedback({ type: 'error', message })
-      throw new Error(message)
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Impossible de désactiver l'utilisateur.";
+      setUserFeedback({ type: "error", message });
+      throw new Error(message);
     }
-  }
+  };
 
   const handleRefresh = () => {
     if (!shop?.id) {
-      setUserFeedback({ type: 'error', message: 'Boutique introuvable. Impossible de rafraîchir.' })
-      return
+      setUserFeedback({
+        type: "error",
+        message: "Boutique introuvable. Impossible de rafraîchir.",
+      });
+      return;
     }
-    setUserFeedback(null)
-    setHasRequested(true)
-    void execute().catch(() => undefined)
-  }
+    setUserFeedback(null);
+    setHasRequested(true);
+    void execute().catch(() => undefined);
+  };
 
   return (
     <Card className="flex flex-col gap-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Utilisateurs</h2>
-          <p className="text-sm text-slate-600 dark:text-slate-400">{description}</p>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+            Utilisateurs
+          </h2>
+          <p className="text-sm text-slate-600 dark:text-slate-400">
+            {description}
+          </p>
         </div>
         <Button variant="ghost" onClick={handleRefresh}>
           Actualiser
         </Button>
       </div>
-      <form className="flex flex-col gap-4" data-testid="user-create-form" onSubmit={handleCreateUser}>
+      <form
+        className="flex flex-col gap-4"
+        data-testid="user-create-form"
+        onSubmit={handleCreateUser}
+      >
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end">
           <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap">
             <Input
@@ -1709,7 +1728,7 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
               Administrateur
             </label>
             <Button type="submit" disabled={creatingUser} className="py-3">
-              {creatingUser ? 'Création…' : 'Ajouter'}
+              {creatingUser ? "Création…" : "Ajouter"}
             </Button>
           </div>
         </div>
@@ -1726,9 +1745,9 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
       {userFeedback && (
         <p
           className={`text-sm ${
-            userFeedback.type === 'success'
-              ? 'text-emerald-600 dark:text-emerald-400'
-              : 'text-red-600 dark:text-red-400'
+            userFeedback.type === "success"
+              ? "text-emerald-600 dark:text-emerald-400"
+              : "text-red-600 dark:text-red-400"
           }`}
         >
           {userFeedback.message}
@@ -1736,7 +1755,10 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
       )}
       {loading && <LoadingIndicator label="Chargement des utilisateurs" />}
       {Boolean(error) && hasRequested && (
-        <EmptyState title="Erreur" description="Les utilisateurs n'ont pas pu être chargés." />
+        <EmptyState
+          title="Erreur"
+          description="Les utilisateurs n'ont pas pu être chargés."
+        />
       )}
       {!loading && !error && hasRequested && (
         <div className="grid grid-cols-1 gap-4">
@@ -1747,33 +1769,49 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
                 description="Tous les comptes sont désactivés. Décochez l'option ci-dessus pour les afficher."
               />
             ) : (
-              <EmptyState title="Aucun utilisateur" description="Ajoutez un premier compte pour démarrer." />
+              <EmptyState
+                title="Aucun utilisateur"
+                description="Ajoutez un premier compte pour démarrer."
+              />
             )
           ) : (
             visibleUsers.map((user) => (
-              <UserListItem key={user.id} user={user} onSave={handleUpdateUser} onDisable={handleDisableUser} />
+              <UserListItem
+                key={user.id}
+                user={user}
+                onSave={handleUpdateUser}
+                onDisable={handleDisableUser}
+              />
             ))
           )}
         </div>
       )}
     </Card>
-  )
-}
+  );
+};
 
 export const AdminLocationsPage = () => {
-  const [activeSection, setActiveSection] = useState<AdminSection>('locations')
-  const activeDefinition = ADMIN_SECTIONS.find((section) => section.id === activeSection) ?? ADMIN_SECTIONS[0]
+  const [activeSection, setActiveSection] = useState<AdminSection>("locations");
+  const activeDefinition =
+    ADMIN_SECTIONS.find((section) => section.id === activeSection) ??
+    ADMIN_SECTIONS[0];
 
   return (
     <div className="flex flex-col gap-6">
-      <SectionSwitcher activeSection={activeSection} onChange={setActiveSection} />
-      {activeSection === 'locations' ? (
+      <SectionSwitcher
+        activeSection={activeSection}
+        onChange={setActiveSection}
+      />
+      {activeSection === "locations" ? (
         <LocationsPanel description={activeDefinition.description} />
-      ) : activeSection === 'users' ? (
-        <UsersPanel description={activeDefinition.description} isActive={activeSection === 'users'} />
+      ) : activeSection === "users" ? (
+        <UsersPanel
+          description={activeDefinition.description}
+          isActive={activeSection === "users"}
+        />
       ) : (
         <CatalogImportPanel description={activeDefinition.description} />
       )}
     </div>
-  )
-}
+  );
+};
