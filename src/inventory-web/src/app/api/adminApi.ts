@@ -1,85 +1,97 @@
-import type { Location } from '../types/inventory'
+import type { Location } from "../types/inventory";
 
-import { API_BASE } from '@/lib/api/config'
-import http from '@/lib/api/http'
-import type { ShopUser } from '@/types/user'
+import { API_BASE } from "@/lib/api/config";
+import http from "@/lib/api/http";
+import type { ShopUser } from "@/types/user";
 
 interface LocationPayload {
-  label: string
-  code?: string
-  description?: string
+  label: string;
+  code?: string;
+  description?: string;
 }
 
-export const createLocation = async (payload: LocationPayload): Promise<Location> => {
+export const createLocation = async (
+  payload: LocationPayload
+): Promise<Location> => {
   const data = await http(`${API_BASE}/locations`, {
-    method: 'POST',
+    method: "POST",
     body: payload,
-  })
-  return data as Location
-}
+  });
+  return data as Location;
+};
 
-type LocationUpdatePayload = LocationPayload & { disabled?: boolean }
+type LocationUpdatePayload = LocationPayload & { disabled?: boolean };
 
 export const updateLocation = async (
   id: string,
-  payload: Partial<LocationUpdatePayload>,
+  payload: Partial<LocationUpdatePayload>
 ): Promise<Location> => {
   const data = await http(`${API_BASE}/locations/${id}`, {
-    method: 'PUT',
+    method: "PUT",
     body: payload,
-  })
-  return data as Location
-}
+  });
+  return data as Location;
+};
 
 export const disableLocation = async (id: string): Promise<Location> => {
   const data = await http(`${API_BASE}/locations/${encodeURIComponent(id)}`, {
-    method: 'DELETE',
-  })
-  return data as Location
-}
+    method: "DELETE",
+  });
+  return data as Location;
+};
 
-const sanitizeIdentifier = (value: string): string => value.trim()
+const sanitizeIdentifier = (value: string): string => value.trim();
 
 const buildShopUsersUrl = (shopId: string) => {
-  const trimmed = sanitizeIdentifier(shopId)
+  const trimmed = sanitizeIdentifier(shopId);
   if (!trimmed) {
-    throw new Error("L'identifiant boutique est requis pour gérer les utilisateurs.")
+    throw new Error(
+      "L'identifiant boutique est requis pour gérer les utilisateurs."
+    );
   }
-  return `${API_BASE}/shops/${encodeURIComponent(trimmed)}/users`
-}
+  return `${API_BASE}/shops/${encodeURIComponent(trimmed)}/users`;
+};
 
 type ShopUserPayload = {
-  login: string
-  displayName: string
-  isAdmin: boolean
-}
+  login: string;
+  displayName: string;
+  isAdmin: boolean;
+};
 
-type ShopUserUpdatePayload = ShopUserPayload & { id: string; disabled?: boolean }
+type ShopUserUpdatePayload = ShopUserPayload & {
+  id: string;
+  disabled?: boolean;
+};
 
-export const createShopUser = async (shopId: string, payload: ShopUserPayload): Promise<ShopUser> => {
+export const createShopUser = async (
+  shopId: string,
+  payload: ShopUserPayload
+): Promise<ShopUser> => {
   const data = await http(buildShopUsersUrl(shopId), {
-    method: 'POST',
+    method: "POST",
     body: payload,
-  })
-  return data as ShopUser
-}
+  });
+  return data as ShopUser;
+};
 
 export const updateShopUser = async (
   shopId: string,
-  payload: ShopUserUpdatePayload,
+  payload: ShopUserUpdatePayload
 ): Promise<ShopUser> => {
   const data = await http(buildShopUsersUrl(shopId), {
-    method: 'PUT',
+    method: "PUT",
     body: payload,
-  })
-  return data as ShopUser
-}
+  });
+  return data as ShopUser;
+};
 
-export const disableShopUser = async (shopId: string, id: string): Promise<ShopUser> => {
+export const disableShopUser = async (
+  shopId: string,
+  id: string
+): Promise<ShopUser> => {
   const data = await http(buildShopUsersUrl(shopId), {
-    method: 'DELETE',
+    method: "DELETE",
     body: { id },
-  })
-  return data as ShopUser
-}
-
+  });
+  return data as ShopUser;
+};

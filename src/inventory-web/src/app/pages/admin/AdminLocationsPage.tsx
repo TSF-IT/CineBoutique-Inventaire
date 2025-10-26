@@ -425,8 +425,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
           return;
         }
         const lines = normalizeLines(item.lines ?? item.Lines);
-        const suffix =
-          lines.length > 0 ? ` (lignes ${lines.join(", ")})` : "";
+        const suffix = lines.length > 0 ? ` (lignes ${lines.join(", ")})` : "";
         const prefix = label === "SKU" ? "Doublon SKU" : "Doublon EAN";
         entries.add(`${prefix} ${valueText}${suffix}`);
       });
@@ -1005,7 +1004,10 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
             <p className="font-medium">{feedback.message}</p>
           </div>
         ) : feedback.type === "error" ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-400/40 dark:bg-red-900/30 dark:text-red-100" role="alert">
+          <div
+            className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-400/40 dark:bg-red-900/30 dark:text-red-100"
+            role="alert"
+          >
             <div className="space-y-2">
               <p className="font-medium">{feedback.message}</p>
               {feedback.details && feedback.details.length > 0 && (
@@ -1055,26 +1057,26 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
                 </div>
                 {feedback.summary.mode === "merge" &&
                   feedback.summary.alreadyPresent > 0 && (
-                  <div>
-                    <dt className="font-medium text-slate-700 dark:text-slate-200">
-                      Déjà présents dans le catalogue
-                    </dt>
-                    <dd className="text-slate-600 dark:text-slate-300">
-                      {feedback.summary.alreadyPresent}
-                    </dd>
-                  </div>
-                )}
+                    <div>
+                      <dt className="font-medium text-slate-700 dark:text-slate-200">
+                        Déjà présents dans le catalogue
+                      </dt>
+                      <dd className="text-slate-600 dark:text-slate-300">
+                        {feedback.summary.alreadyPresent}
+                      </dd>
+                    </div>
+                  )}
                 {feedback.summary.mode === "merge" &&
                   feedback.summary.alreadyPresent > 0 && (
-                  <div>
-                    <dt className="font-medium text-slate-700 dark:text-slate-200">
-                      Déjà présents en base
-                    </dt>
-                    <dd className="text-slate-600 dark:text-slate-300">
-                      {feedback.summary.alreadyPresent}
-                    </dd>
-                  </div>
-                )}
+                    <div>
+                      <dt className="font-medium text-slate-700 dark:text-slate-200">
+                        Déjà présents en base
+                      </dt>
+                      <dd className="text-slate-600 dark:text-slate-300">
+                        {feedback.summary.alreadyPresent}
+                      </dd>
+                    </div>
+                  )}
                 {feedback.summary.encoding && (
                   <div>
                     <dt className="font-medium text-slate-700 dark:text-slate-200">
@@ -1433,7 +1435,12 @@ type UserListItemProps = {
   onEnable: (id: string) => Promise<void>;
 };
 
-const UserListItem = ({ user, onSave, onDisable, onEnable }: UserListItemProps) => {
+const UserListItem = ({
+  user,
+  onSave,
+  onDisable,
+  onEnable,
+}: UserListItemProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [login, setLogin] = useState(user.login);
   const [displayName, setDisplayName] = useState(user.displayName);
