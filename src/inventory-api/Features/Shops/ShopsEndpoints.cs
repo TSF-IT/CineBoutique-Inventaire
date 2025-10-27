@@ -13,6 +13,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OpenApi;
 using Microsoft.AspNetCore.Routing;
 
 namespace CineBoutique.Inventory.Api.Features.Shops;
@@ -46,6 +47,13 @@ internal static class ShopsEndpoints
                     return Results.Ok(shops);
                 })
             .WithName("GetShops")
+            .WithTags("Shops")
+            .WithOpenApi(operation =>
+            {
+                operation.Summary = "Lister les boutiques";
+                operation.Description = "Retourne toutes les boutiques, filtrées par type lorsque 'kind' est renseigné.";
+                return operation;
+            })
             .Produces<IReadOnlyList<ShopDto>>(StatusCodes.Status200OK)
             .RequireAuthorization();
     }
@@ -100,6 +108,13 @@ internal static class ShopsEndpoints
                     }
                 })
             .WithName("CreateShop")
+            .WithTags("Shops")
+            .WithOpenApi(operation =>
+            {
+                operation.Summary = "Créer une boutique";
+                operation.Description = "Crée une nouvelle boutique et renvoie les informations de la ressource créée.";
+                return operation;
+            })
             .Produces<ShopDto>(StatusCodes.Status201Created)
             .Produces<ProblemDetails>(StatusCodes.Status400BadRequest)
             .Produces<ProblemDetails>(StatusCodes.Status409Conflict)
@@ -161,6 +176,13 @@ internal static class ShopsEndpoints
                     }
                 })
             .WithName("UpdateShop")
+            .WithTags("Shops")
+            .WithOpenApi(operation =>
+            {
+                operation.Summary = "Mettre à jour une boutique";
+                operation.Description = "Met à jour une boutique existante et renvoie son état actualisé.";
+                return operation;
+            })
             .Produces<ShopDto>(StatusCodes.Status200OK)
             .Produces<ProblemDetails>(StatusCodes.Status400BadRequest)
             .Produces<ProblemDetails>(StatusCodes.Status404NotFound)
@@ -223,6 +245,13 @@ internal static class ShopsEndpoints
                     }
                 })
             .WithName("DeleteShop")
+            .WithTags("Shops")
+            .WithOpenApi(operation =>
+            {
+                operation.Summary = "Supprimer une boutique";
+                operation.Description = "Supprime une boutique lorsqu'elle n'a plus de données associées.";
+                return operation;
+            })
             .Produces(StatusCodes.Status204NoContent)
             .Produces<ProblemDetails>(StatusCodes.Status400BadRequest)
             .Produces<ProblemDetails>(StatusCodes.Status404NotFound)

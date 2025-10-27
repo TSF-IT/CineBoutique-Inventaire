@@ -26,6 +26,7 @@ import {
   type CsvEncoding,
 } from "@/features/import/csvEncoding";
 import { normalizeKey } from "@/features/import/csvMapping";
+import { buildHeaders } from "@/lib/api/http";
 import { useShop } from "@/state/ShopContext";
 import type { ShopUser } from "@/types/user";
 
@@ -686,7 +687,11 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
         mode: importMode === "merge" ? "merge" : "replace",
       });
       const url = `/api/shops/${shop.id}/products/import?${params.toString()}`;
-      const response = await fetch(url, { method: "POST", body: fd });
+      const response = await fetch(url, {
+        method: "POST",
+        body: fd,
+        headers: buildHeaders(),
+      });
       const rawText = await response.text();
       const payload = rawText ? parseJson(rawText) : null;
       const record = (payload ?? {}) as Record<string, unknown>;

@@ -13,6 +13,7 @@ using FluentValidation;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OpenApi;
 using Microsoft.AspNetCore.Routing;
 
 namespace CineBoutique.Inventory.Api.Features.Shops;
@@ -60,6 +61,13 @@ internal static class ShopUsersEndpoints
                         return Results.NotFound(BuildProblem(ex.Message, StatusCodes.Status404NotFound));
                     }
                 })
+            .WithTags("ShopUsers")
+            .WithOpenApi(operation =>
+            {
+                operation.Summary = "Lister les utilisateurs magasin";
+                operation.Description = "Retourne les utilisateurs d'une boutique, avec les comptes désactivés si demandé.";
+                return operation;
+            })
             .Produces<IReadOnlyList<ShopUserDto>>(StatusCodes.Status200OK)
             .Produces<ProblemDetails>(StatusCodes.Status404NotFound)
             .RequireAuthorization();
@@ -120,6 +128,13 @@ internal static class ShopUsersEndpoints
                         return Results.Conflict(BuildConflictProblem(ex.Message));
                     }
                 })
+            .WithTags("ShopUsers")
+            .WithOpenApi(operation =>
+            {
+                operation.Summary = "Créer un utilisateur magasin";
+                operation.Description = "Ajoute un utilisateur à la boutique et renvoie les informations de la ressource créée.";
+                return operation;
+            })
             .Produces<ShopUserDto>(StatusCodes.Status201Created)
             .Produces<ProblemDetails>(StatusCodes.Status400BadRequest)
             .Produces<ProblemDetails>(StatusCodes.Status404NotFound)
@@ -187,6 +202,13 @@ internal static class ShopUsersEndpoints
                         return Results.Conflict(BuildConflictProblem(ex.Message));
                     }
                 })
+            .WithTags("ShopUsers")
+            .WithOpenApi(operation =>
+            {
+                operation.Summary = "Mettre à jour un utilisateur magasin";
+                operation.Description = "Modifie un utilisateur de boutique et renvoie son état actualisé.";
+                return operation;
+            })
             .Produces<ShopUserDto>(StatusCodes.Status200OK)
             .Produces<ProblemDetails>(StatusCodes.Status400BadRequest)
             .Produces<ProblemDetails>(StatusCodes.Status404NotFound)
@@ -250,6 +272,13 @@ internal static class ShopUsersEndpoints
                         return Results.NotFound(BuildProblem(ex.Message, StatusCodes.Status404NotFound));
                     }
                 })
+            .WithTags("ShopUsers")
+            .WithOpenApi(operation =>
+            {
+                operation.Summary = "Désactiver un utilisateur magasin";
+                operation.Description = "Désactive un utilisateur de boutique et renvoie son état mis à jour.";
+                return operation;
+            })
             .Produces<ShopUserDto>(StatusCodes.Status200OK)
             .Produces<ProblemDetails>(StatusCodes.Status400BadRequest)
             .Produces<ProblemDetails>(StatusCodes.Status404NotFound)
