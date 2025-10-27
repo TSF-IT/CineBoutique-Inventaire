@@ -605,6 +605,7 @@ app.MapDiagnosticsEndpoints();
 app.MapInventoryEndpoints();
 app.MapProductEndpoints();
 app.MapShopsEndpoints();
+app.MapShopUsersEndpoints();
 
 app.MapControllers();
 
