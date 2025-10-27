@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using CineBoutique.Inventory.Api.Features.Inventory.Sessions;
+using CineBoutique.Inventory.Api.Infrastructure.Minimal;
 using CineBoutique.Inventory.Api.Models;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -31,6 +32,7 @@ internal static class SessionsEndpoints
             StartInventoryRunHandler handler,
             CancellationToken cancellationToken) =>
                 handler.HandleAsync(locationId, request, cancellationToken))
+        .AddEndpointFilter<RequireOperatorHeadersFilter>()
         .WithName("StartInventoryRun")
         .WithTags("Inventories")
         .Produces<StartInventoryRunResponse>(StatusCodes.Status200OK)
@@ -54,6 +56,7 @@ internal static class SessionsEndpoints
             CompleteInventoryRunHandler handler,
             CancellationToken cancellationToken) =>
                 handler.HandleAsync(locationId, request, httpContext, cancellationToken))
+        .AddEndpointFilter<RequireOperatorHeadersFilter>()
         .WithName("CompleteInventoryRun")
         .WithTags("Inventories")
         .Produces<CompleteInventoryRunResponse>(StatusCodes.Status200OK)
@@ -69,6 +72,7 @@ internal static class SessionsEndpoints
             ReleaseInventoryRunHandler handler,
             CancellationToken cancellationToken) =>
                 handler.HandleAsync(locationId, request, cancellationToken))
+        .AddEndpointFilter<RequireOperatorHeadersFilter>()
         .WithName("ReleaseInventoryRun")
         .WithTags("Inventories")
         .Produces(StatusCodes.Status204NoContent)
@@ -89,6 +93,7 @@ internal static class SessionsEndpoints
             ReleaseInventoryRunHandler handler,
             CancellationToken cancellationToken) =>
                 handler.HandleAsync(locationId, new ReleaseRunRequest(runId, ownerUserId), cancellationToken))
+        .AddEndpointFilter<RequireOperatorHeadersFilter>()
         .WithName("AbortInventoryRun")
         .WithTags("Inventories")
         .Produces(StatusCodes.Status204NoContent)
@@ -112,6 +117,7 @@ internal static class SessionsEndpoints
             RestartInventoryRunHandler handler,
             CancellationToken cancellationToken) =>
                 handler.HandleAsync(locationId, request, httpContext, cancellationToken))
+        .AddEndpointFilter<RequireOperatorHeadersFilter>()
         .WithName("RestartInventoryForLocation")
         .WithTags("Inventories")
         .Produces(StatusCodes.Status204NoContent)

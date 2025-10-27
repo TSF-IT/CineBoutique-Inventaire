@@ -6,6 +6,7 @@ using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Authentication;
 using CineBoutique.Inventory.Api.Infrastructure.Http;
+using CineBoutique.Inventory.Api.Infrastructure.Minimal;
 using CineBoutique.Inventory.Api.Infrastructure.Logging;
 using CineBoutique.Inventory.Api.Infrastructure.Middleware;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
@@ -107,6 +108,7 @@ builder.Services.AddScoped<ReleaseInventoryRunHandler>();
 builder.Services.AddScoped<RestartInventoryRunHandler>();
 
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<RequireOperatorHeadersFilter>();
 builder.Services.AddSingleton<IShopResolver, DefaultShopResolver>();
 builder.Services.Configure<AppSettingsOptions>(builder.Configuration.GetSection("AppSettings"));
 

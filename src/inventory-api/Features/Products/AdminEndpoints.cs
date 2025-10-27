@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
+using CineBoutique.Inventory.Api.Infrastructure.Minimal;
 using CineBoutique.Inventory.Api.Infrastructure.Shops;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
@@ -152,6 +153,7 @@ internal static class AdminEndpoints
                    op.Description = "Modifie le nom et/ou l'EAN du produit identifié par son SKU.";
                    return op;
                })
+               .AddEndpointFilter<RequireOperatorHeadersFilter>()
                .RequireAuthorization("Admin");
 
             app.MapPut("/api/products/{code}", updateBySku)
@@ -161,6 +163,7 @@ internal static class AdminEndpoints
                .Produces(StatusCodes.Status400BadRequest)
                .Produces(StatusCodes.Status404NotFound)
                .Produces(StatusCodes.Status409Conflict)
+               .AddEndpointFilter<RequireOperatorHeadersFilter>()
                .RequireAuthorization("Admin");
 
             // --- MAJ par Id (GUID) ---
@@ -252,6 +255,7 @@ internal static class AdminEndpoints
                .Produces(StatusCodes.Status400BadRequest)
                .Produces(StatusCodes.Status404NotFound)
                .Produces(StatusCodes.Status409Conflict)
+               .AddEndpointFilter<RequireOperatorHeadersFilter>()
                .RequireAuthorization("Admin");
 
             app.MapPut("/api/products/by-id/{id:guid}", updateById)
@@ -261,6 +265,7 @@ internal static class AdminEndpoints
                .Produces(StatusCodes.Status400BadRequest)
                .Produces(StatusCodes.Status404NotFound)
                .Produces(StatusCodes.Status409Conflict)
+               .AddEndpointFilter<RequireOperatorHeadersFilter>()
                .RequireAuthorization("Admin");
         }
 
@@ -401,6 +406,7 @@ internal static class AdminEndpoints
                 op.Description = "Permet l'ajout manuel d'un produit en spécifiant son SKU, son nom et éventuellement un code EAN.";
                 return op;
             })
+            .AddEndpointFilter<RequireOperatorHeadersFilter>()
             .RequireAuthorization("Admin");
         }
 

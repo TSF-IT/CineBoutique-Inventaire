@@ -3,6 +3,7 @@ using System.Data;
 using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Endpoints;
+using CineBoutique.Inventory.Api.Infrastructure.Minimal;
 using CineBoutique.Inventory.Api.Models;
 using Dapper;
 using Microsoft.AspNetCore.Http;
@@ -105,7 +106,9 @@ internal static class ImportEndpoints
                     _                                                                          => Results.Ok(result.Response)
                 };
             }
-        }).RequireAuthorization("Admin");
+        })
+        .AddEndpointFilter<RequireOperatorHeadersFilter>()
+        .RequireAuthorization("Admin");
 
         app.MapGet("/api/shops/{shopId:guid}/products/import/status", async (
             System.Guid shopId,

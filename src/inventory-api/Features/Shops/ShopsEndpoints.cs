@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
+using CineBoutique.Inventory.Api.Infrastructure.Minimal;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Services;
@@ -102,6 +103,7 @@ internal static class ShopsEndpoints
             .Produces<ShopDto>(StatusCodes.Status201Created)
             .Produces<ProblemDetails>(StatusCodes.Status400BadRequest)
             .Produces<ProblemDetails>(StatusCodes.Status409Conflict)
+            .AddEndpointFilter<RequireOperatorHeadersFilter>()
             .RequireAuthorization("Admin");
     }
 
@@ -163,6 +165,7 @@ internal static class ShopsEndpoints
             .Produces<ProblemDetails>(StatusCodes.Status400BadRequest)
             .Produces<ProblemDetails>(StatusCodes.Status404NotFound)
             .Produces<ProblemDetails>(StatusCodes.Status409Conflict)
+            .AddEndpointFilter<RequireOperatorHeadersFilter>()
             .RequireAuthorization("Admin");
     }
 
@@ -224,6 +227,7 @@ internal static class ShopsEndpoints
             .Produces<ProblemDetails>(StatusCodes.Status400BadRequest)
             .Produces<ProblemDetails>(StatusCodes.Status404NotFound)
             .Produces<ProblemDetails>(StatusCodes.Status409Conflict)
+            .AddEndpointFilter<RequireOperatorHeadersFilter>()
             .RequireAuthorization("Admin");
     }
 

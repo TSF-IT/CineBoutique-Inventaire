@@ -8,6 +8,7 @@ using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Logging;
+using CineBoutique.Inventory.Api.Infrastructure.Minimal;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Validation;
@@ -216,7 +217,8 @@ internal static class LocationsEndpoints
         .Produces<LocationListItemDto>(StatusCodes.Status201Created)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status404NotFound)
-        .Produces(StatusCodes.Status409Conflict);
+        .Produces(StatusCodes.Status409Conflict)
+        .AddEndpointFilter<RequireOperatorHeadersFilter>();
 
         app.MapPut(
             "/api/locations/{locationId:guid}",
@@ -358,7 +360,8 @@ internal static class LocationsEndpoints
         .Produces<LocationListItemDto>(StatusCodes.Status200OK)
         .Produces(StatusCodes.Status400BadRequest)
         .Produces(StatusCodes.Status404NotFound)
-        .Produces(StatusCodes.Status409Conflict);
+        .Produces(StatusCodes.Status409Conflict)
+        .AddEndpointFilter<RequireOperatorHeadersFilter>();
 
         app.MapDelete(
             "/api/locations/{locationId:guid}",
@@ -444,7 +447,8 @@ WHERE "Id" = @Id AND "ShopId" = @ShopId;
         .WithName("DisableLocation")
         .WithTags("Locations")
         .Produces<LocationListItemDto>(StatusCodes.Status200OK)
-        .Produces(StatusCodes.Status404NotFound);
+        .Produces(StatusCodes.Status404NotFound)
+        .AddEndpointFilter<RequireOperatorHeadersFilter>();
     }
 
     private static bool TryNormalizeShopId(string? shopId, out Guid parsedShopId, out IResult? errorResult)
