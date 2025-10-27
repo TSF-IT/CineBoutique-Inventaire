@@ -42,9 +42,9 @@
       },
       "Dapper": {
         "type": "Direct",
-        "requested": "[2.1.35, )",
-        "resolved": "2.1.35",
-        "contentHash": "YKRwjVfrG7GYOovlGyQoMvr1/IJdn+7QzNXJxyMh0YfFF5yvDmTYaJOVYWsckreNjGsGSEtrMTpnzxTUq/tZQw=="
+        "requested": "[2.1.66, )",
+        "resolved": "2.1.66",
+        "contentHash": "/q77jUgDOS+bzkmk3Vy9SiWMaetTw+NOoPAV0xPBsGVAyljd5S6P+4RUW7R3ZUGGr9lDRyPKgAMj2UAOwvqZYw=="
       },
       "FluentMigrator.Runner": {
         "type": "Direct",
@@ -852,7 +852,7 @@
         "dependencies": {
           "CineBoutique.Inventory.Domain": "[1.0.0, )",
           "CineBoutique.Inventory.Shared": "[1.0.0, )",
-          "Dapper": "[2.1.35, )",
+          "Dapper": "[2.1.66, )",
           "FluentMigrator.Runner": "[6.0.0, )",
           "FluentMigrator.Runner.Postgres": "[6.0.0, )",
           "Npgsql": "[8.0.3, )"
