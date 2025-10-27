@@ -38,6 +38,11 @@ internal static class HealthEndpoints
             });
         }).AllowAnonymous();
 
+        app.MapGet("/api/ping", () => Results.Ok(new { message = "pong" }))
+            .AllowAnonymous()
+            .WithTags("Diagnostics")
+            .WithName("Ping");
+
         app.MapHealthChecks("/health", new HealthCheckOptions
         {
             Predicate = _ => false,
