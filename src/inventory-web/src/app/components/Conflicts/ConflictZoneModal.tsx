@@ -48,6 +48,11 @@ const formatEan = (value: string | null | undefined) => {
   return trimmed && trimmed.length > 0 ? trimmed : '—'
 }
 
+const formatSubGroup = (value: string | null | undefined) => {
+  const trimmed = value?.trim()
+  return trimmed && trimmed.length > 0 ? trimmed : null
+}
+
 const getProductName = (item: ConflictZoneItem) => {
   const trimmed = item.name?.trim()
   if (trimmed && trimmed.length > 0) {
@@ -396,7 +401,9 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
           )}
           {status === 'loaded' && detail && hasItems && (
             <div className="conflict-card-stack">
-              {items.map((item) => (
+              {items.map((item) => {
+                const subGroupLabel = formatSubGroup(item.subGroup)
+                return (
                 <article key={item.productId} className="conflict-card">
                   <header className="conflict-card__header">
                     <p className="conflict-card__name">{getProductName(item)}</p>
@@ -404,11 +411,17 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
                       <span className="conflict-card__label">EAN</span> {formatEan(item.ean)}
                       <span className="conflict-card__separator" aria-hidden="true">·</span>
                       <span className="conflict-card__label">SKU</span> {formatSku(item.sku)}
+                      {subGroupLabel ? (
+                        <>
+                          <span className="conflict-card__separator" aria-hidden="true">·</span>
+                          <span className="conflict-card__label">Sous-groupe</span> {subGroupLabel}
+                        </>
+                      ) : null}
                     </p>
                   </header>
                   <div className={runsContainerClass}>{renderRunSections(item)}</div>
                 </article>
-              ))}
+              )})}
             </div>
           )}
           {status === 'loaded' && detail && !hasItems && (

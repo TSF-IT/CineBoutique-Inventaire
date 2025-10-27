@@ -503,6 +503,7 @@ export const ScanCameraPage = () => {
                       ean={item.product.ean}
                       label={item.product.name}
                       sku={item.product.sku}
+                      subGroup={item.product.subGroup}
                       qty={item.quantity}
                       highlight={highlightEan === item.product.ean}
                       hasConflict={hasConflict}

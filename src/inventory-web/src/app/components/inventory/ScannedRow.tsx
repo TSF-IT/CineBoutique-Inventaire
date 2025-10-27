@@ -24,6 +24,7 @@ export interface ScannedRowProps {
   label: string;
   sku?: string;
   ean?: string;
+  subGroup?: string | null;
   qty: number;
   hasConflict?: boolean;
   highlight?: boolean;
@@ -45,6 +46,7 @@ export const ScannedRow = forwardRef<ScannedRowHandle, ScannedRowProps>(
       label,
       sku,
       ean,
+      subGroup,
       qty,
       hasConflict,
       highlight,
@@ -64,6 +66,7 @@ export const ScannedRow = forwardRef<ScannedRowHandle, ScannedRowProps>(
     const quantityInputId = useId();
     const focusKey = ean ?? id;
     const isDense = density === "dense";
+    const subGroupLabel = subGroup?.trim();
 
     useImperativeHandle(
       ref,
@@ -165,20 +168,25 @@ export const ScannedRow = forwardRef<ScannedRowHandle, ScannedRowProps>(
           </label>
           <div
             className={clsx(
-              "flex flex-wrap items-center gap-2 text-slate-500 dark:text-slate-400",
-              isDense ? "text-[11px]" : "text-xs"
-            )}
-          >
-            {sku && (
-              <span className="font-mono uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                SKU {sku}
+      "flex flex-wrap items-center gap-2 text-slate-500 dark:text-slate-400",
+      isDense ? "text-[11px]" : "text-xs"
+    )}
+  >
+    {sku && (
+      <span className="font-mono uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        SKU {sku}
+      </span>
+    )}
+            {subGroupLabel && subGroupLabel.length > 0 && (
+              <span className="truncate text-slate-500 dark:text-slate-400">
+                Sous-groupe {subGroupLabel}
               </span>
             )}
-            {(ean || id) && (
-              <span className="truncate font-mono text-[11px] uppercase tracking-wide text-slate-400">
-                {ean ? `EAN ${ean}` : `ID ${id}`}
-              </span>
-            )}
+    {(ean || id) && (
+      <span className="truncate font-mono text-[11px] uppercase tracking-wide text-slate-400">
+        {ean ? `EAN ${ean}` : `ID ${id}`}
+      </span>
+    )}
             {hasConflict && (
               <button
                 type="button"

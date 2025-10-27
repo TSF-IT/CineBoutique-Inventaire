@@ -240,6 +240,13 @@ export function ProductImportPage() {
     () => normalizeDuplicateReport(dryRunRes),
     [dryRunRes]
   );
+  const mappedPreviewHasSubGroup = useMemo(
+    () =>
+      mappedPreview?.rows.some(
+        (row) => typeof row.sousGroupe === "string" && row.sousGroupe.trim().length > 0
+      ) ?? false,
+    [mappedPreview]
+  );
   const importSkippedLines = useMemo(
     () => normalizeSkippedLines(importRes),
     [importRes]
@@ -787,30 +794,32 @@ export function ProductImportPage() {
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
-                <tr>
-                  <th style={{ textAlign: "left" }}>SKU</th>
-                  <th style={{ textAlign: "left" }}>EAN</th>
-                  <th style={{ textAlign: "left" }}>Nom</th>
-                  <th style={{ textAlign: "left" }}>Groupe</th>
-                  <th style={{ textAlign: "left" }}>Sous-groupe</th>
-                  <th style={{ textAlign: "left" }}>Attributs</th>
-                </tr>
-              </thead>
-              <tbody>
-                {mappedPreview.rows.map((r, i) => {
+              <tr>
+                <th style={{ textAlign: "left" }}>SKU</th>
+                <th style={{ textAlign: "left" }}>EAN</th>
+                <th style={{ textAlign: "left" }}>Nom</th>
+                <th style={{ textAlign: "left" }}>Groupe</th>
+                {mappedPreviewHasSubGroup && (
+                  <th style={{ textAlign: "left" }}>Sous Groupe</th>
+                )}
+                <th style={{ textAlign: "left" }}>Attributs</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mappedPreview.rows.map((r, i) => {
                   const keys = Object.keys(r.attributes);
                   return (
                     <tr key={i}>
                       <td>{r.sku}</td>
-                      <td>{r.ean}</td>
-                      <td>{r.name}</td>
-                      <td>{r.groupe}</td>
-                      <td>{r.sousGroupe}</td>
-                      <td
-                        title={
-                          keys.length
-                            ? keys
-                                .map(
+                  <td>{r.ean}</td>
+                  <td>{r.name}</td>
+                  <td>{r.groupe}</td>
+                  {mappedPreviewHasSubGroup && <td>{r.sousGroupe}</td>}
+                  <td
+                    title={
+                      keys.length
+                        ? keys
+                            .map(
                                   (k) => `${k}: ${r.attributes[k] ?? "null"}`
                                 )
                                 .join("\n")

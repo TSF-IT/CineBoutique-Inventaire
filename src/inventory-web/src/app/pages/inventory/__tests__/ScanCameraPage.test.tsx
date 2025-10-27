@@ -269,7 +269,12 @@ describe('ScanCameraPage', () => {
   })
 
   it('ajoute un article lors d’une détection simulée', async () => {
-    fetchProductByEanMock.mockResolvedValue({ ean: '9876543210987', name: 'Produit détecté' })
+    fetchProductByEanMock.mockResolvedValue({
+      ean: '9876543210987',
+      name: 'Produit détecté',
+      sku: 'SKU-987654',
+      subGroup: 'Goodies',
+    })
     startInventoryRunMock.mockResolvedValue({ runId: 'run-1' })
 
     let latestItems: InventoryItem[] = []
@@ -286,6 +291,8 @@ describe('ScanCameraPage', () => {
     expect(startInventoryRunMock).toHaveBeenCalled()
     await waitFor(() => expect(latestItems.some((item) => item.product.ean === '9876543210987')).toBe(true))
     expect(await screen.findByText('Produit détecté')).toBeInTheDocument()
+    const row = await screen.findByTestId('scanned-row')
+    expect(within(row).getByText(/Sous-groupe Goodies/)).toBeInTheDocument()
   })
 
   it('normalise les codes alphanumériques sans filtrer les lettres', async () => {

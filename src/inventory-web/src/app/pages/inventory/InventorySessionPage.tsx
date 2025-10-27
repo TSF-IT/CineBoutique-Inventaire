@@ -1358,6 +1358,7 @@ export const InventorySessionPage = () => {
           {displayedItems.map((item) => {
             const skuDisplay = formatIdentifierForDisplay(item.product.sku)
             const eanDisplay = formatIdentifierForDisplay(item.product.ean)
+            const subGroupDisplay = normalizeIdentifier(item.product.subGroup)
 
             return (
               <li
@@ -1372,6 +1373,7 @@ export const InventorySessionPage = () => {
                   <p className="text-lg font-semibold text-slate-900 dark:text-white">{item.product.name}</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     SKU {skuDisplay} | EAN {eanDisplay}
+                    {subGroupDisplay ? <> | Sous-groupe {subGroupDisplay}</> : null}
                   </p>
                   {item.hasConflict && (
                     <p className="text-xs font-semibold text-rose-600 dark:text-rose-300">Référence en conflit</p>

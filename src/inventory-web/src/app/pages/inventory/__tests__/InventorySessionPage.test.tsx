@@ -275,6 +275,7 @@ describe('InventorySessionPage - catalogue', () => {
       ean: '9000000000000',
       sku: 'SKU-900',
       name: 'Produit catalogue',
+      subGroup: 'Blu-ray',
     })
 
     const user = userEvent.setup()
@@ -294,6 +295,7 @@ describe('InventorySessionPage - catalogue', () => {
 
       await waitFor(() => expect(fetchProductByEanMock).toHaveBeenCalledWith('9000000000000'))
       await waitFor(() => expect(screen.getByText('Produit catalogue')).toBeInTheDocument())
+      expect(screen.getByText(/Sous-groupe Blu-ray/)).toBeInTheDocument()
       expect(screen.queryByText('Ajout manuel')).not.toBeInTheDocument()
     } finally {
       global.fetch = originalFetch

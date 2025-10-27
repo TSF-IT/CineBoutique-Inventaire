@@ -17,6 +17,10 @@ export function ProductScanSearch(props: { onPick?: (sku: string) => void }) {
   const { data: suggest, loading: loadingSuggest } = useProductSuggest(q, 8, 120)
   const [filter, setFilter] = useState('')
   const { rows, loading: loadingSearch } = useProductsSearch(filter, 200)
+  const hasSubGroup = useMemo(
+    () => rows.some((row) => typeof row.subGroup === 'string' && row.subGroup.trim().length > 0),
+    [rows],
+  )
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -136,7 +140,7 @@ export function ProductScanSearch(props: { onPick?: (sku: string) => void }) {
                 <th style={{ textAlign: 'left' }}>SKU</th>
                 <th style={{ textAlign: 'left' }}>Nom</th>
                 <th style={{ textAlign: 'left' }}>Groupe</th>
-                <th style={{ textAlign: 'left' }}>Sous-groupe</th>
+                {hasSubGroup && <th style={{ textAlign: 'left' }}>Sous Groupe</th>}
                 <th style={{ textAlign: 'left' }}>Actions</th>
               </tr>
             </thead>
@@ -147,7 +151,7 @@ export function ProductScanSearch(props: { onPick?: (sku: string) => void }) {
                   <td>{p.sku}</td>
                   <td>{p.name}</td>
               <td>{p.group ?? ''}</td>
-              <td>{p.subGroup ?? ''}</td>
+              {hasSubGroup && <td>{p.subGroup ?? ''}</td>}
               <td>
                 <button
                   type="button"
@@ -161,7 +165,7 @@ export function ProductScanSearch(props: { onPick?: (sku: string) => void }) {
               ))}
               {!loadingSearch && rows.length === 0 && (
                 <tr>
-                  <td colSpan={6} style={{ opacity: 0.7 }}>
+                  <td colSpan={hasSubGroup ? 6 : 5} style={{ opacity: 0.7 }}>
                     Aucun produit
                   </td>
                 </tr>

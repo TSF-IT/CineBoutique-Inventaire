@@ -14,6 +14,10 @@ export function AdminProductsPage() {
 
   const count = rows.length;
   const [open, setOpen] = useState(count > 0);
+  const hasSubGroup = useMemo(
+    () => rows.some((row) => typeof row.subGroup === "string" && row.subGroup.trim().length > 0),
+    [rows],
+  );
 
   function onSort(next: "sku"|"name"|"ean") {
     setSortKey(k => {
@@ -88,7 +92,7 @@ export function AdminProductsPage() {
                   Nom {sortKey==="name" ? (sortDir==="asc"?"▲":"▼") : ""}
                 </th>
                 <th style={{ textAlign:"left" }}>Groupe</th>
-                <th style={{ textAlign:"left" }}>Sous‑groupe</th>
+                {hasSubGroup && <th style={{ textAlign:"left" }}>Sous Groupe</th>}
               </tr>
             </thead>
             <tbody>
@@ -100,11 +104,11 @@ export function AdminProductsPage() {
                   </td>
                   <td>{p.name}</td>
                   <td>{p.group ?? ""}</td>
-                  <td>{p.subGroup ?? ""}</td>
+                  {hasSubGroup && <td>{p.subGroup ?? ""}</td>}
                 </tr>
               ))}
               {!loading && rows.length===0 && (
-                <tr><td colSpan={5} style={{ opacity:0.7 }}>Aucun produit</td></tr>
+                <tr><td colSpan={hasSubGroup ? 5 : 4} style={{ opacity:0.7 }}>Aucun produit</td></tr>
               )}
             </tbody>
           </table>

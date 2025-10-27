@@ -86,6 +86,7 @@ export interface ConflictZoneItem {
   ean: string
   name?: string
   productId: string
+  subGroup?: string | null
   qtyC1: number
   qtyC2: number
   delta: number
@@ -155,6 +156,8 @@ export interface Product {
   ean: string
   name: string
   sku?: string
+  group?: string | null
+  subGroup?: string | null
   stock?: number
   lastCountedAt?: string | null
 }

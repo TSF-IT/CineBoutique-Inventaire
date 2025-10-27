@@ -46,6 +46,7 @@ describe('ConflictZoneModal', () => {
           sku: 'SKU-111',
           ean: '111',
           name: 'Popcorn Caramel 300g',
+          subGroup: 'Blu-ray',
           qtyC1: 5,
           qtyC2: 8,
           delta: -3,
@@ -77,6 +78,7 @@ describe('ConflictZoneModal', () => {
       if (codesLine) {
         expect(codesLine.textContent).toContain('EAN 111')
         expect(codesLine.textContent).toContain('SKU-111')
+        expect(codesLine.textContent).toContain('Sous-groupe Blu-ray')
       }
       expect(scoped.getByText('Alice')).toBeInTheDocument()
       expect(scoped.getByText('Chloé')).toBeInTheDocument()
