@@ -307,20 +307,23 @@ describe('fetchProductByEan', () => {
     const httpMock = vi
       .fn()
       .mockResolvedValueOnce([{ sku: 'SKU-1', code: defaultEan, name: 'Produit existant' }])
-      .mockResolvedValueOnce({ ean: defaultEan, name: 'Produit existant' })
+      .mockResolvedValueOnce({ sku: 'SKU-1', ean: defaultEan, name: 'Produit existant' })
+      .mockResolvedValueOnce({ sku: 'SKU-1', ean: defaultEan, name: 'Produit existant', subGroup: 'Blu-ray' })
     mockHttpModule(httpMock)
 
     const { fetchProductByEan } = await import('./inventoryApi')
 
-    await expect(fetchProductByEan(defaultEan)).resolves.toMatchObject({ name: 'Produit existant' })
+    await expect(fetchProductByEan(defaultEan)).resolves.toMatchObject({ name: 'Produit existant', subGroup: 'Blu-ray' })
 
     const [searchUrl] = (httpMock.mock.calls[0] ?? []) as [string]
-    const [detailsUrl] = (httpMock.mock.calls[1] ?? []) as [string]
+    const [lookupUrl] = (httpMock.mock.calls[1] ?? []) as [string]
+    const [detailsUrl] = (httpMock.mock.calls[2] ?? []) as [string]
 
     expect(searchUrl).toContain('/api/products/search')
     expect(searchUrl).toContain(`code=${encodeURIComponent(defaultEan)}`)
     expect(searchUrl).toContain('limit=5')
-    expect(detailsUrl).toBe(`/api/products/${encodeURIComponent(defaultEan)}`)
+    expect(lookupUrl).toBe(`/api/products/${encodeURIComponent(defaultEan)}`)
+    expect(detailsUrl).toBe(`/api/products/${encodeURIComponent('SKU-1')}/details`)
   })
 
   it('rejette une erreur HTTP 404 sans déclencher la requête de détail quand aucun produit ne correspond', async () => {
@@ -337,13 +340,14 @@ describe('fetchProductByEan', () => {
     const httpMock = vi
       .fn()
       .mockRejectedValueOnce(new Error('network failure'))
-      .mockResolvedValueOnce({ ean: defaultEan, name: 'Produit existant' })
+      .mockResolvedValueOnce({ sku: 'SKU-1', ean: defaultEan, name: 'Produit existant' })
+      .mockResolvedValueOnce({ sku: 'SKU-1', ean: defaultEan, name: 'Produit existant', subGroup: 'Blu-ray' })
     mockHttpModule(httpMock)
 
     const { fetchProductByEan } = await import('./inventoryApi')
 
-    await expect(fetchProductByEan(defaultEan)).resolves.toMatchObject({ name: 'Produit existant' })
-    expect(httpMock).toHaveBeenCalledTimes(2)
+    await expect(fetchProductByEan(defaultEan)).resolves.toMatchObject({ name: 'Produit existant', subGroup: 'Blu-ray' })
+    expect(httpMock).toHaveBeenCalledTimes(3)
   })
 })
 

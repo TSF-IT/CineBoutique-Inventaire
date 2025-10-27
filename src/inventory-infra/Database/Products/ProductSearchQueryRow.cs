@@ -10,4 +10,6 @@ internal sealed record ProductSearchQueryRow(
     string? Code,
     string? CodeDigits,
     int MatchPriority,
-    double Score);
+    double Score,
+    string? Group,
+    string? SubGroup);

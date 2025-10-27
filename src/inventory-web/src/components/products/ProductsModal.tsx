@@ -5,6 +5,8 @@ import { modalOverlayClassName } from "@/app/components/Modal/modalOverlayClassN
 
 const GRID_TEMPLATE_CLASS =
   "grid grid-cols-[minmax(140px,1fr)_minmax(120px,1fr)_minmax(260px,1.6fr)] sm:grid-cols-[minmax(160px,1fr)_minmax(140px,1fr)_minmax(360px,2fr)]";
+const GRID_TEMPLATE_WITH_SUBGROUP =
+  "grid grid-cols-[minmax(120px,1fr)_minmax(120px,1fr)_minmax(220px,1.5fr)_minmax(180px,1.2fr)] sm:grid-cols-[minmax(140px,1fr)_minmax(140px,1fr)_minmax(320px,1.6fr)_minmax(200px,1.2fr)]";
 
 const ROW_HEIGHT = 44;
 type Item = {
@@ -13,6 +15,8 @@ type Item = {
   name: string;
   ean?: string | null;
   codeDigits?: string | null;
+  group?: string | null;
+  subGroup?: string | null;
 };
 type Response = {
   items: Item[];
@@ -30,16 +34,24 @@ type Props = {
   onClose: () => void
   shopId: string
   onSelect?: (product: Item) => Promise<boolean> | boolean
-  selectLabel?: string
 };
 
-const columns = [
+type SortableColumnKey = "ean" | "sku" | "name";
+type ColumnKey = SortableColumnKey | "subGroup";
+
+type Column = {
+  key: ColumnKey;
+  label: string;
+  sortable?: boolean;
+};
+
+const BASE_COLUMNS: ReadonlyArray<Column> = [
   { key: "ean", label: "EAN/RFID" },
   { key: "sku", label: "SKU/item" },
   { key: "name", label: "Description" },
-] as const;
+];
 
-type ColumnKey = (typeof columns)[number]["key"];
+const SUBGROUP_COLUMN: Column = { key: "subGroup", label: "Sous-groupe", sortable: false };
 
 const VirtualizedRowGroup = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   function VirtualizedRowGroup(props, ref) {
@@ -51,7 +63,7 @@ type VirtualListInstance = React.ElementRef<typeof VirtualList>;
 
 export type ProductsModalItem = Item
 
-export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: Props) {
+export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
   const [q, setQ] = React.useState("");
   const [page, setPage] = React.useState(1);
   const [sortBy, setSortBy] = React.useState<ColumnKey>("sku");
@@ -63,7 +75,6 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
   const containerRef = React.useRef<HTMLDivElement | null>(null);
 
   const isInteractive = typeof onSelect === "function";
-  const resolvedSelectLabel = selectLabel ?? "Ajouter";
 
   React.useEffect(() => {
     if (!open) return;
@@ -166,62 +177,143 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
     [onClose, onSelect, pendingSelectionId]
   );
 
+  const items = data?.items ?? [];
+  const hasSubGroup = React.useMemo(
+    () => items.some((item) => typeof item?.subGroup === "string" && item.subGroup.trim().length > 0),
+    [items],
+  );
+  const gridTemplateClass = hasSubGroup ? GRID_TEMPLATE_WITH_SUBGROUP : GRID_TEMPLATE_CLASS;
+  const visibleColumns = React.useMemo(
+    () => (hasSubGroup ? [...BASE_COLUMNS, SUBGROUP_COLUMN] : BASE_COLUMNS),
+    [hasSubGroup],
+  );
+
+  const renderCells = React.useCallback(
+    (product: Item) =>
+      visibleColumns.map((column) => {
+        switch (column.key) {
+          case "ean":
+            return (
+              <div
+                key={column.key}
+                role="cell"
+                className="truncate"
+                title={product.ean ?? undefined}
+              >
+                {product.ean ?? ""}
+              </div>
+            );
+          case "sku":
+            return (
+              <div
+                key={column.key}
+                role="cell"
+                className="truncate font-medium text-slate-900 dark:text-white"
+                title={product.sku}
+              >
+                {product.sku}
+              </div>
+            );
+          case "name":
+            return (
+              <div
+                key={column.key}
+                role="cell"
+                className="flex min-w-0 items-center gap-2"
+                title={product.name}
+              >
+                <span className="truncate flex-1">{product.name}</span>
+              </div>
+            );
+          case "subGroup":
+            return (
+              <div
+                key={column.key}
+                role="cell"
+                className="truncate text-slate-500 dark:text-slate-300"
+                title={product.subGroup ?? undefined}
+              >
+                {product.subGroup ?? ""}
+              </div>
+            );
+          default: {
+            return null;
+          }
+        }
+      }),
+    [visibleColumns],
+  );
+
   const header = React.useMemo(
     () => (
       <div
         role="row"
-        className={`${GRID_TEMPLATE_CLASS} items-center gap-3 border-b border-slate-200/80 bg-white/95 px-4 py-3 text-[0.75rem] font-semibold uppercase tracking-wide text-slate-500 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-300`}
+        className={`${gridTemplateClass} items-center gap-3 border-b border-slate-200/80 bg-white/95 px-4 py-3 text-[0.75rem] font-semibold uppercase tracking-wide text-slate-500 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-300`}
       >
-        {columns.map(({ key, label }) => {
-          const isActive = sortBy === key;
-          const ariaSort: React.AriaAttributes["aria-sort"] = isActive
-            ? sortDir === "asc"
-              ? "ascending"
-              : "descending"
+        {visibleColumns.map(({ key, label, sortable }) => {
+          const isSortable = sortable !== false;
+          const sortableKey = key as SortableColumnKey;
+          const isActive = isSortable && sortBy === sortableKey;
+          const ariaSort: React.AriaAttributes["aria-sort"] = isSortable
+            ? isActive
+              ? sortDir === "asc"
+                ? "ascending"
+                : "descending"
+              : "none"
             : "none";
+          const headerClass = isSortable
+            ? "group flex cursor-pointer select-none items-center gap-2 text-left text-slate-600 transition hover:text-product-700 focus:outline-none focus-visible:text-product-700 dark:text-slate-200 dark:hover:text-product-200"
+            : "group flex cursor-default select-none items-center gap-2 text-left text-slate-600 transition focus:outline-none dark:text-slate-200";
+
+          const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+            if (!isSortable) {
+              return;
+            }
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              setSort(sortableKey);
+            }
+          };
 
           return (
             <div
               key={key}
               role="columnheader"
               aria-sort={ariaSort}
-              className="group flex cursor-pointer select-none items-center gap-2 text-left text-slate-600 transition hover:text-product-700 focus:outline-none focus-visible:text-product-700 dark:text-slate-200 dark:hover:text-product-200"
-              tabIndex={0}
-              onClick={() => setSort(key)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  setSort(key);
-                }
-              }}
+              className={headerClass}
+              tabIndex={isSortable ? 0 : -1}
+              onClick={isSortable ? () => setSort(sortableKey) : undefined}
+              onKeyDown={handleKeyDown}
             >
               <span>{label}</span>
-              <span className="sr-only">
-                {isActive
-                  ? sortDir === "asc"
-                    ? "Tri croissant"
-                    : "Tri décroissant"
-                  : "Activer le tri"}
-              </span>
-              <span
-                aria-hidden="true"
-                className={`w-3 text-xs font-bold leading-none transition ${
-                  isActive
-                    ? "opacity-100 text-product-600 dark:text-product-300"
-                    : "opacity-0 text-slate-400"
-                }`}
-              >
-                {sortDir === "asc" ? "↑" : "↓"}
-              </span>
+              {isSortable ? (
+                <>
+                  <span className="sr-only">
+                    {isActive
+                      ? sortDir === "asc"
+                        ? "Tri croissant"
+                        : "Tri décroissant"
+                      : "Activer le tri"}
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    className={`w-3 text-xs font-bold leading-none transition ${
+                      isActive
+                        ? "opacity-100 text-product-600 dark:text-product-300"
+                        : "opacity-0 text-slate-400"
+                    }`}
+                  >
+                    {sortDir === "asc" ? "↑" : "↓"}
+                  </span>
+                </>
+              ) : null}
             </div>
           );
         })}
       </div>
     ),
-    [setSort, sortBy, sortDir]
+    [gridTemplateClass, setSort, sortBy, sortDir, visibleColumns],
   );
-
-  const items = data?.items ?? [];
   const itemCount = items.length;
   const canVirtualize = itemCount >= 200;
   const itemKey = React.useCallback(
@@ -229,7 +321,8 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
     []
   );
 
-  const commonRowClassName = `${GRID_TEMPLATE_CLASS} relative items-center gap-3 border-b border-slate-200/70 bg-white/80 px-4 py-2.5 text-left text-sm transition dark:border-slate-800 dark:bg-slate-900/40`;
+  const baseRowClassName = "relative items-center gap-3 border-b border-slate-200/70 bg-white/80 px-4 py-2.5 text-left text-sm transition dark:border-slate-800 dark:bg-slate-900/40";
+  const commonRowClassName = `${gridTemplateClass} ${baseRowClassName}`;
 
   if (!open) return null;
 
@@ -326,7 +419,7 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
                       {loading && (!data || items.length === 0) ? (
                         <div
                           role="row"
-                          className={`${GRID_TEMPLATE_CLASS} items-center gap-3 px-4 py-5 text-sm text-slate-500 dark:text-slate-300`}
+                          className={`${gridTemplateClass} items-center gap-3 px-4 py-5 text-sm text-slate-500 dark:text-slate-300`}
                         >
                           <div role="cell" className="col-span-full text-center">
                             Chargement…
@@ -335,7 +428,7 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
                       ) : items.length === 0 ? (
                         <div
                           role="row"
-                          className={`${GRID_TEMPLATE_CLASS} items-center gap-3 px-4 py-5 text-sm text-slate-500 dark:text-slate-300`}
+                          className={`${gridTemplateClass} items-center gap-3 px-4 py-5 text-sm text-slate-500 dark:text-slate-300`}
                         >
                           <div role="cell" className="col-span-full text-center">
                             Aucun résultat
@@ -380,7 +473,7 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
                                     ? isDisabled
                                       ? "cursor-not-allowed opacity-60"
                                       : "cursor-pointer hover:bg-product-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-product-600"
-                                    : "cursor-default"
+                                    : "cursor-default hover:bg-product-50/60 focus-within:bg-product-50/60"
                                 }`}
                                 tabIndex={
                                   isInteractive ? (isRowInteractive ? 0 : -1) : undefined
@@ -399,32 +492,7 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
                                 aria-disabled={isPending || undefined}
                                 data-testid={`products-modal-row-${product.id}`}
                               >
-                                <div
-                                  role="cell"
-                                  className="truncate"
-                                  title={product.ean ?? undefined}
-                                >
-                                  {product.ean ?? ""}
-                                </div>
-                                <div
-                                  role="cell"
-                                  className="truncate font-medium text-slate-900 dark:text-white"
-                                  title={product.sku}
-                                >
-                                  {product.sku}
-                                </div>
-                                <div
-                                  role="cell"
-                                  className="flex min-w-0 items-center gap-2"
-                                  title={product.name}
-                                >
-                                  <span className="truncate flex-1">{product.name}</span>
-                                  {isInteractive ? (
-                                    <span className="inline-flex shrink-0 items-center rounded-full bg-product-100 px-3 py-1 text-xs font-semibold text-product-700 dark:bg-product-700/40 dark:text-product-200">
-                                      {isPending ? "Ajout…" : resolvedSelectLabel}
-                                    </span>
-                                  ) : null}
-                                </div>
+                                {renderCells(product)}
                               </div>
                             );
                           }}
@@ -472,32 +540,7 @@ export function ProductsModal({ open, onClose, shopId, onSelect, selectLabel }: 
                               aria-disabled={isPending || undefined}
                               data-testid={`products-modal-row-${product.id}`}
                             >
-                              <div
-                                role="cell"
-                                className="truncate"
-                                title={product.ean ?? undefined}
-                              >
-                                {product.ean ?? ""}
-                              </div>
-                              <div
-                                role="cell"
-                                className="truncate font-medium text-slate-900 dark:text-white"
-                                title={product.sku}
-                              >
-                                {product.sku}
-                              </div>
-                              <div
-                                role="cell"
-                                className="flex min-w-0 items-center gap-2"
-                                title={product.name}
-                              >
-                                <span className="truncate flex-1">{product.name}</span>
-                                {isInteractive ? (
-                                  <span className="inline-flex shrink-0 items-center rounded-full bg-product-100 px-3 py-1 text-xs font-semibold text-product-700 dark:bg-product-700/40 dark:text-product-200">
-                                    {isPending ? "Ajout…" : resolvedSelectLabel}
-                                  </span>
-                                ) : null}
-                              </div>
+                              {renderCells(product)}
                             </div>
                           );
                         })

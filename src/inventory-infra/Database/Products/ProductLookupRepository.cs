@@ -223,8 +223,19 @@ SELECT
     ranked."Code",
     ranked."CodeDigits",
     ranked.match_priority AS "MatchPriority",
-    ranked.score AS "Score"
+    ranked.score AS "Score",
+    COALESCE(pgp_final."Label", pg_final."Label", p_final."Attributes"->>'originalGroupe') AS "Group",
+    COALESCE(
+        CASE
+            WHEN pgp_final."Id" IS NULL THEN NULL
+            ELSE pg_final."Label"
+        END,
+        p_final."Attributes"->>'originalSousGroupe'
+    ) AS "SubGroup"
 FROM ranked
+LEFT JOIN "Product" AS p_final ON p_final."Id" = ranked."Id"
+LEFT JOIN "ProductGroup" AS pg_final ON pg_final."Id" = p_final."GroupId"
+LEFT JOIN "ProductGroup" AS pgp_final ON pgp_final."Id" = pg_final."ParentId"
 """;
 
         var key = (sort ?? string.Empty).ToLowerInvariant();
@@ -275,10 +286,10 @@ FROM ranked
             .ConfigureAwait(false);
 
         return rows
-            .Select(row => new ProductLookupItem(row.Id, row.Sku, row.Name, row.Ean, row.Code, row.CodeDigits))
+            .Select(row => new ProductLookupItem(row.Id, row.Sku, row.Name, row.Ean, row.Code, row.CodeDigits, row.Group, row.SubGroup))
             .ToArray();
-    }
 
+    }
     private static async Task EnsureConnectionOpenAsync(IDbConnection connection, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(connection);

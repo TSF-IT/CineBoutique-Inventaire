@@ -146,22 +146,22 @@ internal static class CatalogEndpoints
             var dir  = string.Equals(sortDir, "desc", StringComparison.OrdinalIgnoreCase) ? "DESC" : "ASC";
 
             const string whereClause = """
-WHERE "ShopId"=@ShopId AND (
+WHERE p."ShopId" = @ShopId AND (
     @Filter IS NULL OR @Filter='' OR
-    COALESCE("Sku",'') ILIKE '%'||@Filter||'%' OR
-    COALESCE("Ean",'') ILIKE '%'||@Filter||'%' OR
-    COALESCE("CodeDigits",'') ILIKE '%'||@Filter||'%' OR
-    COALESCE("Name",'') ILIKE '%'||@Filter||'%'
+    COALESCE(p."Sku",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE(p."Ean",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE(p."CodeDigits",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE(p."Name",'') ILIKE '%'||@Filter||'%'
 )
 """;
 
             const string globalWhereClause = """
 WHERE
     @Filter IS NULL OR @Filter='' OR
-    COALESCE("Sku",'') ILIKE '%'||@Filter||'%' OR
-    COALESCE("Ean",'') ILIKE '%'||@Filter||'%' OR
-    COALESCE("CodeDigits",'') ILIKE '%'||@Filter||'%' OR
-    COALESCE("Name",'') ILIKE '%'||@Filter||'%'
+    COALESCE(p."Sku",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE(p."Ean",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE(p."CodeDigits",'') ILIKE '%'||@Filter||'%' OR
+    COALESCE(p."Name",'') ILIKE '%'||@Filter||'%'
 """;
 
             static IResult BuildPagedResult(
@@ -195,21 +195,33 @@ WHERE
                 var total = await connection.ExecuteScalarAsync<long>(
                     new CommandDefinition($$"""
 SELECT COUNT(*)
-FROM "Product"
+FROM "Product" p
 {{whereClause}};
 """, new { ShopId = shopId, Filter = filter }, cancellationToken: ct)).ConfigureAwait(false);
 
                 var data = await connection.QueryAsync(
                     new CommandDefinition($$"""
-SELECT "Id","Sku","Name","Ean","CodeDigits"
-FROM "Product"
+SELECT
+  p."Id",
+  p."Sku",
+  p."Name",
+  p."Ean",
+  p."CodeDigits",
+  COALESCE(pgp."Label", pg."Label", p."Attributes"->>'originalGroupe') AS "group",
+  COALESCE(
+    CASE WHEN pgp."Id" IS NULL THEN NULL ELSE pg."Label" END,
+    p."Attributes"->>'originalSousGroupe'
+  ) AS "subGroup"
+FROM "Product" p
+LEFT JOIN "ProductGroup" pg  ON pg."Id"  = p."GroupId"
+LEFT JOIN "ProductGroup" pgp ON pgp."Id" = pg."ParentId"
 {{whereClause}}
 ORDER BY
-  CASE WHEN @Sort='ean'   THEN "Ean"
-       WHEN @Sort='name'  THEN "Name"
-       WHEN @Sort='digits'THEN "CodeDigits"
-       ELSE "Sku" END {{dir}},
-  "Sku" ASC
+  CASE WHEN @Sort='ean'   THEN p."Ean"
+       WHEN @Sort='name'  THEN p."Name"
+       WHEN @Sort='digits'THEN p."CodeDigits"
+       ELSE p."Sku" END {{dir}},
+  p."Sku" ASC
 LIMIT @Limit OFFSET @Offset;
 """, new { ShopId = shopId, Filter = filter, Sort = sort, Limit = ps, Offset = off }, cancellationToken: ct)).ConfigureAwait(false);
 
@@ -220,21 +232,33 @@ LIMIT @Limit OFFSET @Offset;
                 var total = await connection.ExecuteScalarAsync<long>(
                     new CommandDefinition($$"""
 SELECT COUNT(*)
-FROM "Product"
+FROM "Product" p
 {{globalWhereClause}};
 """, new { Filter = filter }, cancellationToken: ct)).ConfigureAwait(false);
 
                 var data = await connection.QueryAsync(
                     new CommandDefinition($$"""
-SELECT "Id","Sku","Name","Ean","CodeDigits"
-FROM "Product"
+SELECT
+  p."Id",
+  p."Sku",
+  p."Name",
+  p."Ean",
+  p."CodeDigits",
+  COALESCE(pgp."Label", pg."Label", p."Attributes"->>'originalGroupe') AS "group",
+  COALESCE(
+    CASE WHEN pgp."Id" IS NULL THEN NULL ELSE pg."Label" END,
+    p."Attributes"->>'originalSousGroupe'
+  ) AS "subGroup"
+FROM "Product" p
+LEFT JOIN "ProductGroup" pg  ON pg."Id"  = p."GroupId"
+LEFT JOIN "ProductGroup" pgp ON pgp."Id" = pg."ParentId"
 {{globalWhereClause}}
 ORDER BY
-  CASE WHEN @Sort='ean'   THEN "Ean"
-       WHEN @Sort='name'  THEN "Name"
-       WHEN @Sort='digits'THEN "CodeDigits"
-       ELSE "Sku" END {{dir}},
-  "Sku" ASC
+  CASE WHEN @Sort='ean'   THEN p."Ean"
+       WHEN @Sort='name'  THEN p."Name"
+       WHEN @Sort='digits'THEN p."CodeDigits"
+       ELSE p."Sku" END {{dir}},
+  p."Sku" ASC
 LIMIT @Limit OFFSET @Offset;
 """, new { Filter = filter, Sort = sort, Limit = ps, Offset = off }, cancellationToken: ct)).ConfigureAwait(false);
 
@@ -332,8 +356,11 @@ LIMIT @Limit OFFSET @Offset;
             {
                 const string fastSql = @"
         SELECT p.""Sku"", p.""Ean"", p.""Name"",
-               COALESCE(pgp.""Label"", pg.""Label"") AS ""Group"",
-               CASE WHEN pgp.""Id"" IS NULL THEN NULL ELSE pg.""Label"" END AS ""SubGroup""
+               COALESCE(pgp.""Label"", pg.""Label"", p.""Attributes""->>'originalGroupe') AS ""Group"",
+               COALESCE(
+                 CASE WHEN pgp.""Id"" IS NULL THEN NULL ELSE pg.""Label"" END,
+                 p.""Attributes""->>'originalSousGroupe'
+               ) AS ""SubGroup""
         FROM ""Product"" p
         LEFT JOIN ""ProductGroup"" pg  ON pg.""Id""  = p.""GroupId""
         LEFT JOIN ""ProductGroup"" pgp ON pgp.""Id"" = pg.""ParentId""
@@ -372,8 +399,11 @@ WITH cand AS (
     p.""Sku"",
     p.""Ean"",
     p.""Name"",
-    COALESCE(pgp.""Label"", pg.""Label"") AS ""Group"",
-    CASE WHEN pgp.""Id"" IS NULL THEN NULL ELSE pg.""Label"" END AS ""SubGroup"",
+    COALESCE(pgp.""Label"", pg.""Label"", p.""Attributes""->>'originalGroupe') AS ""Group"",
+    COALESCE(
+      CASE WHEN pgp.""Id"" IS NULL THEN NULL ELSE pg.""Label"" END,
+      p.""Attributes""->>'originalSousGroupe'
+    ) AS ""SubGroup"",
     CASE WHEN LOWER(p.""Sku"") LIKE LOWER(@q) || '%' THEN 1 ELSE 0 END AS sku_pref,
     CASE WHEN LOWER(p.""Ean"") LIKE LOWER(@q) || '%' THEN 1 ELSE 0 END AS ean_pref,
     similarity(immutable_unaccent(LOWER(p.""Name"")), immutable_unaccent(LOWER(@q))) AS name_sim,

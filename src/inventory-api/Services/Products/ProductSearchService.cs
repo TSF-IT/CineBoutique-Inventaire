@@ -66,9 +66,9 @@ public sealed class ProductSearchService : IProductSearchService
             }
 
             var codeToExpose = ResolveCode(candidate);
-            results.Add(new ProductSearchResultItem(candidate.Sku, codeToExpose, candidate.Name));
-        }
+            results.Add(new ProductSearchResultItem(candidate.Sku, codeToExpose, candidate.Name, candidate.Group, candidate.SubGroup));
 
+        }
         return results;
     }
 

@@ -45,6 +45,7 @@ export interface CompletedRunDetailItem {
   sku: string
   name: string
   ean: string | null
+  subGroup?: string | null
   quantity: number
 }
 

@@ -180,7 +180,14 @@ const normalizeDuplicateReport = (payload: unknown): DuplicateReportInfo | null 
   return { skus, eans };
 };
 
-function parseCsvSemicolon(text: string, maxRows = 10) {
+type ParsedCsvPreview = {
+  headers: string[];
+  rawHeaders: string[];
+  rows: string[][];
+  hasSubGroup: boolean;
+};
+
+function parseCsvSemicolon(text: string, maxRows = 10): ParsedCsvPreview | null {
   const lines = text
     .replace(/\r/g, "")
     .split("\n")
@@ -188,7 +195,9 @@ function parseCsvSemicolon(text: string, maxRows = 10) {
   if (lines.length === 0) return null;
   const rawHeaders = lines[0].split(";").map((segment) => segment.trim());
   const headers = rawHeaders.map(normalizeKey);
+  const subGroupIndex = headers.findIndex((header) => header === "sousGroupe");
   const rows: string[][] = [];
+  let hasSubGroup = false;
   for (
     let index = 1;
     index < lines.length && rows.length < maxRows;
@@ -200,7 +209,17 @@ function parseCsvSemicolon(text: string, maxRows = 10) {
     }
     rows.push(columns.slice(0, rawHeaders.length));
   }
-  return { headers, rawHeaders, rows };
+  if (subGroupIndex >= 0) {
+    for (let index = 1; index < lines.length; index += 1) {
+      const columns = lines[index].split(";").map((segment) => segment.trim());
+      const value = columns[subGroupIndex] ?? "";
+      if (value.trim().length > 0) {
+        hasSubGroup = true;
+        break;
+      }
+    }
+  }
+  return { headers, rawHeaders, rows, hasSubGroup };
 }
 export function ProductImportPage() {
   const { shop } = useShop();
@@ -216,6 +235,7 @@ export function ProductImportPage() {
     headers: string[];
     rows: string[][];
   } | null>(null);
+  const [previewHasSubGroup, setPreviewHasSubGroup] = useState(false);
   const [mappedPreview, setMappedPreview] = useState<{
     headers: string[];
     rows: ReturnType<typeof mapRowFromCsv>[];
@@ -240,13 +260,16 @@ export function ProductImportPage() {
     () => normalizeDuplicateReport(dryRunRes),
     [dryRunRes]
   );
-  const mappedPreviewHasSubGroup = useMemo(
-    () =>
+  const mappedPreviewHasSubGroup = useMemo(() => {
+    if (previewHasSubGroup) {
+      return true;
+    }
+    return (
       mappedPreview?.rows.some(
         (row) => typeof row.sousGroupe === "string" && row.sousGroupe.trim().length > 0
-      ) ?? false,
-    [mappedPreview]
-  );
+      ) ?? false
+    );
+  }, [mappedPreview, previewHasSubGroup]);
   const importSkippedLines = useMemo(
     () => normalizeSkippedLines(importRes),
     [importRes]
@@ -485,6 +508,7 @@ export function ProductImportPage() {
       if (!buffer) {
         setPreview(null);
         setMappedPreview(null);
+        setPreviewHasSubGroup(false);
         setDryRunRes(null);
         setImportRes(null);
         setError(null);
@@ -498,12 +522,14 @@ export function ProductImportPage() {
       if (!parsed) {
         setPreview(null);
         setMappedPreview(null);
+        setPreviewHasSubGroup(false);
         setDryRunRes(null);
         setImportRes(null);
         setError(null);
         return;
       }
       setPreview({ headers: parsed.rawHeaders, rows: parsed.rows });
+      setPreviewHasSubGroup(parsed.hasSubGroup);
       const mapped = parsed.rows.map((row) =>
         mapRowFromCsv(parsed.headers, row)
       );
@@ -531,6 +557,7 @@ export function ProductImportPage() {
     } else {
       setPreview(null);
       setMappedPreview(null);
+      setPreviewHasSubGroup(false);
       setDryRunRes(null);
       setImportRes(null);
       setError(null);

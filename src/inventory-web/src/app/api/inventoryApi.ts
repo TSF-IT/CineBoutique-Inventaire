@@ -224,13 +224,19 @@ export const getCompletedRunDetail = async (runId: string): Promise<CompletedRun
     ownerUserId: data?.ownerUserId ?? null,
     startedAtUtc: data?.startedAtUtc ?? '',
     completedAtUtc: data?.completedAtUtc ?? '',
-    items: items.map((item) => ({
-      productId: item?.productId ?? '',
-      sku: item?.sku ?? '',
-      name: item?.name ?? '',
-      ean: typeof item?.ean === 'string' && item.ean.trim().length > 0 ? item.ean : null,
-      quantity: typeof item?.quantity === 'number' ? item.quantity : Number(item?.quantity ?? 0),
-    })),
+    items: items.map((item) => {
+      const subGroupValue =
+        typeof item?.subGroup === 'string' ? item.subGroup.trim() : ''
+
+      return {
+        productId: item?.productId ?? '',
+        sku: item?.sku ?? '',
+        name: item?.name ?? '',
+        ean: typeof item?.ean === 'string' && item.ean.trim().length > 0 ? item.ean : null,
+        subGroup: subGroupValue.length > 0 ? subGroupValue : null,
+        quantity: typeof item?.quantity === 'number' ? item.quantity : Number(item?.quantity ?? 0),
+      }
+    }),
   }
 }
 
@@ -443,18 +449,26 @@ const tryResolveAmbiguousProduct = async (
     }
 
     try {
-      const details = (await http(`${API_BASE}/products/${encodeURIComponent(candidate.sku)}/details`)) as ProductDetailsDtoLike
-      const enriched = sanitizeProductCandidate({ ...candidate, ...details })
+      const rawDetails = await http(`${API_BASE}/products/${encodeURIComponent(candidate.sku)}/details`)
+      const detailsRecord = (rawDetails ?? {}) as Record<string, unknown>
+      const enriched = sanitizeProductCandidate({ ...candidate, ...detailsRecord })
       if (!enriched) {
         continue
       }
 
       const eanValue = enriched.ean ?? enriched.code ?? requestedCode
       const nameValue = enriched.name ?? `Produit ${enriched.sku ?? eanValue}`
+      const detailGroup = pickFirstString(detailsRecord, ['group', 'Group'])
+      const detailSubGroup =
+        pickFirstString(detailsRecord, ['subGroup', 'SubGroup']) ??
+        extractOriginalSubGroup(detailsRecord.attributes ?? detailsRecord.Attributes)
+
       return {
         ean: eanValue,
         name: nameValue,
         sku: enriched.sku ?? undefined,
+        group: detailGroup ?? undefined,
+        subGroup: detailSubGroup ?? undefined,
       }
     } catch (detailsError) {
       if (isHttpError(detailsError) && detailsError.status === 404) {
@@ -478,6 +492,67 @@ const tryResolveAmbiguousProduct = async (
   }
 
   return null
+}
+
+const toTrimmedString = (value: unknown): string | null => {
+  if (typeof value !== 'string') {
+    return null
+  }
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+const pickFirstString = (source: Record<string, unknown>, keys: string[]): string | null => {
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      const candidate = toTrimmedString(source[key])
+      if (candidate) {
+        return candidate
+      }
+    }
+  }
+  return null
+}
+
+const pickFirstNumber = (source: Record<string, unknown>, keys: string[]): number | null => {
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      const value = source[key]
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        return value
+      }
+      if (typeof value === 'string') {
+        const parsed = Number.parseFloat(value)
+        if (Number.isFinite(parsed)) {
+          return parsed
+        }
+      }
+    }
+  }
+  return null
+}
+
+const extractOriginalSubGroup = (attributes: unknown): string | null => {
+  if (!attributes) {
+    return null
+  }
+  if (typeof attributes === 'string') {
+    try {
+      const parsed = JSON.parse(attributes) as unknown
+      return extractOriginalSubGroup(parsed)
+    } catch {
+      return null
+    }
+  }
+  if (typeof attributes !== 'object') {
+    return null
+  }
+  try {
+    const record = attributes as Record<string, unknown>
+    return pickFirstString(record, ['originalSousGroupe'])
+  } catch {
+    return null
+  }
 }
 
 export const fetchProductByEan = async (ean: string): Promise<Product> => {
@@ -512,7 +587,55 @@ export const fetchProductByEan = async (ean: string): Promise<Product> => {
 
   try {
     const data = await http(`${API_BASE}/products/${encodeURIComponent(rawCode)}`)
-    return data as Product
+    const baseRecord = (data ?? {}) as Record<string, unknown>
+    const baseSku = pickFirstString(baseRecord, ['sku', 'Sku'])
+    const baseName = pickFirstString(baseRecord, ['name', 'Name'])
+    const baseEan = pickFirstString(baseRecord, ['ean', 'Ean'])
+    const baseGroup = pickFirstString(baseRecord, ['group', 'Group'])
+    let resolvedSubGroup = pickFirstString(baseRecord, ['subGroup', 'SubGroup'])
+
+    let detailsGroup: string | null = null
+    let detailsSubGroup: string | null = null
+    let detailsStock: number | null = null
+    let detailsLastCountedAt: string | null = null
+
+    if (baseSku) {
+      try {
+        const detailsResponse = await http(`${API_BASE}/products/${encodeURIComponent(baseSku)}/details`)
+        if (detailsResponse && typeof detailsResponse === 'object') {
+          const details = detailsResponse as Record<string, unknown>
+          detailsGroup = pickFirstString(details, ['group', 'Group']) ?? null
+          const rawDetailSubGroup = pickFirstString(details, ['subGroup', 'SubGroup'])
+          const attrs = details.attributes ?? details.Attributes
+          const fallbackSubGroup = extractOriginalSubGroup(attrs)
+          detailsSubGroup = rawDetailSubGroup ?? fallbackSubGroup
+          detailsStock = pickFirstNumber(details, ['stock', 'Stock'])
+          detailsLastCountedAt = pickFirstString(details, ['lastCountedAt', 'LastCountedAt'])
+        }
+      } catch {
+        // Ignore detail lookup failures; base product data is still usable.
+      }
+    }
+
+    const product: Product = {
+      ean: baseEan ?? rawCode,
+      name: baseName ?? `Produit ${baseSku ?? baseEan ?? rawCode}`,
+      sku: baseSku ?? undefined,
+      group: detailsGroup ?? baseGroup ?? undefined,
+      subGroup: (detailsSubGroup ?? resolvedSubGroup) ?? undefined,
+    }
+
+    const stock = pickFirstNumber(baseRecord, ['stock', 'Stock']) ?? detailsStock
+    if (stock != null) {
+      product.stock = stock
+    }
+    const lastCountedAt =
+      pickFirstString(baseRecord, ['lastCountedAt', 'LastCountedAt']) ?? detailsLastCountedAt
+    if (lastCountedAt) {
+      product.lastCountedAt = lastCountedAt
+    }
+
+    return product
   } catch (error) {
     const err = error as HttpError
     if (isHttpError(err) && err.status === 409) {

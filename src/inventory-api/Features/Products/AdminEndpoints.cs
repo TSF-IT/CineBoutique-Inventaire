@@ -454,9 +454,8 @@ internal static class AdminEndpoints
                     .ConfigureAwait(false);
 
                 var response = items
-                    .Select(item => new ProductSearchItemDto(item.Sku, item.Code, item.Name))
+                    .Select(item => new ProductSearchItemDto(item.Sku, item.Code, item.Name, item.Group, item.SubGroup))
                     .ToArray();
-
                 return Results.Ok(response);
             })
             .WithName("SearchProducts")

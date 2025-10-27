@@ -1374,8 +1374,18 @@ export const InventorySessionPage = () => {
                 <div>
                   <p className="text-lg font-semibold text-slate-900 dark:text-white">{item.product.name}</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    SKU {skuDisplay} | EAN {eanDisplay}
-                    {subGroupDisplay ? <> | Sous-groupe {subGroupDisplay}</> : null}
+                    {[
+                      subGroupDisplay ? `Sous-groupe ${subGroupDisplay}` : null,
+                      `SKU ${skuDisplay}`,
+                      `EAN ${eanDisplay}`,
+                    ]
+                      .filter((segment): segment is string => Boolean(segment))
+                      .map((segment, index) => (
+                        <span key={`${segment}-${index}`}>
+                          {index > 0 && ' | '}
+                          {segment}
+                        </span>
+                      ))}
                   </p>
                   {item.hasConflict && (
                     <p className="text-xs font-semibold text-rose-600 dark:text-rose-300">Référence en conflit</p>
@@ -1498,7 +1508,6 @@ export const InventorySessionPage = () => {
         onClose={() => setCatalogueOpen(false)}
         shopId={shopId}
         onSelect={handlePickFromCatalogue}
-        selectLabel="Ajouter"
       />
 
     </div>

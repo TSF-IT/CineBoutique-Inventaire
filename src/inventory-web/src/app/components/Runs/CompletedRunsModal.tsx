@@ -106,6 +106,11 @@ const formatSku = (value: string | null | undefined) => {
   return trimmed && trimmed.length > 0 ? trimmed : '—'
 }
 
+const formatSubGroup = (value: string | null | undefined) => {
+  const trimmed = value?.trim()
+  return trimmed && trimmed.length > 0 ? trimmed : null
+}
+
 const compareCompletedRunsByZone = (
   a: CompletedRunSummary,
   b: CompletedRunSummary,
@@ -165,23 +170,38 @@ const buildRunTitle = (run: CompletedRunSummary, detail?: CompletedRunDetail | n
 const escapeCsvValue = (value: string) => `"${value.replace(/"/g, '""')}"`
 
 const buildCsvContent = (title: string, detail: CompletedRunDetail) => {
-  const header = ['SKU', 'EAN', 'Libellé', 'Quantité']
+  const hasSubGroup = detail.items.some(
+    (item) => typeof item.subGroup === 'string' && item.subGroup.trim().length > 0,
+  )
+  const baseHeader = ['SKU', 'EAN', 'Libellé']
+  const header = hasSubGroup ? [...baseHeader, 'Sous-groupe', 'Quantité'] : [...baseHeader, 'Quantité']
   const lines = detail.items.map((item) => {
     const sku = item.sku?.trim() ?? ''
     const ean = item.ean?.trim() ?? ''
-    return [
+    const cells = [
       escapeCsvValue(sku),
       escapeCsvValue(ean),
       escapeCsvValue(item.name),
-      escapeCsvValue(formatQuantity(item.quantity)),
-    ].join(';')
+    ]
+    if (hasSubGroup) {
+      const subGroup = formatSubGroup(item.subGroup) ?? ''
+      cells.push(escapeCsvValue(subGroup))
+    }
+    cells.push(escapeCsvValue(formatQuantity(item.quantity)))
+    return cells.join(';')
   })
 
   return [escapeCsvValue(title), header.map(escapeCsvValue).join(';'), ...lines].join('\n')
 }
 
 const buildGlobalCsvContent = (details: CompletedRunDetail[]) => {
-  const header = ['Zone', 'Comptage', 'Opérateur', 'Terminé le', 'SKU', 'EAN', 'Libellé', 'Quantité']
+  const hasSubGroup = details.some((detail) =>
+    detail.items.some((item) => typeof item.subGroup === 'string' && item.subGroup.trim().length > 0),
+  )
+  const header = hasSubGroup
+    ? ['Zone', 'Comptage', 'Opérateur', 'Terminé le', 'SKU', 'EAN', 'Libellé', 'Sous-groupe', 'Quantité']
+    : ['Zone', 'Comptage', 'Opérateur', 'Terminé le', 'SKU', 'EAN', 'Libellé', 'Quantité']
+
   const lines = details.flatMap((detail) => {
     const zone = formatZoneLabel(detail)
     const countLabel = describeCountType(detail.countType)
@@ -189,24 +209,15 @@ const buildGlobalCsvContent = (details: CompletedRunDetail[]) => {
     const completed = formatDateTime(detail.completedAtUtc)
 
     if (!detail.items || detail.items.length === 0) {
-      return [
-        [
-          zone,
-          countLabel,
-          owner,
-          completed,
-          '',
-          '',
-          '',
-          formatQuantity(0),
-        ],
-      ]
+      const baseCells = [zone, countLabel, owner, completed, '', '', '']
+      const cells = hasSubGroup ? [...baseCells, '', formatQuantity(0)] : [...baseCells, formatQuantity(0)]
+      return [cells]
     }
 
     return detail.items.map((item) => {
       const sku = item.sku?.trim() ?? ''
       const ean = item.ean?.trim() ?? ''
-      return [
+      const cells: string[] = [
         zone,
         countLabel,
         owner,
@@ -214,8 +225,12 @@ const buildGlobalCsvContent = (details: CompletedRunDetail[]) => {
         sku,
         ean,
         item.name,
-        formatQuantity(item.quantity),
       ]
+      if (hasSubGroup) {
+        cells.push(formatSubGroup(item.subGroup) ?? '')
+      }
+      cells.push(formatQuantity(item.quantity))
+      return cells
     })
   })
 
@@ -288,6 +303,10 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
   const detailsCacheRef = useRef<Map<string, CompletedRunDetail>>(new Map())
   const [selectedRun, setSelectedRun] = useState<CompletedRunSummary | null>(null)
   const [runDetail, setRunDetail] = useState<CompletedRunDetail | null>(null)
+  const runDetailHasSubGroup = useMemo(
+    () => runDetail?.items.some((item) => typeof item.subGroup === 'string' && item.subGroup.trim().length > 0) ?? false,
+    [runDetail],
+  )
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<unknown>(null)
   const [reloadKey, setReloadKey] = useState(0)
@@ -622,6 +641,7 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
                           <th scope="col" className="px-4 py-3">SKU</th>
                           <th scope="col" className="px-4 py-3">EAN</th>
                           <th scope="col" className="px-4 py-3">Libellé</th>
+                          {runDetailHasSubGroup && <th scope="col" className="px-4 py-3">Sous-groupe</th>}
                           <th scope="col" className="px-4 py-3 text-right">Quantité</th>
                         </tr>
                       </thead>
@@ -644,6 +664,14 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
                               <span className="table-label">Libellé</span>
                               <span className="table-value text-slate-900 dark:text-slate-100">{item.name}</span>
                             </td>
+                            {runDetailHasSubGroup && (
+                              <td className="px-4 py-3 text-sm text-slate-800 dark:text-slate-100">
+                                <span className="table-label">Sous-groupe</span>
+                                <span className="table-value text-slate-900 dark:text-slate-100">
+                                  {formatSubGroup(item.subGroup) ?? '—'}
+                                </span>
+                              </td>
+                            )}
                             <td className="whitespace-nowrap px-4 py-3 text-left text-sm font-semibold text-emerald-700 dark:text-emerald-200 sm:text-right">
                               <span className="table-label text-slate-500 dark:text-slate-300">Quantité</span>
                               <span className="table-value sm:text-right">{formatQuantity(item.quantity)}</span>

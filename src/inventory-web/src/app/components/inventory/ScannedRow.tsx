@@ -172,16 +172,16 @@ export const ScannedRow = forwardRef<ScannedRowHandle, ScannedRowProps>(
       isDense ? "text-[11px]" : "text-xs"
     )}
   >
-    {sku && (
-      <span className="font-mono uppercase tracking-wide text-slate-500 dark:text-slate-400">
-        SKU {sku}
-      </span>
-    )}
             {subGroupLabel && subGroupLabel.length > 0 && (
               <span className="truncate text-slate-500 dark:text-slate-400">
                 Sous-groupe {subGroupLabel}
               </span>
             )}
+    {sku && (
+      <span className="font-mono uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        SKU {sku}
+      </span>
+    )}
     {(ean || id) && (
       <span className="truncate font-mono text-[11px] uppercase tracking-wide text-slate-400">
         {ean ? `EAN ${ean}` : `ID ${id}`}

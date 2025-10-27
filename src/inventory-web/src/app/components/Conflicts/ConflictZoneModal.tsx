@@ -408,15 +408,15 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
                   <header className="conflict-card__header">
                     <p className="conflict-card__name">{getProductName(item)}</p>
                     <p className="conflict-card__codes">
+                      {subGroupLabel ? (
+                        <>
+                          <span className="conflict-card__label">Sous-groupe</span> {subGroupLabel}
+                          <span className="conflict-card__separator" aria-hidden="true">·</span>
+                        </>
+                      ) : null}
                       <span className="conflict-card__label">EAN</span> {formatEan(item.ean)}
                       <span className="conflict-card__separator" aria-hidden="true">·</span>
                       <span className="conflict-card__label">SKU</span> {formatSku(item.sku)}
-                      {subGroupLabel ? (
-                        <>
-                          <span className="conflict-card__separator" aria-hidden="true">·</span>
-                          <span className="conflict-card__label">Sous-groupe</span> {subGroupLabel}
-                        </>
-                      ) : null}
                     </p>
                   </header>
                   <div className={runsContainerClass}>{renderRunSections(item)}</div>

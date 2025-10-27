@@ -102,7 +102,6 @@ describe('ProductsModal', () => {
         onClose={onClose}
         shopId={shopId}
         onSelect={onSelect}
-        selectLabel="Ajouter"
       />,
     )
 
