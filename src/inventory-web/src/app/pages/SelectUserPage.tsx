@@ -191,9 +191,11 @@ export default function SelectUserPage() {
     >
       <main className="flex flex-1 flex-col gap-8">
         <section className="flex flex-col gap-4">
-          <p className="cb-kicker mt-1">{shopDisplayName}</p>
-          <h1 className="cb-section-title mt-3">Choisir un utilisateur</h1>
-          <p className="cb-section-subtitle mt-4 max-w-xl">
+          <p className="mt-1 text-xs font-semibold uppercase tracking-[0.4em] text-brand-500/90 dark:text-brand-200/90">
+            {shopDisplayName}
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-(--cb-text)">Choisir un utilisateur</h1>
+          <p className="mt-2 max-w-xl text-sm leading-relaxed text-(--cb-muted)">
             Sélectionnez votre profil pour poursuivre l’inventaire de la boutique.
           </p>
         </section>

@@ -2,7 +2,6 @@ import { useCallback, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { Card } from '../../components/Card'
-import { Button } from '../../components/ui/Button'
 import { useInventory } from '../../contexts/InventoryContext'
 import { CountType } from '../../types/inventory'
 import type { LocationCountStatus } from '../../types/inventory'
@@ -248,9 +247,6 @@ export const InventoryCountTypeStep = () => {
           })}
         </div>
       </Card>
-      <Button fullWidth className="py-4" variant="ghost" onClick={() => navigate('/inventory/location')}>
-        Revenir aux zones
-      </Button>
     </div>
   )
 }

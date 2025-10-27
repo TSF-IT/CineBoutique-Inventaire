@@ -1189,6 +1189,7 @@ export const InventorySessionPage = () => {
           <Button
             type="button"
             variant="secondary"
+            size="sm"
             className="self-start"
             onClick={handleOpenLogsDialog}
             aria-haspopup="dialog"
@@ -1308,7 +1309,8 @@ export const InventorySessionPage = () => {
               <>
                 <Button
                   type="button"
-                  variant="ghost"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => navigate('/inventory/scan-camera')}
                   data-testid="btn-scan-camera"
                 >
@@ -1316,8 +1318,8 @@ export const InventorySessionPage = () => {
                 </Button>
                 <Button
                   type="button"
-                  variant="ghost"
-                  className="inline-flex items-center gap-2 rounded-2xl border border-transparent px-3 py-2 text-sm font-semibold text-brand-600 transition hover:border-brand-200 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 dark:text-brand-300 dark:hover:border-brand-500/60 dark:hover:bg-slate-800"
+                  variant="secondary"
+                  size="sm"
                   onClick={() => setCatalogueOpen(true)}
                   data-testid="btn-open-catalogue"
                   disabled={!shopId}

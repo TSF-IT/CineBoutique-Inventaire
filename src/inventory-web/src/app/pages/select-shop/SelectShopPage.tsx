@@ -35,6 +35,7 @@ const ENTITY_TILE_SELECTED_CLASSES = 'entity-card--selected'
 
 export const SelectShopPage = () => {
   const { shop, setShop } = useShop()
+  const shopDisplayName = shop?.name?.trim() ?? 'CinéBoutique'
   const { reset } = useInventory()
   const navigate = useNavigate()
   const location = useLocation()
@@ -332,8 +333,11 @@ export const SelectShopPage = () => {
     <Page className="px-4 py-6 sm:px-6">
       <main className="flex flex-1 flex-col gap-8">
         <div>
-          <h1 className="cb-section-title text-3xl sm:text-4xl">Choisir une entité</h1>
-          <p className="cb-section-subtitle mt-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.4em] text-brand-500/90 dark:text-brand-200/90">
+            {shopDisplayName}
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-(--cb-text)">Choisir une entité</h1>
+          <p className="mt-2 max-w-xl text-sm leading-relaxed text-(--cb-muted)">
             Sélectionnez votre entité pour poursuivre l’identification.
           </p>
         </div>

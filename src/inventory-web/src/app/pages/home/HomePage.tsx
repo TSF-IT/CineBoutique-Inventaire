@@ -554,9 +554,11 @@ export const HomePage = () => {
       <section className="flex flex-col gap-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex-1">
-            <p className="cb-kicker mt-1">{shopDisplayName ?? 'CinéBoutique'}</p>
-            <h1 className="cb-section-title mt-3">Inventaire {currentYear}</h1>
-            <p className="cb-section-subtitle mt-4 max-w-xl">
+            <p className="mt-1 text-xs font-semibold uppercase tracking-[0.4em] text-brand-500/90 dark:text-brand-200/90">
+              {shopDisplayName ?? 'CinéBoutique'}
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-(--cb-text)">Inventaire {currentYear}</h1>
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-(--cb-muted)">
               Lancez un comptage en quelques gestes, scannez les produits depuis la caméra ou une douchette Bluetooth
               et assurez un suivi fiable de vos zones.
             </p>
@@ -777,8 +779,25 @@ export const HomePage = () => {
         >
           Débuter un comptage
         </Button>
-        <Link className="text-center text-sm text-(--cb-muted) underline hover:text-brand-600 dark:hover:text-brand-200" to="/admin">
-          Espace administrateur
+        <Link
+          to="/admin"
+          className="group flex w-full items-center justify-between gap-4 rounded-3xl border border-(--cb-border-soft) bg-(--cb-surface-soft) px-5 py-4 text-left shadow-panel-soft transition hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 dark:border-(--cb-border-soft) dark:bg-(--cb-surface-soft) dark:hover:border-brand-500/40 dark:hover:bg-slate-800/70"
+        >
+          <span className="flex items-center gap-3">
+            <span
+              aria-hidden="true"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-100 text-lg text-brand-600 transition group-hover:bg-brand-200 dark:bg-brand-500/20 dark:text-brand-100"
+            >
+              ⚙️
+            </span>
+            <span className="flex flex-col">
+              <span className="text-base font-semibold text-(--cb-text)">Espace administrateur</span>
+              <span className="text-xs text-(--cb-muted)">Gérez les comptes, zones et paramétrages avancés.</span>
+            </span>
+          </span>
+          <span aria-hidden="true" className="text-xl text-brand-500 transition group-hover:translate-x-1 dark:text-brand-200">
+            →
+          </span>
         </Link>
       </div>
 
