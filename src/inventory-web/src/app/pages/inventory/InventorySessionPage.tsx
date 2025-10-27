@@ -78,6 +78,9 @@ const normalizeIdentifier = (value: string | null | undefined) => {
   return trimmed && trimmed.length > 0 ? trimmed : null
 }
 
+const formatIdentifierForDisplay = (value: string | null | undefined): string =>
+  normalizeIdentifier(value) ?? '—'
+
 const IDENTIFIER_MIN_LENGTH = 3
 
 const sanitizeEanForSubmission = (value: string | null | undefined): string | null => {
@@ -1352,58 +1355,66 @@ export const InventorySessionPage = () => {
           />
         )}
         <ul className="flex flex-col gap-3">
-          {displayedItems.map((item) => (
-            <li
-              key={item.id}
-              className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/60"
-              data-testid="scanned-item"
-              data-item-id={item.id}
-              data-ean={item.product.ean}
-            >
-              <div>
-                <p className="text-lg font-semibold text-slate-900 dark:text-white">{item.product.name}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">EAN {item.product.ean}</p>
-                {item.hasConflict && (
-                  <p className="text-xs font-semibold text-rose-600 dark:text-rose-300">Référence en conflit</p>
-                )}
-              </div>
-              <div className="flex items-center gap-3">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className="tap-highlight-none no-focus-ring btn-glyph-center h-10 w-10 text-xl font-semibold"
-                  onClick={() => adjustQuantity(item.product.ean, -1)}
-                  aria-label="Retirer"
-                >
-                  −
-                </Button>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={4}
-                  data-testid="quantity-input"
-                  aria-label={`Quantité pour ${item.product.name}`}
-                  value={quantityDrafts[item.product.ean] ?? String(item.quantity)}
-                  onChange={(event) => handleQuantityInputChange(item.product.ean, event)}
-                  onBlur={(event) => handleQuantityBlur(item.product.ean, event)}
-                  onKeyDown={(event) => handleQuantityKeyDown(item.product.ean, event)}
-                  onFocus={handleQuantityFocus}
-                  onPointerDown={handleQuantityPointerDown}
-                  className="h-12 w-20 rounded-xl border border-slate-300 bg-white text-center text-2xl font-bold text-slate-900 outline-none focus-visible:border-brand-400 focus-visible:ring-2 focus-visible:ring-brand-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-                  autoComplete="off"
-                />
-                <Button
-                  type="button"
-                  className="tap-highlight-none no-focus-ring btn-glyph-center h-10 w-10 text-xl font-semibold"
-                  onClick={() => adjustQuantity(item.product.ean, 1)}
-                  aria-label="Ajouter"
-                >
-                  +
-                </Button>
-              </div>
-            </li>
-          ))}
+          {displayedItems.map((item) => {
+            const skuDisplay = formatIdentifierForDisplay(item.product.sku)
+            const eanDisplay = formatIdentifierForDisplay(item.product.ean)
+
+            return (
+              <li
+                key={item.id}
+                className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/60"
+                data-testid="scanned-item"
+                data-item-id={item.id}
+                data-ean={item.product.ean}
+                data-sku={item.product.sku ?? ''}
+              >
+                <div>
+                  <p className="text-lg font-semibold text-slate-900 dark:text-white">{item.product.name}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    SKU {skuDisplay} | EAN {eanDisplay}
+                  </p>
+                  {item.hasConflict && (
+                    <p className="text-xs font-semibold text-rose-600 dark:text-rose-300">Référence en conflit</p>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="tap-highlight-none no-focus-ring btn-glyph-center h-10 w-10 text-xl font-semibold"
+                    onClick={() => adjustQuantity(item.product.ean, -1)}
+                    aria-label="Retirer"
+                  >
+                    −
+                  </Button>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={4}
+                    data-testid="quantity-input"
+                    aria-label={`Quantité pour ${item.product.name}`}
+                    value={quantityDrafts[item.product.ean] ?? String(item.quantity)}
+                    onChange={(event) => handleQuantityInputChange(item.product.ean, event)}
+                    onBlur={(event) => handleQuantityBlur(item.product.ean, event)}
+                    onKeyDown={(event) => handleQuantityKeyDown(item.product.ean, event)}
+                    onFocus={handleQuantityFocus}
+                    onPointerDown={handleQuantityPointerDown}
+                    className="h-12 w-20 rounded-xl border border-slate-300 bg-white text-center text-2xl font-bold text-slate-900 outline-none focus-visible:border-brand-400 focus-visible:ring-2 focus-visible:ring-brand-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                    autoComplete="off"
+                  />
+                  <Button
+                    type="button"
+                    className="tap-highlight-none no-focus-ring btn-glyph-center h-10 w-10 text-xl font-semibold"
+                    onClick={() => adjustQuantity(item.product.ean, 1)}
+                    aria-label="Ajouter"
+                  >
+                    +
+                  </Button>
+                </div>
+              </li>
+            )
+          })}
         </ul>
         {displayedItems.length > 0 && (
           <div className="flex justify-end">
