@@ -1,0 +1,23 @@
+name: security-audit
+on:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '8.0.x' }
+      - name: .NET vulnerable (include transitive)
+        run: |
+          dotnet restore
+          dotnet list ./CineBoutique-Inventaire.sln package --vulnerable --include-transitive
+      - name: Node setup
+        uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: npm audit
+        working-directory: src/inventory-web
+        run: |
+          npm ci --no-audit --no-fund
+          npm audit --audit-level=high
