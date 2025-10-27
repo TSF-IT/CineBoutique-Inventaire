@@ -40,14 +40,18 @@ internal static class ShopUsersEndpoints
         group.MapGet(
                 string.Empty,
                 async (
-                    Guid shopId,
-                    bool includeDisabled,
+                    [FromRoute(Name = "shopId")] Guid shopId,
+                    [FromQuery(Name = "includeDisabled")] bool? includeDisabled,
                     [FromServices] IShopUserService shopUserService,
                     CancellationToken cancellationToken) =>
                 {
                     try
                     {
-                        var users = await shopUserService.GetAsync(shopId, includeDisabled, cancellationToken).ConfigureAwait(false);
+                        var users = await shopUserService.GetAsync(
+                                shopId,
+                                includeDisabled.GetValueOrDefault(false),
+                                cancellationToken)
+                            .ConfigureAwait(false);
                         return Results.Ok(users);
                     }
                     catch (ShopNotFoundException ex)
@@ -67,7 +71,7 @@ internal static class ShopUsersEndpoints
         group.MapPost(
                 string.Empty,
                 async (
-                    Guid shopId,
+                    [FromRoute(Name = "shopId")] Guid shopId,
                     [FromBody] CreateShopUserRequest? request,
                     [FromServices] IShopUserService shopUserService,
                     [FromServices] IAuditLogger auditLogger,
@@ -129,7 +133,7 @@ internal static class ShopUsersEndpoints
         group.MapPut(
                 string.Empty,
                 async (
-                    Guid shopId,
+                    [FromRoute(Name = "shopId")] Guid shopId,
                     [FromBody] UpdateShopUserRequest? request,
                     [FromServices] IShopUserService shopUserService,
                     [FromServices] IAuditLogger auditLogger,
@@ -195,7 +199,7 @@ internal static class ShopUsersEndpoints
         group.MapDelete(
                 string.Empty,
                 async (
-                    Guid shopId,
+                    [FromRoute(Name = "shopId")] Guid shopId,
                     [FromBody] DeleteShopUserRequest? request,
                     [FromServices] IShopUserService shopUserService,
                     [FromServices] IAuditLogger auditLogger,
