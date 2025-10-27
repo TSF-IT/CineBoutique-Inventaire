@@ -46,6 +46,7 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using CineBoutique.Inventory.Api.Infrastructure.Swagger;
 using CineBoutique.Inventory.Api.Features.Inventory.Sessions;
+using CineBoutique.Inventory.Api.Features.Shops;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -603,6 +604,7 @@ app.MapHealthEndpoints();
 app.MapDiagnosticsEndpoints();
 app.MapInventoryEndpoints();
 app.MapProductEndpoints();
+app.MapShopsEndpoints();
 
 app.MapControllers();
 
