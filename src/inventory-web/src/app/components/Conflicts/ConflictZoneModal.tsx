@@ -43,6 +43,30 @@ const formatSku = (value: string | null | undefined) => {
   return trimmed && trimmed.length > 0 ? trimmed : '—'
 }
 
+const formatEan = (value: string | null | undefined) => {
+  const trimmed = value?.trim()
+  return trimmed && trimmed.length > 0 ? trimmed : '—'
+}
+
+const getProductName = (item: ConflictZoneItem) => {
+  const trimmed = item.name?.trim()
+  if (trimmed && trimmed.length > 0) {
+    return trimmed
+  }
+
+  const ean = item.ean?.trim()
+  if (ean && ean.length > 0) {
+    return `EAN ${ean}`
+  }
+
+  const sku = item.sku?.trim()
+  if (sku && sku.length > 0) {
+    return `SKU ${sku}`
+  }
+
+  return 'Référence en conflit'
+}
+
 export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: ConflictZoneModalProps) => {
   const [state, setState] = useState<DetailState>({ status: 'idle', detail: null, error: null })
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -356,10 +380,10 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
               {items.map((item) => (
                 <article key={item.productId} className="conflict-card">
                   <header className="conflict-card__header">
-                    <p className="conflict-card__ean">
-                      <span className="conflict-card__label">EAN</span> {item.ean}
-                    </p>
-                    <p className="conflict-card__ean">
+                    <p className="conflict-card__name">{getProductName(item)}</p>
+                    <p className="conflict-card__codes">
+                      <span className="conflict-card__label">EAN</span> {formatEan(item.ean)}
+                      <span className="conflict-card__separator" aria-hidden="true">·</span>
                       <span className="conflict-card__label">SKU</span> {formatSku(item.sku)}
                     </p>
                   </header>

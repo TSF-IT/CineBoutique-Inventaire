@@ -189,7 +189,7 @@ describe('HomePage', () => {
 
     const eanLine = await within(dialog).findByText((content, element) => {
       if (!element) return false
-      return element.classList.contains('conflict-card__ean') && content.includes('111')
+      return element.classList.contains('conflict-card__codes') && content.includes('111')
     })
     expect(eanLine).toBeInTheDocument()
     expect(within(dialog).getAllByText('Comptage 1').length).toBeGreaterThan(0)

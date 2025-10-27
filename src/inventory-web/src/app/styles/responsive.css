@@ -241,19 +241,38 @@
   border-color: rgba(71, 85, 105, 0.5);
 }
 
-.conflict-card__ean {
+.conflict-card__name {
   font-size: var(--font-sm);
   font-weight: 600;
   color: #0f172a;
 }
 
-:root.dark .conflict-card__ean {
+:root.dark .conflict-card__name {
   color: #f8fafc;
+}
+
+.conflict-card__codes {
+  font-size: var(--font-xs);
+  font-weight: 600;
+  color: #0f172a;
+}
+
+:root.dark .conflict-card__codes {
+  color: #f8fafc;
+}
+
+.conflict-card__separator {
+  margin: 0 0.5rem;
+  color: #94a3b8;
+}
+
+:root.dark .conflict-card__separator {
+  color: #cbd5f5;
 }
 
 .conflict-card__label {
   display: inline-block;
-  margin-right: 0.5rem;
+  margin-right: 0.35rem;
   font-size: var(--font-xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;

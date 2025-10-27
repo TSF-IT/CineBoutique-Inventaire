@@ -130,6 +130,8 @@ internal sealed class ConflictRunQuantityRow
 
     public string Ean { get; set; } = string.Empty;
 
+    public string Name { get; set; } = string.Empty;
+
     public Guid RunId { get; set; }
 
     public int Quantity { get; set; }

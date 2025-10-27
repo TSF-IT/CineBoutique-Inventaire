@@ -9,6 +9,8 @@ public sealed class ConflictZoneItemDto
 
     public string Ean { get; set; } = string.Empty;
 
+    public string Name { get; set; } = string.Empty;
+
     public Guid ProductId { get; set; }
 
     public int QtyC1 { get; set; }
