@@ -2,8 +2,6 @@ using System;
 
 namespace CineBoutique.Inventory.Api.Models;
 
-internal sealed record ProductLookupRow(Guid Id, string Ean, string? CodeDigits);
-
 internal sealed class LocationCountStatusRow
 {
     public Guid LocationId { get; set; }

@@ -8,4 +8,8 @@ public interface ISessionRepository
     Task<StartRunResult> StartRunAsync(StartRunParameters parameters, CancellationToken cancellationToken);
 
     Task<CompleteRunResult> CompleteRunAsync(CompleteRunParameters parameters, CancellationToken cancellationToken);
+
+    Task<ReleaseRunResult> ReleaseRunAsync(ReleaseRunParameters parameters, CancellationToken cancellationToken);
+
+    Task<RestartRunResult> RestartRunAsync(RestartRunParameters parameters, CancellationToken cancellationToken);
 }

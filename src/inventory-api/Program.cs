@@ -45,6 +45,7 @@ using System.Text.Json.Serialization;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using CineBoutique.Inventory.Api.Infrastructure.Swagger;
+using CineBoutique.Inventory.Api.Features.Inventory.Sessions;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -99,6 +100,10 @@ catch { /* pas bloquant en tests */ }
 // Infrastructure + seeder
 builder.Services.AddInventoryInfrastructure(builder.Configuration);
 builder.Services.AddTransient<InventoryDataSeeder>();
+builder.Services.AddScoped<StartInventoryRunHandler>();
+builder.Services.AddScoped<CompleteInventoryRunHandler>();
+builder.Services.AddScoped<ReleaseInventoryRunHandler>();
+builder.Services.AddScoped<RestartInventoryRunHandler>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<IShopResolver, DefaultShopResolver>();

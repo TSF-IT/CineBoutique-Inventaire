@@ -12,6 +12,7 @@ using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Validation;
 using CineBoutique.Inventory.Infrastructure.Database;
+using CineBoutique.Inventory.Infrastructure.Database.Inventory;
 using Dapper;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -482,8 +483,8 @@ WHERE "Id" = @Id AND "ShopId" = @ShopId;
     {
         await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
-        var columnsState = await InventoryEndpointSupport.DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
-        var locationOperatorSql = InventoryEndpointSupport.BuildOperatorSqlFragments("cr", "owner", columnsState);
+        var columnsState = await InventoryOperatorSqlHelper.DetectOperatorColumnsAsync(connection, cancellationToken).ConfigureAwait(false);
+        var locationOperatorSql = InventoryOperatorSqlHelper.BuildOperatorSqlFragments("cr", "owner", columnsState);
 
         var activeRunsDistinctColumns = columnsState.HasOwnerUserId
             ? "cr.\"LocationId\", cr.\"CountType\", cr.\"OwnerUserId\""
@@ -509,7 +510,7 @@ WHERE "Id" = @Id AND "ShopId" = @ShopId;
         cr.""StartedAtUtc""  AS ""ActiveStartedAtUtc"",
         {locationOperatorSql.Projection} AS ""BusyBy""
     FROM ""CountingRun"" cr
-{InventoryEndpointSupport.AppendJoinClause(locationOperatorSql.JoinClause)}
+{InventoryOperatorSqlHelper.AppendJoinClause(locationOperatorSql.JoinClause)}
     WHERE cr.""CompletedAtUtc"" IS NULL
       AND (@CountType IS NULL OR cr.""CountType"" = @CountType){activeRunsFilterClause}
       AND EXISTS (SELECT 1 FROM ""CountLine"" cl WHERE cl.""CountingRunId"" = cr.""Id"")
@@ -555,7 +556,7 @@ ORDER BY l.""Code"" ASC;";
 
         var locationIds = locations.Select(location => location.Id).ToArray();
 
-        var openRunsOperatorSql = InventoryEndpointSupport.BuildOperatorSqlFragments("cr", "owner", columnsState);
+        var openRunsOperatorSql = InventoryOperatorSqlHelper.BuildOperatorSqlFragments("cr", "owner", columnsState);
 
         var openRunsSql = $@"SELECT
     cr.""LocationId"",
@@ -567,13 +568,13 @@ ORDER BY l.""Code"" ASC;";
     {openRunsOperatorSql.OperatorDisplayProjection} AS ""OperatorDisplayName"",
     {openRunsOperatorSql.OwnerUserIdProjection} AS ""OwnerUserId""
 FROM ""CountingRun"" cr
-{InventoryEndpointSupport.AppendJoinClause(openRunsOperatorSql.JoinClause)}
+{InventoryOperatorSqlHelper.AppendJoinClause(openRunsOperatorSql.JoinClause)}
 WHERE cr.""CompletedAtUtc"" IS NULL
   AND cr.""LocationId"" = ANY(@LocationIds::uuid[])
   AND EXISTS (SELECT 1 FROM ""CountLine"" cl WHERE cl.""CountingRunId"" = cr.""Id"")
 ORDER BY cr.""LocationId"", cr.""CountType"", cr.""StartedAtUtc"" DESC;";
 
-        var completedRunsOperatorSql = InventoryEndpointSupport.BuildOperatorSqlFragments("cr", "owner", columnsState);
+        var completedRunsOperatorSql = InventoryOperatorSqlHelper.BuildOperatorSqlFragments("cr", "owner", columnsState);
 
         var completedRunsSql = $@"SELECT DISTINCT ON (cr.""LocationId"", cr.""CountType"")
     cr.""LocationId"",
@@ -585,7 +586,7 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""StartedAtUtc"" DESC;";
     {completedRunsOperatorSql.OperatorDisplayProjection} AS ""OperatorDisplayName"",
     {completedRunsOperatorSql.OwnerUserIdProjection} AS ""OwnerUserId""
 FROM ""CountingRun"" cr
-{InventoryEndpointSupport.AppendJoinClause(completedRunsOperatorSql.JoinClause)}
+{InventoryOperatorSqlHelper.AppendJoinClause(completedRunsOperatorSql.JoinClause)}
 WHERE cr.""CompletedAtUtc"" IS NOT NULL
   AND cr.""LocationId"" = ANY(@LocationIds::uuid[])
 ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";

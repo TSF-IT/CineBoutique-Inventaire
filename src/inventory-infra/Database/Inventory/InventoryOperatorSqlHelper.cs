@@ -5,16 +5,16 @@ using System.Threading.Tasks;
 
 namespace CineBoutique.Inventory.Infrastructure.Database.Inventory;
 
-internal sealed record OperatorColumnsState(bool HasOperatorDisplayName, bool OperatorDisplayNameIsNullable, bool HasOwnerUserId);
+public sealed record OperatorColumnsState(bool HasOperatorDisplayName, bool OperatorDisplayNameIsNullable, bool HasOwnerUserId);
 
-internal sealed record OperatorSqlFragments(
+public sealed record OperatorSqlFragments(
     string Projection,
     string OwnerDisplayProjection,
     string OperatorDisplayProjection,
     string OwnerUserIdProjection,
     string? JoinClause);
 
-internal static class InventoryOperatorSqlHelper
+public static class InventoryOperatorSqlHelper
 {
     public static async Task<OperatorColumnsState> DetectOperatorColumnsAsync(
         IDbConnection connection,

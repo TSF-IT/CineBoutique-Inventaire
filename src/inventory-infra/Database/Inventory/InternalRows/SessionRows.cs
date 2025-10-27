@@ -27,3 +27,66 @@ internal sealed class ActiveCountingRunRow
 
     public string? OperatorDisplayName { get; set; }
 }
+
+internal sealed class ExistingRunRow
+{
+    public Guid Id { get; set; }
+
+    public Guid InventorySessionId { get; set; }
+
+    public Guid LocationId { get; set; }
+
+    public Guid? OwnerUserId { get; set; }
+
+    public short CountType { get; set; }
+
+    public string? OperatorDisplayName { get; set; }
+}
+
+internal sealed class ReleaseRunRow
+{
+    public Guid InventorySessionId { get; set; }
+
+    public Guid ShopId { get; set; }
+
+    public Guid? OwnerUserId { get; set; }
+
+    public string? OperatorDisplayName { get; set; }
+}
+
+internal sealed class ProductLookupRow
+{
+    public Guid Id { get; set; }
+
+    public string Ean { get; set; } = string.Empty;
+
+    public string? CodeDigits { get; set; }
+}
+
+internal sealed class AggregatedCountRow
+{
+    public Guid CountingRunId { get; set; }
+
+    public string Ean { get; set; } = string.Empty;
+
+    public Guid ProductId { get; set; }
+
+    public decimal Quantity { get; set; }
+
+    public AggregatedCountRow() { }
+}
+
+internal sealed class CountLineReference
+{
+    public Guid CountingRunId { get; set; }
+
+    public Guid CountLineId { get; set; }
+
+    public Guid ProductId { get; set; }
+
+    public string? Ean { get; set; }
+
+    public CountLineReference()
+    {
+    }
+}
