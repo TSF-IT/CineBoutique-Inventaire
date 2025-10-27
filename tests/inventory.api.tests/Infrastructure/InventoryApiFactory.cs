@@ -103,5 +103,18 @@ public sealed class InventoryApiFactory : WebApplicationFactory<Program>
 
         client.BaseAddress ??= new Uri("http://localhost");
         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        const string defaultOperatorId = "11111111-1111-1111-1111-111111111111";
+        const string defaultOperatorName = "Integration Test Operator";
+
+        if (!client.DefaultRequestHeaders.Contains("X-Operator-Id"))
+        {
+            client.DefaultRequestHeaders.Add("X-Operator-Id", defaultOperatorId);
+        }
+
+        if (!client.DefaultRequestHeaders.Contains("X-Operator-Name"))
+        {
+            client.DefaultRequestHeaders.Add("X-Operator-Name", defaultOperatorName);
+        }
     }
 }

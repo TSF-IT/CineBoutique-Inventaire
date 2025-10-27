@@ -250,6 +250,7 @@ builder.Services.AddSwaggerGen(c =>
     });
 
     c.OperationFilter<AppTokenSecurityRequirementOperationFilter>();
+    c.OperationFilter<CorrelationIdResponseOperationFilter>();
 
     var asmName = System.Reflection.Assembly.GetExecutingAssembly().GetName().Name;
     var xmlPath = System.IO.Path.Combine(AppContext.BaseDirectory, $"{asmName}.xml");
@@ -572,6 +573,8 @@ if (useSerilog)
 {
     app.UseSerilogRequestLogging();
 }
+
+app.UseMiddleware<CorrelationIdMiddleware>();
 
 app.UseMiddleware<LegacyOperatorNameWriteGuardMiddleware>();
 app.UseMiddleware<SoftOperatorMiddleware>();
