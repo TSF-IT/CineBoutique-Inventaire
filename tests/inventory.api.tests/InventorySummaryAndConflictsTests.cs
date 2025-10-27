@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Net;
 using System.Net.Http.Json;
 using CineBoutique.Inventory.Api.Models;
@@ -72,6 +73,176 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task ConflictsEndpoint_IncludesBaselineCountsForActiveSession()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
+        var client = CreateClient();
+
+        var firstRun = await RunCountAsync(client, seeded, seeded.PrimaryUserId, 1, 10m).ConfigureAwait(false);
+        firstRun.Should().NotBeNull();
+        var secondRun = await RunCountAsync(client, seeded, seeded.SecondaryUserId, 2, 9m).ConfigureAwait(false);
+        secondRun.Should().NotBeNull();
+
+        var conflictResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/conflicts/{seeded.LocationId}")
+        ).ConfigureAwait(false);
+
+        await conflictResponse.ShouldBeAsync(HttpStatusCode.OK, "conflict detail with successive counts").ConfigureAwait(false);
+        var conflict = await conflictResponse.Content.ReadFromJsonAsync<ConflictZoneDetailDto>().ConfigureAwait(false);
+        conflict.Should().NotBeNull();
+        conflict!.Runs.Should().NotBeNull();
+        conflict.Runs.Should().Contain(run => run.CountType == 1);
+        conflict.Runs.Should().Contain(run => run.CountType == 2);
+
+        var item = conflict.Items.Should().ContainSingle().Subject;
+        item.QtyC1.Should().Be(10);
+        item.QtyC2.Should().Be(9);
+        item.Delta.Should().Be(1);
+    }
+
+    [SkippableFact]
+    public async Task Conflicts_AreCleared_WhenThirdCountMatchesAnExistingRun()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
+        var client = CreateClient();
+
+        await RunCountAsync(client, seeded, seeded.PrimaryUserId, 1, 10m).ConfigureAwait(false);
+        await RunCountAsync(client, seeded, seeded.SecondaryUserId, 2, 9m).ConfigureAwait(false);
+
+        var initialConflictResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/conflicts/{seeded.LocationId}")
+        ).ConfigureAwait(false);
+
+        await initialConflictResponse.ShouldBeAsync(HttpStatusCode.OK, "conflict detail after two runs").ConfigureAwait(false);
+        var initialConflict = await initialConflictResponse.Content.ReadFromJsonAsync<ConflictZoneDetailDto>().ConfigureAwait(false);
+        initialConflict.Should().NotBeNull();
+        initialConflict!.Items.Should().NotBeEmpty("un écart doit être détecté après deux comptages divergents");
+
+        await RunCountAsync(client, seeded, seeded.PrimaryUserId, 3, 10m).ConfigureAwait(false);
+
+        var resolvedConflictResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/conflicts/{seeded.LocationId}")
+        ).ConfigureAwait(false);
+
+        await resolvedConflictResponse.ShouldBeAsync(HttpStatusCode.OK, "conflict detail after third run").ConfigureAwait(false);
+        var resolvedConflict = await resolvedConflictResponse.Content.ReadFromJsonAsync<ConflictZoneDetailDto>().ConfigureAwait(false);
+        resolvedConflict.Should().NotBeNull();
+        resolvedConflict!.Items.Should().BeEmpty("le troisième comptage correspond au premier");
+
+        var summaryResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/inventories/summary?shopId={seeded.ShopId}")
+        ).ConfigureAwait(false);
+
+        await summaryResponse.ShouldBeAsync(HttpStatusCode.OK, "inventory summary after resolution").ConfigureAwait(false);
+        var summary = await summaryResponse.Content.ReadFromJsonAsync<InventorySummaryDto>().ConfigureAwait(false);
+        summary.Should().NotBeNull();
+        summary!.ConflictZones.Should().NotContain(zone => zone.LocationId == seeded.LocationId, "la zone devrait être résolue");
+    }
+
+    [SkippableFact]
+    public async Task ConflictDetail_IncludesAllRuns_WhenConflictsPersistAcrossCounts()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
+        var client = CreateClient();
+
+        await RunCountAsync(client, seeded, seeded.PrimaryUserId, 1, 10m).ConfigureAwait(false);
+        await RunCountAsync(client, seeded, seeded.SecondaryUserId, 2, 9m).ConfigureAwait(false);
+        await RunCountAsync(client, seeded, seeded.PrimaryUserId, 3, 12m).ConfigureAwait(false);
+
+        var conflictResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/conflicts/{seeded.LocationId}")
+        ).ConfigureAwait(false);
+
+        await conflictResponse.ShouldBeAsync(HttpStatusCode.OK, "conflict detail after three divergent runs").ConfigureAwait(false);
+        var conflict = await conflictResponse.Content.ReadFromJsonAsync<ConflictZoneDetailDto>().ConfigureAwait(false);
+        conflict.Should().NotBeNull();
+        conflict!.Runs.Should().Contain(run => run.CountType == 1);
+        conflict.Runs.Should().Contain(run => run.CountType == 2);
+        conflict.Runs.Should().Contain(run => run.CountType == 3);
+
+        var item = conflict.Items.Should().ContainSingle().Subject;
+        item.AllCounts.Should().NotBeNull();
+        item.AllCounts.Should().Contain(count => count.CountType == 3 && count.Quantity == 12);
+    }
+
+    [SkippableFact]
+    public async Task Conflicts_AreCleared_WhenThirdCountFocusesOnConflictingItems()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        var seeded = await SeedInventoryContextWithAdditionalProductAsync().ConfigureAwait(false);
+        var client = CreateClient();
+
+        await RunCountAsync(
+            client,
+            seeded.ShopId,
+            seeded.LocationId,
+            seeded.PrimaryUserId,
+            1,
+            new[]
+            {
+                new CompleteRunItemRequest(seeded.ConflictEan, 10m, false),
+                new CompleteRunItemRequest(seeded.StableEan, 10m, false),
+            }).ConfigureAwait(false);
+
+        await RunCountAsync(
+            client,
+            seeded.ShopId,
+            seeded.LocationId,
+            seeded.SecondaryUserId,
+            2,
+            new[]
+            {
+                new CompleteRunItemRequest(seeded.ConflictEan, 9m, false),
+                new CompleteRunItemRequest(seeded.StableEan, 10m, false),
+            }).ConfigureAwait(false);
+
+        var conflictResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/conflicts/{seeded.LocationId}")
+        ).ConfigureAwait(false);
+
+        await conflictResponse.ShouldBeAsync(HttpStatusCode.OK, "conflict detail after two populated runs").ConfigureAwait(false);
+        var conflict = await conflictResponse.Content.ReadFromJsonAsync<ConflictZoneDetailDto>().ConfigureAwait(false);
+        conflict.Should().NotBeNull();
+        conflict!.Items.Should().NotBeEmpty();
+
+        await RunCountAsync(
+            client,
+            seeded.ShopId,
+            seeded.LocationId,
+            seeded.PrimaryUserId,
+            3,
+            new[]
+            {
+                new CompleteRunItemRequest(seeded.ConflictEan, 10m, false),
+            }).ConfigureAwait(false);
+
+        var resolvedConflictResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/conflicts/{seeded.LocationId}")
+        ).ConfigureAwait(false);
+
+        await resolvedConflictResponse.ShouldBeAsync(HttpStatusCode.OK, "conflict detail after focused third run").ConfigureAwait(false);
+        var resolvedConflict = await resolvedConflictResponse.Content.ReadFromJsonAsync<ConflictZoneDetailDto>().ConfigureAwait(false);
+        resolvedConflict.Should().NotBeNull();
+        resolvedConflict!.Items.Should().BeEmpty("le troisième comptage a confirmé la valeur du premier comptage");
+
+        var summaryResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/inventories/summary?shopId={seeded.ShopId}")
+        ).ConfigureAwait(false);
+
+        await summaryResponse.ShouldBeAsync(HttpStatusCode.OK, "inventory summary after focused third run").ConfigureAwait(false);
+        var summary = await summaryResponse.Content.ReadFromJsonAsync<InventorySummaryDto>().ConfigureAwait(false);
+        summary.Should().NotBeNull();
+        summary!.ConflictZones.Should().NotContain(zone => zone.LocationId == seeded.LocationId);
+    }
+
+    [SkippableFact]
     public async Task Locations_ListByShop_ReturnsZonesWithStates()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
@@ -141,6 +312,31 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
         return (shopId, locationId, primaryUserId, secondaryUserId, productEan);
     }
 
+    private async Task<(Guid ShopId, Guid LocationId, Guid PrimaryUserId, Guid SecondaryUserId, string ConflictEan, string StableEan)> SeedInventoryContextWithAdditionalProductAsync()
+    {
+        var shopId = Guid.Empty;
+        var locationId = Guid.Empty;
+        var primaryUserId = Guid.Empty;
+        var secondaryUserId = Guid.Empty;
+
+        const string conflictSku = "SKU-CONFLICT-001";
+        const string conflictEan = "2345678901234";
+        const string stableSku = "SKU-STABLE-001";
+        const string stableEan = "3345678901234";
+
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.CreateShopAsync("Boutique Conflit").ConfigureAwait(false);
+            locationId = await seeder.CreateLocationAsync(shopId, "LOC-CONF", "Zone Conflits").ConfigureAwait(false);
+            primaryUserId = await seeder.CreateShopUserAsync(shopId, "charlie", "Charlie").ConfigureAwait(false);
+            secondaryUserId = await seeder.CreateShopUserAsync(shopId, "diana", "Diana").ConfigureAwait(false);
+            await seeder.CreateProductAsync(shopId, conflictSku, "Produit Conflit", conflictEan).ConfigureAwait(false);
+            await seeder.CreateProductAsync(shopId, stableSku, "Produit Stable", stableEan).ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        return (shopId, locationId, primaryUserId, secondaryUserId, conflictEan, stableEan);
+    }
+
     private static async Task<CompleteInventoryRunResponse?> RunCountAsync(
         HttpClient client,
         (Guid ShopId, Guid LocationId, Guid PrimaryUserId, Guid SecondaryUserId, string ProductEan) seeded,
@@ -148,21 +344,43 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
         short countType,
         decimal quantity)
     {
+        var items = new[]
+        {
+            new CompleteRunItemRequest(seeded.ProductEan, quantity, false)
+        };
+
+        return await RunCountAsync(
+            client,
+            seeded.ShopId,
+            seeded.LocationId,
+            operatorId,
+            countType,
+            items).ConfigureAwait(false);
+    }
+
+    private static async Task<CompleteInventoryRunResponse?> RunCountAsync(
+        HttpClient client,
+        Guid shopId,
+        Guid locationId,
+        Guid operatorId,
+        short countType,
+        IReadOnlyList<CompleteRunItemRequest> items)
+    {
         var startResponse = await client.PostAsJsonAsync(
-            client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
-            new StartRunRequest(seeded.ShopId, operatorId, countType)
+            client.CreateRelativeUri($"/api/inventories/{locationId}/start"),
+            new StartRunRequest(shopId, operatorId, countType)
         ).ConfigureAwait(false);
         await startResponse.ShouldBeAsync(HttpStatusCode.OK, "start run for count").ConfigureAwait(false);
         var started = await startResponse.Content.ReadFromJsonAsync<StartInventoryRunResponse>().ConfigureAwait(false);
         started.Should().NotBeNull();
 
         var completeResponse = await client.PostAsJsonAsync(
-            client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/complete"),
+            client.CreateRelativeUri($"/api/inventories/{locationId}/complete"),
             new CompleteRunRequest(
                 started!.RunId,
                 operatorId,
                 countType,
-                [new CompleteRunItemRequest(seeded.ProductEan, quantity, false)]
+                items.ToArray()
             )
         ).ConfigureAwait(false);
         await completeResponse.ShouldBeAsync(HttpStatusCode.OK, "complete run for count");

@@ -81,7 +81,8 @@ describe('ConflictZoneModal', () => {
       expect(scoped.getByText('Alice')).toBeInTheDocument()
       expect(scoped.getByText('Chloé')).toBeInTheDocument()
       expect(scoped.getByText('6')).toBeInTheDocument()
-      expect(scoped.getByText('-3')).toBeInTheDocument()
+      expect(scoped.getByText('Amplitude')).toBeInTheDocument()
+      expect(scoped.getByText('±3')).toBeInTheDocument()
       const skuLabel = scoped.getByText('SKU')
       expect(skuLabel.parentElement?.textContent).toContain('SKU-111')
     }

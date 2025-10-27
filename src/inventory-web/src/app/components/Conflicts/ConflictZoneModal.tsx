@@ -67,6 +67,20 @@ const getProductName = (item: ConflictZoneItem) => {
   return 'Référence en conflit'
 }
 
+const computeAmplitude = (item: ConflictZoneItem) => {
+  const counts = Array.isArray(item.allCounts) ? item.allCounts : []
+  if (counts.length === 0) {
+    return Math.abs(item.delta)
+  }
+  const quantities = counts.map((count) => count.quantity)
+  if (quantities.length === 0) {
+    return Math.abs(item.delta)
+  }
+  const min = Math.min(...quantities)
+  const max = Math.max(...quantities)
+  return Math.max(0, max - min)
+}
+
 export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: ConflictZoneModalProps) => {
   const [state, setState] = useState<DetailState>({ status: 'idle', detail: null, error: null })
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -266,9 +280,13 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
     }).format(parsed)
   }
 
-  const getDeltaClassName = (delta: number) => {
+  const getDeltaClassName = (delta: number, isAmplitude: boolean) => {
     if (delta === 0) {
       return 'text-slate-600 dark:text-slate-300'
+    }
+
+    if (isAmplitude) {
+      return 'text-amber-600 dark:text-amber-300'
     }
 
     return delta > 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'
@@ -291,6 +309,7 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
       for (const count of item.allCounts ?? []) {
         countsByRun.set(count.runId, count.quantity)
       }
+      const amplitude = computeAmplitude(item)
 
       return (
         <>
@@ -306,9 +325,9 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
             )
           })}
           <section className="conflict-run conflict-run--delta">
-            <p className="conflict-run__title">Écart</p>
-            <p className={clsx('conflict-run__quantity', getDeltaClassName(item.delta))}>
-              {item.delta > 0 ? `+${item.delta}` : item.delta}
+            <p className="conflict-run__title">Amplitude</p>
+            <p className={clsx('conflict-run__quantity', getDeltaClassName(amplitude, true))}>
+              {amplitude > 0 ? `±${amplitude}` : amplitude}
             </p>
           </section>
         </>
@@ -327,7 +346,7 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
         </section>
         <section className="conflict-run conflict-run--delta">
           <p className="conflict-run__title">Écart</p>
-          <p className={clsx('conflict-run__quantity', getDeltaClassName(item.delta))}>
+          <p className={clsx('conflict-run__quantity', getDeltaClassName(item.delta, false))}>
             {item.delta > 0 ? `+${item.delta}` : item.delta}
           </p>
         </section>

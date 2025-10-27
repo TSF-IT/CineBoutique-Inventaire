@@ -1338,7 +1338,7 @@ export const InventorySessionPage = () => {
                   onClick={() => setConflictModalOpen(true)}
                   data-testid="btn-view-conflicts"
                 >
-                  Voir les écarts C1/C2
+                  Voir les écarts
                 </Button>
               </>
             )}

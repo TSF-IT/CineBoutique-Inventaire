@@ -1291,6 +1291,44 @@ VALUES (@Id, @CountLineId, @Status, @Notes, @CreatedAtUtc);
         Guid currentRunId,
         CancellationToken cancellationToken)
     {
+        const string conflictProductsSql = """
+SELECT DISTINCT
+    p."Id"  AS "ProductId",
+    p."Ean" AS "Ean"
+FROM "Conflict" c
+JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
+JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
+JOIN "Product" p ON p."Id" = cl."ProductId"
+WHERE c."ResolvedAtUtc" IS NULL
+  AND cr."LocationId" = @LocationId;
+""";
+
+        var conflictProducts = (await connection
+                .QueryAsync<ConflictProductReference>(
+                    new CommandDefinition(
+                        conflictProductsSql,
+                        new { LocationId = locationId },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false))
+            .ToArray();
+
+        if (conflictProducts.Length == 0)
+        {
+            return;
+        }
+
+        var conflictKeys = conflictProducts
+            .Select(product => BuildProductKey(product.ProductId, product.Ean))
+            .Where(key => !string.IsNullOrWhiteSpace(key))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        if (conflictKeys.Length == 0)
+        {
+            return;
+        }
+
         const string completedRunsSql = """
 SELECT "Id"
 FROM "CountingRun"
@@ -1342,7 +1380,7 @@ GROUP BY cl."CountingRunId", p."Id", p."Ean";
         var hasMatch = previousRunIds.Any(previousRunId =>
         {
             var otherQuantities = quantitiesByRun.GetValueOrDefault(previousRunId, new Dictionary<string, decimal>(StringComparer.Ordinal));
-            return HaveIdenticalQuantities(currentQuantities, otherQuantities);
+            return HaveIdenticalQuantities(currentQuantities, otherQuantities, conflictKeys);
         });
 
         if (!hasMatch)
@@ -1380,12 +1418,13 @@ WHERE "Conflict"."CountLineId" = cl."Id"
                 EqualityComparer<Guid>.Default);
 
     private static bool HaveIdenticalQuantities(
-        Dictionary<string, decimal> current,
-        Dictionary<string, decimal> reference)
+        IReadOnlyDictionary<string, decimal> current,
+        IReadOnlyDictionary<string, decimal> reference,
+        IReadOnlyCollection<string>? relevantKeys = null)
     {
-        var keys = current.Keys
-            .Union(reference.Keys, StringComparer.Ordinal)
-            .ToArray();
+        IEnumerable<string> keys = relevantKeys is { Count: > 0 }
+            ? relevantKeys
+            : current.Keys.Union(reference.Keys, StringComparer.Ordinal);
 
         foreach (var key in keys)
         {
@@ -1429,6 +1468,8 @@ WHERE "Conflict"."CountLineId" = cl."Id"
 
         return productId.ToString("D");
     }
+
+    private sealed record ConflictProductReference(Guid ProductId, string? Ean);
 
     private static async Task<bool> ValidateUserBelongsToShopAsync(
         NpgsqlConnection connection,

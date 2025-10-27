@@ -52,33 +52,66 @@ internal static class ConflictsEndpoints
             }
 
             const string runsSql = """
-WITH active_runs AS (
-  SELECT DISTINCT cr."Id" AS "RunId", cr."CompletedAtUtc"
+WITH conflict_products AS (
+  SELECT DISTINCT p."Id" AS "ProductId"
   FROM "Conflict" c
   JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
   JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
+  JOIN "Product" p ON p."Id" = cl."ProductId"
   WHERE c."ResolvedAtUtc" IS NULL
     AND cr."LocationId" = @LocationId
 ),
-seed_bounds AS (
-  SELECT MIN(ar."CompletedAtUtc") AS "MinCompletedAtUtc"
-  FROM active_runs ar
-),
-conflict_runs AS (
-  SELECT cr."Id" AS "RunId", cr."CountType", cr."CompletedAtUtc"
+candidate_runs AS (
+  SELECT DISTINCT cr."Id"        AS "RunId",
+                  cr."CountType" AS "CountType",
+                  cr."CompletedAtUtc"
   FROM "CountingRun" cr
-  CROSS JOIN seed_bounds sb
+  JOIN "CountLine" cl ON cl."CountingRunId" = cr."Id"
   WHERE cr."LocationId" = @LocationId
     AND cr."CompletedAtUtc" IS NOT NULL
-    AND sb."MinCompletedAtUtc" IS NOT NULL
-    AND cr."CompletedAtUtc" >= sb."MinCompletedAtUtc"
+    AND cl."ProductId" IN (SELECT "ProductId" FROM conflict_products)
+),
+max_count_type AS (
+  SELECT COALESCE(MAX("CountType"), 0) AS "MaxCountType"
+  FROM candidate_runs
+),
+series AS (
+  SELECT generate_series(1, m."MaxCountType") AS "CountType"
+  FROM max_count_type m
+  WHERE m."MaxCountType" > 0
+),
+series_runs AS (
+  SELECT s."CountType",
+         cr."Id"        AS "RunId",
+         cr."CompletedAtUtc"
+  FROM series s
+  CROSS JOIN LATERAL (
+    SELECT cr."Id",
+           cr."CompletedAtUtc"
+    FROM "CountingRun" cr
+    WHERE cr."LocationId" = @LocationId
+      AND cr."CompletedAtUtc" IS NOT NULL
+      AND cr."CountType" = s."CountType"
+    ORDER BY cr."CompletedAtUtc" DESC, cr."Id" DESC
+    LIMIT 1
+  ) cr
+),
+runs_in_scope AS (
+  SELECT DISTINCT "RunId", "CountType", "CompletedAtUtc"
+  FROM (
+    SELECT "RunId", "CountType", "CompletedAtUtc" FROM candidate_runs
+    UNION ALL
+    SELECT "RunId", "CountType", "CompletedAtUtc" FROM series_runs
+  ) scoped
 )
-SELECT cr."RunId", cr."CountType", cr."CompletedAtUtc",
-       COALESCE(su."DisplayName", cr2."OperatorDisplayName") AS "OwnerDisplayName"
-FROM conflict_runs cr
-JOIN "CountingRun" cr2 ON cr2."Id" = cr."RunId"
-LEFT JOIN "ShopUser" su ON su."Id" = cr2."OwnerUserId"
-ORDER BY cr."CompletedAtUtc" ASC, cr."CountType" ASC;
+SELECT rs."RunId",
+       rs."CountType",
+       rs."CompletedAtUtc",
+       COALESCE(su."DisplayName", cr."OperatorDisplayName") AS "OwnerDisplayName"
+FROM runs_in_scope rs
+JOIN "CountingRun" cr ON cr."Id" = rs."RunId"
+LEFT JOIN "ShopUser" su ON su."Id" = cr."OwnerUserId"
+ORDER BY rs."CompletedAtUtc" ASC, rs."CountType" ASC;
 """;
 
             var runRows = (await connection.QueryAsync<ConflictRunHeaderRow>(
@@ -101,41 +134,64 @@ ORDER BY cr."CompletedAtUtc" ASC, cr."CountType" ASC;
             }
 
             const string detailSql = """
-WITH active_runs AS (
-    SELECT DISTINCT cr."Id" AS "RunId", cr."CompletedAtUtc"
+WITH conflict_products AS (
+    SELECT DISTINCT p."Id" AS "ProductId"
     FROM "Conflict" c
     JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
     JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
+    JOIN "Product" p ON p."Id" = cl."ProductId"
     WHERE c."ResolvedAtUtc" IS NULL
       AND cr."LocationId" = @LocationId
 ),
-seed_bounds AS (
-    SELECT MIN(ar."CompletedAtUtc") AS "MinCompletedAtUtc"
-    FROM active_runs ar
-),
-conflict_runs AS (
-    SELECT cr."Id" AS "RunId", cr."CountType", cr."CompletedAtUtc"
+candidate_runs AS (
+    SELECT DISTINCT cr."Id"        AS "RunId",
+                    cr."CountType" AS "CountType",
+                    cr."CompletedAtUtc"
     FROM "CountingRun" cr
-    CROSS JOIN seed_bounds sb
+    JOIN "CountLine" cl ON cl."CountingRunId" = cr."Id"
     WHERE cr."LocationId" = @LocationId
       AND cr."CompletedAtUtc" IS NOT NULL
-      AND sb."MinCompletedAtUtc" IS NOT NULL
-      AND cr."CompletedAtUtc" >= sb."MinCompletedAtUtc"
+      AND cl."ProductId" IN (SELECT "ProductId" FROM conflict_products)
 ),
-conflict_products AS (
-    SELECT DISTINCT cl."ProductId" AS "ProductId"
-    FROM "Conflict" c
-    JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
-    JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
-    WHERE c."ResolvedAtUtc" IS NULL
-      AND cr."LocationId" = @LocationId
+max_count_type AS (
+    SELECT COALESCE(MAX("CountType"), 0) AS "MaxCountType"
+    FROM candidate_runs
+),
+series AS (
+    SELECT generate_series(1, m."MaxCountType") AS "CountType"
+    FROM max_count_type m
+    WHERE m."MaxCountType" > 0
+),
+series_runs AS (
+    SELECT s."CountType",
+           cr."Id"        AS "RunId",
+           cr."CompletedAtUtc"
+    FROM series s
+    CROSS JOIN LATERAL (
+        SELECT cr."Id",
+               cr."CompletedAtUtc"
+        FROM "CountingRun" cr
+        WHERE cr."LocationId" = @LocationId
+          AND cr."CompletedAtUtc" IS NOT NULL
+          AND cr."CountType" = s."CountType"
+        ORDER BY cr."CompletedAtUtc" DESC, cr."Id" DESC
+        LIMIT 1
+    ) cr
+),
+runs_in_scope AS (
+    SELECT DISTINCT "RunId", "CountType", "CompletedAtUtc"
+    FROM (
+        SELECT "RunId", "CountType", "CompletedAtUtc" FROM candidate_runs
+        UNION ALL
+        SELECT "RunId", "CountType", "CompletedAtUtc" FROM series_runs
+    ) scoped
 ),
 product_runs AS (
     SELECT
         cp."ProductId",
-        cr."RunId"
+        rs."RunId"
     FROM conflict_products cp
-    CROSS JOIN conflict_runs cr
+    CROSS JOIN runs_in_scope rs
 )
 SELECT
     pr."ProductId" AS "ProductId",
