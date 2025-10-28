@@ -262,18 +262,18 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
             client.CreateRelativeUri($"/api/locations?shopId={seeded.ShopId}")
         ).ConfigureAwait(false);
 
-        await initialLocations.ShouldBeAsync(HttpStatusCode.OK, "list locations without lines").ConfigureAwait(false);
+        await initialLocations.ShouldBeAsync(HttpStatusCode.OK, "list locations right after start").ConfigureAwait(false);
         var locations = await initialLocations.Content.ReadFromJsonAsync<LocationListItemDto[]>().ConfigureAwait(false);
         locations.Should().NotBeNull();
         locations!.Should().ContainSingle(loc => loc.Id == seeded.LocationId);
         var location = locations.Single(loc => loc.Id == seeded.LocationId);
-        location.IsBusy.Should().BeFalse("aucun article scanné");
-        location.ActiveRunId.Should().BeNull();
+        location.IsBusy.Should().BeTrue("un comptage vient de démarrer");
+        location.ActiveRunId.Should().Be(started!.RunId);
         location.CountStatuses.Should().NotBeNull();
         location.CountStatuses.Any(status => status.CountType == 1 && status.Status == LocationCountStatus.InProgress)
-            .Should().BeFalse();
+            .Should().BeTrue();
 
-        await InsertCountLineAsync(started!.RunId, seeded.ProductEan, 1m).ConfigureAwait(false);
+        await InsertCountLineAsync(started.RunId, seeded.ProductEan, 1m).ConfigureAwait(false);
 
         var updatedResponse = await client.GetAsync(
             client.CreateRelativeUri($"/api/locations?shopId={seeded.ShopId}")
