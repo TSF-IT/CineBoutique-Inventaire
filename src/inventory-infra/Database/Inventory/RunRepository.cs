@@ -117,7 +117,6 @@ JOIN "Location" l ON l."Id" = cr."LocationId"
 LEFT JOIN "ShopUser" su ON su."Id" = cr."OwnerUserId" AND su."ShopId" = l."ShopId"
 WHERE l."ShopId" = @ShopId
   AND cr."CompletedAtUtc" IS NULL
-  AND EXISTS (SELECT 1 FROM "CountLine" cl WHERE cl."CountingRunId" = cr."Id")
 {(hasIsActiveColumn ? "  AND cr.\"IsActive\" = TRUE\n" : string.Empty)}ORDER BY cr."StartedAtUtc" DESC;
 """;
 

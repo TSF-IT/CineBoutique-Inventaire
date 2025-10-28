@@ -517,7 +517,6 @@ WHERE "Id" = @Id AND "ShopId" = @ShopId;
 {InventoryOperatorSqlHelper.AppendJoinClause(locationOperatorSql.JoinClause)}
     WHERE cr.""CompletedAtUtc"" IS NULL
       AND (@CountType IS NULL OR cr.""CountType"" = @CountType){activeRunsFilterClause}
-      AND EXISTS (SELECT 1 FROM ""CountLine"" cl WHERE cl.""CountingRunId"" = cr.""Id"")
     ORDER BY {activeRunsOrderByColumns}
 )
 SELECT
@@ -575,7 +574,6 @@ FROM ""CountingRun"" cr
 {InventoryOperatorSqlHelper.AppendJoinClause(openRunsOperatorSql.JoinClause)}
 WHERE cr.""CompletedAtUtc"" IS NULL
   AND cr.""LocationId"" = ANY(@LocationIds::uuid[])
-  AND EXISTS (SELECT 1 FROM ""CountLine"" cl WHERE cl.""CountingRunId"" = cr.""Id"")
 ORDER BY cr.""LocationId"", cr.""CountType"", cr.""StartedAtUtc"" DESC;";
 
         var completedRunsOperatorSql = InventoryOperatorSqlHelper.BuildOperatorSqlFragments("cr", "owner", columnsState);

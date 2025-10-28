@@ -1,5 +1,5 @@
 import { clsx } from 'clsx'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { MouseEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
@@ -197,7 +197,6 @@ export const HomePage = () => {
   const [resettingInventory, setResettingInventory] = useState(false)
   const [resetError, setResetError] = useState<string | null>(null)
   const [lastResetSummary, setLastResetSummary] = useState<ResetShopInventoryResponse | null>(null)
-  const lastLoadedShopIdRef = useRef<string | null>(null)
   const onError = useCallback((error: unknown) => {
     if (isProductNotFoundError(error)) {
       console.warn('[home] produit introuvable ignoré', error)
@@ -287,7 +286,6 @@ export const HomePage = () => {
     }
 
     if (!shopId) {
-      lastLoadedShopIdRef.current = null
       setSummaryData(null)
       setLocationsData([])
       setLocationSummariesData([])
@@ -295,11 +293,6 @@ export const HomePage = () => {
       return
     }
 
-    if (lastLoadedShopIdRef.current === shopId) {
-      return
-    }
-
-    lastLoadedShopIdRef.current = shopId
     void executeSummary()
     void executeLocations()
     void executeLocationSummaries()
@@ -353,13 +346,17 @@ export const HomePage = () => {
   const completedRunDetails = useMemo(() => displaySummary?.completedRunDetails ?? [], [displaySummary])
   const conflictZones = useMemo(() => displaySummary?.conflictZones ?? [], [displaySummary])
   const locations = useMemo(() => locationsData ?? [], [locationsData])
+  const activeLocations = useMemo(
+    () => locations.filter((location) => !location.disabled),
+    [locations],
+  )
   const locationSummaries = useMemo(() => locationSummariesData ?? [], [locationSummariesData])
   const completedZonesFromLocations = useMemo(() => {
-    if (locations.length === 0) {
+    if (activeLocations.length === 0) {
       return 0
     }
 
-    return locations.reduce((acc, location) => {
+    return activeLocations.reduce((acc, location) => {
       const statusesByType = new Map<number, Location['countStatuses'][number]>()
       for (const status of location.countStatuses ?? []) {
         const type = typeof status.countType === 'number' ? (status.countType as CountType) : null
@@ -371,14 +368,14 @@ export const HomePage = () => {
       const isZoneCompleted = ZONE_COMPLETION_TYPES.every((type) => statusesByType.get(type)?.status === 'completed')
       return acc + (isZoneCompleted ? 1 : 0)
     }, 0)
-  }, [locations])
+  }, [activeLocations])
 
   const completedCountsFromLocations = useMemo(() => {
-    if (locations.length === 0) {
+    if (activeLocations.length === 0) {
       return 0
     }
 
-    return locations.reduce((total, location) => {
+    return activeLocations.reduce((total, location) => {
       const statuses = location.countStatuses ?? []
       const completedForLocation = ZONE_COMPLETION_TYPES.reduce((count, type) => {
         const status = statuses.find((item) => Number(item.countType) === Number(type))
@@ -387,19 +384,19 @@ export const HomePage = () => {
 
       return total + completedForLocation
     }, 0)
-  }, [locations])
+  }, [activeLocations])
 
   const completedZones = useMemo(() => {
-    if (locations.length > 0) {
+    if (activeLocations.length > 0) {
       return completedZonesFromLocations
     }
 
     const summaryValue = typeof displaySummary?.completedRuns === 'number' ? displaySummary.completedRuns : 0
     return Math.max(summaryValue, 0)
-  }, [completedZonesFromLocations, displaySummary, locations.length])
+  }, [activeLocations.length, completedZonesFromLocations, displaySummary])
 
   const completedCounts = useMemo(() => {
-    if (locations.length > 0) {
+    if (activeLocations.length > 0) {
       return completedCountsFromLocations
     }
 
@@ -409,12 +406,12 @@ export const HomePage = () => {
       }
       return total
     }, 0)
-  }, [completedCountsFromLocations, completedRunDetails, locations.length])
+  }, [activeLocations.length, completedCountsFromLocations, completedRunDetails])
 
-  const totalExpected = useMemo(() => locations.length, [locations.length])
+  const totalExpected = useMemo(() => activeLocations.length, [activeLocations.length])
   const totalExpectedCounts = useMemo(() => {
-    if (locations.length > 0) {
-      return locations.length * ZONE_COMPLETION_TYPES.length
+    if (activeLocations.length > 0) {
+      return activeLocations.length * ZONE_COMPLETION_TYPES.length
     }
 
     if (locationSummaries.length > 0) {
@@ -427,7 +424,7 @@ export const HomePage = () => {
     }
 
     return completedCounts > 0 ? completedCounts : 0
-  }, [completedCounts, displaySummary, locationSummaries.length, locations.length])
+  }, [activeLocations.length, completedCounts, displaySummary, locationSummaries.length])
   const hasOpenRuns = openRunsCount > 0
   const hasConflicts = conflictCount > 0
   const completedZonesLabel = useMemo(() => {
@@ -462,8 +459,17 @@ export const HomePage = () => {
   const canOpenCompletedRunsModal = completedRunDetails.length > 0
   const canOpenConflicts = hasConflicts && conflictZones.length > 0
   const hasLocationSummaries = locationSummaries.length > 0
+  const effectiveZoneTarget = useMemo(() => {
+    if (totalExpected > 0) {
+      return totalExpected
+    }
+    if (completedZones > 0) {
+      return completedZones
+    }
+    return 0
+  }, [completedZones, totalExpected])
   const isInventoryComplete =
-    totalExpected > 0 && completedZones >= totalExpected && !hasConflicts && !hasOpenRuns
+    effectiveZoneTarget > 0 && completedZones >= effectiveZoneTarget && !hasConflicts && !hasOpenRuns
   const selectedUserId = selectedUser?.id?.trim() ?? null
   const selectedUserDisplayName = selectedUser?.displayName?.trim() ?? null
   const ownedRunIds = useMemo(() => {

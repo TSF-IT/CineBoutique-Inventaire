@@ -54,7 +54,7 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
     }
 
     [SkippableFact]
-    public async Task StartRun_WithoutLines_DoesNotAppearInSummary()
+    public async Task StartRun_WithoutLines_AppearsInSummary()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
 
@@ -77,8 +77,11 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
         await summaryResponse.ShouldBeAsync(HttpStatusCode.OK, "get summary without lines");
         var summary = await summaryResponse.Content.ReadFromJsonAsync<InventorySummaryDto>().ConfigureAwait(false);
         summary.Should().NotBeNull();
-        summary!.OpenRuns.Should().Be(0);
-        summary.OpenRunDetails.Should().NotContain(detail => detail.RunId == started!.RunId);
+        summary!.OpenRuns.Should().BeGreaterOrEqualTo(1);
+        summary.OpenRunDetails.Should()
+            .NotBeNull();
+        summary.OpenRunDetails.Should()
+            .Contain(detail => detail.RunId == started!.RunId && detail.LocationId == seeded.LocationId);
     }
 
     [SkippableFact]

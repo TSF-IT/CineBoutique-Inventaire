@@ -300,6 +300,92 @@ describe('HomePage', () => {
     })
   })
 
+  it('considère l’inventaire terminé lorsque toutes les zones actives sont désactivées', async () => {
+    const summary: InventorySummary = {
+      activeSessions: 0,
+      openRuns: 0,
+      completedRuns: 1,
+      conflicts: 0,
+      lastActivityUtc: null,
+      openRunDetails: [],
+      completedRunDetails: [
+        {
+          runId: 'run-final',
+          locationId: 'loc-done',
+          locationCode: 'Z1',
+          locationLabel: 'Zone 1',
+          countType: 1,
+          ownerDisplayName: 'Alice',
+          ownerUserId: defaultUser.id,
+          startedAtUtc: '2024-01-01T08:00:00Z',
+          completedAtUtc: '2024-01-01T08:10:00Z',
+        },
+      ],
+      conflictZones: [],
+    }
+
+    const locations: Location[] = [
+      {
+        id: 'loc-1',
+        code: 'Z1',
+        label: 'Zone 1',
+        disabled: false,
+        isBusy: false,
+        busyBy: null,
+        activeRunId: null,
+        activeCountType: null,
+        activeStartedAtUtc: null,
+        countStatuses: [
+          {
+            countType: 1,
+            status: 'completed',
+            runId: 'run-c1',
+            ownerDisplayName: 'Alice',
+            ownerUserId: defaultUser.id,
+            startedAtUtc: new Date('2024-01-01T08:00:00Z'),
+            completedAtUtc: new Date('2024-01-01T08:05:00Z'),
+          },
+          {
+            countType: 2,
+            status: 'completed',
+            runId: 'run-c2',
+            ownerDisplayName: 'Bob',
+            ownerUserId: 'user-bob',
+            startedAtUtc: new Date('2024-01-01T08:10:00Z'),
+            completedAtUtc: new Date('2024-01-01T08:20:00Z'),
+          },
+        ],
+      },
+      ...Array.from({ length: 4 }, (_, index) => ({
+        id: `loc-disabled-${index}`,
+        code: `Z${index + 2}`,
+        label: `Zone ${index + 2}`,
+        disabled: true,
+        isBusy: false,
+        busyBy: null,
+        activeRunId: null,
+        activeCountType: null,
+        activeStartedAtUtc: null,
+        countStatuses: [],
+      })),
+    ]
+
+    mockedFetchSummary.mockResolvedValue(summary)
+    mockedFetchLocations.mockResolvedValue(locations)
+    mockedFetchLocationSummaries.mockResolvedValue([])
+
+    renderHomePage()
+
+    expect(await screen.findByText(/Inventaire terminé/i)).toBeInTheDocument()
+    const startButtons = screen.getAllByText(/Débuter un comptage/i, { selector: 'button' })
+    expect(startButtons.length).toBeGreaterThan(0)
+    expect(
+      startButtons.some(
+        (button) => button.hasAttribute('disabled') || button.getAttribute('aria-disabled') === 'true'
+      )
+    ).toBe(true)
+  })
+
   it("permet de reprendre un comptage appartenant à l'utilisateur courant", async () => {
     const startedAt = new Date('2024-01-01T10:00:00Z')
     const summary: InventorySummary = {
