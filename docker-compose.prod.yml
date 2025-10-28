@@ -11,7 +11,8 @@ services:
       DISABLE_MIGRATIONS: "false"
       AppSettings__SeedOnStartup: "false"
       DISABLE_SERILOG: "false"
-      ASPNETCORE_URLS: http://0.0.0.0:8080 # <— important
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      AppSettings__CatalogEndpointsPublic: "true"
     ports:
       - "8080:8080" # <— expose l’API sur l’hôte
     healthcheck:
@@ -42,3 +43,5 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
