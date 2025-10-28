@@ -2036,7 +2036,7 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
       </div>
       <form
         data-testid="location-create-form"
-        className="flex flex-col gap-4 sm:flex-row"
+        className="flex flex-col gap-4 sm:flex-row sm:items-end"
         onSubmit={handleCreateLocation}
       >
         <Input
@@ -2060,7 +2060,7 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
           containerClassName="flex-1"
           autoComplete="off"
         />
-        <Button type="submit" disabled={creatingLocation} className="py-3">
+        <Button type="submit" disabled={creatingLocation} className="sm:self-end">
           {creatingLocation ? "Création…" : "Ajouter"}
         </Button>
       </form>

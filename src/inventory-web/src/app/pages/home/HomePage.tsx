@@ -653,12 +653,21 @@ export const HomePage = () => {
   return (
     <Page
       headerAction={
-        <BackToShopSelectionLink
-          to="/select-user"
-          label="Retour au choix de l’utilisateur"
-          onClick={handleChangeShop}
-          className="sm:self-start"
-        />
+        <div className="flex items-center gap-3 sm:self-start">
+          <BackToShopSelectionLink
+            to="/select-user"
+            label="Retour au choix de l’utilisateur"
+            onClick={handleChangeShop}
+          />
+          <Link
+            to="/admin"
+            className="inline-flex h-11 w-11 min-h-[var(--tap-min)] items-center justify-center rounded-full border border-(--cb-border-soft) bg-(--cb-surface-soft) text-lg font-semibold text-brand-600 shadow-panel-soft transition-all duration-200 hover:-translate-y-0.5 hover:text-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2 focus-visible:ring-offset-(--cb-surface) dark:text-brand-200 dark:hover:text-brand-100"
+            aria-label="Accéder à l’espace administrateur"
+          >
+            <span aria-hidden="true">⚙️</span>
+            <span className="sr-only">Accéder à l’espace administrateur</span>
+          </Link>
+        </div>
       }
     >
       <section className="flex flex-col gap-4">
@@ -948,26 +957,6 @@ export const HomePage = () => {
         >
           Débuter un comptage
         </Button>
-        <Link
-          to="/admin"
-          className="group flex w-full items-center justify-between gap-4 rounded-3xl border border-(--cb-border-soft) bg-(--cb-surface-soft) px-5 py-4 text-left shadow-panel-soft transition hover:border-brand-300 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 dark:border-(--cb-border-soft) dark:bg-(--cb-surface-soft) dark:hover:border-brand-500/40 dark:hover:bg-slate-800/70"
-        >
-          <span className="flex items-center gap-3">
-            <span
-              aria-hidden="true"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-brand-100 text-lg text-brand-600 transition group-hover:bg-brand-200 dark:bg-brand-500/20 dark:text-brand-100"
-            >
-              ⚙️
-            </span>
-            <span className="flex flex-col">
-              <span className="text-base font-semibold text-(--cb-text)">Espace administrateur</span>
-              <span className="text-xs text-(--cb-muted)">Gérez les comptes, zones et paramétrages avancés.</span>
-            </span>
-          </span>
-          <span aria-hidden="true" className="text-xl text-brand-500 transition group-hover:translate-x-1 dark:text-brand-200">
-            →
-          </span>
-        </Link>
       </div>
 
       <OpenRunsModal
