@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { useEffect } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import userEvent from '@testing-library/user-event'
 
 import { ThemeProvider } from '../../theme/ThemeProvider'
 import { InventoryProvider, useInventory } from '../contexts/InventoryContext'
@@ -149,6 +150,38 @@ const fetchLocationSummariesMock = vi.hoisted(() =>
   }),
 )
 
+const productsCountCardState = vi.hoisted(() => ({
+  current: { count: 25, hasCatalog: true },
+}))
+
+vi.mock('@/components/products/ProductsCountCard', () => {
+  const React = require('react')
+  return {
+    ProductsCountCard: ({ onStateChange, className }: { onStateChange?: (state: { count: number; hasCatalog: boolean } | null) => void; className?: string }) => {
+      const { count } = productsCountCardState.current
+      const [notified, setNotified] = React.useState(false)
+
+      React.useEffect(() => {
+        onStateChange?.(productsCountCardState.current)
+        setNotified(true)
+      }, [onStateChange])
+
+      return (
+        <div data-testid="mock-products-count-card" data-ready={notified ? 'yes' : 'no'} className={className}>
+          {count > 0 ? (
+            <>
+              <p>Catalogue produits</p>
+              <p>{count}</p>
+            </>
+          ) : (
+            <p>Aucun produit dans le catalogue</p>
+          )}
+        </div>
+      )
+    },
+  }
+})
+
 const defaultUser: ShopUser = {
   id: 'user-paris',
   shopId: 'shop-123',
@@ -195,6 +228,7 @@ describe('HomePage', () => {
   beforeEach(() => {
     localStorage.clear()
     localStorage.setItem('cb.shop', JSON.stringify(testShop))
+    productsCountCardState.current = { count: 25, hasCatalog: true }
   })
 
   it("affiche les indicateurs et le bouton d'accès", async () => {
@@ -247,4 +281,5 @@ describe('HomePage', () => {
     expect(await screen.findByText('Aucune zone terminée')).toBeInTheDocument()
     expect(await screen.findByText('Aucun comptage en cours pour cette boutique.')).toBeInTheDocument()
   })
+
 })

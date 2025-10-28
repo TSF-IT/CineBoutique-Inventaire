@@ -20,6 +20,7 @@ internal static class SessionsEndpoints
         MapCompleteEndpoint(app);
         MapReleaseEndpoint(app);
         MapRestartEndpoint(app);
+        MapResetEndpoint(app);
 
         return app;
     }
@@ -126,6 +127,27 @@ internal static class SessionsEndpoints
         {
             op.Summary = "Force la clôture des comptages actifs pour une zone et un type donnés.";
             op.Description = "Permet de terminer les runs ouverts sur une zone pour relancer un nouveau comptage.";
+            return op;
+        });
+    }
+
+    private static void MapResetEndpoint(IEndpointRouteBuilder app)
+    {
+        app.MapPost("/api/shops/{shopId:guid}/inventories/reset", (
+            Guid shopId,
+            HttpContext httpContext,
+            ResetShopInventoryHandler handler,
+            CancellationToken cancellationToken) =>
+                handler.HandleAsync(shopId, httpContext, cancellationToken))
+        .AddEndpointFilter<RequireOperatorHeadersFilter>()
+        .WithName("ResetShopInventory")
+        .WithTags("Inventories")
+        .Produces<ResetShopInventoryResponse>(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .WithOpenApi(op =>
+        {
+            op.Summary = "Réinitialise l’inventaire pour une boutique.";
+            op.Description = "Supprime tous les comptages et conflits associés à la boutique pour démarrer un nouvel inventaire.";
             return op;
         });
     }

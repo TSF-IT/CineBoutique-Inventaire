@@ -1049,6 +1049,144 @@ WHERE "LocationId" = @LocationId
         };
     }
 
+    public async Task<ResetShopInventoryResult> ResetShopInventoryAsync(Guid shopId, CancellationToken cancellationToken)
+    {
+        await using var connection = await _connectionFactory.CreateOpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            const string shopNameSql = """
+SELECT "Name"
+FROM "Shop"
+WHERE "Id" = @ShopId
+LIMIT 1;
+""";
+
+            var shopName = await connection.ExecuteScalarAsync<string?>(
+                    new CommandDefinition(
+                        shopNameSql,
+                        new { ShopId = shopId },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            const string runsSql = """
+SELECT
+    cr."Id"                AS "RunId",
+    cr."InventorySessionId" AS "SessionId",
+    cr."LocationId"        AS "LocationId"
+FROM "CountingRun" cr
+JOIN "Location" l ON l."Id" = cr."LocationId"
+WHERE l."ShopId" = @ShopId;
+""";
+
+            var runRows = (await connection.QueryAsync<ShopRunRow>(
+                    new CommandDefinition(
+                        runsSql,
+                        new { ShopId = shopId },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false))
+                .ToArray();
+
+            if (runRows.Length == 0)
+            {
+                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+                return new ResetShopInventoryResult
+                {
+                    ShopId = shopId,
+                    ShopName = shopName,
+                    RunsRemoved = 0,
+                    CountLinesRemoved = 0,
+                    ConflictsRemoved = 0,
+                    SessionsRemoved = 0,
+                    LocationsAffected = 0
+                };
+            }
+
+            var runIds = runRows.Select(row => row.RunId).Distinct().ToArray();
+            var sessionIds = runRows.Select(row => row.SessionId).Distinct().ToArray();
+            var locationsAffected = runRows.Select(row => row.LocationId).Distinct().Count();
+
+            const string deleteConflictsSql = """
+DELETE FROM "Conflict"
+USING "CountLine" cl
+WHERE "Conflict"."CountLineId" = cl."Id"
+  AND cl."CountingRunId" = ANY(@RunIds);
+""";
+            var conflictsRemoved = await connection.ExecuteAsync(
+                    new CommandDefinition(
+                        deleteConflictsSql,
+                        new { RunIds = runIds },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            const string deleteCountLinesSql = """
+DELETE FROM "CountLine"
+WHERE "CountingRunId" = ANY(@RunIds);
+""";
+            var countLinesRemoved = await connection.ExecuteAsync(
+                    new CommandDefinition(
+                        deleteCountLinesSql,
+                        new { RunIds = runIds },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            const string deleteRunsSql = """
+DELETE FROM "CountingRun"
+WHERE "Id" = ANY(@RunIds);
+""";
+            var runsRemoved = await connection.ExecuteAsync(
+                    new CommandDefinition(
+                        deleteRunsSql,
+                        new { RunIds = runIds },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            var sessionsRemoved = 0;
+            if (sessionIds.Length > 0)
+            {
+                const string deleteSessionsSql = """
+DELETE FROM "InventorySession"
+WHERE "Id" = ANY(@SessionIds);
+""";
+                sessionsRemoved = await connection.ExecuteAsync(
+                        new CommandDefinition(
+                            deleteSessionsSql,
+                            new { SessionIds = sessionIds },
+                            transaction,
+                            cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+            }
+
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+            return new ResetShopInventoryResult
+            {
+                ShopId = shopId,
+                ShopName = shopName,
+                RunsRemoved = runsRemoved,
+                CountLinesRemoved = countLinesRemoved,
+                ConflictsRemoved = conflictsRemoved,
+                SessionsRemoved = sessionsRemoved,
+                LocationsAffected = locationsAffected
+            };
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            throw;
+        }
+        finally
+        {
+            await transaction.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
     private static decimal SumQuantities(IReadOnlyList<SanitizedCountLineModel> items)
     {
         decimal total = 0m;

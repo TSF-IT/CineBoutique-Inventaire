@@ -777,3 +777,34 @@ export const releaseInventoryRun = async (
     throw error
   }
 }
+
+export interface ResetShopInventoryResponse {
+  shopId: string
+  shopName?: string | null
+  zonesCleared: number
+  runsCleared: number
+  linesCleared: number
+  conflictsCleared: number
+  sessionsClosed: number
+}
+
+export const resetShopInventory = async (shopId: string): Promise<ResetShopInventoryResponse> => {
+  const url = `${API_BASE}/shops/${encodeURIComponent(shopId)}/inventories/reset`
+  const response = (await http(url, {
+    method: 'POST',
+  })) as ResetShopInventoryResponse | null
+
+  if (!response) {
+    return {
+      shopId,
+      shopName: null,
+      zonesCleared: 0,
+      runsCleared: 0,
+      linesCleared: 0,
+      conflictsCleared: 0,
+      sessionsClosed: 0,
+    }
+  }
+
+  return response
+}

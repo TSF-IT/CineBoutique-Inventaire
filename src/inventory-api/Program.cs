@@ -106,6 +106,7 @@ builder.Services.AddScoped<StartInventoryRunHandler>();
 builder.Services.AddScoped<CompleteInventoryRunHandler>();
 builder.Services.AddScoped<ReleaseInventoryRunHandler>();
 builder.Services.AddScoped<RestartInventoryRunHandler>();
+builder.Services.AddScoped<ResetShopInventoryHandler>();
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<RequireOperatorHeadersFilter>();

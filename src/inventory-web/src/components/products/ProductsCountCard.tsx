@@ -1,12 +1,15 @@
 import { clsx } from 'clsx'
 import React from 'react'
 
+type ProductsCountState = { count: number; hasCatalog: boolean }
+
 type Props = {
   shopId: string
   onOpen?: () => void
+  onStateChange?: (state: ProductsCountState | null) => void
 } & React.ComponentProps<'button'>
 
-export function ProductsCountCard({ shopId, onOpen, onClick, className, ...rest }: Props) {
+export function ProductsCountCard({ shopId, onOpen, onClick, onStateChange, className, ...rest }: Props) {
   const [state, setState] = React.useState<{ count: number; hasCatalog: boolean } | null>(null)
   const [loading, setLoading] = React.useState(true)
 
@@ -17,17 +20,29 @@ export function ProductsCountCard({ shopId, onOpen, onClick, className, ...rest 
         const res = await fetch(`/api/shops/${shopId}/products/count`)
         if (!res.ok) throw new Error('count failed')
         const json = await res.json()
-        if (!aborted) setState(json)
+        if (!aborted) {
+          const nextState: ProductsCountState = {
+            count: typeof json?.count === 'number' ? json.count : 0,
+            hasCatalog: Boolean(json?.hasCatalog),
+          }
+          setState(nextState)
+          onStateChange?.(nextState)
+        }
       } catch {
-        if (!aborted) setState({ count: 0, hasCatalog: false })
+        if (!aborted) {
+          const fallback: ProductsCountState = { count: 0, hasCatalog: false }
+          setState(fallback)
+          onStateChange?.(fallback)
+        }
       } finally {
         if (!aborted) setLoading(false)
       }
     })()
     return () => {
       aborted = true
+      onStateChange?.(null)
     }
-  }, [shopId])
+  }, [onStateChange, shopId])
 
   const count = state?.count ?? 0
   const hasData = count > 0

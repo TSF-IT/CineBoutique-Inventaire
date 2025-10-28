@@ -39,3 +39,20 @@ public sealed class StartInventoryRunResponse
 }
 
 public sealed record RestartRunRequest(Guid OwnerUserId, short CountType);
+
+public sealed class ResetShopInventoryResponse
+{
+    public Guid ShopId { get; init; }
+
+    public string? ShopName { get; init; }
+
+    public int ZonesCleared { get; init; }
+
+    public int RunsCleared { get; init; }
+
+    public int LinesCleared { get; init; }
+
+    public int ConflictsCleared { get; init; }
+
+    public int SessionsClosed { get; init; }
+}

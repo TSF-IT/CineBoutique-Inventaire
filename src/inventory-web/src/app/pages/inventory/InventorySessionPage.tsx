@@ -89,8 +89,8 @@ const sanitizeEanForSubmission = (value: string | null | undefined): string | nu
     return null
   }
 
-  const collapsed = normalized.replace(/\s+/g, ' ').toUpperCase()
-  return collapsed.length > 0 ? collapsed : null
+  const collapsed = normalized.replace(/[\s.-]+/g, '')
+  return collapsed.length > 0 ? collapsed.toUpperCase() : null
 }
 
 const isValidEanForSubmission = (ean: string | null | undefined): ean is string => {
@@ -102,7 +102,7 @@ const isValidEanForSubmission = (ean: string | null | undefined): ean is string 
     return false
   }
 
-  return /^[\p{L}\p{N}'#°._ -]+$/u.test(ean)
+  return /^[\p{L}\p{N}'#°._-]+$/u.test(ean)
 }
 
 const dedupeConflictItems = (items: ConflictZoneItem[]): ConflictZoneItem[] => {
@@ -963,11 +963,17 @@ export const InventorySessionPage = () => {
   }, [handleCompleteRun])
 
   const handleCancelCompletionConfirmation = useCallback(() => {
-    completionConfirmationDialogRef.current?.close()
+    const dialog = completionConfirmationDialogRef.current
+    if (dialog && typeof dialog.close === 'function') {
+      dialog.close()
+    }
   }, [])
 
   const handleConfirmCompletionConfirmation = useCallback(() => {
-    completionConfirmationDialogRef.current?.close()
+    const dialog = completionConfirmationDialogRef.current
+    if (dialog && typeof dialog.close === 'function') {
+      dialog.close()
+    }
     void handleCompleteRun()
   }, [handleCompleteRun])
 
@@ -1185,19 +1191,43 @@ export const InventorySessionPage = () => {
               {' '}
               {selectedUserDisplayName ?? '–'}
             </p>
-          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
           <Button
             type="button"
             variant="secondary"
             size="sm"
-            className="self-start"
             onClick={handleOpenLogsDialog}
             aria-haspopup="dialog"
             data-testid="btn-open-logs"
           >
             Journal des actions ({logs.length})
           </Button>
+          {!isConflictResolutionMode && (
+            <>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => navigate('/inventory/scan-camera')}
+                data-testid="btn-scan-camera"
+              >
+                Scan caméra
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => setCatalogueOpen(true)}
+                data-testid="btn-open-catalogue"
+                disabled={!shopId}
+              >
+                Ajout via catalogue
+              </Button>
+            </>
+          )}
         </div>
+      </div>
         {isConflictResolutionMode ? (
           <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-100">
             <p className="font-semibold">Références en conflit</p>
@@ -1305,29 +1335,6 @@ export const InventorySessionPage = () => {
             <span className="text-sm text-slate-600 dark:text-slate-400">{items.length} références</span>
           </div>
           <div className="flex flex-wrap items-center gap-3 sm:justify-end">
-            {!isConflictResolutionMode && (
-              <>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => navigate('/inventory/scan-camera')}
-                  data-testid="btn-scan-camera"
-                >
-                  Scan caméra
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => setCatalogueOpen(true)}
-                  data-testid="btn-open-catalogue"
-                  disabled={!shopId}
-                >
-                  Ajout via catalogue
-                </Button>
-              </>
-            )}
             {conflictZoneSummary && (
               <>
                 <span className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-500/50 dark:bg-rose-500/10 dark:text-rose-200">

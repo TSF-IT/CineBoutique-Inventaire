@@ -163,3 +163,20 @@ public sealed class RestartRunResult
 
     public RestartRunInfo? Run { get; set; }
 }
+
+public sealed class ResetShopInventoryResult
+{
+    public Guid ShopId { get; set; }
+
+    public string? ShopName { get; set; }
+
+    public int RunsRemoved { get; set; }
+
+    public int CountLinesRemoved { get; set; }
+
+    public int ConflictsRemoved { get; set; }
+
+    public int SessionsRemoved { get; set; }
+
+    public int LocationsAffected { get; set; }
+}

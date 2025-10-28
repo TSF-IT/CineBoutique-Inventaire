@@ -90,3 +90,12 @@ internal sealed class CountLineReference
     {
     }
 }
+
+internal sealed class ShopRunRow
+{
+    public Guid RunId { get; set; }
+
+    public Guid SessionId { get; set; }
+
+    public Guid LocationId { get; set; }
+}

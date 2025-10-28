@@ -18,6 +18,7 @@ internal static class InventoryEndpoints
         app.MapSessionsEndpoints();
         app.MapLocationsEndpoints();
         app.MapConflictsEndpoints();
+        app.MapReportsEndpoints();
 
         return app;
     }

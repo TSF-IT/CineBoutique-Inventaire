@@ -12,4 +12,6 @@ public interface ISessionRepository
     Task<ReleaseRunResult> ReleaseRunAsync(ReleaseRunParameters parameters, CancellationToken cancellationToken);
 
     Task<RestartRunResult> RestartRunAsync(RestartRunParameters parameters, CancellationToken cancellationToken);
+
+    Task<ResetShopInventoryResult> ResetShopInventoryAsync(Guid shopId, CancellationToken cancellationToken);
 }

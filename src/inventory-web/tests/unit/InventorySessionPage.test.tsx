@@ -127,7 +127,7 @@ describe('InventorySessionPage - ajout manuel', () => {
     inventoryStateOverride = {}
   })
 
-  it("ajoute immédiatement un produit inconnu lorsqu’un code non référencé est validé manuellement", async () => {
+  it("signale un produit inconnu lorsqu’un code non référencé est saisi", async () => {
     const httpError = Object.assign(new Error('HTTP 404'), {
       status: 404,
       url: 'http://localhost/api/products/12345678',
@@ -143,23 +143,16 @@ describe('InventorySessionPage - ajout manuel', () => {
     fireEvent.keyDown(input, { key: 'Enter' })
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Ajouter manuellement' })).not.toBeDisabled()
+      expect(
+        screen.getByText('Code 12345678 introuvable dans la liste des produits à inventorier.'),
+      ).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Ajouter manuellement' }))
-
-    await waitFor(() => {
-      expect(startInventoryRunMock).toHaveBeenCalled()
-      expect(addOrIncrementItemMock).toHaveBeenCalledWith(
-        {
-          ean: '12345678',
-          name: 'Produit inconnu EAN 12345678',
-        },
-        { isManual: true },
-      )
-    })
+    expect(screen.queryByRole('button', { name: /Ajouter manuellement/i })).not.toBeInTheDocument()
+    expect(addOrIncrementItemMock).not.toHaveBeenCalled()
+    expect(startInventoryRunMock).not.toHaveBeenCalled()
     expect(logEventMock).not.toHaveBeenCalled()
-    expect((input as HTMLInputElement).value).toBe('')
+    expect((input as HTMLInputElement).value).toBe('12345678')
   })
 
   it("n'initialise pas de comptage lorsqu'aucune zone n'est sélectionnée", async () => {

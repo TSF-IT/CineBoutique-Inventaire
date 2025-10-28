@@ -1,8 +1,15 @@
 import { clsx } from 'clsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { MouseEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
-import { fetchInventorySummary, fetchLocationSummaries, fetchLocations } from '../../api/inventoryApi'
+import {
+  fetchInventorySummary,
+  fetchLocationSummaries,
+  fetchLocations,
+  resetShopInventory,
+} from '../../api/inventoryApi'
+import type { ResetShopInventoryResponse } from '../../api/inventoryApi'
 import { Card } from '../../components/Card'
 import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
 import { ErrorPanel } from '../../components/ErrorPanel'
@@ -18,9 +25,11 @@ import type { ConflictZoneSummary, InventorySummary, Location, OpenRunSummary } 
 import { CountType } from '../../types/inventory'
 
 import { BackToShopSelectionLink } from '@/app/components/BackToShopSelectionLink'
+import { modalOverlayClassName } from '@/app/components/Modal/modalOverlayClassName'
 import { ProductsCountCard } from '@/components/products/ProductsCountCard'
 import { ProductsModal } from '@/components/products/ProductsModal'
 import type { HttpError } from '@/lib/api/http'
+import { API_BASE } from '@/lib/api/config'
 import { useShop } from '@/state/ShopContext'
 import type { LocationSummary } from '@/types/summary'
 
@@ -181,6 +190,12 @@ export const HomePage = () => {
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
   const [selectedZone, setSelectedZone] = useState<ConflictZoneSummary | null>(null)
   const [showProducts, setShowProducts] = useState(false)
+  const [catalogProductCount, setCatalogProductCount] = useState<number | null>(null)
+  const [catalogWarningOpen, setCatalogWarningOpen] = useState(false)
+  const [resetModalOpen, setResetModalOpen] = useState(false)
+  const [resettingInventory, setResettingInventory] = useState(false)
+  const [resetError, setResetError] = useState<string | null>(null)
+  const [lastResetSummary, setLastResetSummary] = useState<ResetShopInventoryResponse | null>(null)
   const lastLoadedShopIdRef = useRef<string | null>(null)
   const onError = useCallback((error: unknown) => {
     if (isProductNotFoundError(error)) {
@@ -202,6 +217,19 @@ export const HomePage = () => {
     }
   }, [])
 
+  const handleProductsCardStateChange = useCallback((nextState: { count: number; hasCatalog: boolean } | null) => {
+    setCatalogProductCount(typeof nextState?.count === 'number' ? nextState.count : null)
+  }, [])
+
+  const handleCloseCatalogWarning = useCallback(() => {
+    setCatalogWarningOpen(false)
+  }, [])
+
+  const handleNavigateToCatalogImport = useCallback(() => {
+    setCatalogWarningOpen(false)
+    navigate('/admin')
+  }, [navigate])
+
   const {
     data: summaryData,
     loading: summaryLoading,
@@ -218,7 +246,7 @@ export const HomePage = () => {
     if (!shopId) {
       return Promise.resolve<Location[]>([])
     }
-    return fetchLocations(shopId)
+    return fetchLocations(shopId, { includeDisabled: true })
   }, [shopId])
 
   const loadSummaries = useCallback(() => {
@@ -286,6 +314,10 @@ export const HomePage = () => {
     shopId,
   ])
 
+  useEffect(() => {
+    setLastResetSummary(null)
+  }, [shopId])
+
   const handleRetry = useCallback(() => {
     if (!shopId) {
       return
@@ -301,8 +333,12 @@ export const HomePage = () => {
   }, [clearSession, navigate])
 
   const handleStartInventory = useCallback(() => {
+    if (catalogProductCount === 0) {
+      setCatalogWarningOpen(true)
+      return
+    }
     navigate('/inventory/location')
-  }, [navigate])
+  }, [catalogProductCount, navigate])
 
   const combinedError = summaryError ?? locationsError ?? locationSummariesError
   const combinedLoading = summaryLoading || locationsLoading || locationSummariesLoading
@@ -425,6 +461,8 @@ export const HomePage = () => {
   const canOpenCompletedRunsModal = completedRunDetails.length > 0
   const canOpenConflicts = hasConflicts && conflictZones.length > 0
   const hasLocationSummaries = locationSummaries.length > 0
+  const isInventoryComplete =
+    totalExpected > 0 && completedZones >= totalExpected && !hasConflicts && !hasOpenRuns
   const selectedUserId = selectedUser?.id?.trim() ?? null
   const selectedUserDisplayName = selectedUser?.displayName?.trim() ?? null
   const ownedRunIds = useMemo(() => {
@@ -455,6 +493,51 @@ export const HomePage = () => {
       setCompletedRunsModalOpen(true)
     }
   }, [canOpenCompletedRunsModal])
+
+  const handleDownloadReport = useCallback((url: string | null) => {
+    if (!url) {
+      return
+    }
+    window.open(url, '_blank', 'noopener')
+  }, [])
+
+  const handleOpenResetModal = useCallback(() => {
+    setResetError(null)
+    setResetModalOpen(true)
+  }, [])
+
+  const handleCloseResetModal = useCallback(() => {
+    if (resettingInventory) {
+      return
+    }
+    setResetModalOpen(false)
+  }, [resettingInventory])
+
+  const handleConfirmReset = useCallback(async () => {
+    if (!shopId) {
+      return
+    }
+    setResetError(null)
+    setResettingInventory(true)
+    try {
+      const result = await resetShopInventory(shopId)
+      setResetModalOpen(false)
+      setLastResetSummary(result)
+      clearSession()
+      await executeSummary()
+      await executeLocations()
+      await executeLocationSummaries()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Impossible de relancer l’inventaire.'
+      setResetError(message)
+    } finally {
+      setResettingInventory(false)
+    }
+  }, [clearSession, executeLocationSummaries, executeLocations, executeSummary, shopId])
+
+  const dismissResetSummary = useCallback(() => {
+    setLastResetSummary(null)
+  }, [])
 
   const openConflictModal = useCallback((zone: ConflictZoneSummary) => {
     setSelectedZone(zone)
@@ -539,6 +622,33 @@ export const HomePage = () => {
 
   const shopDisplayName = shop?.name?.trim()
   const currentYear = new Date().getFullYear()
+  const zonesReportUrl = useMemo(() => {
+    if (!shopId) {
+      return null
+    }
+    return `${API_BASE}/shops/${encodeURIComponent(shopId)}/reports/inventory/zones.csv`
+  }, [shopId])
+  const skuReportUrl = useMemo(() => {
+    if (!shopId) {
+      return null
+    }
+    return `${API_BASE}/shops/${encodeURIComponent(shopId)}/reports/inventory/sku.csv`
+  }, [shopId])
+  const resetSummaryMessage = useMemo(() => {
+    if (!lastResetSummary) {
+      return null
+    }
+    const { zonesCleared, runsCleared, linesCleared, conflictsCleared } = lastResetSummary
+    const formatCount = (value: number, singular: string, plural: string) =>
+      `${value} ${value > 1 ? plural : singular}`
+    const parts = [
+      formatCount(zonesCleared, 'zone réinitialisée', 'zones réinitialisées'),
+      formatCount(runsCleared, 'comptage supprimé', 'comptages supprimés'),
+      formatCount(linesCleared, 'ligne supprimée', 'lignes supprimées'),
+      formatCount(conflictsCleared, 'conflit supprimé', 'conflits supprimés'),
+    ]
+    return parts.join(' · ')
+  }, [lastResetSummary])
 
   return (
     <Page
@@ -571,17 +681,75 @@ export const HomePage = () => {
         </div>
       </section>
 
+      {lastResetSummary && resetSummaryMessage && (
+        <div className="flex items-start justify-between gap-4 rounded-3xl border border-brand-300 bg-brand-50 px-5 py-4 text-sm text-brand-700 shadow-panel-soft dark:border-brand-500/40 dark:bg-brand-500/10 dark:text-brand-100">
+          <div>
+            <p className="font-semibold">Inventaire relancé</p>
+            <p className="mt-1">{resetSummaryMessage}</p>
+          </div>
+          <button
+            type="button"
+            onClick={dismissResetSummary}
+            className="rounded-full border border-brand-200 p-1 text-brand-600 transition hover:bg-brand-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:border-brand-500/40 dark:text-brand-100 dark:hover:bg-brand-500/20"
+            aria-label="Fermer le message de confirmation de reset"
+          >
+            <span aria-hidden="true">✕</span>
+          </button>
+        </div>
+      )}
+
       <Card className="flex flex-col gap-4">
         <SectionTitle>État de l’inventaire</SectionTitle>
         {combinedLoading && <LoadingIndicator label="Chargement des indicateurs" />}
         {!combinedLoading && errorDetails && (
           <ErrorPanel title={errorDetails.title} details={errorDetails.details} actionLabel="Réessayer" onAction={handleRetry} />
         )}
-        {!combinedLoading && !errorDetails && displaySummary && (
+        {!combinedLoading && !errorDetails && isInventoryComplete && (
+          <div className="flex flex-col items-center gap-6 rounded-3xl border border-emerald-300 bg-emerald-50/80 px-6 py-8 text-center shadow-panel-soft dark:border-emerald-500/40 dark:bg-emerald-500/10">
+            <div className="flex flex-col items-center gap-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.4em] text-emerald-700/80 dark:text-emerald-200/80">
+                Inventaire
+              </p>
+              <h2 className="flex items-center gap-2 text-3xl font-semibold tracking-tight text-emerald-800 dark:text-emerald-100">
+                Inventaire terminé <span aria-hidden="true">🎉</span>
+              </h2>
+              <p className="max-w-2xl text-sm text-emerald-700/90 dark:text-emerald-100/80">
+                Toutes les zones ont été comptées et aucun conflit n’est en attente. Vous pouvez exporter les rapports
+                ou relancer un nouvel inventaire pour repartir de zéro.
+              </p>
+            </div>
+            <div className="flex w-full flex-col gap-3 sm:flex-row sm:justify-center">
+              <Button
+                variant="secondary"
+                fullWidth
+                onClick={() => handleDownloadReport(zonesReportUrl)}
+                disabled={!zonesReportUrl}
+              >
+                Rapport par zones
+              </Button>
+              <Button
+                variant="secondary"
+                fullWidth
+                onClick={() => handleDownloadReport(skuReportUrl)}
+                disabled={!skuReportUrl}
+              >
+                Rapport par Code/SKU
+              </Button>
+            </div>
+            <Button
+              className="w-full px-8 py-3 text-base sm:w-auto"
+              onClick={handleOpenResetModal}
+            >
+              Relancer un inventaire
+            </Button>
+          </div>
+        )}
+        {!combinedLoading && !errorDetails && !isInventoryComplete && displaySummary && (
           <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
             {shopId && (
               <ProductsCountCard
                 shopId={shopId}
+                onStateChange={handleProductsCardStateChange}
                 onOpen={() => setShowProducts(true)}
                 className="border-product-300 bg-product-50/80 dark:border-product-500/40 dark:bg-product-500/10"
               />
@@ -758,7 +926,7 @@ export const HomePage = () => {
             Les indicateurs ne sont pas disponibles pour le moment.
           </p>
         )}
-        {!combinedLoading && !errorDetails && !hasLocationSummaries && (
+        {!combinedLoading && !errorDetails && !isInventoryComplete && !hasLocationSummaries && (
           <div className="rounded-2xl border border-dashed border-(--cb-border-soft) bg-(--cb-surface-soft) p-5 text-sm text-(--cb-muted) shadow-panel-soft">
             <p className="font-medium text-(--cb-text)">
               Aucun comptage en cours pour cette boutique.
@@ -776,6 +944,7 @@ export const HomePage = () => {
           fullWidth
           className="py-5 text-lg"
           onClick={handleStartInventory}
+          disabled={isInventoryComplete}
         >
           Débuter un comptage
         </Button>
@@ -824,6 +993,141 @@ export const HomePage = () => {
       {shopId && (
         <ProductsModal open={showProducts} onClose={() => setShowProducts(false)} shopId={shopId} />
       )}
+      <CatalogWarningModal
+        open={catalogWarningOpen}
+        onClose={handleCloseCatalogWarning}
+        onNavigateToImport={handleNavigateToCatalogImport}
+      />
+      <ResetInventoryModal
+        open={resetModalOpen}
+        loading={resettingInventory}
+        error={resetError}
+        onCancel={handleCloseResetModal}
+        onConfirm={handleConfirmReset}
+      />
     </Page>
+  )
+}
+
+interface ResetInventoryModalProps {
+  open: boolean
+  loading: boolean
+  error: string | null
+  onConfirm: () => void
+  onCancel: () => void
+}
+
+interface CatalogWarningModalProps {
+  open: boolean
+  onClose: () => void
+  onNavigateToImport: () => void
+}
+
+const CatalogWarningModal = ({ open, onClose, onNavigateToImport }: CatalogWarningModalProps) => {
+  const handleOverlayClick = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      if (event.target === event.currentTarget) {
+        onClose()
+      }
+    },
+    [onClose],
+  )
+
+  if (!open) {
+    return null
+  }
+
+  return (
+    <div className={modalOverlayClassName} role="presentation" onClick={handleOverlayClick}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="catalog-warning-title"
+        className="relative flex w-full max-w-lg flex-col gap-4 rounded-3xl bg-white p-6 text-left shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:bg-slate-900"
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-4 top-4 rounded-full border border-slate-200 p-1 text-slate-500 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          aria-label="Fermer l’alerte catalogue"
+        >
+          <span aria-hidden="true">✕</span>
+        </button>
+        <div className="space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-brand-600 dark:text-brand-200">Information</p>
+          <h2 id="catalog-warning-title" className="text-2xl font-semibold text-slate-900 dark:text-white">
+            Catalogue requis
+          </h2>
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            Pour une meilleure expérience, veuillez préalablement importer un catalogue produits avant de démarrer un
+            comptage.
+          </p>
+        </div>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
+          <Button variant="secondary" onClick={onClose}>
+            Fermer
+          </Button>
+          <Button onClick={onNavigateToImport}>Accéder à l’espace administrateur</Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const ResetInventoryModal = ({ open, loading, error, onConfirm, onCancel }: ResetInventoryModalProps) => {
+  const handleOverlayClick = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      if (event.target === event.currentTarget) {
+        onCancel()
+      }
+    },
+    [onCancel],
+  )
+
+  if (!open) {
+    return null
+  }
+
+  return (
+    <div className={modalOverlayClassName} role="presentation" onClick={handleOverlayClick}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reset-inventory-title"
+        className="relative flex w-full max-w-lg flex-col gap-4 rounded-3xl bg-white p-6 text-left shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:bg-slate-900"
+      >
+        <button
+          type="button"
+          onClick={onCancel}
+          className="absolute right-4 top-4 rounded-full border border-slate-200 p-1 text-slate-500 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+          aria-label="Fermer la confirmation de reset"
+        >
+          <span aria-hidden="true">✕</span>
+        </button>
+        <div className="space-y-3">
+          <p className="text-xs font-semibold uppercase tracking-[0.3em] text-brand-600 dark:text-brand-200">Confirmation</p>
+          <h2 id="reset-inventory-title" className="text-2xl font-semibold text-slate-900 dark:text-white">
+            Relancer un inventaire
+          </h2>
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            Cette action supprimera tous les comptages, lignes et conflits de l’inventaire en cours pour cette boutique.
+            Cette opération est irréversible. Confirmez-vous le reset&nbsp;?
+          </p>
+          {error && (
+            <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
+              {error}
+            </p>
+          )}
+        </div>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
+          <Button variant="secondary" onClick={onCancel} disabled={loading}>
+            Annuler
+          </Button>
+          <Button variant="danger" onClick={onConfirm} disabled={loading}>
+            {loading ? 'Réinitialisation...' : 'Confirmer le reset'}
+          </Button>
+        </div>
+      </div>
+    </div>
   )
 }
