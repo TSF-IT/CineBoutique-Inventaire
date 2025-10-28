@@ -1,9 +1,8 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import userEvent from '@testing-library/user-event'
 
 import { ThemeProvider } from '../../theme/ThemeProvider'
 import { InventoryProvider, useInventory } from '../contexts/InventoryContext'
@@ -155,13 +154,12 @@ const productsCountCardState = vi.hoisted(() => ({
 }))
 
 vi.mock('@/components/products/ProductsCountCard', () => {
-  const React = require('react')
   return {
     ProductsCountCard: ({ onStateChange, className }: { onStateChange?: (state: { count: number; hasCatalog: boolean } | null) => void; className?: string }) => {
       const { count } = productsCountCardState.current
-      const [notified, setNotified] = React.useState(false)
+      const [notified, setNotified] = useState(false)
 
-      React.useEffect(() => {
+      useEffect(() => {
         onStateChange?.(productsCountCardState.current)
         setNotified(true)
       }, [onStateChange])

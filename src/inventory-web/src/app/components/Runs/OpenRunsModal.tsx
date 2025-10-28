@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import type { OpenRunSummary } from '../../types/inventory'
 import { modalOverlayClassName } from '../Modal/modalOverlayClassName'
+import { ModalPortal } from '../Modal/ModalPortal'
 
 import { formatZoneTitle, resolveZoneLabel, toValidLocationCode } from './runLocation'
 
@@ -183,15 +184,16 @@ export const OpenRunsModal = ({ open, openRuns, onClose, ownedRunIds, onResumeRu
   }
 
   return (
-    <div className={modalOverlayClassName} role="presentation" onClick={handleOverlayClick}>
-      <div
-        ref={containerRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="runs-overview-modal-title"
-        className="relative flex w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:bg-slate-900"
-        tabIndex={-1}
-      >
+    <ModalPortal>
+      <div className={modalOverlayClassName} role="presentation" onClick={handleOverlayClick}>
+        <div
+          ref={containerRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="runs-overview-modal-title"
+          className="relative flex w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:bg-slate-900"
+          tabIndex={-1}
+        >
         <header className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-5 py-4 dark:border-slate-700 dark:bg-slate-900/70">
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-brand-600 dark:text-brand-200">
@@ -253,6 +255,7 @@ export const OpenRunsModal = ({ open, openRuns, onClose, ownedRunIds, onResumeRu
           </section>
         </div>
       </div>
-    </div>
+      </div>
+    </ModalPortal>
   )
 }

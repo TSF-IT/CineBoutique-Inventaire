@@ -1,7 +1,8 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
 
-import { __setInventoryHttpContextSnapshotForTests } from '@/app/contexts/inventoryHttpContext'
 import http, { type HttpError } from './http'
+
+import { __setInventoryHttpContextSnapshotForTests } from '@/app/contexts/inventoryHttpContext'
 
 const API_URL = '/api/test'
 

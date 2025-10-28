@@ -296,12 +296,6 @@ interface ProductLookupConflictProblemLike {
   matches?: ProductLookupConflictMatchLike[]
 }
 
-interface ProductDetailsDtoLike {
-  sku?: string | null
-  ean?: string | null
-  name?: string | null
-}
-
 const sanitizeProductCandidate = (candidate: unknown): ProductCandidate | null => {
   if (!candidate || typeof candidate !== 'object') {
     return null
@@ -592,7 +586,7 @@ export const fetchProductByEan = async (ean: string): Promise<Product> => {
     const baseName = pickFirstString(baseRecord, ['name', 'Name'])
     const baseEan = pickFirstString(baseRecord, ['ean', 'Ean'])
     const baseGroup = pickFirstString(baseRecord, ['group', 'Group'])
-    let resolvedSubGroup = pickFirstString(baseRecord, ['subGroup', 'SubGroup'])
+    const resolvedSubGroup = pickFirstString(baseRecord, ['subGroup', 'SubGroup'])
 
     let detailsGroup: string | null = null
     let detailsSubGroup: string | null = null

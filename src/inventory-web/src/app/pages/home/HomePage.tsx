@@ -26,10 +26,11 @@ import { CountType } from '../../types/inventory'
 
 import { BackToShopSelectionLink } from '@/app/components/BackToShopSelectionLink'
 import { modalOverlayClassName } from '@/app/components/Modal/modalOverlayClassName'
+import { ModalPortal } from '@/app/components/Modal/ModalPortal'
 import { ProductsCountCard } from '@/components/products/ProductsCountCard'
 import { ProductsModal } from '@/components/products/ProductsModal'
-import type { HttpError } from '@/lib/api/http'
 import { API_BASE } from '@/lib/api/config'
+import type { HttpError } from '@/lib/api/http'
 import { useShop } from '@/state/ShopContext'
 import type { LocationSummary } from '@/types/summary'
 
@@ -1027,13 +1028,14 @@ const CatalogWarningModal = ({ open, onClose, onNavigateToImport }: CatalogWarni
   }
 
   return (
-    <div className={modalOverlayClassName} role="presentation" onClick={handleOverlayClick}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="catalog-warning-title"
-        className="relative flex w-full max-w-lg flex-col gap-4 rounded-3xl bg-white p-6 text-left shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:bg-slate-900"
-      >
+    <ModalPortal>
+      <div className={modalOverlayClassName} role="presentation" onClick={handleOverlayClick}>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="catalog-warning-title"
+          className="relative flex w-full max-w-lg flex-col gap-4 rounded-3xl bg-white p-6 text-left shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:bg-slate-900"
+        >
         <button
           type="button"
           onClick={onClose}
@@ -1059,7 +1061,8 @@ const CatalogWarningModal = ({ open, onClose, onNavigateToImport }: CatalogWarni
           <Button onClick={onNavigateToImport}>Accéder à l’espace administrateur</Button>
         </div>
       </div>
-    </div>
+      </div>
+    </ModalPortal>
   )
 }
 
@@ -1078,13 +1081,14 @@ const ResetInventoryModal = ({ open, loading, error, onConfirm, onCancel }: Rese
   }
 
   return (
-    <div className={modalOverlayClassName} role="presentation" onClick={handleOverlayClick}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="reset-inventory-title"
-        className="relative flex w-full max-w-lg flex-col gap-4 rounded-3xl bg-white p-6 text-left shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:bg-slate-900"
-      >
+    <ModalPortal>
+      <div className={modalOverlayClassName} role="presentation" onClick={handleOverlayClick}>
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reset-inventory-title"
+          className="relative flex w-full max-w-lg flex-col gap-4 rounded-3xl bg-white p-6 text-left shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:bg-slate-900"
+        >
         <button
           type="button"
           onClick={onCancel}
@@ -1117,6 +1121,7 @@ const ResetInventoryModal = ({ open, loading, error, onConfirm, onCancel }: Rese
           </Button>
         </div>
       </div>
-    </div>
+      </div>
+    </ModalPortal>
   )
 }

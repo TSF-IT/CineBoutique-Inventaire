@@ -7,6 +7,7 @@ import { useOrientation } from '../../hooks/useOrientation'
 import type { ConflictZoneDetail, ConflictZoneItem, ConflictZoneSummary } from '../../types/inventory'
 import { LoadingIndicator } from '../LoadingIndicator'
 import { modalOverlayClassName } from '../Modal/modalOverlayClassName'
+import { ModalPortal } from '../Modal/ModalPortal'
 import { Button } from '../ui/Button'
 
 interface ConflictZoneModalProps {
@@ -364,15 +365,16 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
   }
 
   return (
-    <div className={modalOverlayClassName} role="presentation" onClick={handleOverlayClick}>
-      <div
-        ref={containerRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="conflict-zone-modal-title"
-        className={modalClassName}
-        tabIndex={-1}
-      >
+    <ModalPortal>
+      <div className={modalOverlayClassName} role="presentation" onClick={handleOverlayClick}>
+        <div
+          ref={containerRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="conflict-zone-modal-title"
+          className={modalClassName}
+          tabIndex={-1}
+        >
         <header className="modal-header">
           <div>
             <p className="modal-subtitle">Zone en conflit</p>
@@ -452,6 +454,7 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
           </div>
         </footer>
       </div>
-    </div>
+      </div>
+    </ModalPortal>
   )
 }

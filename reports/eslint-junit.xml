@@ -1,0 +1,369 @@
+<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\eslint.config.js">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\eslint.config.js" classname="C:\DEV\CineBoutique-Inventaire\eslint.config" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\eslint.config.js">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\eslint.config.js" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\eslint.config" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\playwright.config.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\playwright.config.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\playwright.config" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\postcss.config.js">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\postcss.config.js" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\postcss.config" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\setupTests.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\setupTests.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\setupTests" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\App.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\App.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\App" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\api\shops.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\api\shops.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\api\shops" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\AppRoutes.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\AppRoutes.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\AppRoutes" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\__tests__\AppRouting.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\__tests__\AppRouting.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\__tests__\AppRouting.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\__tests__\HomePage.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\__tests__\HomePage.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\__tests__\HomePage.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\__tests__\InventoryWorkflow.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\__tests__\InventoryWorkflow.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\__tests__\InventoryWorkflow.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\__tests__\SelectShopPage.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\__tests__\SelectShopPage.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\__tests__\SelectShopPage.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\__tests__\responsiveLayout.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\__tests__\responsiveLayout.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\__tests__\responsiveLayout.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\api\adminApi.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\api\adminApi.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\api\adminApi" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\api\inventoryApi.test.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\api\inventoryApi.test.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\api\inventoryApi.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\api\inventoryApi.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\api\inventoryApi.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\api\inventoryApi" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\api\shopUsers.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\api\shopUsers.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\api\shopUsers" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\AppErrorBoundary.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\AppErrorBoundary.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\AppErrorBoundary" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\BackToShopSelectionLink.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\BackToShopSelectionLink.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\BackToShopSelectionLink" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\BarcodeScanner.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\BarcodeScanner.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\BarcodeScanner" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Card.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Card.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Card" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Conflicts\ConflictZoneModal.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Conflicts\ConflictZoneModal.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Conflicts\ConflictZoneModal.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Conflicts\ConflictZoneModal.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Conflicts\ConflictZoneModal.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Conflicts\ConflictZoneModal" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\EmptyState.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\EmptyState.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\EmptyState" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\ErrorPanel.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\ErrorPanel.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\ErrorPanel" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\LoadingIndicator.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\LoadingIndicator.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\LoadingIndicator" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\MobileActionBar.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\MobileActionBar.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\MobileActionBar" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Modal\ModalPortal.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Modal\ModalPortal.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Modal\ModalPortal" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Modal\modalOverlayClassName.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Modal\modalOverlayClassName.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Modal\modalOverlayClassName" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Page.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Page.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Page" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\PageShell.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\PageShell.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\PageShell" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Runs\CompletedRunsModal.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Runs\CompletedRunsModal.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Runs\CompletedRunsModal.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Runs\CompletedRunsModal.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Runs\CompletedRunsModal.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Runs\CompletedRunsModal" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Runs\OpenRunsModal.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Runs\OpenRunsModal.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Runs\OpenRunsModal.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Runs\OpenRunsModal.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Runs\OpenRunsModal.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Runs\OpenRunsModal" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Runs\runLocation.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Runs\runLocation.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Runs\runLocation" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\SectionTitle.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\SectionTitle.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\SectionTitle" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\SlidingPanel.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\SlidingPanel.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\SlidingPanel" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Stepper.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Stepper.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\Stepper" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\SwipeActionItem.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\SwipeActionItem.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\SwipeActionItem" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\ThemeToggle.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\ThemeToggle.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\ThemeToggle" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\inventory\ScannedRow.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\inventory\ScannedRow.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\inventory\ScannedRow" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\ui\Button.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\ui\Button.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\ui\Button" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\ui\FileUploadField.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\ui\FileUploadField.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\ui\FileUploadField" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\ui\Input.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\ui\Input.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\ui\Input" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="1" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\InventoryContext.tsx">
+<testcase time="0" name="org.eslint.import/order" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\InventoryContext"><failure message="There should be at least one empty line between import groups"><![CDATA[line 4, col 1, Warning - There should be at least one empty line between import groups (import/order)]]></failure></testcase>
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\inventoryHttpContext.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\inventoryHttpContext.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\inventoryHttpContext" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\hooks\__tests__\useSwipeBackNavigation.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\hooks\__tests__\useSwipeBackNavigation.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\hooks\__tests__\useSwipeBackNavigation.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\hooks\useAsync.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\hooks\useAsync.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\hooks\useAsync" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\hooks\useOrientation.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\hooks\useOrientation.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\hooks\useOrientation" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\hooks\useSwipeBackNavigation.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\hooks\useSwipeBackNavigation.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\hooks\useSwipeBackNavigation" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\lib\selectionStorage.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\lib\selectionStorage.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\lib\selectionStorage" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\lib\useSelections.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\lib\useSelections.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\lib\useSelections" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\SelectUserPage.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\SelectUserPage.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\SelectUserPage" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\AdminLayout.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\AdminLayout.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\AdminLayout" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\AdminLocationsPage.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\AdminLocationsPage.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\AdminLocationsPage" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\AdminQuickActions.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\AdminQuickActions.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\AdminQuickActions" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\__tests__\AdminLayout.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\__tests__\AdminLayout.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\__tests__\AdminLayout.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\__tests__\AdminLocationsPage.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\__tests__\AdminLocationsPage.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\__tests__\AdminLocationsPage.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\debug\ScanSimulationPage.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\debug\ScanSimulationPage.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\debug\ScanSimulationPage" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\home\HomePage.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\home\HomePage.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\home\HomePage.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\home\HomePage.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\home\HomePage.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\home\HomePage" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\InventoryCountTypeStep.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\InventoryCountTypeStep.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\InventoryCountTypeStep" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\InventoryLayout.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\InventoryLayout.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\InventoryLayout" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\InventoryLocationStep.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\InventoryLocationStep.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\InventoryLocationStep" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\InventorySessionPage.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\InventorySessionPage.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\InventorySessionPage" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\ScanCameraPage.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\ScanCameraPage.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\ScanCameraPage" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\__tests__\InventoryLayout.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\__tests__\InventoryLayout.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\__tests__\InventoryLayout.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\__tests__\InventoryLocationStep.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\__tests__\InventoryLocationStep.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\__tests__\InventoryLocationStep.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\__tests__\InventorySessionPage.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\__tests__\InventorySessionPage.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\__tests__\InventorySessionPage.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\__tests__\ScanCameraPage.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\__tests__\ScanCameraPage.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\inventory\__tests__\ScanCameraPage.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\select-shop\SelectShopPage.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\select-shop\SelectShopPage.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\select-shop\SelectShopPage.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\select-shop\SelectShopPage.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\select-shop\SelectShopPage.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\select-shop\SelectShopPage" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\select-shop\entities.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\select-shop\entities.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\select-shop\entities" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\providers\AppProviders.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\providers\AppProviders.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\providers\AppProviders" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\router\RequireInventorySession.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\router\RequireInventorySession.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\router\RequireInventorySession" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\router\RequireShop.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\router\RequireShop.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\router\RequireShop" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\router\RequireUser.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\router\RequireUser.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\router\RequireUser" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\types\inventory.test.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\types\inventory.test.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\types\inventory.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\types\inventory.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\types\inventory.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\types\inventory" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\utils\locationDisplay.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\utils\locationDisplay.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\utils\locationDisplay" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\utils\theme.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\utils\theme.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\utils\theme" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\components\products\ProductsCountCard.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\components\products\ProductsCountCard.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\components\products\ProductsCountCard" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\components\products\ProductsModal.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\components\products\ProductsModal.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\components\products\ProductsModal" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\components\products\__tests__\ProductsCountCard.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\components\products\__tests__\ProductsCountCard.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\components\products\__tests__\ProductsCountCard.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\components\products\__tests__\ProductsModal.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\components\products\__tests__\ProductsModal.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\components\products\__tests__\ProductsModal.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\admin\AdminProductsPage.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\admin\AdminProductsPage.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\admin\AdminProductsPage" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\import\ProductImportPage.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\import\ProductImportPage.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\import\ProductImportPage" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\import\csvEncoding.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\import\csvEncoding.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\import\csvEncoding" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\import\csvMapping.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\import\csvMapping.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\import\csvMapping" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\products\BarcodeCameraButton.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\products\BarcodeCameraButton.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\products\BarcodeCameraButton" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\products\ProductDetailsPage.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\products\ProductDetailsPage.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\products\ProductDetailsPage" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\products\ProductScanSearch.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\products\ProductScanSearch.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\products\ProductScanSearch" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\products\attributeBadges.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\products\attributeBadges.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\features\products\attributeBadges" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\hooks\useProductSuggest.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\hooks\useProductSuggest.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\hooks\useProductSuggest" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\hooks\useProductSuggestions.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\hooks\useProductSuggestions.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\hooks\useProductSuggestions" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\hooks\useProductsCount.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\hooks\useProductsCount.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\hooks\useProductsCount" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\hooks\useProductsSearch.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\hooks\useProductsSearch.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\hooks\useProductsSearch" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\hooks\useScanRejectionFeedback.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\hooks\useScanRejectionFeedback.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\hooks\useScanRejectionFeedback" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\lib\api\config.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\lib\api\config.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\lib\api\config" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\lib\api\http.test.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\lib\api\http.test.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\lib\api\http.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\lib\api\http.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\lib\api\http.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\lib\api\http" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\lib\selectedUserStorage.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\lib\selectedUserStorage.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\lib\selectedUserStorage" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\lib\shopStorage.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\lib\shopStorage.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\lib\shopStorage" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\main.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\main.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\main" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\pwa\sw-register.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\pwa\sw-register.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\pwa\sw-register" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\shims\react-window.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\shims\react-window.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\shims\react-window" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\state\ShopContext.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\state\ShopContext.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\state\ShopContext" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\theme\ThemeProvider.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\theme\ThemeProvider.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\theme\ThemeProvider" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\types\shop.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\types\shop.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\types\shop" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\types\summary.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\types\summary.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\types\summary" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\types\user.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\types\user.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\types\user" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tailwind.config.js">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tailwind.config.js" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tailwind.config" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\e2e\https-server.mjs">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\e2e\https-server.mjs" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\e2e\https-server" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\e2e\scan-camera.spec.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\e2e\scan-camera.spec.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\e2e\scan-camera.spec" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\e2e\scan-fallback.spec.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\e2e\scan-fallback.spec.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\e2e\scan-fallback.spec" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\e2e\scanned-items-order.spec.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\e2e\scanned-items-order.spec.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\e2e\scanned-items-order.spec" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\e2e\scanner-barcode-detector.spec.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\e2e\scanner-barcode-detector.spec.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\e2e\scanner-barcode-detector.spec" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\unit\CompletedRunsModal.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\unit\CompletedRunsModal.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\unit\CompletedRunsModal.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\unit\InventorySessionPage.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\unit\InventorySessionPage.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\unit\InventorySessionPage.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\unit\SelectShopPage.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\unit\SelectShopPage.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\tests\unit\SelectShopPage.test" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\vite.config.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\vite.config.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\vite.config" />
+</testsuite>
+</testsuites>

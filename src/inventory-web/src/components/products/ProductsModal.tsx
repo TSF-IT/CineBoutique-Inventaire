@@ -2,6 +2,7 @@ import React from "react";
 import { FixedSizeList as VirtualList } from "react-window";
 
 import { modalOverlayClassName } from "@/app/components/Modal/modalOverlayClassName";
+import { ModalPortal } from "@/app/components/Modal/ModalPortal";
 
 const GRID_TEMPLATE_CLASS =
   "grid grid-cols-[minmax(140px,1fr)_minmax(120px,1fr)_minmax(260px,1.6fr)] sm:grid-cols-[minmax(160px,1fr)_minmax(140px,1fr)_minmax(360px,2fr)]";
@@ -177,7 +178,7 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
     [onClose, onSelect, pendingSelectionId]
   );
 
-  const items = data?.items ?? [];
+  const items = React.useMemo(() => data?.items ?? [], [data]);
   const hasSubGroup = React.useMemo(
     () => items.some((item) => typeof item?.subGroup === "string" && item.subGroup.trim().length > 0),
     [items],
@@ -327,15 +328,16 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
   if (!open) return null;
 
   return (
-    <div className={modalOverlayClassName} role="presentation" onClick={handleOverlayClick}>
-      <div
-        ref={containerRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="products-modal-title"
-        className="relative flex w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-product-600 dark:bg-slate-900"
-        tabIndex={-1}
-      >
+    <ModalPortal>
+      <div className={modalOverlayClassName} role="presentation" onClick={handleOverlayClick}>
+        <div
+          ref={containerRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="products-modal-title"
+          className="relative flex w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-product-600 dark:bg-slate-900"
+          tabIndex={-1}
+        >
         <header className="flex flex-col gap-4 border-b border-product-200 bg-product-50/80 px-5 py-5 dark:border-product-700/60 dark:bg-product-700/30 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex-1">
             <p className="text-xs font-semibold uppercase tracking-wide text-product-700 dark:text-product-200">
@@ -587,6 +589,7 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
           </footer>
         </div>
       </div>
-    </div>
+      </div>
+    </ModalPortal>
   );
 }
