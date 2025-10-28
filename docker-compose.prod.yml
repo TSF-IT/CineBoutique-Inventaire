@@ -1,6 +1,6 @@
 services:
   db:
-    # En prod, on ferme le port hôte pour garder la DB privée (enlève cette ligne si tu veux l’ouvrir)
+    # En prod, DB privée
     ports: []
 
   api:
@@ -11,38 +11,32 @@ services:
       DISABLE_MIGRATIONS: "false"
       AppSettings__SeedOnStartup: "false"
       DISABLE_SERILOG: "false"
-    # En prod, pas d'exposition sur l'hôte
-    ports: []
-    # ⚠️ L'image .NET n'a pas curl/wget -> on enlève le healthcheck API pour l'instant
-    # healthcheck:
-    #   test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health >/dev/null"]  # à réactiver si tu ajoutes curl dans l'image
-    #   interval: 10s
-    #   timeout: 5s
-    #   retries: 10
+      ASPNETCORE_URLS: http://0.0.0.0:8080 # <— important
+    ports:
+      - "8080:8080" # <— expose l’API sur l’hôte
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   web:
-    # En prod on veut utiliser le Dockerfile du front à la racine
     build:
       context: .
       dockerfile: Dockerfile.inventory-web
       args:
         BASE_REG: public.ecr.aws/docker/library
     environment:
-      # URL publique de l'appli côté navigateur (ton Nginx reverse-proxy /api vers api:8080)
       PUBLIC_HOST: "https://192.168.2.29"
-    # Monte Nginx + Certs (déjà créés sur le serveur)
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./certs:/etc/nginx/certs:ro
-    # Expose 80/443 (HTTPS pour la caméra iPhone)
     ports:
       - "80:80"
       - "443:443"
     depends_on:
       api:
-        # on déclenche quand l'API est démarrée (on n'a plus de healthcheck API)
-        condition: service_started
-    # Healthcheck simple côté web (page d'accueil)
+        condition: service_healthy # <— attend API OK
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"]
       interval: 10s
