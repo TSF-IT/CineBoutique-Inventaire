@@ -1,15 +1,30 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useMemo, useSyncExternalStore } from 'react'
 
 import type { UpdateNotifier } from './setupPwa'
 
 export const createUpdateToast = (): [React.FC, UpdateNotifier] => {
   let acceptCallback: () => void = () => {}
-  let setVisibility: React.Dispatch<React.SetStateAction<boolean>> | undefined
-  let pendingVisible = false
+  let visibleState = false
+  const listeners = new Set<() => void>()
+
+  const subscribe = (listener: () => void) => {
+    listeners.add(listener)
+    return () => {
+      listeners.delete(listener)
+    }
+  }
+
+  const emit = () => {
+    listeners.forEach((listener) => listener())
+  }
 
   const applyVisibility = (next: boolean) => {
-    pendingVisible = next
-    setVisibility?.(next)
+    if (visibleState === next) {
+      return
+    }
+
+    visibleState = next
+    emit()
   }
 
   const show = () => applyVisibility(true)
@@ -18,16 +33,10 @@ export const createUpdateToast = (): [React.FC, UpdateNotifier] => {
     acceptCallback = cb
   }
 
-  const UpdateToast: React.FC = () => {
-    const [visible, internalSetVisible] = useState(pendingVisible)
+  const getSnapshot = () => visibleState
 
-    useEffect(() => {
-      setVisibility = internalSetVisible
-      internalSetVisible(pendingVisible)
-      return () => {
-        setVisibility = undefined
-      }
-    }, [])
+  const UpdateToast: React.FC = () => {
+    const visible = useSyncExternalStore(subscribe, getSnapshot, () => false)
 
     const handleLater = useCallback(() => {
       hide()
@@ -106,7 +115,7 @@ export const createUpdateToast = (): [React.FC, UpdateNotifier] => {
               Plus tard
             </button>
             <button type="button" onClick={handleAccept} style={primaryButtonStyle}>
-              Mettre à jour
+              Mettre \u00E0 jour
             </button>
           </div>
         </div>

@@ -73,7 +73,7 @@ export const setupPwa = (ui?: UpdateNotifier) => {
       'focus',
     ]
 
-    let inactivityTimer: ReturnType<typeof window.setTimeout> | undefined
+    let inactivityTimer: number | undefined
 
     const clearTimer = () => {
       if (inactivityTimer !== undefined) {
