@@ -18,7 +18,8 @@ public sealed class TestApiFactory : IAsyncLifetime, IAsyncDisposable
   public TestApiFactory()
   {
     _postgres = new PostgresContainerFixture();
-    _inventory = new InventoryApiFixture(_postgres);
+    _inventory = new InventoryApiFixture();
+    _inventory.UsePostgresFixture(_postgres);
   }
 
   public bool IsAvailable => _skipReason is null && _initialized;

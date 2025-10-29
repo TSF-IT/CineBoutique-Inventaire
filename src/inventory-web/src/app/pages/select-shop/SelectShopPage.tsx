@@ -49,6 +49,8 @@ export const SelectShopPage = () => {
   const [isRedirecting, setIsRedirecting] = useState(false)
   const cardsLabelId = useId()
   const cardRefs = useRef<Array<HTMLButtonElement | null>>([])
+  const shopListSectionRef = useRef<HTMLElement | null>(null)
+  const pendingScrollToListRef = useRef(false)
 
   const entityCards = useMemo(() => buildEntityCards(shops), [shops])
 
@@ -293,6 +295,7 @@ export const SelectShopPage = () => {
         return
       }
 
+      pendingScrollToListRef.current = true
       setSelectionError(null)
       startTransition(() => {
         setSelectedEntityId(entity.definition.id)
@@ -328,6 +331,39 @@ export const SelectShopPage = () => {
     },
     [continueWithShop],
   )
+
+  useEffect(() => {
+    if (!pendingScrollToListRef.current) {
+      return
+    }
+    if (!selectedEntityId) {
+      pendingScrollToListRef.current = false
+      return
+    }
+    const section = shopListSectionRef.current
+    if (!section) {
+      pendingScrollToListRef.current = false
+      return
+    }
+    if (typeof window === 'undefined') {
+      pendingScrollToListRef.current = false
+      return
+    }
+
+    const mediaQuery = window.matchMedia?.('(max-width: 640px)')
+    const isCompactViewport = mediaQuery ? mediaQuery.matches : window.innerWidth <= 640
+    if (!isCompactViewport) {
+      pendingScrollToListRef.current = false
+      return
+    }
+
+    pendingScrollToListRef.current = false
+    window.requestAnimationFrame(() => {
+      const { top } = section.getBoundingClientRect()
+      const offset = Math.max(0, window.scrollY + top - 16)
+      window.scrollTo({ top: offset, behavior: 'smooth' })
+    })
+  }, [selectedEntityId])
 
   return (
     <Page className="px-4 py-6 sm:px-6">
@@ -448,6 +484,7 @@ export const SelectShopPage = () => {
               </fieldset>
               {selectedEntity && (
                 <section
+                  ref={shopListSectionRef}
                   aria-label={selectedEntity.definition.label}
                   className="space-y-3 rounded-3xl border border-(--cb-border-soft) bg-(--cb-surface) p-4 shadow-panel-soft backdrop-blur-sm"
                 >

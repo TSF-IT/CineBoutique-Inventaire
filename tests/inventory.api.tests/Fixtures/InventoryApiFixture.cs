@@ -37,9 +37,9 @@ public sealed class InventoryApiFixture : IAsyncLifetime, IAsyncDisposable
         }
     }
 
-    public InventoryApiFixture(PostgresContainerFixture? postgres = null)
+    public void UsePostgresFixture(PostgresContainerFixture postgres)
     {
-        _postgres = postgres;
+        _postgres = postgres ?? throw new ArgumentNullException(nameof(postgres));
     }
 
     public string ConnectionString

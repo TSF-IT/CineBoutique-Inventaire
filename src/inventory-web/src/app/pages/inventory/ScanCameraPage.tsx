@@ -48,6 +48,14 @@ const moveState = (current: SheetState, direction: 'up' | 'down'): SheetState =>
   return 'closed'
 }
 
+const detectCompactViewport = () => {
+  if (typeof window === 'undefined') {
+    return false
+  }
+  const { innerWidth, innerHeight } = window
+  return innerWidth <= 430 || innerHeight <= 740
+}
+
 export const ScanCameraPage = () => {
   const navigate = useNavigate()
   const { shop } = useShop()
@@ -62,11 +70,13 @@ export const ScanCameraPage = () => {
     sessionId,
     setSessionId,
   } = useInventory()
-  const [sheetState, setSheetState] = useState<SheetState>('closed')
+  const [isCompactScreen, setIsCompactScreen] = useState<boolean>(() => detectCompactViewport())
+  const [sheetState, setSheetState] = useState<SheetState>(() => (detectCompactViewport() ? 'half' : 'closed'))
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const [highlightEan, setHighlightEan] = useState<string | null>(null)
   const [conflictModalOpen, setConflictModalOpen] = useState(false)
+  const [lastAddedKey, setLastAddedKey] = useState<string | null>(null)
   const triggerScanRejectionFeedback = useScanRejectionFeedback()
   const dragStateRef = useRef<{ startY: number; pointerId: number } | null>(null)
   const manualInputActiveRef = useRef(false)
@@ -77,6 +87,7 @@ export const ScanCameraPage = () => {
   const rowRefs = useRef<Map<string, ScannedRowHandle>>(new Map())
   const highlightTimeoutRef = useRef<number | null>(null)
   const pendingFocusEanRef = useRef<string | null>(null)
+  const lastAddedTimeoutRef = useRef<number | null>(null)
   const shopName = shop?.name ?? 'Boutique'
   const ownerUserId = selectedUser?.id?.trim() ?? ''
   const locationId = location?.id?.trim() ?? ''
@@ -94,6 +105,31 @@ export const ScanCameraPage = () => {
       conflictLines: 0,
     }
   }, [countType, location])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const handleViewportChange = () => {
+      const compact = detectCompactViewport()
+      setIsCompactScreen(compact)
+      setSheetState((prev) => {
+        if (prev === 'closed' && compact) {
+          return 'half'
+        }
+        return prev
+      })
+    }
+
+    handleViewportChange()
+    window.addEventListener('resize', handleViewportChange)
+    window.addEventListener('orientationchange', handleViewportChange)
+    return () => {
+      window.removeEventListener('resize', handleViewportChange)
+      window.removeEventListener('orientationchange', handleViewportChange)
+    }
+  }, [setIsCompactScreen, setSheetState])
 
   useEffect(() => {
     if (!selectedUser) {
@@ -151,6 +187,40 @@ export const ScanCameraPage = () => {
     }
   }, [items])
 
+  useEffect(() => {
+    if (!lastAddedKey) {
+      if (lastAddedTimeoutRef.current) {
+        window.clearTimeout(lastAddedTimeoutRef.current)
+        lastAddedTimeoutRef.current = null
+      }
+      return
+    }
+
+    if (lastAddedTimeoutRef.current) {
+      window.clearTimeout(lastAddedTimeoutRef.current)
+    }
+    lastAddedTimeoutRef.current = window.setTimeout(() => {
+      setLastAddedKey(null)
+    }, 6000)
+
+    return () => {
+      if (lastAddedTimeoutRef.current) {
+        window.clearTimeout(lastAddedTimeoutRef.current)
+        lastAddedTimeoutRef.current = null
+      }
+    }
+  }, [lastAddedKey, setLastAddedKey])
+
+  useEffect(() => {
+    if (!lastAddedKey) {
+      return
+    }
+    const stillExists = items.some((item) => item.product.ean === lastAddedKey)
+    if (!stillExists) {
+      setLastAddedKey(null)
+    }
+  }, [items, lastAddedKey, setLastAddedKey])
+
   const totalQuantity = useMemo(
     () => items.reduce((acc, item) => acc + item.quantity, 0),
     [items],
@@ -158,6 +228,13 @@ export const ScanCameraPage = () => {
 
   const orderedItems = useMemo(() => [...items].reverse(), [items])
   const closedItems = useMemo(() => orderedItems.slice(-3), [orderedItems])
+  const lastAddedItem = useMemo(() => {
+    if (!lastAddedKey) {
+      return null
+    }
+    return orderedItems.find((item) => item.product.ean === lastAddedKey) ?? null
+  }, [lastAddedKey, orderedItems])
+  const lastAddedEan = lastAddedItem?.product.ean ?? null
 
   const ensureScanPrerequisites = useCallback(() => {
     if (!shop?.id) {
@@ -210,6 +287,31 @@ export const ScanCameraPage = () => {
     [addOrIncrementItem, ensureActiveRun],
   )
 
+  const handleProductAdded = useCallback(
+    (product: Product) => {
+      setStatusMessage(`${product.name} ajouté`)
+      const normalizedEan = product.ean?.trim()
+      if (normalizedEan) {
+        setHighlightEan(normalizedEan)
+        setLastAddedKey(normalizedEan)
+        if (manualInputActiveRef.current) {
+          pendingFocusEanRef.current = normalizedEan
+        }
+      } else {
+        setHighlightEan(null)
+        setLastAddedKey(null)
+      }
+      scrollToEndRef.current = true
+      setSheetState((prev) => {
+        if (prev === 'closed') {
+          return 'half'
+        }
+        return prev
+      })
+    },
+    [setSheetState],
+  )
+
   const handleDetected = useCallback(
     async (rawValue: string) => {
       const sanitized = sanitizeScanValue(rawValue)
@@ -234,12 +336,7 @@ export const ScanCameraPage = () => {
         const product = await fetchProductByEan(sanitized)
         const added = await addProductToSession(product)
         if (added) {
-          setStatusMessage(`${product.name} ajouté`)
-          setHighlightEan(product.ean)
-          scrollToEndRef.current = true
-          if (manualInputActiveRef.current) {
-            pendingFocusEanRef.current = product.ean
-          }
+          handleProductAdded(product)
           // TODO: jouer un son de confirmation court si disponible.
         }
       } catch (error) {
@@ -255,7 +352,7 @@ export const ScanCameraPage = () => {
         setStatusMessage(null)
       }
     },
-    [addProductToSession, ensureScanPrerequisites, triggerScanRejectionFeedback],
+    [addProductToSession, ensureScanPrerequisites, handleProductAdded, triggerScanRejectionFeedback],
   )
 
   const handleDec = useCallback(
@@ -401,8 +498,20 @@ export const ScanCameraPage = () => {
     setSheetState((prev) => (prev === 'closed' ? 'half' : prev === 'half' ? 'full' : 'closed'))
   }, [])
 
-  const sheetHeight = SHEET_HEIGHTS[sheetState]
-  const displayedItems = sheetState === 'closed' ? closedItems : orderedItems
+  const sheetHeight = useMemo(() => {
+    if (!isCompactScreen) {
+      return SHEET_HEIGHTS[sheetState]
+    }
+    if (sheetState === 'closed') {
+      return '48vh'
+    }
+    if (sheetState === 'half') {
+      return '70vh'
+    }
+    return '92vh'
+  }, [isCompactScreen, sheetState])
+
+  const displayedItems = sheetState === 'closed' && !isCompactScreen ? closedItems : orderedItems
 
   return (
     <div className="relative flex h-full flex-col bg-black text-white" data-testid="scan-camera-page">
@@ -455,20 +564,22 @@ export const ScanCameraPage = () => {
         {sheetState === 'closed' && (
           <div className="pointer-events-none absolute inset-x-0 top-0 h-10 rounded-t-3xl bg-gradient-to-b from-slate-200/80 via-white/70 to-transparent dark:from-slate-800/80 dark:via-slate-900/70" />
         )}
-        <div
-          className="flex flex-col px-4 pt-3"
-          onPointerDown={handleDragStart}
-          onPointerUp={handleDragEnd}
-          role="presentation"
-          data-testid="scan-sheet-handle"
-        >
-          <button
-            type="button"
-            className="mx-auto mb-3 h-1.5 w-16 rounded-full bg-slate-300"
-            onClick={handleToggleSheet}
-            aria-label="Changer la hauteur du panneau"
-          />
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-2">
+        <div className="px-4 pt-3">
+          <div
+            className="mb-3 flex justify-center"
+            onPointerDown={handleDragStart}
+            onPointerUp={handleDragEnd}
+            role="presentation"
+            data-testid="scan-sheet-handle"
+          >
+            <button
+              type="button"
+              className="h-1.5 w-16 rounded-full bg-slate-300"
+              onClick={handleToggleSheet}
+              aria-label="Changer la hauteur du panneau"
+            />
+          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 pb-2">
             <h2 className="text-base font-semibold">Articles scannés</h2>
             <div className="flex items-center gap-2">
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
@@ -476,6 +587,48 @@ export const ScanCameraPage = () => {
               </span>
             </div>
           </div>
+          {lastAddedItem && lastAddedEan && (
+            <div className="mt-2 flex items-center justify-between gap-4 rounded-2xl border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-sm shadow-sm dark:border-emerald-500/40 dark:bg-emerald-500/10">
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">
+                  Ajouté
+                </p>
+                <p className="mt-1 text-base font-semibold leading-tight text-emerald-900 dark:text-emerald-50">
+                  {lastAddedItem.product.name}
+                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-emerald-700/80 dark:text-emerald-200/70">
+                  <span className="font-mono uppercase tracking-wide">EAN {lastAddedEan}</span>
+                  {lastAddedItem.product.sku ? (
+                    <span className="font-mono uppercase tracking-wide">SKU {lastAddedItem.product.sku}</span>
+                  ) : null}
+                  {lastAddedItem.product.subGroup ? (
+                    <span className="truncate">Sous-groupe {lastAddedItem.product.subGroup}</span>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-lg font-semibold text-emerald-800 shadow-sm transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+                  onClick={() => handleDec(lastAddedEan, lastAddedItem.quantity)}
+                  aria-label={`Diminuer la quantité pour ${lastAddedItem.product.name}`}
+                >
+                  −
+                </button>
+                <div className="min-w-[3rem] text-center text-xl font-bold text-emerald-900 dark:text-emerald-100">
+                  {lastAddedItem.quantity}
+                </div>
+                <button
+                  type="button"
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-lg font-semibold text-white shadow-sm transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
+                  onClick={() => handleInc(lastAddedEan, lastAddedItem.quantity)}
+                  aria-label={`Augmenter la quantité pour ${lastAddedItem.product.name}`}
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          )}
         </div>
         <div className="relative flex-1 overflow-hidden">
           {sheetState === 'closed' && (
@@ -507,7 +660,7 @@ export const ScanCameraPage = () => {
                       qty={item.quantity}
                       highlight={highlightEan === item.product.ean}
                       hasConflict={hasConflict}
-                      density={sheetState === 'closed' ? 'dense' : 'regular'}
+                      density={sheetState === 'closed' && !isCompactScreen ? 'dense' : 'regular'}
                       onInc={() => handleInc(item.product.ean, item.quantity)}
                       onDec={() => handleDec(item.product.ean, item.quantity)}
                       onSetQty={(next) => handleSetQuantity(item.product.ean, next)}
