@@ -5,16 +5,6 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig, configDefaults } from 'vitest/config'
 
-
-const ICON_192_BASE64 =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAYAAABS3GwHAAACGklEQVR4nO3TMQHAIADAsDEDnHjAvz+QwdFEQZ+Oufb5IOp/HQAvGYA0A5BmANIMQJoBSDMAaQYgzQCkGYA0A5BmANIMQJoBSDMAaQYgzQCkGYA0A5BmANIMQJoBSDMAaQYgzQCkGYA0A5BmANIMQJoBSDMAaQYgzQCkGYA0A5BmANIMQJoBSDMAaQYgzQCkGYA0A5BmANIMQJoBSDMAaRfM9ALP7cf7tAAAAABJRU5ErkJggg=='
-
-const ICON_512_BASE64 =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAgAAAAIACAYAAAD0eNT6AAAIYklEQVR4nO3WMQHAIADAsDEDnHjAvz/mYhxNFPTsmGufBwBIeW8HAAD/MwAAEGQAACDIAABAkAEAgCADAABBBgAAggwAAAQZAAAIMgAAEGQAACDIAABAkAEAgCADAABBBgAAggwAAAQZAAAIMgAAEGQAACDIAABAkAEAgCADAABBBgAAggwAAAQZAAAIMgAAEGQAACDIAABAkAEAgCADAABBBgAAggwAAAQZAAAIMgAAEGQAACDIAABAkAEAgCADAABBBgAAgj620AVPgMjaJAAAAABJRU5ErkJggg=='
-
-const ICON_180_BASE64 =
-  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAYAAAA9zQYyAAAB/UlEQVR4nO3SQQ3AIADAwDEDPPGAf3/MxBKS5k5BHx1z7fNAxHs7AP5kaFIMTYqhSTE0KYYmxdCkGJoUQ5NiaFIMTYqhSTE0KYYmxdCkGJoUQ5NiaFIMTYqhSTE0KYYmxdCkGJoUQ5NiaFIMTYqhSTE0KYYmxdCkGJoUQ5NiaFIMTYqhSTE0KYYmxdCkGJoUQ5NiaFIMTYqhSTE0KYYmxdCkGJoUQ5NiaFIMTYqhSTE0KYYmxdCkGJoUQ5NiaFIMTYqhSTE0KYYmxdCkGJoUQ5NiaFIMTYqhSTE0KYYmxdCkGJoUQ5NiaFIMTYqhSTE0KYYmxdCkGJoUQ5NiaFIMTYqhSTE0KYYmxdCkGJoUQ5NiaFIMTYqhSTE0KYYmxdCkGJoUQ5NiaFIMTYqhSTE0KYYmxdCkGJoUQ5NiaFIMTYqhSTE0KYYmxdCkGJoUQ5NiaFIMTcoHCvsCt8GIO1EAAAAASUVORK5CYII='
-
 // src/inventory-web/vite.config.ts
 const DEV_BACKEND_ORIGIN =
   (process.env.DEV_BACKEND_ORIGIN ?? 'http://localhost:8080').trim()
@@ -22,72 +12,63 @@ const DEV_BACKEND_ORIGIN =
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig(({ command }) => {
-  const isBuild = command === 'build'
-
   return {
     plugins: [
       react(),
-      // Inclure la PWA seulement en build (pas d’option "apply" bidon)
-      ...(isBuild
-        ? [
-            VitePWA({
-              registerType: 'autoUpdate',
-              includeAssets: ['favicon.ico', 'robots.txt'],
-              manifest: {
-                name: 'CineBoutique Inventaire',
-                short_name: 'Inventaire',
-                description: 'Application d’inventaire interne TSF',
-                theme_color: '#0f172a',
-                background_color: '#0f172a',
-                display: 'standalone',
-                scope: '/',
-                start_url: '/',
-                lang: 'fr-FR',
-                icons: [
-                  { src: ICON_180_BASE64, sizes: '180x180', type: 'image/png' },
-                  { src: ICON_192_BASE64, sizes: '192x192', type: 'image/png' },
-                  { src: ICON_512_BASE64, sizes: '512x512', type: 'image/png' },
-                  { src: ICON_512_BASE64, sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-                ],
+      VitePWA({
+        registerType: 'autoUpdate',
+        workbox: {
+          cleanupOutdatedCaches: true,
+          globPatterns: ['**/*.{js,css,svg,png,ico,webmanifest,woff2}'],
+          runtimeCaching: [
+            {
+              urlPattern: ({ request }) => request.mode === 'navigate',
+              handler: 'NetworkFirst',
+              options: { cacheName: 'html', networkTimeoutSeconds: 3 },
+            },
+            {
+              urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
+              handler: 'NetworkOnly',
+            },
+            {
+              urlPattern: ({ request }) =>
+                request.destination === 'script' ||
+                request.destination === 'style' ||
+                request.destination === 'worker',
+              handler: 'StaleWhileRevalidate',
+              options: { cacheName: 'assets' },
+            },
+            {
+              urlPattern: ({ request }) => request.destination === 'image',
+              handler: 'StaleWhileRevalidate',
+              options: {
+                cacheName: 'images',
+                expiration: { maxEntries: 100, maxAgeSeconds: 604800 },
               },
-              workbox: {
-                clientsClaim: true,
-                skipWaiting: true,
-                cleanupOutdatedCaches: true,
-                globDirectory: 'dist',
-                globPatterns: ['**/*.{js,css,html,ico,png,svg,webp,woff2}'],
-                navigateFallback: '/index.html',
-                navigateFallbackDenylist: [
-                  new RegExp('^/api'),
-                  new RegExp('\\.(?:png|jpg|jpeg|svg|webp|gif)$'),
-                ],
-                runtimeCaching: [
-                  {
-                    urlPattern: ({ url }) =>
-                      url.origin === self.location.origin && url.pathname.startsWith('/assets/'),
-                    handler: 'CacheFirst',
-                    options: {
-                      cacheName: 'assets-static',
-                      expiration: { maxEntries: 100, maxAgeSeconds: 60 * 60 * 24 * 30 },
-                    },
-                  },
-                  {
-                    urlPattern: ({ request }) => request.destination === 'image',
-                    handler: 'StaleWhileRevalidate',
-                    options: { cacheName: 'images' },
-                  },
-                  {
-                    urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
-                    handler: 'NetworkOnly',
-                  },
-                ],
-              },
-              devOptions: {
-                enabled: false, // no SW en dev
-              },
-            }),
-          ]
-        : []),
+            },
+          ],
+        },
+        manifest: {
+          name: 'Cin\u00E9Boutique \u2013 Inventaire',
+          short_name: 'Inventaire',
+          start_url: '/',
+          scope: '/',
+          display: 'standalone',
+          background_color: '#111',
+          theme_color: '#111',
+          icons: [
+            { src: '/icons/pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+            { src: '/icons/pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+            {
+              src: '/icons/maskable-512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable any',
+            },
+          ],
+        },
+        devOptions: { enabled: false },
+      }),
     ],
     server: {
       port: 5173,
@@ -125,6 +106,9 @@ export default defineConfig(({ command }) => {
       },
       rollupOptions: {
         output: {
+          entryFileNames: 'assets/[name]-[hash].js',
+          chunkFileNames: 'assets/[name]-[hash].js',
+          assetFileNames: 'assets/[name]-[hash][extname]',
           manualChunks: {
             react: ['react', 'react-dom'],
             zod: ['zod'],

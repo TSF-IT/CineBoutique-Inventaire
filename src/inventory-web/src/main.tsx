@@ -5,9 +5,14 @@ import './index.css'
 import './styles/util-classes.css'
 import { App } from './App'
 import { initializeTheme } from './app/utils/theme'
+import { createUpdateToast } from './pwa/UpdateToast'
+import { setupPwa } from './pwa/setupPwa'
 import { ShopProvider } from './state/ShopContext'
+
+const [UpdateToast, updateNotifier] = createUpdateToast()
+
 if (import.meta.env.PROD) {
-  import('./pwa/sw-register').then(m => m.setupPWA())
+  setupPwa(updateNotifier)
 }
 
 initializeTheme()
@@ -16,6 +21,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ShopProvider>
       <App />
+      <UpdateToast />
     </ShopProvider>
   </StrictMode>,
 )
