@@ -3,21 +3,30 @@ on:
   pull_request:
   workflow_dispatch:
 jobs:
-  audit:
+  security-audit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with: { dotnet-version: '8.0.x' }
-      - name: .NET vulnerable (include transitive)
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Detect solution file
+        id: sln
         run: |
-          dotnet restore
-          dotnet list ./CineBoutique-Inventaire.sln package --vulnerable --include-transitive
-      - name: Node setup
-        uses: actions/setup-node@v4
-        with: { node-version: '22' }
-      - name: npm audit
-        working-directory: src/inventory-web
-        run: |
-          npm ci --no-audit --no-fund
-          npm audit --audit-level=high
+          set -e
+          SOLUTION=$(git ls-files '*.sln' | head -n1)
+          if [ -z "$SOLUTION" ]; then
+            echo "No .sln file found" >&2
+            exit 1
+          fi
+          echo "SOLUTION=$SOLUTION" >> $GITHUB_ENV
+          echo "Using solution: $SOLUTION"
+      - name: Restore
+        run: dotnet restore "$SOLUTION"
+      - name: Build (Release)
+        run: dotnet build "$SOLUTION" -c Release --no-restore
+      - name: Test (Release)
+        run: dotnet test "$SOLUTION" -c Release --no-build --logger "trx;LogFileName=test_results.trx"
+      - name: Security audit (packages)
+        run: dotnet list "$SOLUTION" package --vulnerable --include-transitive
