@@ -32,6 +32,7 @@ export default defineConfig([
     },
     settings: {
       react: { version: 'detect' },
+      'import/core-modules': ['virtual:pwa-register'],
     },
     rules: {
       ...reactHooks.configs['recommended-latest'].rules,

@@ -135,8 +135,8 @@
 <testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\ui\Input.tsx">
 <testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\ui\Input.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\components\ui\Input" />
 </testsuite>
-<testsuite package="org.eslint" time="0" tests="1" errors="1" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\InventoryContext.tsx">
-<testcase time="0" name="org.eslint.import/order" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\InventoryContext"><failure message="There should be at least one empty line between import groups"><![CDATA[line 4, col 1, Warning - There should be at least one empty line between import groups (import/order)]]></failure></testcase>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\InventoryContext.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\InventoryContext.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\InventoryContext" />
 </testsuite>
 <testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\inventoryHttpContext.ts">
 <testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\inventoryHttpContext.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\inventoryHttpContext" />
@@ -314,6 +314,12 @@
 </testsuite>
 <testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\main.tsx">
 <testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\main.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\main" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\pwa\UpdateToast.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\pwa\UpdateToast.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\pwa\UpdateToast" />
+</testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\pwa\setupPwa.ts">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\pwa\setupPwa.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\pwa\setupPwa" />
 </testsuite>
 <testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\pwa\sw-register.ts">
 <testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\pwa\sw-register.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\pwa\sw-register" />

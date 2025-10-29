@@ -5,8 +5,8 @@ import './index.css'
 import './styles/util-classes.css'
 import { App } from './App'
 import { initializeTheme } from './app/utils/theme'
-import { createUpdateToast } from './pwa/UpdateToast'
 import { setupPwa } from './pwa/setupPwa'
+import { createUpdateToast } from './pwa/UpdateToast'
 import { ShopProvider } from './state/ShopContext'
 
 const [UpdateToast, updateNotifier] = createUpdateToast()

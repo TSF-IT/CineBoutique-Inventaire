@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 
 import type { InventoryItem, InventoryLogEntry, InventoryLogEventType, Location, Product } from '../types/inventory'
+
 import { resetInventoryHttpContextSnapshot, syncInventoryHttpContextSnapshot } from './inventoryHttpContext'
 
 import type { ShopUser } from '@/types/user'
