@@ -8,12 +8,18 @@ using Xunit;
 
 public sealed class TestApiFactory : IAsyncLifetime, IAsyncDisposable
 {
-  private readonly PostgresContainerFixture _postgres = new();
-  private readonly InventoryApiFixture _inventory = new();
+  private readonly PostgresContainerFixture _postgres;
+  private readonly InventoryApiFixture _inventory;
   private HttpClient? _client;
   private bool _disposed;
   private bool _initialized;
   private string? _skipReason;
+
+  public TestApiFactory()
+  {
+    _postgres = new PostgresContainerFixture();
+    _inventory = new InventoryApiFixture(_postgres);
+  }
 
   public bool IsAvailable => _skipReason is null && _initialized;
   public string? SkipReason => _skipReason;

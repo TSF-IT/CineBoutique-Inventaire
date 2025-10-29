@@ -97,7 +97,10 @@ public sealed class PostgresContainerFixture : IAsyncLifetime, IAsyncDisposable
             await _container.DisposeAsync().ConfigureAwait(false);
         }
 
-        Instance = null;
+        if (ReferenceEquals(Instance, this))
+        {
+            Instance = null;
+        }
     }
 
     ValueTask IAsyncDisposable.DisposeAsync()
