@@ -338,67 +338,69 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
           className="relative flex w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-product-600 dark:bg-slate-900"
           tabIndex={-1}
         >
-        <header className="flex flex-col gap-4 border-b border-product-200 bg-product-50/80 px-5 py-5 dark:border-product-700/60 dark:bg-product-700/30 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex-1">
-            <p className="text-xs font-semibold uppercase tracking-wide text-product-700 dark:text-product-200">
-              Catalogue produits
-            </p>
-            <h2 id="products-modal-title" className="mt-1 text-xl font-semibold text-slate-900 dark:text-white">
-              Produits disponibles
-            </h2>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-              Recherchez une référence par SKU, EAN ou nom pour vérifier votre inventaire.
-            </p>
-            <div className="mt-4">
-              <label htmlFor="products-search" className="sr-only">
-                Rechercher un produit
-              </label>
-              <div className="relative flex items-center">
-                <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400 dark:text-slate-500" aria-hidden="true">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    className="h-5 w-5"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M9 3.5a5.5 5.5 0 1 0 3.356 9.9l3.622 3.621a.75.75 0 1 0 1.06-1.06l-3.62-3.623A5.5 5.5 0 0 0 9 3.5Zm-4 5.5a4 4 0 1 1 8 0 4 4 0 0 1-8 0Z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </span>
-                <input
-                  id="products-search"
-                  placeholder="Rechercher (SKU / EAN / nom)"
-                  className="w-full rounded-full border border-product-200 bg-white px-10 py-2.5 text-sm text-slate-900 shadow-inner placeholder:text-slate-400 focus:border-product-600 focus:outline-none focus:ring-2 focus:ring-product-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-400 dark:focus:border-product-600 dark:focus:ring-product-600/30"
-                  value={q}
-                  onChange={(e) => {
-                    setPage(1);
-                    setQ(e.target.value);
-                  }}
-                />
-                {q ? (
-                  <button
-                    type="button"
-                    onClick={handleClearSearch}
-                    className="absolute inset-y-0 right-2 inline-flex items-center justify-center rounded-full p-2 text-slate-400 transition hover:text-product-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-product-600 dark:text-slate-300 dark:hover:text-product-200"
-                  >
-                    <span className="sr-only">Effacer la recherche</span>
-                    <span aria-hidden="true">✕</span>
-                  </button>
-                ) : null}
-              </div>
+        <header className="flex flex-col gap-4 border-b border-product-200 bg-product-50/80 px-5 py-5 dark:border-product-700/60 dark:bg-product-700/30">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1">
+              <p className="text-xs font-semibold uppercase tracking-wide text-product-700 dark:text-product-200">
+                Catalogue produits
+              </p>
+              <h2 id="products-modal-title" className="mt-1 text-xl font-semibold text-slate-900 dark:text-white">
+                Produits disponibles
+              </h2>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                Recherchez une référence par SKU, EAN ou nom pour vérifier votre inventaire.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-product-200 text-lg text-product-700 transition hover:bg-product-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-product-600 focus-visible:ring-offset-2 dark:border-product-700 dark:text-product-200 dark:hover:bg-product-700/40"
+              aria-label="Fermer"
+            >
+              <span aria-hidden="true">✕</span>
+            </button>
+          </div>
+          <div className="mt-1">
+            <label htmlFor="products-search" className="sr-only">
+              Rechercher un produit
+            </label>
+            <div className="relative flex items-center">
+              <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400 dark:text-slate-500" aria-hidden="true">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  className="h-5 w-5"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M9 3.5a5.5 5.5 0 1 0 3.356 9.9l3.622 3.621a.75.75 0 1 0 1.06-1.06l-3.62-3.623A5.5 5.5 0 0 0 9 3.5Zm-4 5.5a4 4 0 1 1 8 0 4 4 0 0 1-8 0Z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </span>
+              <input
+                id="products-search"
+                placeholder="Rechercher (SKU / EAN / nom)"
+                className="w-full rounded-full border border-product-200 bg-white px-10 py-2.5 text-sm text-slate-900 shadow-inner placeholder:text-slate-400 focus:border-product-600 focus:outline-none focus:ring-2 focus:ring-product-200 dark:border-slate-700 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-400 dark:focus:border-product-600 dark:focus:ring-product-600/30"
+                value={q}
+                onChange={(e) => {
+                  setPage(1);
+                  setQ(e.target.value);
+                }}
+              />
+              {q ? (
+                <button
+                  type="button"
+                  onClick={handleClearSearch}
+                  className="absolute inset-y-0 right-2 inline-flex items-center justify-center rounded-full p-2 text-slate-400 transition hover:text-product-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-product-600 dark:text-slate-300 dark:hover:text-product-200"
+                >
+                  <span className="sr-only">Effacer la recherche</span>
+                  <span aria-hidden="true">✕</span>
+                </button>
+              ) : null}
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="inline-flex shrink-0 items-center justify-center rounded-full border border-product-200 p-3 text-product-700 transition hover:bg-product-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-product-600 focus-visible:ring-offset-2 dark:border-product-700 dark:text-product-200 dark:hover:bg-product-700/40"
-            aria-label="Fermer"
-          >
-            <span aria-hidden="true">✕</span>
-          </button>
         </header>
 
         <div className="flex flex-1 flex-col overflow-hidden bg-white dark:bg-slate-900">

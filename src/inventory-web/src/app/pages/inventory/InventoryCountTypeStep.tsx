@@ -236,11 +236,7 @@ export const InventoryCountTypeStep = () => {
                 aria-disabled={isDisabled}
               >
                 <span className="text-4xl font-bold">Comptage n°{option}</span>
-                <span className="text-sm text-slate-500 dark:text-slate-400">
-                  {option === CountType.Count1
-                    ? 'Premier passage pour initialiser la zone.'
-                    : 'Second passage pour fiabiliser la zone.'}
-                </span>
+                <span className="text-sm text-slate-500 dark:text-slate-400">&nbsp;</span>
                 <span className="text-xs font-medium text-slate-500 dark:text-slate-400">{helperMessage}</span>
               </button>
             )

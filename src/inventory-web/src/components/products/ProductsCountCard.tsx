@@ -106,7 +106,7 @@ export function ProductsCountCard({ shopId, onOpen, onClick, onStateChange, clas
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm uppercase text-product-600 dark:text-product-200">Catalogue produits</p>
             {state?.hasCatalog && (
-              <span className="inline-flex items-center rounded-full bg-product-200 px-2 py-0.5 text-xs font-semibold text-product-700 dark:bg-product-600/30 dark:text-white">
+              <span className="inline-flex items-center justify-center rounded-full bg-product-200 px-3 py-0.5 text-xs font-semibold text-product-700 text-center dark:bg-product-600/30 dark:text-white">
                 Catalogue importé
               </span>
             )}

@@ -441,17 +441,15 @@ export const HomePage = () => {
     return `${completedZones} ${completedPlural}`
   }, [completedZones, totalExpected])
   const completedCountsLabel = useMemo(() => {
-    const completedPlural =
-      completedCounts > 1 ? 'comptages terminés' : completedCounts === 1 ? 'comptage terminé' : 'comptages terminés'
     if (totalExpectedCounts > 0) {
-      return `${completedCounts} ${completedPlural} sur ${totalExpectedCounts}`
+      return `${completedCounts}/${totalExpectedCounts}`
     }
 
     if (completedCounts <= 0) {
       return 'Aucun comptage terminé'
     }
 
-    return `${completedCounts} ${completedPlural}`
+    return String(completedCounts)
   }, [completedCounts, totalExpectedCounts])
   const hasCompletedZones = completedZones > 0
   const hasCompletedCounts = completedCounts > 0
@@ -685,8 +683,7 @@ export const HomePage = () => {
             </p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-(--cb-text)">Inventaire {currentYear}</h1>
             <p className="mt-2 max-w-xl text-sm leading-relaxed text-(--cb-muted)">
-              Lancez un comptage en quelques gestes, scannez les produits depuis la caméra ou une douchette Bluetooth
-              et assurez un suivi fiable de vos zones.
+              Visualisez les conflits, suivez les comptages et le catalogue ; démarrez ou reprenez vos sessions en toute simplicité.
             </p>
           </div>
           <div className="hidden text-right text-xs text-(--cb-muted) sm:block">
@@ -1131,3 +1128,4 @@ const ResetInventoryModal = ({ open, loading, error, onConfirm, onCancel }: Rese
     </ModalPortal>
   )
 }
+

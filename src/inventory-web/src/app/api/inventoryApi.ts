@@ -414,13 +414,30 @@ const hasMatchingProductCandidate = (candidates: ProductCandidate[], normalizedC
   })
 }
 
+const filterMatchingProductCandidates = (
+  candidates: ProductCandidate[],
+  normalizedCode: string | null,
+): ProductCandidate[] => {
+  if (!normalizedCode) {
+    return []
+  }
+  return candidates.filter((candidate) => {
+    const codes = [
+      normalizeLookupCode(candidate.code ?? null),
+      normalizeLookupCode(candidate.sku ?? null),
+      normalizeLookupCode(candidate.ean ?? null),
+    ]
+    return codes.some((value) => value === normalizedCode)
+  })
+}
+
 const tryResolveAmbiguousProduct = async (
-  error: HttpError,
+  error: HttpError | null,
   fallbackCandidates: ProductCandidate[],
   requestedCode: string,
 ): Promise<Product | null> => {
-  const problem = (error.problem ?? null) as ProductLookupConflictProblemLike | null
-  const matches = Array.isArray(problem?.matches) ? problem!.matches! : []
+  const problem = (error?.problem ?? null) as ProductLookupConflictProblemLike | null
+  const matches = Array.isArray(problem?.matches) ? problem.matches : []
 
   const candidates: ProductCandidate[] = []
   for (const match of matches) {
@@ -568,6 +585,15 @@ export const fetchProductByEan = async (ean: string): Promise<Product> => {
       const hasMatch = hasMatchingProductCandidate(searchCandidates, normalizedCode)
       if (!hasMatch) {
         throw createNotFoundHttpError(rawCode)
+      }
+
+      const matchingCandidates = filterMatchingProductCandidates(searchCandidates, normalizedCode)
+      const resolutionCandidates = matchingCandidates.length > 0 ? matchingCandidates : searchCandidates
+      if (resolutionCandidates.length > 0) {
+        const resolvedFromSearch = await tryResolveAmbiguousProduct(null, resolutionCandidates, rawCode)
+        if (resolvedFromSearch) {
+          return resolvedFromSearch
+        }
       }
     } catch (error) {
       if (isHttpError(error) && error.status === 404) {

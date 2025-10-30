@@ -54,7 +54,7 @@ const ADMIN_SECTIONS: {
     id: "catalog",
     label: "Produits",
     description:
-      "Importez ou simulez un import CSV pour mettre à jour le catalogue de la boutique.",
+      "Importez un fichier CSV pour compléter le catalogue de la boutique.",
   },
 ];
 
@@ -984,8 +984,8 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
             <p className="font-semibold">Remplacement verrouillé</p>
             <p className="mt-1">
               Des produits importés ont déjà été utilisés dans des comptages.
-              Importez un fichier complémentaire pour ajouter ou mettre à jour
-              des références.
+              Importez un fichier complémentaire pour ajouter de nouvelles
+              références.
             </p>
           </div>
         )}
@@ -1000,7 +1000,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
           disabled={submitting}
           description={
             importMode === "merge"
-              ? "Votre fichier complétera le catalogue existant (ajouts et mises à jour)."
+              ? "Votre fichier complétera le catalogue existant en ajoutant uniquement de nouvelles références."
               : "Remplace entièrement le catalogue de la boutique par le contenu du fichier."
           }
         />
@@ -1014,7 +1014,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
               setFeedback(null);
             }}
             disabled={submitting}
-            className="rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-700 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200"
+            className="w-full min-w-0 truncate rounded-lg border border-slate-200 bg-white/80 px-3 py-2 text-sm text-slate-700 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-200 sm:text-base"
           >
             {CSV_ENCODING_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
@@ -1076,8 +1076,8 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
                   Compléter le catalogue
                 </span>
                 <span className="mt-1 block text-xs text-slate-600 dark:text-slate-400">
-                  Ajoute les nouveaux produits et met à jour les articles
-                  existants sans purger le catalogue actuel.
+                  Ajoute uniquement de nouvelles références sans purger le
+                  catalogue actuel.
                 </span>
               </span>
             </label>

@@ -1368,70 +1368,77 @@ export const InventorySessionPage = () => {
             const skuDisplay = formatIdentifierForDisplay(item.product.sku)
             const eanDisplay = formatIdentifierForDisplay(item.product.ean)
             const subGroupDisplay = normalizeIdentifier(item.product.subGroup)
+            const metadataSegments = [
+              subGroupDisplay ? `Sous-groupe ${subGroupDisplay}` : null,
+              `SKU ${skuDisplay}`,
+              `EAN ${eanDisplay}`,
+            ].filter((segment): segment is string => Boolean(segment))
 
             return (
               <li
                 key={item.id}
-                className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900/60"
+                className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition-colors dark:border-slate-700 dark:bg-slate-900/60"
                 data-testid="scanned-item"
                 data-item-id={item.id}
                 data-ean={item.product.ean}
                 data-sku={item.product.sku ?? ''}
               >
-                <div>
-                  <p className="text-lg font-semibold text-slate-900 dark:text-white">{item.product.name}</p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {[
-                      subGroupDisplay ? `Sous-groupe ${subGroupDisplay}` : null,
-                      `SKU ${skuDisplay}`,
-                      `EAN ${eanDisplay}`,
-                    ]
-                      .filter((segment): segment is string => Boolean(segment))
-                      .map((segment, index) => (
-                        <span key={`${segment}-${index}`}>
-                          {index > 0 && ' | '}
-                          {segment}
-                        </span>
-                      ))}
-                  </p>
-                  {item.hasConflict && (
-                    <p className="text-xs font-semibold text-rose-600 dark:text-rose-300">Référence en conflit</p>
-                  )}
+                <div className="flex flex-col gap-2">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <p className="text-base font-semibold text-slate-900 dark:text-white sm:text-lg">
+                      {item.product.name}
+                    </p>
+                    {item.hasConflict && (
+                      <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-rose-700 dark:bg-rose-900/60 dark:text-rose-200">
+                        Référence en conflit
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500 sm:text-xs">
+                    {metadataSegments.map((segment) => (
+                      <span key={segment}>{segment}</span>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex items-center gap-3">
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    className="tap-highlight-none no-focus-ring btn-glyph-center h-10 w-10 text-xl font-semibold"
-                    onClick={() => adjustQuantity(item.product.ean, -1)}
-                    aria-label="Retirer"
-                  >
-                    −
-                  </Button>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={4}
-                    data-testid="quantity-input"
-                    aria-label={`Quantité pour ${item.product.name}`}
-                    value={quantityDrafts[item.product.ean] ?? String(item.quantity)}
-                    onChange={(event) => handleQuantityInputChange(item.product.ean, event)}
-                    onBlur={(event) => handleQuantityBlur(item.product.ean, event)}
-                    onKeyDown={(event) => handleQuantityKeyDown(item.product.ean, event)}
-                    onFocus={handleQuantityFocus}
-                    onPointerDown={handleQuantityPointerDown}
-                    className="h-12 w-20 rounded-xl border border-slate-300 bg-white text-center text-2xl font-bold text-slate-900 outline-none focus-visible:border-brand-400 focus-visible:ring-2 focus-visible:ring-brand-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-                    autoComplete="off"
-                  />
-                  <Button
-                    type="button"
-                    className="tap-highlight-none no-focus-ring btn-glyph-center h-10 w-10 text-xl font-semibold"
-                    onClick={() => adjustQuantity(item.product.ean, 1)}
-                    aria-label="Ajouter"
-                  >
-                    +
-                  </Button>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-400 dark:text-slate-500 sm:hidden">
+                    Quantité
+                  </span>
+                  <div className="flex items-center justify-between gap-2 rounded-2xl bg-slate-100 p-2 shadow-inner sm:bg-transparent sm:p-0 sm:shadow-none">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="tap-highlight-none no-focus-ring btn-glyph-center h-11 w-11 text-xl font-semibold sm:h-10 sm:w-10"
+                      onClick={() => adjustQuantity(item.product.ean, -1)}
+                      aria-label="Retirer"
+                    >
+                      −
+                    </Button>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={4}
+                      data-testid="quantity-input"
+                      aria-label={`Quantité pour ${item.product.name}`}
+                      value={quantityDrafts[item.product.ean] ?? String(item.quantity)}
+                      onChange={(event) => handleQuantityInputChange(item.product.ean, event)}
+                      onBlur={(event) => handleQuantityBlur(item.product.ean, event)}
+                      onKeyDown={(event) => handleQuantityKeyDown(item.product.ean, event)}
+                      onFocus={handleQuantityFocus}
+                      onPointerDown={handleQuantityPointerDown}
+                      className="h-12 w-20 rounded-xl border border-slate-300 bg-white text-center text-2xl font-bold text-slate-900 shadow-sm outline-none focus-visible:border-brand-400 focus-visible:ring-2 focus-visible:ring-brand-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                      autoComplete="off"
+                    />
+                    <Button
+                      type="button"
+                      className="tap-highlight-none no-focus-ring btn-glyph-center h-11 w-11 text-xl font-semibold sm:h-10 sm:w-10"
+                      onClick={() => adjustQuantity(item.product.ean, 1)}
+                      aria-label="Ajouter"
+                    >
+                      +
+                    </Button>
+                  </div>
                 </div>
               </li>
             )
