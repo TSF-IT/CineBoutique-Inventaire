@@ -25,7 +25,7 @@ export interface InventoryContextValue {
   setQuantity: (ean: string, quantity: number) => void
   removeItem: (ean: string) => void
   reset: () => void
-  clearSession: () => void
+  clearSession: (options?: { preserveSnapshot?: boolean }) => void
   logEvent: (entry: { type: InventoryLogEventType; message: string; context?: InventoryLogEntry['context'] }) => void
   clearLogs: () => void
 }
@@ -37,16 +37,40 @@ interface InventoryState {
   sessionId: string | null
   items: InventoryItem[]
   logs: InventoryLogEntry[]
+  userSnapshots: Record<string, InventorySnapshot>
+  pendingSnapshotUserId: string | null
 }
 
-const INITIAL_STATE: InventoryState = {
+type InventorySnapshot = {
+  countType: number | null
+  location: Location | null
+  sessionId: string | null
+  items: InventoryItem[]
+  logs: InventoryLogEntry[]
+}
+
+const cloneInventoryItems = (items: InventoryItem[]) =>
+  items.map((item) => ({
+    ...item,
+    product: { ...item.product },
+  }))
+
+const cloneInventoryLogs = (logs: InventoryLogEntry[]) =>
+  logs.map((entry) => ({
+    ...entry,
+    context: entry.context ? { ...entry.context } : undefined,
+  }))
+
+const createInitialState = (): InventoryState => ({
   selectedUser: null,
   countType: null,
   location: null,
   sessionId: null,
   items: [],
   logs: [],
-}
+  userSnapshots: {},
+  pendingSnapshotUserId: null,
+})
 
 const InventoryContext = createContext<InventoryContextValue | undefined>(undefined)
 
@@ -74,7 +98,7 @@ const prependLogEntry = (
 ) => [{ id: createLogEntryId(), timestamp: new Date().toISOString(), ...entry }, ...logs]
 
 export const InventoryProvider = ({ children }: { children: ReactNode }) => {
-  const [state, setState] = useState<InventoryState>(INITIAL_STATE)
+  const [state, setState] = useState<InventoryState>(() => createInitialState())
 
   useEffect(() => {
     syncInventoryHttpContextSnapshot({
@@ -91,19 +115,73 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
   )
 
   const setSelectedUser = useCallback((user: ShopUser) => {
-    setState(() => ({ ...INITIAL_STATE, selectedUser: user }))
+    setState((prev) => {
+      if (prev.selectedUser?.id === user.id) {
+        if (prev.selectedUser === user && prev.pendingSnapshotUserId === null) {
+          return prev
+        }
+
+        return {
+          ...prev,
+          selectedUser: user,
+          pendingSnapshotUserId: null,
+        }
+      }
+
+      const previousUserId = prev.selectedUser?.id ?? null
+      const shouldSkipPreviousSnapshot =
+        previousUserId !== null && previousUserId === prev.pendingSnapshotUserId
+
+      const snapshots = { ...prev.userSnapshots }
+
+      if (previousUserId && previousUserId !== user.id && !shouldSkipPreviousSnapshot) {
+        snapshots[previousUserId] = {
+          countType: prev.countType,
+          location: prev.location,
+          sessionId: prev.sessionId,
+          items: cloneInventoryItems(prev.items),
+          logs: cloneInventoryLogs(prev.logs),
+        }
+      }
+
+      const nextSnapshot = snapshots[user.id]
+
+      return {
+        ...prev,
+        selectedUser: user,
+        countType: nextSnapshot?.countType ?? null,
+        location: nextSnapshot?.location ?? null,
+        sessionId: nextSnapshot?.sessionId ?? null,
+        items: nextSnapshot ? cloneInventoryItems(nextSnapshot.items) : [],
+        logs: nextSnapshot ? cloneInventoryLogs(nextSnapshot.logs) : [],
+        userSnapshots: snapshots,
+        pendingSnapshotUserId: null,
+      }
+    })
   }, [])
 
   const setCountType = useCallback((type: number | null) => {
-    setState((prev) => ({ ...prev, countType: type }))
+    setState((prev) => ({
+      ...prev,
+      countType: type,
+      pendingSnapshotUserId: null,
+    }))
   }, [])
 
   const setLocation = useCallback((location: Location) => {
-    setState((prev) => ({ ...prev, location }))
+    setState((prev) => ({
+      ...prev,
+      location,
+      pendingSnapshotUserId: null,
+    }))
   }, [])
 
   const setSessionId = useCallback((sessionId: string | null) => {
-    setState((prev) => ({ ...prev, sessionId }))
+    setState((prev) => ({
+      ...prev,
+      sessionId,
+      pendingSnapshotUserId: null,
+    }))
   }, [])
 
   const addOrIncrementItem = useCallback((product: Product, options?: { isManual?: boolean }) => {
@@ -122,6 +200,7 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
         return {
           ...prev,
           items: [updated, ...remaining],
+          pendingSnapshotUserId: null,
           logs: prependLogEntry(prev.logs, {
             type: 'item-incremented',
             message: `Quantité augmentée pour ${updated.product.name} (EAN ${updated.product.ean}) → ${updated.quantity}`,
@@ -145,6 +224,7 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
       return {
         ...prev,
         items: [nextItem, ...prev.items],
+        pendingSnapshotUserId: null,
         logs: prependLogEntry(prev.logs, {
           type: 'item-added',
           message: `${product.name} ${options?.isManual ? 'ajouté manuellement' : 'ajouté à la session'} (EAN ${product.ean})`,
@@ -178,6 +258,7 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
         ...prev,
         items,
         logs: prev.logs,
+        pendingSnapshotUserId: null,
       }
     })
   }, [])
@@ -202,6 +283,7 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
       return {
         ...prev,
         items: [updated, ...remainingItems],
+        pendingSnapshotUserId: null,
         logs: prependLogEntry(prev.logs, {
           type: 'item-quantity-updated',
           message: `Quantité mise à jour pour ${updated.product.name} (EAN ${updated.product.ean}) → ${quantity}`,
@@ -228,6 +310,7 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
       return {
         ...prev,
         items: remaining,
+        pendingSnapshotUserId: null,
         logs: prependLogEntry(prev.logs, {
           type: 'item-removed',
           message: `${item.product.name} retiré de la session (EAN ${item.product.ean})`,
@@ -242,10 +325,50 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
     })
   }, [])
 
-  const reset = useCallback(() => setState(() => ({ ...INITIAL_STATE })), [])
+  const reset = useCallback(() => setState(() => createInitialState()), [])
 
   const clearSession = useCallback(
-    () => setState((prev) => ({ ...prev, sessionId: null, items: [], logs: [] })),
+    (options?: { preserveSnapshot?: boolean }) =>
+      setState((prev) => {
+        const selectedUserId = prev.selectedUser?.id ?? null
+        const shouldPreserve = Boolean(options?.preserveSnapshot && selectedUserId)
+
+        let snapshots = prev.userSnapshots
+        if (selectedUserId) {
+          if (shouldPreserve) {
+            snapshots = {
+              ...prev.userSnapshots,
+              [selectedUserId]: {
+                countType: prev.countType,
+                location: prev.location,
+                sessionId: prev.sessionId,
+                items: cloneInventoryItems(prev.items),
+                logs: cloneInventoryLogs(prev.logs),
+              },
+            }
+          } else if (prev.userSnapshots[selectedUserId]) {
+            snapshots = {
+              ...prev.userSnapshots,
+              [selectedUserId]: {
+                countType: prev.countType,
+                location: prev.location,
+                sessionId: null,
+                items: [],
+                logs: [],
+              },
+            }
+          }
+        }
+
+        return {
+          ...prev,
+          sessionId: null,
+          items: [],
+          logs: [],
+          userSnapshots: snapshots,
+          pendingSnapshotUserId: shouldPreserve ? selectedUserId : null,
+        }
+      }),
     [],
   )
 
@@ -253,11 +376,19 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
     setState((prev) => ({
       ...prev,
       logs: prependLogEntry(prev.logs, entry),
+      pendingSnapshotUserId: null,
     }))
   }, [])
 
-  const clearLogs = useCallback(() => setState((prev) => ({ ...prev, logs: [] })), [])
-
+  const clearLogs = useCallback(
+    () =>
+      setState((prev) => ({
+        ...prev,
+        logs: [],
+        pendingSnapshotUserId: null,
+      })),
+    [],
+  )
   const value = useMemo<InventoryContextValue>(
     () => ({
       selectedUser: state.selectedUser,

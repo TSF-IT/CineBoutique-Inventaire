@@ -322,7 +322,7 @@ export const HomePage = () => {
   }, [executeLocationSummaries, executeLocations, executeSummary, shopId])
 
   const handleChangeShop = useCallback(() => {
-    clearSession()
+    clearSession({ preserveSnapshot: true })
     navigate('/select-user', { state: { redirectTo: '/' } })
   }, [clearSession, navigate])
 

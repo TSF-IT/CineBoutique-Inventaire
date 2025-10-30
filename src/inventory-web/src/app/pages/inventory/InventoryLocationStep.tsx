@@ -386,7 +386,7 @@ export const InventoryLocationStep = () => {
             {(Array.isArray(filteredLocations) ? filteredLocations : []).map((zone) => {
               const visibleStatuses = getVisibleStatuses(zone)
               const zoneCompleted = isZoneCompleted(zone)
-              const isSelected = location?.id === zone.id
+              const isSelected = false
               const conflictStatus = (() => {
                 if (!conflictsLoaded) {
                   return null
