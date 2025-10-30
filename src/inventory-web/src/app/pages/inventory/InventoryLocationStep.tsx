@@ -107,6 +107,13 @@ export const InventoryLocationStep = () => {
   const [error, setError] = useState<HttpError | Error | string | null>(null)
   const [conflictLookup, setConflictLookup] = useState<Map<string, true>>(new Map())
   const [conflictsLoaded, setConflictsLoaded] = useState(false)
+
+  useEffect(() => {
+    clearSession()
+    setLocation(null)
+    setCountType(null)
+    setSessionId(null)
+  }, [clearSession, setCountType, setLocation, setSessionId])
   const loadLocations = useCallback(
     async (options?: { isCancelled?: () => boolean }) => {
       const isCancelled = options?.isCancelled ?? (() => false)

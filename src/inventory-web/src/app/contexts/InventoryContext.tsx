@@ -16,7 +16,7 @@ export interface InventoryContextValue {
   logs: InventoryLogEntry[]
   setSelectedUser: (user: ShopUser) => void
   setCountType: (type: number | null) => void
-  setLocation: (location: Location) => void
+  setLocation: (location: Location | null) => void
   setSessionId: (sessionId: string | null) => void
   addOrIncrementItem: (product: Product, options?: { isManual?: boolean }) => void
   initializeItems: (
@@ -168,7 +168,7 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
     }))
   }, [])
 
-  const setLocation = useCallback((location: Location) => {
+  const setLocation = useCallback((location: Location | null) => {
     setState((prev) => ({
       ...prev,
       location,
