@@ -108,6 +108,18 @@ export const InventoryCountTypeStep = () => {
     [countStatuses],
   )
 
+  const count1Status = useMemo(
+    () => countStatuses.find((item) => item.countType === CountType.Count1),
+    [countStatuses],
+  )
+
+  const canAccessSecondCount = useMemo(() => {
+    if (!count1Status) {
+      return false
+    }
+    return count1Status.status === 'in_progress' || count1Status.status === 'completed'
+  }, [count1Status])
+
   const hasUserCompletedOtherEligibleCount = useCallback(
     (type: CountType) =>
       DISPLAYED_COUNT_TYPES.filter((candidate) => candidate !== type).some((candidate) => {
@@ -125,6 +137,10 @@ export const InventoryCountTypeStep = () => {
   const handleSelect = (type: CountType) => {
     const status = countStatuses.find((item) => item.countType === type)
     if (!status || zoneCompleted) {
+      return
+    }
+
+    if (type === CountType.Count2 && !canAccessSecondCount) {
       return
     }
 
@@ -194,7 +210,9 @@ export const InventoryCountTypeStep = () => {
               (option === CountType.Count1 || option === CountType.Count2) &&
               userHasCompletedOtherEligibleCount &&
               !isCompletedByUser
-            const isDisabled = zoneCompleted || isCompleted || isInProgressByOther || isUserExcludedForThisCount
+            const isSequentiallyLocked = option === CountType.Count2 && !canAccessSecondCount
+            const isDisabled =
+              zoneCompleted || isCompleted || isInProgressByOther || isUserExcludedForThisCount || isSequentiallyLocked
             const helperMessage = (() => {
               if (zoneCompleted) {
                 return 'Comptages terminés.'
@@ -208,6 +226,9 @@ export const InventoryCountTypeStep = () => {
               }
               if (isUserExcludedForThisCount) {
                 return 'Vous avez déjà effectué un autre comptage pour cette zone.'
+              }
+              if (isSequentiallyLocked) {
+                return 'Commencez d’abord le comptage n°1.'
               }
               if (isInProgressByOther) {
                 const label = ownerNameForMessage ?? 'un autre opérateur'
