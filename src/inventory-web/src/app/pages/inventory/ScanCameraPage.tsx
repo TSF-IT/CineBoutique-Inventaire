@@ -1,60 +1,23 @@
-import { BrowserMultiFormatReader } from '@zxing/browser'
-import { BarcodeFormat, DecodeHintType, NotFoundException } from '@zxing/library'
-import { clsx } from 'clsx'
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type PointerEvent,
-} from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import { fetchProductByEan, startInventoryRun } from '../../api/inventoryApi'
 import { BarcodeScanner } from '../../components/BarcodeScanner'
-import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
-import { ScannedRow, type ScannedRowHandle } from '../../components/inventory/ScannedRow'
+import { ScannedRow } from '../../components/inventory/ScannedRow'
 import { Button } from '../../components/ui/Button'
 import { useInventory } from '../../contexts/InventoryContext'
-import { CountType, type ConflictZoneSummary, type Product } from '../../types/inventory'
+import type { Product } from '../../types/inventory'
 
 import { useScanRejectionFeedback } from '@/hooks/useScanRejectionFeedback'
 import type { HttpError } from '@/lib/api/http'
 import { useShop } from '@/state/ShopContext'
 
 const MAX_SCAN_LENGTH = 32
-
-type SheetState = 'closed' | 'half' | 'full'
-
-const SHEET_HEIGHTS: Record<SheetState, string> = {
-  closed: '130px',
-  half: '62vh',
-  full: '90vh',
-}
+const LOCK_RELEASE_DELAY = 700
 
 const sanitizeScanValue = (value: string) => value.replace(/\r|\n/g, '')
 
 const isScanLengthValid = (code: string) => code.length > 0 && code.length <= MAX_SCAN_LENGTH
-
-const moveState = (current: SheetState, direction: 'up' | 'down'): SheetState => {
-  if (direction === 'up') {
-    if (current === 'closed') return 'half'
-    if (current === 'half') return 'full'
-    return 'full'
-  }
-  if (current === 'full') return 'half'
-  if (current === 'half') return 'closed'
-  return 'closed'
-}
-
-const detectCompactViewport = () => {
-  if (typeof window === 'undefined') {
-    return false
-  }
-  const { innerWidth, innerHeight } = window
-  return innerWidth <= 430 || innerHeight <= 740
-}
 
 export const ScanCameraPage = () => {
   const navigate = useNavigate()
@@ -70,66 +33,20 @@ export const ScanCameraPage = () => {
     sessionId,
     setSessionId,
   } = useInventory()
-  const [isCompactScreen, setIsCompactScreen] = useState<boolean>(() => detectCompactViewport())
-  const [sheetState, setSheetState] = useState<SheetState>(() => (detectCompactViewport() ? 'half' : 'closed'))
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [highlightEan, setHighlightEan] = useState<string | null>(null)
-  const [conflictModalOpen, setConflictModalOpen] = useState(false)
-  const [lastAddedKey, setLastAddedKey] = useState<string | null>(null)
-  const triggerScanRejectionFeedback = useScanRejectionFeedback()
-  const dragStateRef = useRef<{ startY: number; pointerId: number } | null>(null)
-  const manualInputActiveRef = useRef(false)
-  const focusedRowKeyRef = useRef<string | null>(null)
-  const scrollToEndRef = useRef(false)
-  const listContainerRef = useRef<HTMLDivElement | null>(null)
-  const fallbackReaderRef = useRef<BrowserMultiFormatReader | null>(null)
-  const rowRefs = useRef<Map<string, ScannedRowHandle>>(new Map())
   const highlightTimeoutRef = useRef<number | null>(null)
-  const pendingFocusEanRef = useRef<string | null>(null)
-  const lastAddedTimeoutRef = useRef<number | null>(null)
+  const statusTimeoutRef = useRef<number | null>(null)
+  const lockTimeoutRef = useRef<number | null>(null)
+  const lockedEanRef = useRef<string | null>(null)
+  const triggerScanRejectionFeedback = useScanRejectionFeedback()
+
   const shopName = shop?.name ?? 'Boutique'
   const ownerUserId = selectedUser?.id?.trim() ?? ''
   const locationId = location?.id?.trim() ?? ''
   const countTypeValue = typeof countType === 'number' ? countType : null
   const sessionRunId = typeof sessionId === 'string' ? sessionId.trim() : ''
-
-  const conflictZoneSummary = useMemo<ConflictZoneSummary | null>(() => {
-    if (typeof countType !== 'number' || countType < CountType.Count3 || !location) {
-      return null
-    }
-    return {
-      locationId: location.id,
-      locationCode: location.code,
-      locationLabel: location.label,
-      conflictLines: 0,
-    }
-  }, [countType, location])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return
-    }
-
-    const handleViewportChange = () => {
-      const compact = detectCompactViewport()
-      setIsCompactScreen(compact)
-      setSheetState((prev) => {
-        if (prev === 'closed' && compact) {
-          return 'half'
-        }
-        return prev
-      })
-    }
-
-    handleViewportChange()
-    window.addEventListener('resize', handleViewportChange)
-    window.addEventListener('orientationchange', handleViewportChange)
-    return () => {
-      window.removeEventListener('resize', handleViewportChange)
-      window.removeEventListener('orientationchange', handleViewportChange)
-    }
-  }, [setIsCompactScreen, setSheetState])
 
   useEffect(() => {
     if (!selectedUser) {
@@ -146,15 +63,22 @@ export const ScanCameraPage = () => {
   }, [countTypeValue, locationId, navigate, selectedUser])
 
   useEffect(() => {
-    if (!scrollToEndRef.current) {
-      return
+    return () => {
+      if (highlightTimeoutRef.current) {
+        window.clearTimeout(highlightTimeoutRef.current)
+        highlightTimeoutRef.current = null
+      }
+      if (statusTimeoutRef.current) {
+        window.clearTimeout(statusTimeoutRef.current)
+        statusTimeoutRef.current = null
+      }
+      if (lockTimeoutRef.current) {
+        window.clearTimeout(lockTimeoutRef.current)
+        lockTimeoutRef.current = null
+      }
+      lockedEanRef.current = null
     }
-    const container = listContainerRef.current
-    if (container) {
-      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
-    }
-    scrollToEndRef.current = false
-  }, [items.length])
+  }, [])
 
   useEffect(() => {
     if (!highlightEan) {
@@ -165,61 +89,22 @@ export const ScanCameraPage = () => {
     }
     highlightTimeoutRef.current = window.setTimeout(() => {
       setHighlightEan(null)
-    }, 600)
-    return () => {
-      if (highlightTimeoutRef.current) {
-        window.clearTimeout(highlightTimeoutRef.current)
-      }
-    }
+      highlightTimeoutRef.current = null
+    }, 700)
   }, [highlightEan])
 
   useEffect(() => {
-    const targetEan = pendingFocusEanRef.current
-    if (!targetEan) {
+    if (!statusMessage) {
       return
     }
-    const handle = rowRefs.current.get(targetEan)
-    if (handle) {
-      requestAnimationFrame(() => {
-        handle.focusQuantity()
-      })
-      pendingFocusEanRef.current = null
+    if (statusTimeoutRef.current) {
+      window.clearTimeout(statusTimeoutRef.current)
     }
-  }, [items])
-
-  useEffect(() => {
-    if (!lastAddedKey) {
-      if (lastAddedTimeoutRef.current) {
-        window.clearTimeout(lastAddedTimeoutRef.current)
-        lastAddedTimeoutRef.current = null
-      }
-      return
-    }
-
-    if (lastAddedTimeoutRef.current) {
-      window.clearTimeout(lastAddedTimeoutRef.current)
-    }
-    lastAddedTimeoutRef.current = window.setTimeout(() => {
-      setLastAddedKey(null)
-    }, 6000)
-
-    return () => {
-      if (lastAddedTimeoutRef.current) {
-        window.clearTimeout(lastAddedTimeoutRef.current)
-        lastAddedTimeoutRef.current = null
-      }
-    }
-  }, [lastAddedKey, setLastAddedKey])
-
-  useEffect(() => {
-    if (!lastAddedKey) {
-      return
-    }
-    const stillExists = items.some((item) => item.product.ean === lastAddedKey)
-    if (!stillExists) {
-      setLastAddedKey(null)
-    }
-  }, [items, lastAddedKey, setLastAddedKey])
+    statusTimeoutRef.current = window.setTimeout(() => {
+      setStatusMessage(null)
+      statusTimeoutRef.current = null
+    }, 2200)
+  }, [statusMessage])
 
   const totalQuantity = useMemo(
     () => items.reduce((acc, item) => acc + item.quantity, 0),
@@ -227,14 +112,6 @@ export const ScanCameraPage = () => {
   )
 
   const orderedItems = useMemo(() => [...items].reverse(), [items])
-  const closedItems = useMemo(() => orderedItems.slice(-3), [orderedItems])
-  const lastAddedItem = useMemo(() => {
-    if (!lastAddedKey) {
-      return null
-    }
-    return orderedItems.find((item) => item.product.ean === lastAddedKey) ?? null
-  }, [lastAddedKey, orderedItems])
-  const lastAddedEan = lastAddedItem?.product.ean ?? null
 
   const ensureScanPrerequisites = useCallback(() => {
     if (!shop?.id) {
@@ -252,8 +129,8 @@ export const ScanCameraPage = () => {
   }, [countTypeValue, locationId, ownerUserId, shop?.id])
 
   const ensureActiveRun = useCallback(async () => {
-    if (items.length > 0) {
-      return sessionRunId || null
+    if (items.length > 0 && sessionRunId) {
+      return sessionRunId
     }
     if (sessionRunId) {
       return sessionRunId
@@ -273,7 +150,7 @@ export const ScanCameraPage = () => {
   }, [countTypeValue, ensureScanPrerequisites, items.length, locationId, ownerUserId, sessionRunId, setSessionId, shop])
 
   const addProductToSession = useCallback(
-    async (product: Product, options?: { isManual?: boolean }) => {
+    async (product: Product) => {
       try {
         await ensureActiveRun()
       } catch (error) {
@@ -281,36 +158,47 @@ export const ScanCameraPage = () => {
         setErrorMessage(error instanceof Error ? error.message : 'Impossible de démarrer le comptage.')
         return false
       }
-      addOrIncrementItem(product, options)
+      addOrIncrementItem(product)
       return true
     },
     [addOrIncrementItem, ensureActiveRun],
   )
 
-  const handleProductAdded = useCallback(
-    (product: Product) => {
-      setStatusMessage(`${product.name} ajouté`)
-      const normalizedEan = product.ean?.trim()
-      if (normalizedEan) {
-        setHighlightEan(normalizedEan)
-        setLastAddedKey(normalizedEan)
-        if (manualInputActiveRef.current) {
-          pendingFocusEanRef.current = normalizedEan
-        }
-      } else {
-        setHighlightEan(null)
-        setLastAddedKey(null)
+  const armScanLock = useCallback(
+    (ean: string | null) => {
+      if (lockTimeoutRef.current) {
+        window.clearTimeout(lockTimeoutRef.current)
+        lockTimeoutRef.current = null
       }
-      scrollToEndRef.current = true
-      setSheetState((prev) => {
-        if (prev === 'closed') {
-          return 'half'
-        }
-        return prev
-      })
+      lockedEanRef.current = ean
+      if (!ean) {
+        return
+      }
+      lockTimeoutRef.current = window.setTimeout(() => {
+        lockedEanRef.current = null
+        lockTimeoutRef.current = null
+      }, LOCK_RELEASE_DELAY)
     },
-    [setSheetState],
+    [],
   )
+
+  const refreshScanLock = useCallback(() => {
+    const current = lockedEanRef.current
+    if (!current) {
+      return
+    }
+    armScanLock(current)
+  }, [armScanLock])
+
+  const handleProductAdded = useCallback((product: Product) => {
+    setStatusMessage(`${product.name} ajouté`)
+    const normalizedEan = product.ean?.trim() ?? null
+    if (normalizedEan) {
+      setHighlightEan(normalizedEan)
+    } else {
+      setHighlightEan(null)
+    }
+  }, [])
 
   const handleDetected = useCallback(
     async (rawValue: string) => {
@@ -318,41 +206,52 @@ export const ScanCameraPage = () => {
       if (!sanitized) {
         return
       }
+
+      if (lockedEanRef.current && lockedEanRef.current === sanitized) {
+        refreshScanLock()
+        return
+      }
+
       if (!isScanLengthValid(sanitized)) {
         setErrorMessage(`Code ${sanitized} invalide : ${MAX_SCAN_LENGTH} caractères maximum.`)
         setStatusMessage(null)
+        armScanLock(sanitized)
         return
       }
+
       try {
         ensureScanPrerequisites()
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : 'Impossible de lancer le scan.')
         setStatusMessage(null)
+        armScanLock(null)
         return
       }
+
       setStatusMessage(`Lecture de ${sanitized}…`)
       setErrorMessage(null)
+      armScanLock(sanitized)
+
       try {
         const product = await fetchProductByEan(sanitized)
         const added = await addProductToSession(product)
         if (added) {
           handleProductAdded(product)
-          // TODO: jouer un son de confirmation court si disponible.
         }
       } catch (error) {
         const err = error as HttpError
         if (err?.status === 404) {
-          setErrorMessage(
-            `Code ${sanitized} introuvable dans la liste des produits à inventorier.`,
-          )
+          setErrorMessage(`Code ${sanitized} introuvable dans la liste des produits à inventorier.`)
           triggerScanRejectionFeedback()
         } else {
           setErrorMessage('Échec de la récupération du produit. Réessayez.')
         }
         setStatusMessage(null)
+      } finally {
+        armScanLock(sanitized)
       }
     },
-    [addProductToSession, ensureScanPrerequisites, handleProductAdded, triggerScanRejectionFeedback],
+    [addProductToSession, armScanLock, ensureScanPrerequisites, handleProductAdded, refreshScanLock, triggerScanRejectionFeedback],
   )
 
   const handleDec = useCallback(
@@ -387,307 +286,77 @@ export const ScanCameraPage = () => {
     [removeItem, setQuantity],
   )
 
-  const registerRowRef = useCallback((key: string) => {
-    return (instance: ScannedRowHandle | null) => {
-      if (!key) {
-        return
-      }
-      if (!instance) {
-        rowRefs.current.delete(key)
-      } else {
-        rowRefs.current.set(key, instance)
-      }
-    }
-  }, [])
-
-  const handleQuantityFocusChange = useCallback((focused: boolean, rowKey: string) => {
-    manualInputActiveRef.current = focused
-    if (focused) {
-      focusedRowKeyRef.current = rowKey
-      setSheetState('full')
-      requestAnimationFrame(() => {
-        const handle = rowRefs.current.get(rowKey)
-        handle?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-      })
-      return
-    }
-    if (focusedRowKeyRef.current === rowKey) {
-      focusedRowKeyRef.current = null
-    }
-  }, [])
-
-  const getFallbackReader = useCallback(() => {
-    if (!fallbackReaderRef.current) {
-      const hints = new Map<DecodeHintType, unknown>()
-      hints.set(DecodeHintType.POSSIBLE_FORMATS, [
-        BarcodeFormat.EAN_13,
-        BarcodeFormat.EAN_8,
-        BarcodeFormat.CODE_128,
-        BarcodeFormat.CODE_39,
-        BarcodeFormat.ITF,
-        BarcodeFormat.QR_CODE,
-      ])
-      hints.set(DecodeHintType.TRY_HARDER, true)
-      fallbackReaderRef.current = new BrowserMultiFormatReader(hints)
-    }
-    return fallbackReaderRef.current
-  }, [])
-
-  const handleImageImport = useCallback(
-    async (file: File) => {
-      const reader = getFallbackReader()
-      if (!reader) {
-        return
-      }
-
-      setErrorMessage(null)
-      setStatusMessage('Analyse de la photo…')
-
-      const objectUrl = URL.createObjectURL(file)
-      try {
-        const result = await reader.decodeFromImageUrl(objectUrl)
-        const text = result?.getText?.()
-        if (text) {
-          await handleDetected(text)
-          return
-        }
-        setStatusMessage(null)
-        setErrorMessage('Aucun code-barres détecté sur cette image.')
-      } catch (error) {
-        setStatusMessage(null)
-        if (error instanceof NotFoundException) {
-          setErrorMessage('Aucun code-barres détecté sur cette image.')
-        } else {
-          setErrorMessage('Impossible de lire le code-barres sur cette image.')
-        }
-      } finally {
-        URL.revokeObjectURL(objectUrl)
-      }
-    },
-    [getFallbackReader, handleDetected],
-  )
-
-  const handleDragStart = useCallback(
-    (event: PointerEvent<HTMLDivElement>) => {
-      dragStateRef.current = { startY: event.clientY, pointerId: event.pointerId }
-      event.currentTarget.setPointerCapture?.(event.pointerId)
-    },
-    [],
-  )
-
-  const handleDragEnd = useCallback(
-    (event: PointerEvent<HTMLDivElement>) => {
-      const snapshot = dragStateRef.current
-      dragStateRef.current = null
-      if (!snapshot) {
-        return
-      }
-      const deltaY = event.clientY - snapshot.startY
-      const threshold = 40
-      if (deltaY <= -threshold) {
-        setSheetState((prev) => moveState(prev, 'up'))
-      } else if (deltaY >= threshold) {
-        setSheetState((prev) => moveState(prev, 'down'))
-      }
-      event.currentTarget.releasePointerCapture?.(snapshot.pointerId)
-    },
-    [],
-  )
-
-  const handleToggleSheet = useCallback(() => {
-    setSheetState((prev) => (prev === 'closed' ? 'half' : prev === 'half' ? 'full' : 'closed'))
-  }, [])
-
-  const sheetHeight = useMemo(() => {
-    if (!isCompactScreen) {
-      return SHEET_HEIGHTS[sheetState]
-    }
-    if (sheetState === 'closed') {
-      return '48vh'
-    }
-    if (sheetState === 'half') {
-      return '70vh'
-    }
-    return '92vh'
-  }, [isCompactScreen, sheetState])
-
-  const displayedItems = sheetState === 'closed' && !isCompactScreen ? closedItems : orderedItems
-
   return (
-    <div className="relative flex h-full flex-col bg-black text-white" data-testid="scan-camera-page">
-      <div className="relative flex-1 overflow-hidden">
-        <BarcodeScanner
-          active
-          onDetected={handleDetected}
-          onPickImage={handleImageImport}
-          enableTorchToggle
-          presentation="immersive"
-        />
-        {statusMessage && (
-          <div className="absolute inset-x-0 top-0 z-10 flex justify-center p-3">
-            <span className="rounded-full bg-black/60 px-3 py-1 text-xs font-semibold text-emerald-200 backdrop-blur">
-              {statusMessage}
-            </span>
-          </div>
-        )}
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/70" />
-      </div>
-      <div className="absolute left-0 right-0 top-0 z-20 flex items-center justify-between px-4 py-3">
-        <div>
-          <p className="text-xs uppercase tracking-[0.3em] text-white/70">{shopName}</p>
-          <p className="text-lg font-semibold">{location?.label ?? 'Zone inconnue'}</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="rounded-full bg-white/20 px-3 py-1 text-sm font-semibold">
-            {totalQuantity} pièces
-          </div>
+    <div className="flex h-full flex-col bg-black text-white" data-testid="scan-camera-page">
+      <div className="relative flex-none min-h-[52vh] w-full overflow-hidden">
+        <BarcodeScanner active onDetected={handleDetected} presentation="immersive" enableTorchToggle />
+        <div className="absolute left-4 top-4 flex items-center gap-3">
           <Button
-            type="button"
-            variant="secondary"
-            className="bg-white/80 text-slate-900 hover:bg-white"
+            size="sm"
+            variant="ghost"
+            className="bg-black/60 px-4 text-white hover:bg-black/40"
             onClick={() => navigate('/inventory/session')}
           >
-            Stop scan
+            Retour
           </Button>
         </div>
       </div>
-      <div
-        className={clsx(
-          'absolute inset-x-0 bottom-0 z-30 flex flex-col rounded-t-3xl bg-white text-slate-900 shadow-2xl transition-[height]',
-          'relative overflow-hidden',
-          'dark:bg-slate-900 dark:text-white',
-        )}
-        style={{ height: sheetHeight }}
-        data-state={sheetState}
-        data-testid="scan-sheet"
-      >
-        {sheetState === 'closed' && (
-          <div className="pointer-events-none absolute inset-x-0 top-0 h-10 rounded-t-3xl bg-gradient-to-b from-slate-200/80 via-white/70 to-transparent dark:from-slate-800/80 dark:via-slate-900/70" />
-        )}
-        <div className="px-4 pt-3">
-          <div
-            className="mb-3 flex justify-center"
-            onPointerDown={handleDragStart}
-            onPointerUp={handleDragEnd}
-            role="presentation"
-            data-testid="scan-sheet-handle"
-          >
-            <button
-              type="button"
-              className="h-1.5 w-16 rounded-full bg-slate-300"
-              onClick={handleToggleSheet}
-              aria-label="Changer la hauteur du panneau"
-            />
+      <div className="flex min-h-0 flex-1 flex-col rounded-t-[28px] bg-white text-slate-900 shadow-[0_-16px_40px_-32px_rgba(15,23,42,0.45)] dark:bg-slate-950 dark:text-white">
+        <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-4">
+          <div className="flex min-w-0 flex-col">
+            <span className="text-[11px] uppercase tracking-[0.28em] text-slate-400 dark:text-slate-500">
+              {shopName}
+            </span>
+            <span className="mt-1 truncate text-base font-semibold leading-tight text-slate-900 dark:text-white">
+              {location?.label ?? 'Zone inconnue'}
+            </span>
           </div>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 pb-2">
-            <h2 className="text-base font-semibold">Articles scannés</h2>
-            <div className="flex items-center gap-2">
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                {items.length} références
-              </span>
+          <span className="shrink-0 rounded-full bg-slate-900 px-3 py-1 text-sm font-semibold text-white dark:bg-slate-700">
+            {totalQuantity} pièce{totalQuantity > 1 ? 's' : ''}
+          </span>
+        </div>
+        <div className="space-y-2 px-5">
+          {statusMessage && (
+            <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">
+              {statusMessage}
             </div>
-          </div>
-          {lastAddedItem && lastAddedEan && (
-            <div className="mt-2 flex items-center justify-between gap-4 rounded-2xl border border-emerald-200 bg-emerald-50/90 px-4 py-3 text-sm shadow-sm dark:border-emerald-500/40 dark:bg-emerald-500/10">
-              <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-300">
-                  Ajouté
-                </p>
-                <p className="mt-1 text-base font-semibold leading-tight text-emerald-900 dark:text-emerald-50">
-                  {lastAddedItem.product.name}
-                </p>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-emerald-700/80 dark:text-emerald-200/70">
-                  <span className="font-mono uppercase tracking-wide">EAN {lastAddedEan}</span>
-                  {lastAddedItem.product.sku ? (
-                    <span className="font-mono uppercase tracking-wide">SKU {lastAddedItem.product.sku}</span>
-                  ) : null}
-                  {lastAddedItem.product.subGroup ? (
-                    <span className="truncate">Sous-groupe {lastAddedItem.product.subGroup}</span>
-                  ) : null}
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-lg font-semibold text-emerald-800 shadow-sm transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
-                  onClick={() => handleDec(lastAddedEan, lastAddedItem.quantity)}
-                  aria-label={`Diminuer la quantité pour ${lastAddedItem.product.name}`}
-                >
-                  −
-                </button>
-                <div className="min-w-[3rem] text-center text-xl font-bold text-emerald-900 dark:text-emerald-100">
-                  {lastAddedItem.quantity}
-                </div>
-                <button
-                  type="button"
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500 text-lg font-semibold text-white shadow-sm transition active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-300"
-                  onClick={() => handleInc(lastAddedEan, lastAddedItem.quantity)}
-                  aria-label={`Augmenter la quantité pour ${lastAddedItem.product.name}`}
-                >
-                  +
-                </button>
-              </div>
+          )}
+          {errorMessage && (
+            <div className="rounded-2xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-600 dark:bg-rose-500/10 dark:text-rose-200">
+              {errorMessage}
             </div>
           )}
         </div>
-        <div className="relative flex-1 overflow-hidden">
-          {sheetState === 'closed' && (
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-5 bg-gradient-to-b from-white via-white/80 to-transparent dark:from-slate-900 dark:via-slate-900/80" />
+        <div className="flex-1 overflow-y-auto px-5 pb-8 pt-4">
+          {orderedItems.length === 0 ? (
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Scannez un article pour commencer le comptage.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {orderedItems.map((item) => {
+                const ean = item.product.ean
+                return (
+                  <ScannedRow
+                    key={item.id}
+                    id={item.id}
+                    ean={item.product.ean}
+                    label={item.product.name}
+                    sku={item.product.sku}
+                    subGroup={item.product.subGroup}
+                    qty={item.quantity}
+                    highlight={highlightEan === item.product.ean}
+                    hasConflict={Boolean(item.hasConflict)}
+                    onInc={() => handleInc(ean, item.quantity)}
+                    onDec={() => handleDec(ean, item.quantity)}
+                    onSetQty={(value) => handleSetQuantity(ean, value)}
+                  />
+                )
+              })}
+            </ul>
           )}
-          <div
-            ref={listContainerRef}
-            className={clsx(
-              'h-full space-y-2 overflow-y-auto px-4 pb-6',
-              sheetState === 'closed' ? 'pointer-events-auto' : null,
-            )}
-          >
-            {displayedItems.length === 0 ? (
-              <p className="text-sm text-slate-500">Scannez un article pour débuter.</p>
-            ) : (
-              <ul className={clsx('flex flex-col', sheetState === 'closed' ? 'gap-1.5' : 'gap-2')}>
-                {displayedItems.map((item) => {
-                  const hasConflict = Boolean(item.hasConflict)
-                  const rowKey = item.product.ean ?? item.id
-                  return (
-                    <ScannedRow
-                      key={item.id}
-                      ref={registerRowRef(rowKey)}
-                      id={item.id}
-                      ean={item.product.ean}
-                      label={item.product.name}
-                      sku={item.product.sku}
-                      subGroup={item.product.subGroup}
-                      qty={item.quantity}
-                      highlight={highlightEan === item.product.ean}
-                      hasConflict={hasConflict}
-                      density={sheetState === 'closed' && !isCompactScreen ? 'dense' : 'regular'}
-                      onInc={() => handleInc(item.product.ean, item.quantity)}
-                      onDec={() => handleDec(item.product.ean, item.quantity)}
-                      onSetQty={(next) => handleSetQuantity(item.product.ean, next)}
-                      onOpenConflict={() => setConflictModalOpen(true)}
-                      onQuantityFocusChange={handleQuantityFocusChange}
-                    />
-                  )
-                })}
-              </ul>
-            )}
-          </div>
         </div>
       </div>
-      {errorMessage && (
-        <div className="absolute inset-x-0 bottom-[calc(100%+8px)] z-30 flex justify-center p-3">
-          <div className="flex items-center gap-3 rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white shadow-lg">
-            <span>{errorMessage}</span>
-          </div>
-        </div>
-      )}
-      {conflictZoneSummary && (
-        <ConflictZoneModal
-          open={conflictModalOpen}
-          zone={conflictZoneSummary}
-          onClose={() => setConflictModalOpen(false)}
-        />
-      )}
     </div>
   )
 }

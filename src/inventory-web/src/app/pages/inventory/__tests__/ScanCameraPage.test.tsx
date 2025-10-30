@@ -3,16 +3,14 @@ import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { MemoryRouter } from 'react-router-dom'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { InventoryProvider, useInventory } from '../../../contexts/InventoryContext'
-import { CountType, type InventoryItem , Location } from '../../../types/inventory'
+import { CountType, type InventoryItem, type Location } from '../../../types/inventory'
 import { ScanCameraPage } from '../ScanCameraPage'
 
 import type { Shop } from '@/types/shop'
 import type { ShopUser } from '@/types/user'
-
-
 
 const fetchProductByEanMock = vi.hoisted(() => vi.fn())
 const startInventoryRunMock = vi.hoisted(() => vi.fn())
@@ -69,7 +67,11 @@ vi.mock('@/state/ShopContext', () => ({
 
 type ItemSeed = { ean: string; name: string; quantity?: number }
 
-const InventoryInitializer = ({ children, initialItems = [], countType = CountType.Count1 }: {
+const InventoryInitializer = ({
+  children,
+  initialItems = [],
+  countType = CountType.Count1,
+}: {
   children: ReactNode
   initialItems?: ItemSeed[]
   countType?: CountType
@@ -112,11 +114,12 @@ const renderScanCameraPage = (options?: {
     useEffect(() => {
       handlerRef.current?.(items)
     }, [items])
+
     return null
   }
 
   return render(
-    <MemoryRouter initialEntries={[{ pathname: '/inventory/scan-camera' }]}> 
+    <MemoryRouter initialEntries={[{ pathname: '/inventory/scan-camera' }]}>
       <InventoryProvider>
         <InventoryInitializer initialItems={options?.items} countType={options?.countType}>
           <ItemsObserver />
@@ -127,71 +130,25 @@ const renderScanCameraPage = (options?: {
   )
 }
 
-const scrollToMock = vi.fn()
-const scrollIntoViewMock = vi.fn()
-const originalScrollTo = HTMLElement.prototype.scrollTo
-const hadScrollIntoView = Object.prototype.hasOwnProperty.call(
-  HTMLElement.prototype,
-  'scrollIntoView',
-)
-const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
-
-beforeAll(() => {
-  Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
-    configurable: true,
-    value: scrollToMock,
-  })
-  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-    configurable: true,
-    value: scrollIntoViewMock,
-  })
-})
-
 afterEach(() => {
-  scrollToMock.mockClear()
-  scrollIntoViewMock.mockClear()
+  fetchProductByEanMock.mockReset()
+  startInventoryRunMock.mockReset()
+  scannerCallbacks.onDetected = undefined
   cleanup()
 })
 
-afterAll(() => {
-  Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
-    configurable: true,
-    value: originalScrollTo,
-  })
-  if (hadScrollIntoView && originalScrollIntoView) {
-    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
-      configurable: true,
-      value: originalScrollIntoView,
-    })
-  } else {
-    Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView')
-  }
-})
-
 describe('ScanCameraPage', () => {
-  beforeEach(() => {
-    fetchProductByEanMock.mockReset()
-    startInventoryRunMock.mockReset()
-    scannerCallbacks.onDetected = undefined
-  })
-
-  it('affiche uniquement les trois derniers articles en mode fermé', async () => {
+  it('affiche les informations de la zone et la quantité totale', async () => {
     renderScanCameraPage({
       items: [
         { ean: '1000000000001', name: 'Article 1' },
         { ean: '1000000000002', name: 'Article 2' },
-        { ean: '1000000000003', name: 'Article 3' },
-        { ean: '1000000000004', name: 'Article 4' },
-        { ean: '1000000000005', name: 'Article 5' },
       ],
     })
 
-    const sheet = await screen.findByTestId('scan-sheet')
-    expect(sheet).toHaveAttribute('data-state', 'closed')
-    const rows = await screen.findAllByTestId('scanned-row')
-    expect(rows).toHaveLength(3)
-    const labels = rows.map((row) => within(row).getByText(/Article/).textContent)
-    expect(labels).toEqual(['Article 3', 'Article 4', 'Article 5'])
+    expect(await screen.findByText('CinéBoutique Paris')).toBeInTheDocument()
+    expect(screen.getByText('Zone test')).toBeInTheDocument()
+    expect(screen.getByText('2 pièces')).toBeInTheDocument()
   })
 
   it('met à jour la quantité via les boutons plus et moins', async () => {
@@ -204,17 +161,17 @@ describe('ScanCameraPage', () => {
     })
 
     const row = await screen.findByTestId('scanned-row')
-    const addButton = within(row).getByRole('button', { name: /augmenter la quantité/i })
-    const removeButton = within(row).getByRole('button', { name: /diminuer la quantité/i })
+    const increment = within(row).getByRole('button', { name: /augmenter/i })
+    const decrement = within(row).getByRole('button', { name: /diminuer/i })
     const input = within(row).getByRole('textbox', { name: /quantité/i })
 
-    await userEvent.click(addButton)
-    await waitFor(() => expect(latestItems[0]?.quantity).toBe(3))
-    expect(input).toHaveValue('3')
+    await userEvent.click(increment)
+    await waitFor(() => expect(input).toHaveValue('3'))
+    expect(latestItems[0]?.quantity).toBe(3)
 
-    await userEvent.click(removeButton)
-    await waitFor(() => expect(latestItems[0]?.quantity).toBe(2))
-    expect(input).toHaveValue('2')
+    await userEvent.click(decrement)
+    await waitFor(() => expect(input).toHaveValue('2'))
+    expect(latestItems[0]?.quantity).toBe(2)
   })
 
   it('permet la saisie directe de la quantité', async () => {
@@ -235,37 +192,6 @@ describe('ScanCameraPage', () => {
     fireEvent.blur(input)
 
     await waitFor(() => expect(latestItems[0]?.quantity).toBe(12))
-  })
-
-  it('change d’état via un geste de balayage', async () => {
-    renderScanCameraPage({
-      items: [
-        { ean: '4000000000001', name: 'A' },
-        { ean: '4000000000002', name: 'B' },
-        { ean: '4000000000003', name: 'C' },
-        { ean: '4000000000004', name: 'D' },
-        { ean: '4000000000005', name: 'E' },
-      ],
-    })
-
-    let handle: HTMLElement | null = null
-    await waitFor(() => {
-      handle = document.querySelector('[data-testid="scan-sheet-handle"]')
-      if (!handle) {
-        throw new Error('Handle not mounted')
-      }
-    })
-
-    const toggle = within(handle!).getByRole('button', { name: /changer la hauteur du panneau/i })
-    await userEvent.click(toggle)
-    const sheet = await screen.findByTestId('scan-sheet')
-    await waitFor(() => expect(sheet).toHaveAttribute('data-state', 'half'))
-
-    await userEvent.click(toggle)
-    await waitFor(() => expect(sheet).toHaveAttribute('data-state', 'full'))
-
-    const allRows = screen.getAllByTestId('scanned-row')
-    expect(allRows).toHaveLength(5)
   })
 
   it('ajoute un article lors d’une détection simulée', async () => {
@@ -290,8 +216,8 @@ describe('ScanCameraPage', () => {
     await waitFor(() => expect(fetchProductByEanMock).toHaveBeenCalledWith('0123456789012'))
     expect(startInventoryRunMock).toHaveBeenCalled()
     await waitFor(() => expect(latestItems.some((item) => item.product.ean === '9876543210987')).toBe(true))
-    expect(await screen.findByText('Produit détecté')).toBeInTheDocument()
     const row = await screen.findByTestId('scanned-row')
+    expect(within(row).getByText('Produit détecté')).toBeInTheDocument()
     expect(within(row).getByText(/Sous-groupe Goodies/)).toBeInTheDocument()
   })
 
@@ -330,14 +256,34 @@ describe('ScanCameraPage', () => {
 
     await waitFor(() =>
       expect(
-        screen.getByText(
-          'Code 0123456789012 introuvable dans la liste des produits à inventorier.',
-        ),
+        screen.getByText('Code 0123456789012 introuvable dans la liste des produits à inventorier.'),
       ).toBeInTheDocument(),
     )
-    expect(document.body).toHaveClass('inventory-flash-active')
-    expect(screen.queryByRole('button', { name: /ajouter manuellement/i })).not.toBeInTheDocument()
     expect(latestItems.some((item) => item.product.ean === '0123456789012')).toBe(false)
   })
-})
 
+  it('ignore les lectures répétées du même code tant que la caméra le voit', async () => {
+    fetchProductByEanMock.mockResolvedValue({ ean: '5555555555555', name: 'Bonbon' })
+    startInventoryRunMock.mockResolvedValue({ runId: 'run-lock' })
+
+    let latestItems: InventoryItem[] = []
+    renderScanCameraPage({
+      onItemsChange: (items) => {
+        latestItems = items
+      },
+    })
+
+    await waitFor(() => expect(typeof scannerCallbacks.onDetected).toBe('function'))
+
+    await scannerCallbacks.onDetected?.('0123456789012')
+    await waitFor(() => expect(fetchProductByEanMock).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(latestItems[0]?.quantity).toBe(1))
+
+    await scannerCallbacks.onDetected?.('0123456789012')
+    expect(fetchProductByEanMock).toHaveBeenCalledTimes(1)
+
+    await new Promise((resolve) => setTimeout(resolve, 800))
+    await scannerCallbacks.onDetected?.('0123456789012')
+    await waitFor(() => expect(fetchProductByEanMock).toHaveBeenCalledTimes(2))
+  })
+})
