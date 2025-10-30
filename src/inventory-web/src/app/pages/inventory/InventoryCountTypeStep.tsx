@@ -132,6 +132,18 @@ export const InventoryCountTypeStep = () => {
     [countStatuses, selectedUserDisplayName, selectedUserId],
   )
 
+  const hasUserInProgressOtherEligibleCount = useCallback(
+    (type: CountType) =>
+      DISPLAYED_COUNT_TYPES.filter((candidate) => candidate !== type).some((candidate) => {
+        const otherStatus = countStatuses.find((item) => item.countType === candidate)
+        if (otherStatus?.status !== 'in_progress') {
+          return false
+        }
+        return resolveOwnerNameForMessage(otherStatus, selectedUserId, selectedUserDisplayName) === 'vous'
+      }),
+    [countStatuses, selectedUserDisplayName, selectedUserId],
+  )
+
   const displayName = location ? getLocationDisplayName(location.code, location.label) : ''
 
   const handleSelect = (type: CountType) => {
@@ -148,7 +160,10 @@ export const InventoryCountTypeStep = () => {
       return
     }
 
-    if ((type === CountType.Count1 || type === CountType.Count2) && hasUserCompletedOtherEligibleCount(type)) {
+    if (
+      (type === CountType.Count1 || type === CountType.Count2) &&
+      (hasUserCompletedOtherEligibleCount(type) || hasUserInProgressOtherEligibleCount(type))
+    ) {
       return
     }
 
@@ -206,10 +221,13 @@ export const InventoryCountTypeStep = () => {
             const isInProgressByUser = Boolean(isInProgress && isOwnedByUser)
             const isInProgressByOther = Boolean(isInProgress && !isOwnedByUser)
             const userHasCompletedOtherEligibleCount = hasUserCompletedOtherEligibleCount(option)
+            const userHasInProgressOtherEligibleCount = hasUserInProgressOtherEligibleCount(option)
+            const userHasClaimedOtherEligibleCount =
+              userHasCompletedOtherEligibleCount || userHasInProgressOtherEligibleCount
             const isUserExcludedForThisCount =
               (option === CountType.Count1 || option === CountType.Count2) &&
-              userHasCompletedOtherEligibleCount &&
-              !isCompletedByUser
+              userHasClaimedOtherEligibleCount &&
+              !(isCompletedByUser || isInProgressByUser)
             const isSequentiallyLocked = option === CountType.Count2 && !canAccessSecondCount
             const isDisabled =
               zoneCompleted || isCompleted || isInProgressByOther || isUserExcludedForThisCount || isSequentiallyLocked
@@ -225,7 +243,10 @@ export const InventoryCountTypeStep = () => {
                 return `Comptage terminé par ${label}.`
               }
               if (isUserExcludedForThisCount) {
-                return 'Vous avez déjà effectué un autre comptage pour cette zone.'
+                if (userHasCompletedOtherEligibleCount) {
+                  return 'Vous avez déjà effectué un autre comptage pour cette zone.'
+                }
+                return 'Vous avez déjà un autre comptage en cours pour cette zone.'
               }
               if (isSequentiallyLocked) {
                 return 'Commencez d’abord le comptage n°1.'
