@@ -1,9 +1,8 @@
-import { render, act } from '@testing-library/react'
+import { renderHook, act } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { InventoryProvider, useInventory } from '../InventoryContext'
 
-import type { InventoryContextValue } from '../InventoryContext'
 import type { Product } from '@/app/types/inventory'
 import type { ShopUser } from '@/types/user'
 
@@ -22,39 +21,15 @@ const sampleProduct: Product = {
   name: 'Produit test',
 }
 
-const renderInventory = () => {
-  const inventoryRef: { current: InventoryContextValue | null } = { current: null }
-
-  const Capture = () => {
-    inventoryRef.current = useInventory()
-    return null
-  }
-
-  render(
-    <InventoryProvider>
-      <Capture />
-    </InventoryProvider>,
-  )
-
-  if (!inventoryRef.current) {
-    throw new Error('Inventory context is not ready')
-  }
-
-  return inventoryRef
-}
+const renderInventory = () =>
+  renderHook(() => useInventory(), {
+    wrapper: InventoryProvider,
+  })
 
 describe('InventoryContext', () => {
   it('restores scanned items when switching users', () => {
-    const inventoryRef = renderInventory()
-    if (!inventoryRef.current) {
-      throw new Error('Inventory context is not ready after render')
-    }
-    const getInventory = () => {
-      if (!inventoryRef.current) {
-        throw new Error('Inventory context not available')
-      }
-      return inventoryRef.current
-    }
+    const { result } = renderInventory()
+    const getInventory = () => result.current
 
     const userA = createUser({ id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', login: 'operator.a' })
     const userB = createUser({ id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', login: 'operator.b' })
@@ -66,36 +41,27 @@ describe('InventoryContext', () => {
       inventory.addOrIncrementItem(sampleProduct)
     })
 
-    expect(inventoryRef.current?.items).toHaveLength(1)
-    expect(inventoryRef.current?.items[0]?.quantity).toBe(2)
+    expect(result.current.items).toHaveLength(1)
+    expect(result.current.items[0]?.quantity).toBe(2)
 
     act(() => {
       getInventory().setSelectedUser(userB)
     })
 
-    expect(inventoryRef.current?.items).toHaveLength(0)
+    expect(result.current.items).toHaveLength(0)
 
     act(() => {
       getInventory().setSelectedUser(userA)
     })
 
-    expect(inventoryRef.current?.items).toHaveLength(1)
-    expect(inventoryRef.current?.items[0]?.product.ean).toBe(sampleProduct.ean)
-    expect(inventoryRef.current?.items[0]?.quantity).toBe(2)
+    expect(result.current.items).toHaveLength(1)
+    expect(result.current.items[0]?.product.ean).toBe(sampleProduct.ean)
+    expect(result.current.items[0]?.quantity).toBe(2)
   })
 
   it('restores items when the session is preserved before switching users', () => {
-    const inventoryRef = renderInventory()
-    if (!inventoryRef.current) {
-      throw new Error('Inventory context is not ready after render')
-    }
-
-    const getInventory = () => {
-      if (!inventoryRef.current) {
-        throw new Error('Inventory context not available')
-      }
-      return inventoryRef.current
-    }
+    const { result } = renderInventory()
+    const getInventory = () => result.current
 
     const userA = createUser({ id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaa0000', login: 'operator.a' })
     const userB = createUser({ id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbb0000', login: 'operator.b' })
@@ -106,25 +72,25 @@ describe('InventoryContext', () => {
       inventory.addOrIncrementItem(sampleProduct)
     })
 
-    expect(inventoryRef.current?.items).toHaveLength(1)
+    expect(result.current.items).toHaveLength(1)
 
     act(() => {
       getInventory().clearSession({ preserveSnapshot: true })
     })
 
-    expect(inventoryRef.current?.items).toHaveLength(0)
+    expect(result.current.items).toHaveLength(0)
 
     act(() => {
       getInventory().setSelectedUser(userB)
     })
 
-    expect(inventoryRef.current?.items).toHaveLength(0)
+    expect(result.current.items).toHaveLength(0)
 
     act(() => {
       getInventory().setSelectedUser(userA)
     })
 
-    expect(inventoryRef.current?.items).toHaveLength(1)
-    expect(inventoryRef.current?.items[0]?.product.ean).toBe(sampleProduct.ean)
+    expect(result.current.items).toHaveLength(1)
+    expect(result.current.items[0]?.product.ean).toBe(sampleProduct.ean)
   })
 })

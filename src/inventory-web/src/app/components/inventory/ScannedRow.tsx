@@ -1,5 +1,6 @@
 import { clsx } from 'clsx'
 import {
+  startTransition,
   useEffect,
   useId,
   useRef,
@@ -50,7 +51,9 @@ export const ScannedRow = ({
     if (isEditing) {
       return
     }
-    setDraft(String(qty))
+    startTransition(() => {
+      setDraft(String(qty))
+    })
   }, [isEditing, qty])
 
   const handleChange = (event: ChangeEvent<HTMLInputElement>) => {

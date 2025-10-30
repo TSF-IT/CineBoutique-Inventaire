@@ -138,6 +138,9 @@
 <testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\InventoryContext.tsx">
 <testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\InventoryContext.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\InventoryContext" />
 </testsuite>
+<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\__tests__\InventoryContext.test.tsx">
+<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\__tests__\InventoryContext.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\__tests__\InventoryContext.test" />
+</testsuite>
 <testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\inventoryHttpContext.ts">
 <testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\inventoryHttpContext.ts" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\contexts\inventoryHttpContext" />
 </testsuite>
@@ -167,9 +170,6 @@
 </testsuite>
 <testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\AdminLocationsPage.tsx">
 <testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\AdminLocationsPage.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\AdminLocationsPage" />
-</testsuite>
-<testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\AdminQuickActions.tsx">
-<testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\AdminQuickActions.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\AdminQuickActions" />
 </testsuite>
 <testsuite package="org.eslint" time="0" tests="1" errors="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\__tests__\AdminLayout.test.tsx">
 <testcase time="0" name="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\__tests__\AdminLayout.test.tsx" classname="C:\DEV\CineBoutique-Inventaire\src\inventory-web\src\app\pages\admin\__tests__\AdminLayout.test" />
