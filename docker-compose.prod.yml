@@ -27,6 +27,7 @@ services:
       dockerfile: Dockerfile.inventory-web
       args:
         BASE_REG: public.ecr.aws/docker/library
+        APP_VERSION: ${APP_VERSION:-dev}
     environment:
       PUBLIC_HOST: "https://192.168.2.29"
     volumes:

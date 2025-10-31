@@ -1,10 +1,13 @@
 # syntax=docker/dockerfile:1.6
 ARG BASE_REG=public.ecr.aws/docker/library
+ARG APP_VERSION=dev
 
 ########################
 #        BUILD         #
 ########################
 FROM ${BASE_REG}/node:22-alpine AS build
+ARG APP_VERSION
+ENV APP_VERSION=${APP_VERSION}
 WORKDIR /repo
 
 # On prend le contexte **racine** (imposé par Compose plus bas)
@@ -13,6 +16,7 @@ COPY . .
 # Détection claire + build unique
 RUN set -eux; \
   echo "[detect] PWD=$(pwd)"; \
+  echo "[build] APP_VERSION=${APP_VERSION}"; \
   if [ -f package.json ]; then echo "[detect] found /repo/package.json"; fi; \
   if [ -d src/inventory-web ]; then echo "[detect] found /repo/src/inventory-web"; fi; \
   if grep -q '"workspaces"' package.json && [ -d src/inventory-web ]; then \

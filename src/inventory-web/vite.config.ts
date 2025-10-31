@@ -9,6 +9,9 @@ import { defineConfig, configDefaults } from 'vitest/config'
 const DEV_BACKEND_ORIGIN =
   (process.env.DEV_BACKEND_ORIGIN ?? 'http://localhost:8080').trim()
 
+const APP_VERSION =
+  process.env.APP_VERSION || new Date().toISOString().replace(/[-:.TZ]/g, '')
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig(({ command }) => {
@@ -51,7 +54,7 @@ export default defineConfig(({ command }) => {
         manifest: {
           name: 'Cin\u00E9Boutique \u2013 Inventaire',
           short_name: 'Inventaire',
-          start_url: '/',
+          start_url: `/?v=${APP_VERSION}`,
           scope: '/',
           display: 'standalone',
           background_color: '#111',

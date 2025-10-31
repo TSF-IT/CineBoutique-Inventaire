@@ -1,6 +1,10 @@
 import React, { useCallback, useMemo, useSyncExternalStore } from 'react'
 
-import type { UpdateNotifier } from './setupPwa'
+type UpdateNotifier = {
+  show: () => void
+  hide: () => void
+  onAccept: (cb: () => void) => void
+}
 
 export const createUpdateToast = (): [React.FC, UpdateNotifier] => {
   let acceptCallback: () => void = () => {}

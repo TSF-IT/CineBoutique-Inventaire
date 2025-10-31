@@ -28,7 +28,10 @@ git submodule update --init --recursive
 
 echo "[deploy] Bringing containers up (build & recreate if needed)..."
 docker compose down --remove-orphans || true
-docker compose up --build -d
+APP_VERSION="$(git rev-parse --short HEAD)"
+echo "[deploy] Rebuilding images with APP_VERSION=${APP_VERSION}"
+docker compose build --build-arg "APP_VERSION=${APP_VERSION}"
+docker compose up -d
 
 echo "[deploy] Pruning old images (optional)..."
 docker image prune -f || true

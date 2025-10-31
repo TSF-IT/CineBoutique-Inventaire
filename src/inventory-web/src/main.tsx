@@ -5,23 +5,21 @@ import './index.css'
 import './styles/util-classes.css'
 import { App } from './App'
 import { initializeTheme } from './app/utils/theme'
-import { setupPwa } from './pwa/setupPwa'
-import { createUpdateToast } from './pwa/UpdateToast'
 import { ShopProvider } from './state/ShopContext'
-
-const [UpdateToast, updateNotifier] = createUpdateToast()
-
-if (import.meta.env.PROD) {
-  setupPwa(updateNotifier)
-}
+import { setupPwa } from './pwa/setupPwa'
 
 initializeTheme()
 
-createRoot(document.getElementById('root')!).render(
+const root = createRoot(document.getElementById('root')!)
+
+root.render(
   <StrictMode>
     <ShopProvider>
       <App />
-      <UpdateToast />
     </ShopProvider>
   </StrictMode>,
 )
+
+if (import.meta.env.PROD) {
+  setupPwa()
+}

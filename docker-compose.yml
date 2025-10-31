@@ -43,6 +43,7 @@ services:
       context: ..
       args:
         BASE_REG: public.ecr.aws/docker/library
+        APP_VERSION: ${APP_VERSION:-dev}
     container_name: inventory-web
     # Attend que l'API soit déclarée healthy avant de démarrer
     depends_on:
