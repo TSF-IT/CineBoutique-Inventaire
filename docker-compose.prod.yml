@@ -39,9 +39,9 @@ services:
       api:
         condition: service_healthy # <— attend API OK
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+    test: ["CMD-SHELL", "wget -qO- http://localhost/health || exit 1"]
+    interval: 10s
+    timeout: 5s
+    retries: 10
     extra_hosts:
       - "host.docker.internal:host-gateway"
