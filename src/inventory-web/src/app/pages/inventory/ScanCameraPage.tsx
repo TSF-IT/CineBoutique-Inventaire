@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { fetchProductByEan, startInventoryRun } from "../../api/inventoryApi";
 import { BarcodeScanner } from "../../components/BarcodeScanner";
 import { ScannedRow } from "../../components/inventory/ScannedRow";
-import { Button } from "../../components/ui/Button";
 import { useInventory } from "../../contexts/InventoryContext";
 import type { Product } from "../../types/inventory";
 
@@ -66,12 +65,12 @@ export const ScanCameraPage = () => {
     active: cameraActive,
     error: cameraError,
     stop: stopCamera,
-  } = useCamera(videoRef.current, {
+  } = useCamera(videoRef, {
+    autoResumeOnVisible: true,
     constraints: {
       video: { facingMode: { ideal: "environment" } },
       audio: false,
     },
-    autoResumeOnVisible: true,
   });
 
   const shopName = shop?.name ?? "Boutique";
@@ -380,19 +379,6 @@ export const ScanCameraPage = () => {
               Caméra indisponible : {cameraErrorLabel ?? "Erreur inconnue"}
             </span>
           )}
-        </div>
-        <div className="absolute left-4 top-4 flex items-center gap-3">
-          <Button
-            size="sm"
-            variant="ghost"
-            className="bg-black/60 px-4 text-white hover:bg-black/40"
-            onClick={() => {
-              stopCamera();
-              navigate("/inventory/session");
-            }}
-          >
-            Retour
-          </Button>
         </div>
       </div>
       <div className="flex min-h-0 flex-1 flex-col rounded-t-[28px] bg-white text-slate-900 shadow-[0_-16px_40px_-32px_rgba(15,23,42,0.45)] dark:bg-slate-950 dark:text-white">

@@ -22,7 +22,10 @@ export default defineConfig(({ command }) => {
       VitePWA({
         registerType: "autoUpdate",
         workbox: {
+          clientsClaim: true,
+          skipWaiting: true,
           cleanupOutdatedCaches: true,
+          navigateFallback: "/index.html",
           globPatterns: ["**/*.{js,css,svg,png,ico,webmanifest,woff2}"],
           runtimeCaching: [
             {

@@ -1,110 +1,87 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
 
 export type CameraOptions = {
   constraints?: MediaStreamConstraints
-  /** Si true, tente de redémarrer la caméra quand la page redevient visible */
+  /** Si true, coupe la caméra quand l’onglet est caché et la relance quand il redevient visible */
   autoResumeOnVisible?: boolean
 }
 
 type StreamEnabledVideo = HTMLVideoElement & { srcObject: MediaStream | null }
-
 const setVideoStream = (video: HTMLVideoElement, stream: MediaStream | null) => {
   (video as StreamEnabledVideo).srcObject = stream
 }
 
-export function useCamera(videoEl: HTMLVideoElement | null, {
-  constraints = { video: { facingMode: 'environment' }, audio: false },
-  autoResumeOnVisible = true,
-}: CameraOptions = {}) {
-  const streamRef = useRef<MediaStream | null>(null)
+export function useCamera(
+  videoRef: MutableRefObject<HTMLVideoElement | null>,
+  {
+    constraints = { video: { facingMode: { ideal: 'environment' } }, audio: false },
+    autoResumeOnVisible = true,
+  }: CameraOptions = {},
+) {
   const [active, setActive] = useState(false)
   const [error, setError] = useState<unknown>(null)
   const startingRef = useRef(false)
 
   const stop = useCallback(() => {
-    const s = streamRef.current
-    if (s) {
-      s.getTracks().forEach(track => {
-        try {
-          track.stop()
-        } catch (error) {
-          if (import.meta.env.DEV) {
-            console.debug('[camera] Arrêt piste impossible', error)
-          }
-        }
-      })
-      streamRef.current = null
-    }
-    if (videoEl) {
-      try {
-        videoEl.pause()
-        // iOS : important de libérer la référence
-        setVideoStream(videoEl, null)
-        videoEl.removeAttribute('src')
-      } catch (error) {
-        if (import.meta.env.DEV) {
-          console.debug('[camera] Impossible de libérer la vidéo', error)
-        }
+    const el = videoRef.current
+    const stream = (el && (el as StreamEnabledVideo).srcObject) as MediaStream | null
+    if (stream) {
+      for (const track of stream.getTracks()) {
+        try { track.stop() } catch {}
       }
     }
+    if (el) {
+      try { el.pause() } catch {}
+      setVideoStream(el, null)
+      el.removeAttribute('src')
+    }
     setActive(false)
-  }, [videoEl])
+  }, [videoRef])
 
   const start = useCallback(async () => {
-    if (!videoEl || startingRef.current) return
+    if (startingRef.current) return
+    const el = videoRef.current
+    if (!el) return
     startingRef.current = true
     setError(null)
     try {
-      // Toujours créer un NOUVEAU stream (iOS n’aime pas recycler une track stoppée)
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      streamRef.current = stream
-      setVideoStream(videoEl, stream)
-      // iOS/WebView : playsinline + mute pour lecture auto
-      videoEl.setAttribute('playsinline', 'true')
-      videoEl.muted = true
-      await videoEl.play().catch(() => {/* ignore */})
+      el.setAttribute('playsinline', 'true') // iOS
+      el.muted = true
+      setVideoStream(el, stream)
+      try { await el.play() } catch {}
       setActive(true)
-    } catch (e) {
-      setError(e)
-      stop()
+    } catch (err) {
+      setError(err)
+      setActive(false)
     } finally {
       startingRef.current = false
     }
-  }, [videoEl, constraints, stop])
+  }, [constraints, videoRef])
 
-  // Démarre au montage (quand le <video> est prêt)
+  // Lance/arrête quand la balise <video> est disponible / quand le composant monte-démonte
   useEffect(() => {
-    if (videoEl) start()
-    return () => stop()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoEl])
+    const el = videoRef.current
+    if (!el) return
+    let cancelled = false
+    ;(async () => { if (!cancelled) await start() })()
+    return () => { cancelled = true; stop() }
+  }, [start, stop, videoRef])
 
-  // Couper si la page passe en arrière-plan (PWA iOS)
-  useEffect(() => {
-    const onHidden = () => stop()
-    const onPageHide = () => stop()
-    const onBeforeUnload = () => stop()
-
-    document.addEventListener('visibilitychange', onHidden, { passive: true })
-    window.addEventListener('pagehide', onPageHide, { passive: true })
-    window.addEventListener('beforeunload', onBeforeUnload, { passive: true })
-
-    return () => {
-      document.removeEventListener('visibilitychange', onHidden)
-      window.removeEventListener('pagehide', onPageHide)
-      window.removeEventListener('beforeunload', onBeforeUnload)
-    }
-  }, [stop])
-
-  // Option : si la page redevient visible ET que le composant est toujours monté, on peut relancer auto
+  // Couper/reprendre sur visibilitychange (utile sur iOS/PWA)
   useEffect(() => {
     if (!autoResumeOnVisible) return
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') start()
+    const onVis = () => {
+      if (document.visibilityState === 'hidden') {
+        stop()
+      } else {
+        // si le flux est déjà actif, ne rien faire
+        if (!active) void start()
+      }
     }
-    document.addEventListener('visibilitychange', onVisible, { passive: true })
-    return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [autoResumeOnVisible, start])
+    document.addEventListener('visibilitychange', onVis)
+    return () => document.removeEventListener('visibilitychange', onVis)
+  }, [active, autoResumeOnVisible, start, stop])
 
   return { active, error, start, stop }
 }
