@@ -91,6 +91,23 @@ const CAMERA_CONSTRAINTS: MediaStreamConstraints = {
 
 const HELP_TIMEOUT_MS = 9000;
 
+type StreamEnabledVideo = HTMLVideoElement & { srcObject: MediaStream | null };
+
+const setVideoStream = (
+  video: HTMLVideoElement,
+  stream: MediaStream | null
+) => {
+  (video as StreamEnabledVideo).srcObject = stream;
+};
+
+const getVideoStream = (video: HTMLVideoElement) => {
+  const source = (video as StreamEnabledVideo).srcObject;
+  if (typeof MediaStream !== "undefined" && source instanceof MediaStream) {
+    return source;
+  }
+  return null;
+};
+
 const isCameraAvailable = () => {
   if (typeof window === "undefined" || typeof navigator === "undefined") {
     return false;
@@ -149,11 +166,7 @@ export const BarcodeScanner = ({
     if (!video) {
       return null;
     }
-    const source = video.srcObject;
-    if (source instanceof MediaStream) {
-      return source;
-    }
-    return null;
+    return getVideoStream(video);
   }, [videoRef]);
 
   const stopCurrentStream = useCallback(() => {
@@ -180,8 +193,7 @@ export const BarcodeScanner = ({
         }
       }
       // Libère la référence (notamment sur iOS)
-      // @ts-ignore
-      video.srcObject = null;
+      setVideoStream(video, null);
       video.removeAttribute("src");
     }
   }, [getCurrentStream, videoRef]);
@@ -389,7 +401,7 @@ export const BarcodeScanner = ({
     };
     animationFrameRef.current = requestAnimationFrame(loop);
     return true;
-  }, [formats, handleDetectedValue]);
+  }, [formats, handleDetectedValue, videoRef]);
 
   const startZxing = useCallback(
     async (deviceId?: string, useExistingStream = false) => {
@@ -441,7 +453,7 @@ export const BarcodeScanner = ({
         }
       }
     },
-    [dispatchError, handleDetectedValue, hints]
+    [dispatchError, handleDetectedValue, hints, videoRef]
   );
 
   useEffect(() => {
@@ -571,8 +583,7 @@ export const BarcodeScanner = ({
           // iOS/WebView : playsinline + mute pour lecture auto
           video.setAttribute("playsinline", "true");
           video.muted = true;
-          // @ts-ignore
-          video.srcObject = stream;
+          setVideoStream(video, stream);
           try {
             await video.play();
           } catch (error) {
@@ -629,6 +640,7 @@ export const BarcodeScanner = ({
     startZxing,
     stopCurrentStream,
     usingExternalCamera,
+    videoRef,
   ]);
 
   const handleTorchToggle = useCallback(async () => {

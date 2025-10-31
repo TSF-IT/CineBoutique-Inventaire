@@ -5,8 +5,8 @@ import "./index.css";
 import "./styles/util-classes.css";
 import { App } from "./App";
 import { initializeTheme } from "./app/utils/theme";
-import { ShopProvider } from "./state/ShopContext";
 import { setupPwa } from "./pwa/setupPwa";
+import { ShopProvider } from "./state/ShopContext";
 
 initializeTheme();
 

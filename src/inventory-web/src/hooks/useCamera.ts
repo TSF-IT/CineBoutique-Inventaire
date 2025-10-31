@@ -6,6 +6,12 @@ export type CameraOptions = {
   autoResumeOnVisible?: boolean
 }
 
+type StreamEnabledVideo = HTMLVideoElement & { srcObject: MediaStream | null }
+
+const setVideoStream = (video: HTMLVideoElement, stream: MediaStream | null) => {
+  (video as StreamEnabledVideo).srcObject = stream
+}
+
 export function useCamera(videoEl: HTMLVideoElement | null, {
   constraints = { video: { facingMode: 'environment' }, audio: false },
   autoResumeOnVisible = true,
@@ -18,8 +24,14 @@ export function useCamera(videoEl: HTMLVideoElement | null, {
   const stop = useCallback(() => {
     const s = streamRef.current
     if (s) {
-      s.getTracks().forEach(t => {
-        try { t.stop() } catch {}
+      s.getTracks().forEach(track => {
+        try {
+          track.stop()
+        } catch (error) {
+          if (import.meta.env.DEV) {
+            console.debug('[camera] Arrêt piste impossible', error)
+          }
+        }
       })
       streamRef.current = null
     }
@@ -27,10 +39,13 @@ export function useCamera(videoEl: HTMLVideoElement | null, {
       try {
         videoEl.pause()
         // iOS : important de libérer la référence
-        // @ts-ignore
-        videoEl.srcObject = null
+        setVideoStream(videoEl, null)
         videoEl.removeAttribute('src')
-      } catch {}
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.debug('[camera] Impossible de libérer la vidéo', error)
+        }
+      }
     }
     setActive(false)
   }, [videoEl])
@@ -43,8 +58,7 @@ export function useCamera(videoEl: HTMLVideoElement | null, {
       // Toujours créer un NOUVEAU stream (iOS n’aime pas recycler une track stoppée)
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
       streamRef.current = stream
-      // @ts-ignore
-      videoEl.srcObject = stream
+      setVideoStream(videoEl, stream)
       // iOS/WebView : playsinline + mute pour lecture auto
       videoEl.setAttribute('playsinline', 'true')
       videoEl.muted = true
@@ -78,7 +92,7 @@ export function useCamera(videoEl: HTMLVideoElement | null, {
     return () => {
       document.removeEventListener('visibilitychange', onHidden)
       window.removeEventListener('pagehide', onPageHide)
-      window.removeEventListener('beforeunload', onBeforeunload)
+      window.removeEventListener('beforeunload', onBeforeUnload)
     }
   }, [stop])
 

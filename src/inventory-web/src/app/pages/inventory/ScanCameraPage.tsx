@@ -1,28 +1,47 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
-import { fetchProductByEan, startInventoryRun } from '../../api/inventoryApi'
-import { BarcodeScanner } from '../../components/BarcodeScanner'
-import { ScannedRow } from '../../components/inventory/ScannedRow'
-import { Button } from '../../components/ui/Button'
-import { useInventory } from '../../contexts/InventoryContext'
-import type { Product } from '../../types/inventory'
+import { fetchProductByEan, startInventoryRun } from "../../api/inventoryApi";
+import { BarcodeScanner } from "../../components/BarcodeScanner";
+import { ScannedRow } from "../../components/inventory/ScannedRow";
+import { Button } from "../../components/ui/Button";
+import { useInventory } from "../../contexts/InventoryContext";
+import type { Product } from "../../types/inventory";
 
-import { useScanRejectionFeedback } from '@/hooks/useScanRejectionFeedback'
-import { useCamera } from '@/hooks/useCamera'
-import type { HttpError } from '@/lib/api/http'
-import { useShop } from '@/state/ShopContext'
+import { useCamera } from "@/hooks/useCamera";
+import { useScanRejectionFeedback } from "@/hooks/useScanRejectionFeedback";
+import type { HttpError } from "@/lib/api/http";
+import { useShop } from "@/state/ShopContext";
 
-const MAX_SCAN_LENGTH = 32
-const LOCK_RELEASE_DELAY = 700
+const MAX_SCAN_LENGTH = 32;
+const LOCK_RELEASE_DELAY = 700;
 
-const sanitizeScanValue = (value: string) => value.replace(/\r|\n/g, '')
+const sanitizeScanValue = (value: string) => value.replace(/\r|\n/g, "");
 
-const isScanLengthValid = (code: string) => code.length > 0 && code.length <= MAX_SCAN_LENGTH
+const isScanLengthValid = (code: string) =>
+  code.length > 0 && code.length <= MAX_SCAN_LENGTH;
+
+const formatCameraError = (error: unknown) => {
+  if (error instanceof Error) {
+    return error.message || error.name;
+  }
+  if (
+    error &&
+    typeof error === "object" &&
+    "name" in error &&
+    typeof (error as { name?: unknown }).name === "string"
+  ) {
+    const { name } = error as { name?: string };
+    if (name) {
+      return name;
+    }
+  }
+  return String(error);
+};
 
 export const ScanCameraPage = () => {
-  const navigate = useNavigate()
-  const { shop } = useShop()
+  const navigate = useNavigate();
+  const { shop } = useShop();
   const {
     selectedUser,
     location,
@@ -33,275 +52,318 @@ export const ScanCameraPage = () => {
     removeItem,
     sessionId,
     setSessionId,
-  } = useInventory()
-  const [statusMessage, setStatusMessage] = useState<string | null>(null)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [highlightEan, setHighlightEan] = useState<string | null>(null)
-  const highlightTimeoutRef = useRef<number | null>(null)
-  const statusTimeoutRef = useRef<number | null>(null)
-  const lockTimeoutRef = useRef<number | null>(null)
-  const lockedEanRef = useRef<string | null>(null)
-  const triggerScanRejectionFeedback = useScanRejectionFeedback()
-  const videoRef = useRef<HTMLVideoElement | null>(null)
+  } = useInventory();
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [highlightEan, setHighlightEan] = useState<string | null>(null);
+  const highlightTimeoutRef = useRef<number | null>(null);
+  const statusTimeoutRef = useRef<number | null>(null);
+  const lockTimeoutRef = useRef<number | null>(null);
+  const lockedEanRef = useRef<string | null>(null);
+  const triggerScanRejectionFeedback = useScanRejectionFeedback();
+  const videoRef = useRef<HTMLVideoElement | null>(null);
   const {
     active: cameraActive,
     error: cameraError,
     stop: stopCamera,
   } = useCamera(videoRef.current, {
-    constraints: { video: { facingMode: { ideal: 'environment' } }, audio: false },
+    constraints: {
+      video: { facingMode: { ideal: "environment" } },
+      audio: false,
+    },
     autoResumeOnVisible: true,
-  })
+  });
 
-  const shopName = shop?.name ?? 'Boutique'
-  const ownerUserId = selectedUser?.id?.trim() ?? ''
-  const locationId = location?.id?.trim() ?? ''
-  const countTypeValue = typeof countType === 'number' ? countType : null
-  const sessionRunId = typeof sessionId === 'string' ? sessionId.trim() : ''
+  const shopName = shop?.name ?? "Boutique";
+  const ownerUserId = selectedUser?.id?.trim() ?? "";
+  const locationId = location?.id?.trim() ?? "";
+  const countTypeValue = typeof countType === "number" ? countType : null;
+  const sessionRunId = typeof sessionId === "string" ? sessionId.trim() : "";
 
   useEffect(() => {
     if (!selectedUser) {
-      navigate('/select-shop', { replace: true })
-      return
+      navigate("/select-shop", { replace: true });
+      return;
     }
     if (!locationId) {
-      navigate('/inventory/location', { replace: true })
-      return
+      navigate("/inventory/location", { replace: true });
+      return;
     }
     if (!countTypeValue) {
-      navigate('/inventory/count-type', { replace: true })
+      navigate("/inventory/count-type", { replace: true });
     }
-  }, [countTypeValue, locationId, navigate, selectedUser])
+  }, [countTypeValue, locationId, navigate, selectedUser]);
 
   useEffect(() => {
     return () => {
-      stopCamera()
+      stopCamera();
       if (highlightTimeoutRef.current) {
-        window.clearTimeout(highlightTimeoutRef.current)
-        highlightTimeoutRef.current = null
+        window.clearTimeout(highlightTimeoutRef.current);
+        highlightTimeoutRef.current = null;
       }
       if (statusTimeoutRef.current) {
-        window.clearTimeout(statusTimeoutRef.current)
-        statusTimeoutRef.current = null
+        window.clearTimeout(statusTimeoutRef.current);
+        statusTimeoutRef.current = null;
       }
       if (lockTimeoutRef.current) {
-        window.clearTimeout(lockTimeoutRef.current)
-        lockTimeoutRef.current = null
+        window.clearTimeout(lockTimeoutRef.current);
+        lockTimeoutRef.current = null;
       }
-      lockedEanRef.current = null
-    }
-  }, [stopCamera])
+      lockedEanRef.current = null;
+    };
+  }, [stopCamera]);
 
   useEffect(() => {
     if (!highlightEan) {
-      return
+      return;
     }
     if (highlightTimeoutRef.current) {
-      window.clearTimeout(highlightTimeoutRef.current)
+      window.clearTimeout(highlightTimeoutRef.current);
     }
     highlightTimeoutRef.current = window.setTimeout(() => {
-      setHighlightEan(null)
-      highlightTimeoutRef.current = null
-    }, 700)
-  }, [highlightEan])
+      setHighlightEan(null);
+      highlightTimeoutRef.current = null;
+    }, 700);
+  }, [highlightEan]);
 
   useEffect(() => {
     if (!statusMessage) {
-      return
+      return;
     }
     if (statusTimeoutRef.current) {
-      window.clearTimeout(statusTimeoutRef.current)
+      window.clearTimeout(statusTimeoutRef.current);
     }
     statusTimeoutRef.current = window.setTimeout(() => {
-      setStatusMessage(null)
-      statusTimeoutRef.current = null
-    }, 2200)
-  }, [statusMessage])
+      setStatusMessage(null);
+      statusTimeoutRef.current = null;
+    }, 2200);
+  }, [statusMessage]);
 
   const totalQuantity = useMemo(
     () => items.reduce((acc, item) => acc + item.quantity, 0),
-    [items],
-  )
+    [items]
+  );
 
-  const orderedItems = useMemo(() => [...items].reverse(), [items])
+  const orderedItems = useMemo(() => [...items].reverse(), [items]);
+
+  const cameraErrorLabel = useMemo(
+    () => (cameraError ? formatCameraError(cameraError) : null),
+    [cameraError]
+  );
 
   const ensureScanPrerequisites = useCallback(() => {
     if (!shop?.id) {
-      throw new Error('Sélectionnez une boutique valide avant de scanner un produit.')
+      throw new Error(
+        "Sélectionnez une boutique valide avant de scanner un produit."
+      );
     }
     if (!ownerUserId) {
-      throw new Error('Sélectionnez un utilisateur avant de scanner un produit.')
+      throw new Error(
+        "Sélectionnez un utilisateur avant de scanner un produit."
+      );
     }
     if (!locationId) {
-      throw new Error('Sélectionnez une zone avant de scanner un produit.')
+      throw new Error("Sélectionnez une zone avant de scanner un produit.");
     }
     if (!countTypeValue) {
-      throw new Error('Choisissez un type de comptage avant de scanner un produit.')
+      throw new Error(
+        "Choisissez un type de comptage avant de scanner un produit."
+      );
     }
-  }, [countTypeValue, locationId, ownerUserId, shop?.id])
+  }, [countTypeValue, locationId, ownerUserId, shop?.id]);
 
   const ensureActiveRun = useCallback(async () => {
     if (items.length > 0 && sessionRunId) {
-      return sessionRunId
+      return sessionRunId;
     }
     if (sessionRunId) {
-      return sessionRunId
+      return sessionRunId;
     }
-    ensureScanPrerequisites()
+    ensureScanPrerequisites();
     const response = await startInventoryRun(locationId, {
       shopId: shop!.id,
       ownerUserId,
       countType: countTypeValue!,
-    })
-    const nextRunId = typeof response.runId === 'string' ? response.runId.trim() : ''
+    });
+    const nextRunId =
+      typeof response.runId === "string" ? response.runId.trim() : "";
     if (nextRunId) {
-      setSessionId(nextRunId)
-      return nextRunId
+      setSessionId(nextRunId);
+      return nextRunId;
     }
-    return null
-  }, [countTypeValue, ensureScanPrerequisites, items.length, locationId, ownerUserId, sessionRunId, setSessionId, shop])
+    return null;
+  }, [
+    countTypeValue,
+    ensureScanPrerequisites,
+    items.length,
+    locationId,
+    ownerUserId,
+    sessionRunId,
+    setSessionId,
+    shop,
+  ]);
 
   const addProductToSession = useCallback(
     async (product: Product) => {
       try {
-        await ensureActiveRun()
+        await ensureActiveRun();
       } catch (error) {
-        setStatusMessage(null)
-        setErrorMessage(error instanceof Error ? error.message : 'Impossible de démarrer le comptage.')
-        return false
+        setStatusMessage(null);
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "Impossible de démarrer le comptage."
+        );
+        return false;
       }
-      addOrIncrementItem(product)
-      return true
+      addOrIncrementItem(product);
+      return true;
     },
-    [addOrIncrementItem, ensureActiveRun],
-  )
+    [addOrIncrementItem, ensureActiveRun]
+  );
 
-  const armScanLock = useCallback(
-    (ean: string | null) => {
-      if (lockTimeoutRef.current) {
-        window.clearTimeout(lockTimeoutRef.current)
-        lockTimeoutRef.current = null
-      }
-      lockedEanRef.current = ean
-      if (!ean) {
-        return
-      }
-      lockTimeoutRef.current = window.setTimeout(() => {
-        lockedEanRef.current = null
-        lockTimeoutRef.current = null
-      }, LOCK_RELEASE_DELAY)
-    },
-    [],
-  )
+  const armScanLock = useCallback((ean: string | null) => {
+    if (lockTimeoutRef.current) {
+      window.clearTimeout(lockTimeoutRef.current);
+      lockTimeoutRef.current = null;
+    }
+    lockedEanRef.current = ean;
+    if (!ean) {
+      return;
+    }
+    lockTimeoutRef.current = window.setTimeout(() => {
+      lockedEanRef.current = null;
+      lockTimeoutRef.current = null;
+    }, LOCK_RELEASE_DELAY);
+  }, []);
 
   const refreshScanLock = useCallback(() => {
-    const current = lockedEanRef.current
+    const current = lockedEanRef.current;
     if (!current) {
-      return
+      return;
     }
-    armScanLock(current)
-  }, [armScanLock])
+    armScanLock(current);
+  }, [armScanLock]);
 
   const handleProductAdded = useCallback((product: Product) => {
-    setStatusMessage(`${product.name} ajouté`)
-    const normalizedEan = product.ean?.trim() ?? null
+    setStatusMessage(`${product.name} ajouté`);
+    const normalizedEan = product.ean?.trim() ?? null;
     if (normalizedEan) {
-      setHighlightEan(normalizedEan)
+      setHighlightEan(normalizedEan);
     } else {
-      setHighlightEan(null)
+      setHighlightEan(null);
     }
-  }, [])
+  }, []);
 
   const handleDetected = useCallback(
     async (rawValue: string) => {
-      const sanitized = sanitizeScanValue(rawValue)
+      const sanitized = sanitizeScanValue(rawValue);
       if (!sanitized) {
-        return
+        return;
       }
 
       if (lockedEanRef.current && lockedEanRef.current === sanitized) {
-        refreshScanLock()
-        return
+        refreshScanLock();
+        return;
       }
 
       if (!isScanLengthValid(sanitized)) {
-        setErrorMessage(`Code ${sanitized} invalide : ${MAX_SCAN_LENGTH} caractères maximum.`)
-        setStatusMessage(null)
-        armScanLock(sanitized)
-        return
+        setErrorMessage(
+          `Code ${sanitized} invalide : ${MAX_SCAN_LENGTH} caractères maximum.`
+        );
+        setStatusMessage(null);
+        armScanLock(sanitized);
+        return;
       }
 
       try {
-        ensureScanPrerequisites()
+        ensureScanPrerequisites();
       } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : 'Impossible de lancer le scan.')
-        setStatusMessage(null)
-        armScanLock(null)
-        return
+        setErrorMessage(
+          error instanceof Error
+            ? error.message
+            : "Impossible de lancer le scan."
+        );
+        setStatusMessage(null);
+        armScanLock(null);
+        return;
       }
 
-      setStatusMessage(`Lecture de ${sanitized}…`)
-      setErrorMessage(null)
-      armScanLock(sanitized)
+      setStatusMessage(`Lecture de ${sanitized}…`);
+      setErrorMessage(null);
+      armScanLock(sanitized);
 
       try {
-        const product = await fetchProductByEan(sanitized)
-        const added = await addProductToSession(product)
+        const product = await fetchProductByEan(sanitized);
+        const added = await addProductToSession(product);
         if (added) {
-          handleProductAdded(product)
+          handleProductAdded(product);
         }
       } catch (error) {
-        const err = error as HttpError
+        const err = error as HttpError;
         if (err?.status === 404) {
-          setErrorMessage(`Code ${sanitized} introuvable dans la liste des produits à inventorier.`)
-          triggerScanRejectionFeedback()
+          setErrorMessage(
+            `Code ${sanitized} introuvable dans la liste des produits à inventorier.`
+          );
+          triggerScanRejectionFeedback();
         } else {
-          setErrorMessage('Échec de la récupération du produit. Réessayez.')
+          setErrorMessage("Échec de la récupération du produit. Réessayez.");
         }
-        setStatusMessage(null)
+        setStatusMessage(null);
       } finally {
-        armScanLock(sanitized)
+        armScanLock(sanitized);
       }
     },
-    [addProductToSession, armScanLock, ensureScanPrerequisites, handleProductAdded, refreshScanLock, triggerScanRejectionFeedback],
-  )
+    [
+      addProductToSession,
+      armScanLock,
+      ensureScanPrerequisites,
+      handleProductAdded,
+      refreshScanLock,
+      triggerScanRejectionFeedback,
+    ]
+  );
 
   const handleDec = useCallback(
     (ean: string, quantity: number) => {
       if (quantity <= 1) {
-        removeItem(ean)
-        return
+        removeItem(ean);
+        return;
       }
-      setQuantity(ean, quantity - 1)
+      setQuantity(ean, quantity - 1);
     },
-    [removeItem, setQuantity],
-  )
+    [removeItem, setQuantity]
+  );
 
   const handleInc = useCallback(
     (ean: string, quantity: number) => {
-      setQuantity(ean, quantity + 1)
+      setQuantity(ean, quantity + 1);
     },
-    [setQuantity],
-  )
+    [setQuantity]
+  );
 
   const handleSetQuantity = useCallback(
     (ean: string, next: number | null) => {
       if (next === null) {
-        return
+        return;
       }
       if (next <= 0) {
-        removeItem(ean)
-        return
+        removeItem(ean);
+        return;
       }
-      setQuantity(ean, next)
+      setQuantity(ean, next);
     },
-    [removeItem, setQuantity],
-  )
+    [removeItem, setQuantity]
+  );
 
   return (
-    <div className="flex h-full flex-col bg-black text-white" data-testid="scan-camera-page">
+    <div
+      className="flex h-full flex-col bg-black text-white"
+      data-testid="scan-camera-page"
+    >
       <div className="relative flex-none min-h-[52vh] w-full overflow-hidden">
         <BarcodeScanner
-          active
+          active={cameraActive}
           onDetected={handleDetected}
           presentation="immersive"
           enableTorchToggle
@@ -315,7 +377,7 @@ export const ScanCameraPage = () => {
           )}
           {cameraError && (
             <span className="rounded-full bg-black/60 px-3 py-1 text-sm font-semibold text-rose-200 backdrop-blur">
-              Caméra indisponible : {String((cameraError as any)?.name || cameraError)}
+              Caméra indisponible : {cameraErrorLabel ?? "Erreur inconnue"}
             </span>
           )}
         </div>
@@ -324,7 +386,10 @@ export const ScanCameraPage = () => {
             size="sm"
             variant="ghost"
             className="bg-black/60 px-4 text-white hover:bg-black/40"
-            onClick={() => navigate('/inventory/session')}
+            onClick={() => {
+              stopCamera();
+              navigate("/inventory/session");
+            }}
           >
             Retour
           </Button>
@@ -337,11 +402,11 @@ export const ScanCameraPage = () => {
               {shopName}
             </span>
             <span className="mt-1 truncate text-base font-semibold leading-tight text-slate-900 dark:text-white">
-              {location?.label ?? 'Zone inconnue'}
+              {location?.label ?? "Zone inconnue"}
             </span>
           </div>
           <span className="shrink-0 rounded-full bg-slate-900 px-3 py-1 text-sm font-semibold text-white dark:bg-slate-700">
-            {totalQuantity} pièce{totalQuantity > 1 ? 's' : ''}
+            {totalQuantity} pièce{totalQuantity > 1 ? "s" : ""}
           </span>
         </div>
         <div className="space-y-2 px-5">
@@ -364,7 +429,7 @@ export const ScanCameraPage = () => {
           ) : (
             <ul className="space-y-3">
               {orderedItems.map((item) => {
-                const ean = item.product.ean
+                const ean = item.product.ean;
                 return (
                   <ScannedRow
                     key={item.id}
@@ -380,14 +445,14 @@ export const ScanCameraPage = () => {
                     onDec={() => handleDec(ean, item.quantity)}
                     onSetQty={(value) => handleSetQuantity(ean, value)}
                   />
-                )
+                );
               })}
             </ul>
           )}
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default ScanCameraPage
+export default ScanCameraPage;
