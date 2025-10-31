@@ -24,14 +24,14 @@ export function useCamera(
 
   const stop = useCallback(() => {
     const el = videoRef.current
-    const stream = (el && (el as StreamEnabledVideo).srcObject) as MediaStream | null
+    const stream = el ? (el as StreamEnabledVideo).srcObject : null
     if (stream) {
       for (const track of stream.getTracks()) {
-        try { track.stop() } catch {}
+        if (typeof track.stop === 'function') track.stop()
       }
     }
     if (el) {
-      try { el.pause() } catch {}
+      el.pause()
       setVideoStream(el, null)
       el.removeAttribute('src')
     }
@@ -49,7 +49,7 @@ export function useCamera(
       el.setAttribute('playsinline', 'true') // iOS
       el.muted = true
       setVideoStream(el, stream)
-      try { await el.play() } catch {}
+      await el.play().catch(() => undefined)
       setActive(true)
     } catch (err) {
       setError(err)

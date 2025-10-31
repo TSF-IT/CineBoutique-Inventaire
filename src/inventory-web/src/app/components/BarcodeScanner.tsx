@@ -1,6 +1,6 @@
 import { BrowserMultiFormatReader, type IScannerControls } from '@zxing/browser'
 import { BarcodeFormat, DecodeHintType, NotFoundException } from '@zxing/library'
-import clsx from 'clsx'
+import classNames from 'clsx'
 import {
   useCallback, useEffect, useMemo, useRef, useState,
   type ChangeEvent, type MutableRefObject,
@@ -67,7 +67,6 @@ export function BarcodeScanner({
   const videoRef = camera?.videoRef ?? internalVideoRef
   const usingExternalCamera = Boolean(camera)
   const externalActive = camera?.active ?? false
-  const externalError = camera?.error
 
   const [status, setStatus] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -115,9 +114,8 @@ export function BarcodeScanner({
   }, [onError])
 
   const getCurrentStream = useCallback(() => {
-    const el = videoRef.current
-    const src = el && (el as any).srcObject
-    return (src && src instanceof MediaStream) ? (src as MediaStream) : null
+    const srcObject = videoRef.current?.srcObject
+    return srcObject instanceof MediaStream ? srcObject : null
   }, [videoRef])
 
   const setTorch = useCallback(async (on: boolean) => {
@@ -136,7 +134,7 @@ export function BarcodeScanner({
 
   const scheduleHelp = useCallback(() => {
     if (helpTimeoutRef.current) clearTimeout(helpTimeoutRef.current)
-   ;(helpTimeoutRef.current as any) = window.setTimeout(() => {
+    helpTimeoutRef.current = window.setTimeout(() => {
       setShowHelp(true)
       setStatus('Aucune détection, rapprochez‑vous ou améliorez l’éclairage.')
     }, HELP_TIMEOUT_MS)
@@ -171,13 +169,11 @@ export function BarcodeScanner({
 
   const startBarcodeDetector = useCallback(async () => {
     const el = videoRef.current
-    const BarcodeDetectorAny = (window as any).BarcodeDetector
-    if (!el || typeof BarcodeDetectorAny !== 'function') return false
+    const detectorCtor = window.BarcodeDetector
+    if (!el || typeof detectorCtor !== 'function') return false
     let detector: BarcodeDetector
     try {
-      detector = new BarcodeDetectorAny({ formats: formats.map((f) => ( {
-        EAN_13:'ean_13', EAN_8:'ean_8', CODE_128:'code_128', CODE_39:'code_39', ITF:'itf', QR_CODE:'qr_code'
-      } as Record<SupportedFormat,DetectorFormat>)[f] ) })
+      detector = new detectorCtor({ formats: formats.map((f) => DETECTOR_FORMATS[f]) })
     } catch { return false }
 
     const canvas = document.createElement('canvas')
@@ -261,7 +257,8 @@ export function BarcodeScanner({
     setError(null)
     setShowHelp(false)
 
-    const stream = (el as any).srcObject as MediaStream | null
+    const srcObject = el.srcObject
+    const stream = srcObject instanceof MediaStream ? srcObject : null
     const [track] = stream?.getVideoTracks?.() ?? []
     const caps = track?.getCapabilities?.() as TorchCapabilities | undefined
     setTorchSupported(Boolean(caps?.torch))
@@ -316,7 +313,7 @@ export function BarcodeScanner({
         <div className="relative h-full w-full">
           <video ref={videoRef} className={videoClass} muted playsInline autoPlay />
           <div
-            className={clsx(
+            className={classNames(
               'pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-2xl border-4 border-brand-400/70',
               presentation === 'immersive' ? 'h-1/2 w-3/4 max-w-md' : 'h-32 w-64',
             )}
