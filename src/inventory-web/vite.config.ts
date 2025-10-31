@@ -27,8 +27,8 @@ export default defineConfig(({ command }) => {
           runtimeCaching: [
             {
               urlPattern: ({ request }) => request.mode === "navigate",
-              handler: "NetworkFirst",
-              options: { cacheName: "html", networkTimeoutSeconds: 3 },
+              handler: "StaleWhileRevalidate",
+              options: { cacheName: "html" },
             },
             {
               urlPattern: ({ url }) => url.pathname.startsWith("/api/"),

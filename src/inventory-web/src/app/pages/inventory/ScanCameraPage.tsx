@@ -9,6 +9,7 @@ import { useInventory } from '../../contexts/InventoryContext'
 import type { Product } from '../../types/inventory'
 
 import { useScanRejectionFeedback } from '@/hooks/useScanRejectionFeedback'
+import { useCamera } from '@/hooks/useCamera'
 import type { HttpError } from '@/lib/api/http'
 import { useShop } from '@/state/ShopContext'
 
@@ -41,6 +42,15 @@ export const ScanCameraPage = () => {
   const lockTimeoutRef = useRef<number | null>(null)
   const lockedEanRef = useRef<string | null>(null)
   const triggerScanRejectionFeedback = useScanRejectionFeedback()
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const {
+    active: cameraActive,
+    error: cameraError,
+    stop: stopCamera,
+  } = useCamera(videoRef.current, {
+    constraints: { video: { facingMode: { ideal: 'environment' } }, audio: false },
+    autoResumeOnVisible: true,
+  })
 
   const shopName = shop?.name ?? 'Boutique'
   const ownerUserId = selectedUser?.id?.trim() ?? ''
@@ -64,6 +74,7 @@ export const ScanCameraPage = () => {
 
   useEffect(() => {
     return () => {
+      stopCamera()
       if (highlightTimeoutRef.current) {
         window.clearTimeout(highlightTimeoutRef.current)
         highlightTimeoutRef.current = null
@@ -78,7 +89,7 @@ export const ScanCameraPage = () => {
       }
       lockedEanRef.current = null
     }
-  }, [])
+  }, [stopCamera])
 
   useEffect(() => {
     if (!highlightEan) {
@@ -289,7 +300,25 @@ export const ScanCameraPage = () => {
   return (
     <div className="flex h-full flex-col bg-black text-white" data-testid="scan-camera-page">
       <div className="relative flex-none min-h-[52vh] w-full overflow-hidden">
-        <BarcodeScanner active onDetected={handleDetected} presentation="immersive" enableTorchToggle />
+        <BarcodeScanner
+          active
+          onDetected={handleDetected}
+          presentation="immersive"
+          enableTorchToggle
+          camera={{ videoRef, active: cameraActive, error: cameraError }}
+        />
+        <div className="pointer-events-none absolute inset-x-0 top-6 flex justify-center">
+          {!cameraActive && !cameraError && (
+            <span className="rounded-full bg-black/60 px-3 py-1 text-sm font-semibold text-white backdrop-blur">
+              Démarrage caméra…
+            </span>
+          )}
+          {cameraError && (
+            <span className="rounded-full bg-black/60 px-3 py-1 text-sm font-semibold text-rose-200 backdrop-blur">
+              Caméra indisponible : {String((cameraError as any)?.name || cameraError)}
+            </span>
+          )}
+        </div>
         <div className="absolute left-4 top-4 flex items-center gap-3">
           <Button
             size="sm"

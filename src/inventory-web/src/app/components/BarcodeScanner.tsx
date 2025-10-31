@@ -36,6 +36,12 @@ type TorchCapabilities = MediaTrackCapabilities & { torch?: boolean };
 type TorchConstraintSet = MediaTrackConstraintSet & { torch?: boolean };
 type FocusConstraintSet = MediaTrackConstraintSet & { focusMode?: string };
 
+type ExternalCameraBinding = {
+  videoRef: MutableRefObject<HTMLVideoElement | null>;
+  active: boolean;
+  error: unknown;
+};
+
 interface BarcodeScannerProps {
   active: boolean;
   onDetected: (value: string) => void | Promise<void>;
@@ -44,6 +50,7 @@ interface BarcodeScannerProps {
   enableTorchToggle?: boolean;
   preferredFormats?: SupportedFormat[];
   presentation?: "embedded" | "immersive";
+  camera?: ExternalCameraBinding;
 }
 
 const DEFAULT_FORMATS: SupportedFormat[] = [
@@ -107,17 +114,6 @@ const createHints = (formats: SupportedFormat[]) => {
   return hints;
 };
 
-const stopStream = (streamRef: MutableRefObject<MediaStream | null>) => {
-  const stream = streamRef.current;
-  if (!stream) {
-    return;
-  }
-  for (const track of stream.getTracks()) {
-    track.stop();
-  }
-  streamRef.current = null;
-};
-
 export const BarcodeScanner = ({
   active,
   onDetected,
@@ -126,14 +122,18 @@ export const BarcodeScanner = ({
   enableTorchToggle = true,
   preferredFormats,
   presentation = "embedded",
+  camera,
 }: BarcodeScannerProps) => {
   const [status, setStatus] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const internalVideoRef = useRef<HTMLVideoElement | null>(null);
+  const usingExternalCamera = Boolean(camera);
+  const videoRef = camera?.videoRef ?? internalVideoRef;
+  const externalCameraActive = camera?.active ?? false;
+  const externalCameraError = camera?.error;
   const controlsRef = useRef<IScannerControls | null>(null);
   const readerRef = useRef<BrowserMultiFormatReader | null>(null);
   const animationFrameRef = useRef<number | null>(null);
@@ -143,6 +143,48 @@ export const BarcodeScanner = ({
   const lastZxingErrorLogRef = useRef(0);
   const processingRef = useRef(false);
   const restartDetectionRef = useRef<(() => Promise<void>) | null>(null);
+
+  const getCurrentStream = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) {
+      return null;
+    }
+    const source = video.srcObject;
+    if (source instanceof MediaStream) {
+      return source;
+    }
+    return null;
+  }, [videoRef]);
+
+  const stopCurrentStream = useCallback(() => {
+    const stream = getCurrentStream();
+    if (!stream) {
+      return;
+    }
+    for (const track of stream.getTracks()) {
+      try {
+        track.stop();
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.debug("[scanner] Impossible d’arrêter une piste caméra", error);
+        }
+      }
+    }
+    const video = videoRef.current;
+    if (video) {
+      try {
+        video.pause();
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.debug("[scanner] Pause vidéo impossible", error);
+        }
+      }
+      // Libère la référence (notamment sur iOS)
+      // @ts-ignore
+      video.srcObject = null;
+      video.removeAttribute("src");
+    }
+  }, [getCurrentStream, videoRef]);
 
   const scheduleHelp = useCallback(() => {
     if (helpTimeoutRef.current) {
@@ -178,25 +220,19 @@ export const BarcodeScanner = ({
     readerRef.current = null;
   }, []);
 
-  const cleanupStream = useCallback(() => {
-    stopStream(streamRef);
-    const video = videoRef.current;
-    if (video) {
-      video.srcObject = null;
-    }
-  }, []);
-
   const cleanup = useCallback(() => {
     cleanupAnimation();
     cleanupControls();
-    cleanupStream();
+    if (!usingExternalCamera) {
+      stopCurrentStream();
+    }
     if (helpTimeoutRef.current) {
       window.clearTimeout(helpTimeoutRef.current);
       helpTimeoutRef.current = null;
     }
     restartDetectionRef.current = null;
     processingRef.current = false;
-  }, [cleanupAnimation, cleanupControls, cleanupStream]);
+  }, [cleanupAnimation, cleanupControls, stopCurrentStream, usingExternalCamera]);
 
   const dispatchError = useCallback(
     (message: string) => {
@@ -356,7 +392,7 @@ export const BarcodeScanner = ({
   }, [formats, handleDetectedValue]);
 
   const startZxing = useCallback(
-    async (deviceId?: string) => {
+    async (deviceId?: string, useExistingStream = false) => {
       const video = videoRef.current;
       if (!video) {
         return;
@@ -367,35 +403,34 @@ export const BarcodeScanner = ({
         if (!activeRef.current) {
           return;
         }
-        await startZxing(deviceId);
+        await startZxing(deviceId, useExistingStream);
       };
       try {
-        const controls = await reader.decodeFromVideoDevice(
-          deviceId,
-          video,
-          async (result, error) => {
-            if (processingRef.current) {
-              return;
-            }
-            if (result) {
-              await handleDetectedValue(result.getText(), "zxing");
-              return;
-            }
-            if (!error) {
-              return;
-            }
-            if (error instanceof NotFoundException) {
-              return;
-            }
-            const now = Date.now();
-            if (now - lastZxingErrorLogRef.current > 2000) {
-              lastZxingErrorLogRef.current = now;
-              if (import.meta.env.DEV) {
-                console.warn("[scanner] ZXing erreur", error);
-              }
+        const callback = async (result, error) => {
+          if (processingRef.current) {
+            return;
+          }
+          if (result) {
+            await handleDetectedValue(result.getText(), "zxing");
+            return;
+          }
+          if (!error) {
+            return;
+          }
+          if (error instanceof NotFoundException) {
+            return;
+          }
+          const now = Date.now();
+          if (now - lastZxingErrorLogRef.current > 2000) {
+            lastZxingErrorLogRef.current = now;
+            if (import.meta.env.DEV) {
+              console.warn("[scanner] ZXing erreur", error);
             }
           }
-        );
+        };
+        const controls = useExistingStream
+          ? await reader.decodeFromVideoElement(video, callback)
+          : await reader.decodeFromVideoDevice(deviceId, video, callback);
         controlsRef.current = controls;
       } catch (error) {
         dispatchError(
@@ -411,6 +446,7 @@ export const BarcodeScanner = ({
 
   useEffect(() => {
     activeRef.current = active;
+
     if (!active) {
       cleanup();
       setStatus("");
@@ -418,15 +454,95 @@ export const BarcodeScanner = ({
       setShowHelp(false);
       setTorchSupported(false);
       setTorchEnabled(false);
+      if (!usingExternalCamera) {
+        stopCurrentStream();
+      }
       return;
     }
 
-    if (!isCameraAvailable()) {
+    if (!usingExternalCamera && !isCameraAvailable()) {
+      cleanup();
       dispatchError(
         "Caméra indisponible (HTTPS requis ou navigateur incompatible)."
       );
       setShowHelp(true);
       return;
+    }
+
+    const mapCameraError = (err: unknown) => {
+      if (err instanceof DOMException) {
+        switch (err.name) {
+          case "NotAllowedError":
+            return "Accès caméra refusé. Autorisez la caméra dans votre navigateur.";
+          case "NotFoundError":
+          case "OverconstrainedError":
+            return "Aucune caméra compatible détectée. Branchez ou sélectionnez un autre appareil.";
+          default:
+            return "Impossible d’ouvrir la caméra. Réessayez ou utilisez l’import d’image.";
+        }
+      }
+      return "Impossible d’ouvrir la caméra. Réessayez ou utilisez l’import d’image.";
+    };
+
+    if (usingExternalCamera) {
+      if (externalCameraError) {
+        cleanup();
+        dispatchError(mapCameraError(externalCameraError));
+        setShowHelp(true);
+        return;
+      }
+
+      if (!externalCameraActive) {
+        setStatus("Initialisation caméra…");
+        setShowHelp(false);
+        return;
+      }
+
+      const stream = getCurrentStream();
+      if (!stream) {
+        setStatus("Initialisation caméra…");
+        return;
+      }
+
+      const [track] = stream.getVideoTracks();
+      const capabilities = track?.getCapabilities?.();
+      const supportsTorch = Boolean(
+        (capabilities as TorchCapabilities | undefined)?.torch
+      );
+      setTorchSupported(supportsTorch);
+      setTorchEnabled(false);
+      setStatus("Visez le code-barres");
+      setError(null);
+      setShowHelp(false);
+
+      let cancelled = false;
+
+      const runDetection = async () => {
+        try {
+          const started = await startBarcodeDetector();
+          if (!started) {
+            const deviceId = track?.getSettings?.().deviceId;
+            await startZxing(deviceId, true);
+          }
+          if (!cancelled && activeRef.current) {
+            scheduleHelp();
+          }
+        } catch (error) {
+          dispatchError(
+            "Lecture du flux caméra impossible. Vérifiez les autorisations."
+          );
+          if (import.meta.env.DEV) {
+            console.error("[scanner] Initialisation ZXing impossible", error);
+          }
+        }
+      };
+
+      void runDetection();
+
+      return () => {
+        cancelled = true;
+        cleanup();
+      };
     }
 
     const run = async () => {
@@ -439,12 +555,23 @@ export const BarcodeScanner = ({
           CAMERA_CONSTRAINTS
         );
         if (!activeRef.current) {
-          stopStream({ current: stream });
+          stream.getTracks().forEach((track) => {
+            try {
+              track.stop();
+            } catch (error) {
+              if (import.meta.env.DEV) {
+                console.debug("[scanner] Arrêt piste caméra impossible", error);
+              }
+            }
+          });
           return;
         }
-        streamRef.current = stream;
         const video = videoRef.current;
         if (video) {
+          // iOS/WebView : playsinline + mute pour lecture auto
+          video.setAttribute("playsinline", "true");
+          video.muted = true;
+          // @ts-ignore
           video.srcObject = stream;
           try {
             await video.play();
@@ -458,7 +585,8 @@ export const BarcodeScanner = ({
           }
         }
 
-        const [track] = stream.getVideoTracks();
+        const currentStream = getCurrentStream();
+        const [track] = currentStream?.getVideoTracks() ?? [];
         const capabilities = track?.getCapabilities?.();
         const supportsTorch = Boolean(
           (capabilities as TorchCapabilities | undefined)?.torch
@@ -470,38 +598,21 @@ export const BarcodeScanner = ({
         const started = await startBarcodeDetector();
         if (!started) {
           const deviceId = track?.getSettings?.().deviceId;
-          await startZxing(deviceId);
+          await startZxing(deviceId, false);
         }
+        scheduleHelp();
       } catch (error) {
-        if (error instanceof DOMException) {
-          switch (error.name) {
-            case "NotAllowedError":
-              dispatchError(
-                "Accès caméra refusé. Autorisez la caméra dans votre navigateur."
-              );
-              break;
-            case "NotFoundError":
-            case "OverconstrainedError":
-              dispatchError(
-                "Aucune caméra compatible détectée. Branchez ou sélectionnez un autre appareil."
-              );
-              break;
-            default:
-              dispatchError(
-                "Impossible d’ouvrir la caméra. Réessayez ou utilisez l’import d’image."
-              );
-          }
-        } else {
-          dispatchError(
-            "Impossible d’ouvrir la caméra. Réessayez ou utilisez l’import d’image."
+        dispatchError(mapCameraError(error));
+        if (import.meta.env.DEV) {
+          console.error(
+            "[scanner] Impossible d’ouvrir la caméra (mode interne)",
+            error
           );
         }
       }
     };
 
     void run();
-
-    scheduleHelp();
 
     return () => {
       cleanup();
@@ -510,13 +621,18 @@ export const BarcodeScanner = ({
     active,
     cleanup,
     dispatchError,
+    externalCameraActive,
+    externalCameraError,
+    getCurrentStream,
     scheduleHelp,
     startBarcodeDetector,
     startZxing,
+    stopCurrentStream,
+    usingExternalCamera,
   ]);
 
   const handleTorchToggle = useCallback(async () => {
-    const stream = streamRef.current;
+    const stream = getCurrentStream();
     if (!stream) {
       return;
     }
@@ -540,7 +656,7 @@ export const BarcodeScanner = ({
       }
       dispatchError("Activation de la lampe impossible sur cet appareil.");
     }
-  }, [dispatchError, torchEnabled]);
+  }, [dispatchError, getCurrentStream, torchEnabled]);
 
   const handleImageChange = (event: ChangeEvent<HTMLInputElement>) => {
     if (!onPickImage) {
@@ -553,7 +669,7 @@ export const BarcodeScanner = ({
     event.target.value = "";
   };
 
-  const cameraAvailable = isCameraAvailable();
+  const cameraAvailable = usingExternalCamera || isCameraAvailable();
 
   const containerClass =
     presentation === "immersive"
