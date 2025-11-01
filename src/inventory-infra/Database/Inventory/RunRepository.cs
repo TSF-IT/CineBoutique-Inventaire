@@ -189,7 +189,7 @@ FROM "Conflict" c
 JOIN "CountLine"  cl ON cl."Id" = c."CountLineId"
 JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
 JOIN "Location"    l ON l."Id" = cr."LocationId"
-WHERE c."ResolvedAtUtc" IS NULL
+WHERE c."IsResolved" = FALSE
   AND l."ShopId" = @ShopId
 GROUP BY cr."LocationId", l."Code", l."Label"
 ORDER BY l."Code";

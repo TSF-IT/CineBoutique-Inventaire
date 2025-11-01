@@ -705,7 +705,7 @@ VALUES (@Id, @RunId, @ProductId, @Quantity, @CountedAtUtc);
                         cancellationToken: cancellationToken)).ConfigureAwait(false);
             }
 
-            await ManageConflictsAsync(connection, transaction, location.Id, countingRunId, parameters.CountType, now, cancellationToken).ConfigureAwait(false);
+            await ResolveConflictsForSessionInternalAsync(connection, transaction, inventorySessionId, cancellationToken).ConfigureAwait(false);
 
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
 
@@ -1233,381 +1233,446 @@ WHERE "Id" = ANY(@SessionIds);
         return sku.Length <= 32 ? sku : sku[^32..];
     }
 
-    private static async Task ManageConflictsAsync(
+    private async Task<SessionConflictResolutionResult> ResolveConflictsForSessionInternalAsync(
         NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        Guid locationId,
-        Guid currentRunId,
-        short countType,
-        DateTimeOffset now,
+        NpgsqlTransaction? transaction,
+        Guid sessionId,
         CancellationToken cancellationToken)
     {
-        if (countType is 1 or 2)
+        var result = new SessionConflictResolutionResult
         {
-            await ManageInitialConflictsAsync(connection, transaction, locationId, currentRunId, countType, now, cancellationToken)
-                .ConfigureAwait(false);
-            return;
-        }
-
-        await ManageAdditionalConflictsAsync(connection, transaction, locationId, currentRunId, cancellationToken)
-            .ConfigureAwait(false);
-    }
-
-    private static async Task ManageInitialConflictsAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        Guid locationId,
-        Guid currentRunId,
-        short countType,
-        DateTimeOffset now,
-        CancellationToken cancellationToken)
-    {
-        var counterpartType = countType switch
-        {
-            1 => (short)2,
-            2 => (short)1,
-            _ => (short)0
+            SessionId = sessionId,
+            SessionExists = false
         };
 
-        if (counterpartType == 0)
-        {
-            return;
-        }
-
-        const string selectCounterpartRunSql = """
+        const string sessionExistsSql = """
 SELECT "Id"
-FROM "CountingRun"
-WHERE "LocationId" = @LocationId AND "CountType" = @Counterpart AND "CompletedAtUtc" IS NOT NULL
-ORDER BY "CompletedAtUtc" DESC
+FROM "InventorySession"
+WHERE "Id" = @SessionId
 LIMIT 1;
 """;
 
-        var counterpartRunId = await connection
+        var sessionIdentifier = await connection
             .QuerySingleOrDefaultAsync<Guid?>(
                 new CommandDefinition(
-                    selectCounterpartRunSql,
-                    new { LocationId = locationId, Counterpart = counterpartType },
+                    sessionExistsSql,
+                    new { SessionId = sessionId },
                     transaction,
                     cancellationToken: cancellationToken))
             .ConfigureAwait(false);
 
-        if (counterpartRunId is null)
+        if (sessionIdentifier is null)
         {
-            return;
+            return result;
         }
 
-        const string deleteExistingConflictsSql = """
-DELETE FROM "Conflict"
-USING "CountLine" cl
-WHERE "Conflict"."CountLineId" = cl."Id"
-  AND cl."CountingRunId" IN (@CurrentRunId, @CounterpartRunId)
-  AND "Conflict"."ResolvedAtUtc" IS NULL;
-""";
+        result.SessionExists = true;
 
-        await connection.ExecuteAsync(
-                new CommandDefinition(
-                    deleteExistingConflictsSql,
-                    new { CurrentRunId = currentRunId, CounterpartRunId = counterpartRunId.Value },
-                    transaction,
-                    cancellationToken: cancellationToken))
+        var columnsState = await InventoryOperatorSqlHelper
+            .DetectOperatorColumnsAsync(connection, cancellationToken)
             .ConfigureAwait(false);
+        var operatorSql = InventoryOperatorSqlHelper.BuildOperatorSqlFragments("cr", "owner", columnsState);
 
-        var runIds = new[] { currentRunId, counterpartRunId.Value };
-
-        const string aggregateSql = """
+        var observationSql = $"""
 SELECT
-    cl."CountingRunId",
-    p."Ean",
-    p."Id" AS "ProductId",
-    SUM(cl."Quantity") AS "Quantity"
-FROM "CountLine" cl
+    p."Id"              AS "ProductId",
+    p."Ean"             AS "Ean",
+    p."Sku"             AS "Sku",
+    p."Name"            AS "Name",
+    cl."Id"             AS "CountLineId",
+    cl."CountingRunId"  AS "RunId",
+    cr."CountType"      AS "CountType",
+    {operatorSql.OwnerUserIdProjection} AS "OwnerUserId",
+    {operatorSql.Projection}            AS "OperatorDisplayName",
+    cr."CompletedAtUtc" AS "CompletedAtUtc",
+    cl."Quantity"       AS "Quantity"
+FROM "CountingRun" cr
+JOIN "CountLine" cl ON cl."CountingRunId" = cr."Id"
 JOIN "Product" p ON p."Id" = cl."ProductId"
-WHERE cl."CountingRunId" = ANY(@RunIds::uuid[])
-GROUP BY cl."CountingRunId", p."Id", p."Ean";
+{InventoryOperatorSqlHelper.AppendJoinClause(operatorSql.JoinClause)}
+WHERE cr."InventorySessionId" = @SessionId
+  AND cr."CompletedAtUtc" IS NOT NULL
+ORDER BY p."Ean", cr."CompletedAtUtc", cr."Id";
 """;
 
-        var aggregatedRows = await connection
-            .QueryAsync<AggregatedCountRow>(
-                new CommandDefinition(
-                    aggregateSql,
-                    new { RunIds = runIds },
-                    transaction,
-                    cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
-
-        var quantityByRun = BuildQuantityLookup(aggregatedRows);
-
-        const string lineLookupSql = """
-SELECT DISTINCT ON (cl."CountingRunId", p."Id")
-    cl."CountingRunId",
-    cl."Id" AS "CountLineId",
-    p."Id" AS "ProductId",
-    p."Ean"
-FROM "CountLine" cl
-JOIN "Product" p ON p."Id" = cl."ProductId"
-WHERE cl."CountingRunId" = ANY(@RunIds::uuid[])
-ORDER BY cl."CountingRunId", p."Id", cl."CountedAtUtc" DESC, cl."Id" DESC;
-""";
-
-        var lineReferences = await connection
-            .QueryAsync<CountLineReference>(
-                new CommandDefinition(
-                    lineLookupSql,
-                    new { RunIds = runIds },
-                    transaction,
-                    cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
-
-        var lineIdLookup = lineReferences
-            .GroupBy(reference => reference.CountingRunId)
-            .ToDictionary(
-                group => group.Key,
-                group => group.ToDictionary(
-                    reference => BuildProductKey(reference.ProductId, reference.Ean),
-                    reference => reference.CountLineId,
-                    StringComparer.Ordinal),
-                EqualityComparer<Guid>.Default);
-
-        var currentQuantities = quantityByRun.GetValueOrDefault(currentRunId, new Dictionary<string, decimal>(StringComparer.Ordinal));
-        var counterpartQuantities = quantityByRun.GetValueOrDefault(counterpartRunId.Value, new Dictionary<string, decimal>(StringComparer.Ordinal));
-
-        var allKeys = currentQuantities.Keys
-            .Union(counterpartQuantities.Keys, StringComparer.Ordinal)
+        var observationRows = (await connection
+                .QueryAsync<SessionConflictObservationRow>(
+                    new CommandDefinition(
+                        observationSql,
+                        new { SessionId = sessionId },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false))
             .ToArray();
 
-        var conflictInserts = new List<object>();
-
-        foreach (var key in allKeys)
-        {
-            var currentQty = currentQuantities.TryGetValue(key, out var value) ? value : 0m;
-            var counterpartQty = counterpartQuantities.TryGetValue(key, out var other) ? other : 0m;
-
-            if (currentQty == counterpartQty)
-            {
-                continue;
-            }
-
-            var lineId = ResolveCountLineId(lineIdLookup, currentRunId, counterpartRunId.Value, key);
-
-            if (lineId is null)
-            {
-                continue;
-            }
-
-            conflictInserts.Add(new
-            {
-                Id = Guid.NewGuid(),
-                CountLineId = lineId.Value,
-                Status = "open",
-                Notes = (string?)null,
-                CreatedAtUtc = now
-            });
-        }
-
-        if (conflictInserts.Count == 0)
-        {
-            return;
-        }
-
-        const string insertConflictSql = """
-INSERT INTO "Conflict" ("Id", "CountLineId", "Status", "Notes", "CreatedAtUtc")
-VALUES (@Id, @CountLineId, @Status, @Notes, @CreatedAtUtc);
-""";
-
-        foreach (var payload in conflictInserts)
-        {
-            await connection.ExecuteAsync(
-                    new CommandDefinition(insertConflictSql, payload, transaction, cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
-        }
-    }
-
-    private static async Task ManageAdditionalConflictsAsync(
-        NpgsqlConnection connection,
-        NpgsqlTransaction transaction,
-        Guid locationId,
-        Guid currentRunId,
-        CancellationToken cancellationToken)
-    {
-        const string conflictProductsSql = """
-SELECT DISTINCT
-    p."Id"  AS "ProductId",
-    p."Ean" AS "Ean"
+        const string existingConflictsSql = """
+SELECT
+    c."Id"               AS "ConflictId",
+    c."CountLineId"      AS "CountLineId",
+    cl."ProductId"       AS "ProductId",
+    c."IsResolved"       AS "IsResolved",
+    c."ResolvedQuantity" AS "ResolvedQuantity",
+    c."ResolvedAtUtc"    AS "ResolvedAtUtc",
+    c."CreatedAtUtc"     AS "CreatedAtUtc"
 FROM "Conflict" c
 JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
 JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
-JOIN "Product" p ON p."Id" = cl."ProductId"
-WHERE c."ResolvedAtUtc" IS NULL
-  AND cr."LocationId" = @LocationId;
+WHERE cr."InventorySessionId" = @SessionId;
 """;
 
-        var conflictProducts = (await connection
-                .QueryAsync<ConflictProductReference>(
+        var existingConflicts = (await connection
+                .QueryAsync<ExistingConflictRow>(
                     new CommandDefinition(
-                        conflictProductsSql,
-                        new { LocationId = locationId },
+                        existingConflictsSql,
+                        new { SessionId = sessionId },
                         transaction,
                         cancellationToken: cancellationToken))
                 .ConfigureAwait(false))
             .ToArray();
 
-        if (conflictProducts.Length == 0)
+        if (observationRows.Length == 0)
         {
-            return;
-        }
-
-        var conflictKeys = conflictProducts
-            .Select(product => BuildProductKey(product.ProductId, product.Ean))
-            .Where(key => !string.IsNullOrWhiteSpace(key))
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
-
-        if (conflictKeys.Length == 0)
-        {
-            return;
-        }
-
-        const string completedRunsSql = """
-SELECT "Id"
-FROM "CountingRun"
-WHERE "LocationId" = @LocationId
-  AND "CompletedAtUtc" IS NOT NULL;
-""";
-
-        var completedRunIds = (await connection
-                .QueryAsync<Guid>(
-                    new CommandDefinition(
-                        completedRunsSql,
-                        new { LocationId = locationId },
-                        transaction,
-                        cancellationToken: cancellationToken))
-                .ConfigureAwait(false))
-            .ToArray();
-
-        if (completedRunIds.Length <= 1 || !completedRunIds.Contains(currentRunId))
-        {
-            return;
-        }
-
-        const string aggregateSql = """
-SELECT
-    cl."CountingRunId",
-    p."Ean",
-    p."Id" AS "ProductId",
-    SUM(cl."Quantity") AS "Quantity"
-FROM "CountLine" cl
-JOIN "Product" p ON p."Id" = cl."ProductId"
-WHERE cl."CountingRunId" = ANY(@RunIds::uuid[])
-GROUP BY cl."CountingRunId", p."Id", p."Ean";
-""";
-
-        var aggregatedRows = await connection
-            .QueryAsync<AggregatedCountRow>(
-                new CommandDefinition(
-                    aggregateSql,
-                    new { RunIds = completedRunIds },
-                    transaction,
-                    cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
-
-        var quantitiesByRun = BuildQuantityLookup(aggregatedRows);
-
-        var currentQuantities = quantitiesByRun.GetValueOrDefault(currentRunId, new Dictionary<string, decimal>(StringComparer.Ordinal));
-        var previousRunIds = completedRunIds.Where(id => id != currentRunId).ToArray();
-
-        var hasMatch = previousRunIds.Any(previousRunId =>
-        {
-            var otherQuantities = quantitiesByRun.GetValueOrDefault(previousRunId, new Dictionary<string, decimal>(StringComparer.Ordinal));
-            return HaveIdenticalQuantities(currentQuantities, otherQuantities, conflictKeys);
-        });
-
-        if (!hasMatch)
-        {
-            return;
-        }
-
-        const string resolveConflictsSql = """
-DELETE FROM "Conflict"
-USING "CountLine" cl
-JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
-WHERE "Conflict"."CountLineId" = cl."Id"
-  AND cr."LocationId" = @LocationId
-  AND "Conflict"."ResolvedAtUtc" IS NULL;
-""";
-
-        await connection.ExecuteAsync(
-                new CommandDefinition(
-                    resolveConflictsSql,
-                    new { LocationId = locationId },
-                    transaction,
-                    cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
-    }
-
-    private static Dictionary<Guid, Dictionary<string, decimal>> BuildQuantityLookup(IEnumerable<AggregatedCountRow> aggregatedRows) =>
-        aggregatedRows
-            .GroupBy(row => row.CountingRunId)
-            .ToDictionary(
-                group => group.Key,
-                group => group.ToDictionary(
-                    row => BuildProductKey(row.ProductId, row.Ean),
-                    row => row.Quantity,
-                    StringComparer.Ordinal),
-                EqualityComparer<Guid>.Default);
-
-    private static bool HaveIdenticalQuantities(
-        IReadOnlyDictionary<string, decimal> current,
-        IReadOnlyDictionary<string, decimal> reference,
-        IReadOnlyCollection<string>? relevantKeys = null)
-    {
-        IEnumerable<string> keys = relevantKeys is { Count: > 0 }
-            ? relevantKeys
-            : current.Keys.Union(reference.Keys, StringComparer.Ordinal);
-
-        foreach (var key in keys)
-        {
-            var currentValue = current.TryGetValue(key, out var value) ? value : 0m;
-            var referenceValue = reference.TryGetValue(key, out var other) ? other : 0m;
-
-            if (currentValue != referenceValue)
+            if (existingConflicts.Length > 0)
             {
-                return false;
+                var orphanIds = existingConflicts.Select(row => row.ConflictId).ToArray();
+                const string deleteSql = """
+DELETE FROM "Conflict"
+WHERE "Id" = ANY(@Ids::uuid[]);
+""";
+                await connection.ExecuteAsync(
+                        new CommandDefinition(deleteSql, new { Ids = orphanIds }, transaction, cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+            }
+
+            result.Conflicts = Array.Empty<SessionConflictItem>();
+            result.Resolved = Array.Empty<SessionResolvedConflictItem>();
+            return result;
+        }
+
+        var conflictsLookup = existingConflicts
+            .GroupBy(row => row.ProductId)
+            .ToDictionary(group => group.Key, group => group.OrderBy(r => r.CreatedAtUtc).ToList(), EqualityComparer<Guid>.Default);
+
+        var deleteIds = new List<Guid>();
+        var inserts = new List<ConflictInsertCommand>();
+        var reopenUpdates = new List<ConflictOpenUpdate>();
+        var resolveUpdates = new List<ConflictResolveUpdate>();
+        var unresolvedItems = new List<SessionConflictItem>();
+        var resolvedItems = new List<SessionResolvedConflictItem>();
+
+        foreach (var grouping in observationRows.GroupBy(row => row.ProductId))
+        {
+            var productRows = grouping
+                .OrderBy(row => row.CompletedAtUtc)
+                .ThenBy(row => row.RunId)
+                .ToList();
+
+            if (productRows.Count == 0)
+            {
+                continue;
+            }
+
+            var productId = grouping.Key;
+            var productRef = Normalize(productRows[0].Ean) ?? string.Empty;
+            var sku = Normalize(productRows[0].Sku) ?? string.Empty;
+            var name = Normalize(productRows[0].Name) ?? string.Empty;
+
+            var existing = conflictsLookup.TryGetValue(productId, out var existingList)
+                ? existingList
+                : new List<ExistingConflictRow>();
+
+            if (existing.Count > 1)
+            {
+                deleteIds.AddRange(existing.Skip(1).Select(row => row.ConflictId));
+                existing = new List<ExistingConflictRow> { existing[0] };
+            }
+
+            var existingConflict = existing.FirstOrDefault();
+
+            if (existingConflict is not null && existingConflict.IsResolved)
+            {
+                var resolvedQuantity = existingConflict.ResolvedQuantity ?? 0;
+                var resolvedAt = existingConflict.ResolvedAtUtc ?? existingConflict.CreatedAtUtc;
+
+                resolvedItems.Add(new SessionResolvedConflictItem
+                {
+                    ProductId = productId,
+                    ProductRef = productRef,
+                    Sku = sku,
+                    Name = name,
+                    ResolvedQuantity = resolvedQuantity,
+                    ResolvedAtUtc = resolvedAt,
+                    ResolutionRule = "two-matching-counts"
+                });
+
+                continue;
+            }
+
+            var observationModels = productRows
+                .Select(row => new SessionConflictObservation
+                {
+                    RunId = row.RunId,
+                    CountLineId = row.CountLineId,
+                    CountType = row.CountType,
+                    CountedByUserId = columnsState.HasOwnerUserId ? row.OwnerUserId : null,
+                    CountedByDisplayName = Normalize(row.OperatorDisplayName),
+                    CountedAtUtc = row.CompletedAtUtc,
+                    Quantity = ToIntQuantity(row.Quantity)
+                })
+                .ToList();
+
+            if (observationModels.Count < 2)
+            {
+                if (existingConflict is not null)
+                {
+                    deleteIds.Add(existingConflict.ConflictId);
+                }
+
+                continue;
+            }
+
+            var resolution = DetectResolution(productRows);
+            if (resolution is not null)
+            {
+                var resolvedQuantity = resolution.Quantity;
+                var resolvedAtUtc = resolution.ResolvedAtUtc;
+
+                resolvedItems.Add(new SessionResolvedConflictItem
+                {
+                    ProductId = productId,
+                    ProductRef = productRef,
+                    Sku = sku,
+                    Name = name,
+                    ResolvedQuantity = resolvedQuantity,
+                    ResolvedAtUtc = resolvedAtUtc,
+                    ResolutionRule = "two-matching-counts"
+                });
+
+                if (existingConflict is not null)
+                {
+                    resolveUpdates.Add(new ConflictResolveUpdate(existingConflict.ConflictId, resolution.CountLineId, resolvedQuantity, resolvedAtUtc));
+                }
+                else
+                {
+                    inserts.Add(new ConflictInsertCommand(Guid.NewGuid(), resolution.CountLineId, "resolved", resolvedAtUtc, resolvedAtUtc, resolvedQuantity, true));
+                }
+
+                continue;
+            }
+
+            var distinctQuantities = observationModels
+                .Select(obs => obs.Quantity)
+                .Distinct()
+                .Count();
+
+            if (distinctQuantities <= 1)
+            {
+                if (existingConflict is not null)
+                {
+                    deleteIds.Add(existingConflict.ConflictId);
+                }
+
+                continue;
+            }
+
+            var variance = ComputeSampleVariance(observationModels.Select(obs => obs.Quantity).ToArray());
+
+            unresolvedItems.Add(new SessionConflictItem
+            {
+                ProductId = productId,
+                ProductRef = productRef,
+                Sku = sku,
+                Name = name,
+                Observations = observationModels,
+                SampleVariance = variance,
+                ResolvedQuantity = null
+            });
+
+            var latestObservation = observationModels
+                .OrderByDescending(obs => obs.CountedAtUtc)
+                .ThenByDescending(obs => obs.RunId)
+                .First();
+
+            if (existingConflict is not null)
+            {
+                reopenUpdates.Add(new ConflictOpenUpdate(existingConflict.ConflictId, latestObservation.CountLineId));
+            }
+            else
+            {
+                inserts.Add(new ConflictInsertCommand(Guid.NewGuid(), latestObservation.CountLineId, "open", latestObservation.CountedAtUtc, null, null, false));
             }
         }
 
-        return true;
-    }
-
-    private static Guid? ResolveCountLineId(
-        Dictionary<Guid, Dictionary<string, Guid>> lookup,
-        Guid currentRunId,
-        Guid counterpartRunId,
-        string key)
-    {
-        if (lookup.TryGetValue(currentRunId, out var currentLines) && currentLines.TryGetValue(key, out var currentLineId))
+        if (deleteIds.Count > 0)
         {
-            return currentLineId;
+            const string deleteSql = """
+DELETE FROM "Conflict"
+WHERE "Id" = ANY(@Ids::uuid[]);
+""";
+            await connection.ExecuteAsync(
+                    new CommandDefinition(deleteSql, new { Ids = deleteIds.ToArray() }, transaction, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
         }
 
-        if (lookup.TryGetValue(counterpartRunId, out var counterpartLines) && counterpartLines.TryGetValue(key, out var counterpartLineId))
+        foreach (var insert in inserts)
         {
-            return counterpartLineId;
+            const string insertSql = """
+INSERT INTO "Conflict" ("Id", "CountLineId", "Status", "Notes", "CreatedAtUtc", "ResolvedAtUtc", "ResolvedQuantity", "IsResolved")
+VALUES (@Id, @CountLineId, @Status, NULL, @CreatedAtUtc, @ResolvedAtUtc, @ResolvedQuantity, @IsResolved);
+""";
+            await connection.ExecuteAsync(
+                    new CommandDefinition(
+                        insertSql,
+                        new
+                        {
+                            Id = insert.ConflictId,
+                            insert.CountLineId,
+                            insert.Status,
+                            CreatedAtUtc = insert.CreatedAtUtc,
+                            ResolvedAtUtc = insert.ResolvedAtUtc,
+                            ResolvedQuantity = insert.ResolvedQuantity,
+                            insert.IsResolved
+                        },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+        }
+
+        foreach (var update in reopenUpdates)
+        {
+            const string reopenSql = """
+UPDATE "Conflict"
+SET "CountLineId" = @CountLineId,
+    "Status" = 'open',
+    "Notes" = NULL,
+    "ResolvedAtUtc" = NULL,
+    "ResolvedQuantity" = NULL,
+    "IsResolved" = FALSE
+WHERE "Id" = @ConflictId;
+""";
+            await connection.ExecuteAsync(
+                    new CommandDefinition(
+                        reopenSql,
+                        new { update.ConflictId, update.CountLineId },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+        }
+
+        foreach (var update in resolveUpdates)
+        {
+            const string resolveSql = """
+UPDATE "Conflict"
+SET "CountLineId" = @CountLineId,
+    "Status" = 'resolved',
+    "ResolvedAtUtc" = @ResolvedAtUtc,
+    "ResolvedQuantity" = @ResolvedQuantity,
+    "IsResolved" = TRUE
+WHERE "Id" = @ConflictId;
+""";
+            await connection.ExecuteAsync(
+                    new CommandDefinition(
+                        resolveSql,
+                        new
+                        {
+                            update.ConflictId,
+                            update.CountLineId,
+                            update.ResolvedAtUtc,
+                            update.ResolvedQuantity
+                        },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+        }
+
+        result.Conflicts = unresolvedItems;
+        result.Resolved = resolvedItems;
+        return result;
+    }
+
+    public async Task<SessionConflictResolutionResult> ResolveConflictsForSessionAsync(Guid sessionId, CancellationToken cancellationToken)
+    {
+        await using var connection = await _connectionFactory
+            .CreateOpenConnectionAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        await using var transaction = await connection
+            .BeginTransactionAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        try
+        {
+            var result = await ResolveConflictsForSessionInternalAsync(connection, transaction, sessionId, cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return result;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private static ResolutionCandidate? DetectResolution(IReadOnlyList<SessionConflictObservationRow> observations)
+    {
+        var seen = new Dictionary<int, int>();
+        foreach (var observation in observations)
+        {
+            var quantity = ToIntQuantity(observation.Quantity);
+            if (!seen.TryGetValue(quantity, out var count))
+            {
+                seen[quantity] = 1;
+                continue;
+            }
+
+            count++;
+            seen[quantity] = count;
+
+            if (count >= 2)
+            {
+                return new ResolutionCandidate(quantity, observation.CountLineId, observation.CompletedAtUtc);
+            }
         }
 
         return null;
     }
 
-    private static string BuildProductKey(Guid productId, string? ean)
+    private static double? ComputeSampleVariance(IReadOnlyList<int> values)
     {
-        if (!string.IsNullOrWhiteSpace(ean))
+        if (values.Count < 2)
         {
-            return ean.Trim();
+            return null;
         }
 
-        return productId.ToString("D");
+        var mean = values.Average();
+        var sum = 0.0;
+
+        foreach (var value in values)
+        {
+            var delta = value - mean;
+            sum += delta * delta;
+        }
+
+        return sum / (values.Count - 1);
     }
 
-    private sealed record ConflictProductReference(Guid ProductId, string? Ean);
+    private static int ToIntQuantity(decimal quantity) =>
+        (int)Math.Round(quantity, MidpointRounding.AwayFromZero);
+
+    private sealed record ConflictInsertCommand(
+        Guid ConflictId,
+        Guid CountLineId,
+        string Status,
+        DateTimeOffset CreatedAtUtc,
+        DateTimeOffset? ResolvedAtUtc,
+        int? ResolvedQuantity,
+        bool IsResolved);
+
+    private sealed record ConflictOpenUpdate(Guid ConflictId, Guid CountLineId);
+
+    private sealed record ConflictResolveUpdate(Guid ConflictId, Guid CountLineId, int ResolvedQuantity, DateTimeOffset ResolvedAtUtc);
+
+    private sealed record ResolutionCandidate(int Quantity, Guid CountLineId, DateTimeOffset ResolvedAtUtc);
 
     private static async Task<bool> ValidateUserBelongsToShopAsync(
         NpgsqlConnection connection,

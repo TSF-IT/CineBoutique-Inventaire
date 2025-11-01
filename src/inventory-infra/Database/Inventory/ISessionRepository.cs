@@ -13,5 +13,7 @@ public interface ISessionRepository
 
     Task<RestartRunResult> RestartRunAsync(RestartRunParameters parameters, CancellationToken cancellationToken);
 
+    Task<SessionConflictResolutionResult> ResolveConflictsForSessionAsync(Guid sessionId, CancellationToken cancellationToken);
+
     Task<ResetShopInventoryResult> ResetShopInventoryAsync(Guid shopId, CancellationToken cancellationToken);
 }

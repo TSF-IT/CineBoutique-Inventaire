@@ -63,32 +63,46 @@ internal sealed class ProductLookupRow
     public string? CodeDigits { get; set; }
 }
 
-internal sealed class AggregatedCountRow
+internal sealed class SessionConflictObservationRow
 {
-    public Guid CountingRunId { get; set; }
-
-    public string Ean { get; set; } = string.Empty;
-
     public Guid ProductId { get; set; }
 
-    public decimal Quantity { get; set; }
+    public string? Ean { get; set; }
 
-    public AggregatedCountRow() { }
+    public string? Sku { get; set; }
+
+    public string? Name { get; set; }
+
+    public Guid CountLineId { get; set; }
+
+    public Guid RunId { get; set; }
+
+    public short CountType { get; set; }
+
+    public Guid? OwnerUserId { get; set; }
+
+    public string? OperatorDisplayName { get; set; }
+
+    public DateTimeOffset CompletedAtUtc { get; set; }
+
+    public decimal Quantity { get; set; }
 }
 
-internal sealed class CountLineReference
+internal sealed class ExistingConflictRow
 {
-    public Guid CountingRunId { get; set; }
+    public Guid ConflictId { get; set; }
 
     public Guid CountLineId { get; set; }
 
     public Guid ProductId { get; set; }
 
-    public string? Ean { get; set; }
+    public bool IsResolved { get; set; }
 
-    public CountLineReference()
-    {
-    }
+    public int? ResolvedQuantity { get; set; }
+
+    public DateTimeOffset? ResolvedAtUtc { get; set; }
+
+    public DateTimeOffset CreatedAtUtc { get; set; }
 }
 
 internal sealed class ShopRunRow

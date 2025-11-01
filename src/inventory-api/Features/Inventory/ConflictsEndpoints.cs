@@ -58,7 +58,7 @@ WITH conflict_products AS (
   JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
   JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
   JOIN "Product" p ON p."Id" = cl."ProductId"
-  WHERE c."ResolvedAtUtc" IS NULL
+  WHERE c."IsResolved" = FALSE
     AND cr."LocationId" = @LocationId
 ),
 candidate_runs AS (
@@ -140,7 +140,7 @@ WITH conflict_products AS (
     JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
     JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
     JOIN "Product" p ON p."Id" = cl."ProductId"
-    WHERE c."ResolvedAtUtc" IS NULL
+    WHERE c."IsResolved" = FALSE
       AND cr."LocationId" = @LocationId
 ),
 candidate_runs AS (

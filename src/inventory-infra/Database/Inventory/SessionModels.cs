@@ -180,3 +180,65 @@ public sealed class ResetShopInventoryResult
 
     public int LocationsAffected { get; set; }
 }
+
+public sealed class SessionConflictObservation
+{
+    public Guid RunId { get; set; }
+
+    public Guid CountLineId { get; set; }
+
+    public short CountType { get; set; }
+
+    public Guid? CountedByUserId { get; set; }
+
+    public string? CountedByDisplayName { get; set; }
+
+    public DateTimeOffset CountedAtUtc { get; set; }
+
+    public int Quantity { get; set; }
+}
+
+public sealed class SessionConflictItem
+{
+    public Guid ProductId { get; set; }
+
+    public string ProductRef { get; set; } = string.Empty;
+
+    public string Sku { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
+
+    public IReadOnlyList<SessionConflictObservation> Observations { get; set; } = Array.Empty<SessionConflictObservation>();
+
+    public double? SampleVariance { get; set; }
+
+    public int? ResolvedQuantity { get; set; }
+}
+
+public sealed class SessionResolvedConflictItem
+{
+    public Guid ProductId { get; set; }
+
+    public string ProductRef { get; set; } = string.Empty;
+
+    public string Sku { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
+
+    public int ResolvedQuantity { get; set; }
+
+    public DateTimeOffset ResolvedAtUtc { get; set; }
+
+    public string ResolutionRule { get; set; } = string.Empty;
+}
+
+public sealed class SessionConflictResolutionResult
+{
+    public Guid SessionId { get; set; }
+
+    public bool SessionExists { get; set; }
+
+    public IReadOnlyList<SessionConflictItem> Conflicts { get; set; } = Array.Empty<SessionConflictItem>();
+
+    public IReadOnlyList<SessionResolvedConflictItem> Resolved { get; set; } = Array.Empty<SessionResolvedConflictItem>();
+}

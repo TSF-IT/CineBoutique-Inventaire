@@ -1,5 +1,6 @@
 using System;
 using CineBoutique.Inventory.Api.Features.Inventory;
+using CineBoutique.Inventory.Api.Features.Inventory.Sessions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Routing;
 
@@ -16,6 +17,7 @@ internal static class InventoryEndpoints
 
         app.MapRunsEndpoints();
         app.MapSessionsEndpoints();
+        app.MapSessionConflictsEndpoints();
         app.MapLocationsEndpoints();
         app.MapConflictsEndpoints();
         app.MapReportsEndpoints();
