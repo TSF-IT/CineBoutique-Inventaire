@@ -329,14 +329,14 @@ export const ScanCameraPage = () => {
         removeItem(ean);
         return;
       }
-      setQuantity(ean, quantity - 1);
+      setQuantity(ean, quantity - 1, { promote: false });
     },
     [removeItem, setQuantity]
   );
 
   const handleInc = useCallback(
     (ean: string, quantity: number) => {
-      setQuantity(ean, quantity + 1);
+      setQuantity(ean, quantity + 1, { promote: false });
     },
     [setQuantity]
   );

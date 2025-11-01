@@ -22,7 +22,7 @@ export interface InventoryContextValue {
   initializeItems: (
     entries: Array<{ product: Product; quantity?: number; isManual?: boolean; hasConflict?: boolean }>,
   ) => void
-  setQuantity: (ean: string, quantity: number) => void
+  setQuantity: (ean: string, quantity: number, options?: { promote?: boolean }) => void
   removeItem: (ean: string) => void
   reset: () => void
   clearSession: (options?: { preserveSnapshot?: boolean }) => void
@@ -263,40 +263,46 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
     })
   }, [])
 
-  const setQuantity = useCallback((ean: string, quantity: number) => {
-    setState((prev) => {
-      const index = prev.items.findIndex((item) => item.product.ean === ean)
-      if (index < 0) {
-        return prev
-      }
+  const setQuantity = useCallback(
+    (ean: string, quantity: number, options?: { promote?: boolean }) => {
+      setState((prev) => {
+        const index = prev.items.findIndex((item) => item.product.ean === ean)
+        if (index < 0) {
+          return prev
+        }
 
-      const existing = prev.items[index]
-      const timestamp = new Date().toISOString()
-      const updated: InventoryItem = {
-        ...existing,
-        quantity,
-        lastScanAt: timestamp,
-      }
+        const existing = prev.items[index]
+        const timestamp = new Date().toISOString()
+        const updated: InventoryItem = {
+          ...existing,
+          quantity,
+          lastScanAt: timestamp,
+        }
 
-      const remainingItems = prev.items.filter((_, itemIndex) => itemIndex !== index)
+        const promote = options?.promote ?? true
+        const items = promote
+          ? [updated, ...prev.items.filter((_, itemIndex) => itemIndex !== index)]
+          : prev.items.map((entry, itemIndex) => (itemIndex === index ? updated : entry))
 
-      return {
-        ...prev,
-        items: [updated, ...remainingItems],
-        pendingSnapshotUserId: null,
-        logs: prependLogEntry(prev.logs, {
-          type: 'item-quantity-updated',
-          message: `Quantité mise à jour pour ${updated.product.name} (EAN ${updated.product.ean}) → ${quantity}`,
-          context: {
-            ean: updated.product.ean,
-            productName: updated.product.name,
-            quantity,
-            isManual: updated.isManual,
-          },
-        }),
-      }
-    })
-  }, [])
+        return {
+          ...prev,
+          items,
+          pendingSnapshotUserId: null,
+          logs: prependLogEntry(prev.logs, {
+            type: 'item-quantity-updated',
+            message: `Quantité mise à jour pour ${updated.product.name} (EAN ${updated.product.ean}) → ${quantity}`,
+            context: {
+              ean: updated.product.ean,
+              productName: updated.product.name,
+              quantity,
+              isManual: updated.isManual,
+            },
+          }),
+        }
+      })
+    },
+    [],
+  )
 
   const removeItem = useCallback((ean: string) => {
     setState((prev) => {

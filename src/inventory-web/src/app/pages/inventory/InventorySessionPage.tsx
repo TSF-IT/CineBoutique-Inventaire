@@ -252,6 +252,7 @@ export const InventorySessionPage = () => {
   const completionConfirmButtonRef = useRef<HTMLButtonElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const logsDialogRef = useRef<HTMLDialogElement | null>(null)
+  const removalConfirmationDialogRef = useRef<HTMLDialogElement | null>(null)
   const manualLookupIdRef = useRef(0)
   const lastSearchedInputRef = useRef<string | null>(null)
   const previousItemCountRef = useRef(items.length)
@@ -263,6 +264,7 @@ export const InventorySessionPage = () => {
   const [conflictPrefillAttempt, setConflictPrefillAttempt] = useState(0)
   const conflictPrefillKeyRef = useRef<string | null>(null)
   const [catalogueOpen, setCatalogueOpen] = useState(false)
+  const [pendingRemovalItem, setPendingRemovalItem] = useState<InventoryItem | null>(null)
 
   const isConflictResolutionMode = typeof countType === 'number' && countType >= CountType.Count3
 
@@ -1048,17 +1050,71 @@ export const InventorySessionPage = () => {
     })
   }, [])
 
+  const promptRemovalConfirmation = useCallback((item: InventoryItem) => {
+    setPendingRemovalItem(item)
+    const dialog = removalConfirmationDialogRef.current
+    if (!dialog) {
+      return
+    }
+
+    if (typeof dialog.showModal === 'function') {
+      if (!dialog.open) {
+        dialog.showModal()
+      }
+      return
+    }
+
+    dialog.setAttribute('open', '')
+  }, [])
+
+  const closeRemovalConfirmation = useCallback(() => {
+    const dialog = removalConfirmationDialogRef.current
+    if (!dialog) {
+      return
+    }
+
+    if (typeof dialog.close === 'function') {
+      dialog.close()
+      return
+    }
+
+    dialog.removeAttribute('open')
+  }, [])
+
+  const resetPendingRemoval = useCallback(() => {
+    setPendingRemovalItem(null)
+  }, [])
+
+  const handleCancelRemoval = useCallback(() => {
+    closeRemovalConfirmation()
+    resetPendingRemoval()
+  }, [closeRemovalConfirmation, resetPendingRemoval])
+
+  const handleConfirmRemoval = useCallback(() => {
+    if (!pendingRemovalItem) {
+      closeRemovalConfirmation()
+      resetPendingRemoval()
+      return
+    }
+
+    const targetEan = pendingRemovalItem.product.ean
+    clearQuantityDraft(targetEan)
+    removeItem(targetEan)
+    closeRemovalConfirmation()
+    resetPendingRemoval()
+  }, [clearQuantityDraft, closeRemovalConfirmation, pendingRemovalItem, removeItem, resetPendingRemoval])
+
   const adjustQuantity = (ean: string, delta: number) => {
     const item = items.find((entry) => entry.product.ean === ean)
     if (!item) return
     const nextQuantity = item.quantity + delta
     if (nextQuantity <= 0) {
-      clearQuantityDraft(ean)
-      removeItem(ean)
-    } else {
-      setQuantity(ean, nextQuantity)
-      clearQuantityDraft(ean)
+      promptRemovalConfirmation(item)
+      return
     }
+
+    setQuantity(ean, nextQuantity, { promote: false })
+    clearQuantityDraft(ean)
   }
 
   const commitQuantity = useCallback(
@@ -1325,6 +1381,50 @@ export const InventorySessionPage = () => {
             )}
           </div>
           <p className="mt-6 text-xs text-slate-500 dark:text-slate-400">Le journal est réinitialisé quand le comptage est terminé.</p>
+        </Card>
+      </dialog>
+
+      <dialog
+        ref={removalConfirmationDialogRef}
+        aria-modal="true"
+        aria-labelledby="remove-item-title"
+        aria-describedby="remove-item-description"
+        className="px-4"
+        data-testid="confirm-remove-dialog"
+        onCancel={(event) => {
+          event.preventDefault()
+          handleCancelRemoval()
+        }}
+        onClose={resetPendingRemoval}
+      >
+        <Card className="w-full max-w-md space-y-4 shadow-elev-2">
+          <div className="space-y-2">
+            <p id="remove-item-title" className="text-lg font-semibold text-slate-900 dark:text-white">
+              Retirer cet article ?
+            </p>
+            <p id="remove-item-description" className="text-sm text-slate-600 dark:text-slate-300">
+              {pendingRemovalItem
+                ? `Confirmez la suppression de «${pendingRemovalItem.product.name}» de la liste des articles scannés.`
+                : 'Confirmez la suppression de cet article de la liste des articles scannés.'}
+            </p>
+            {pendingRemovalItem && (
+              <div className="space-y-1 text-xs text-slate-500 dark:text-slate-400">
+                <p>Quantité actuelle : {pendingRemovalItem.quantity}</p>
+                <p>EAN {formatIdentifierForDisplay(pendingRemovalItem.product.ean)}</p>
+                {normalizeIdentifier(pendingRemovalItem.product.sku) && (
+                  <p>SKU {formatIdentifierForDisplay(pendingRemovalItem.product.sku)}</p>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button type="button" variant="secondary" onClick={handleCancelRemoval}>
+              Annuler
+            </Button>
+            <Button type="button" variant="danger" onClick={handleConfirmRemoval}>
+              Retirer
+            </Button>
+          </div>
         </Card>
       </dialog>
 
