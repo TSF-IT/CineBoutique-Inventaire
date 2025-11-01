@@ -77,6 +77,8 @@ internal sealed class SessionConflictObservationRow
 
     public Guid RunId { get; set; }
 
+    public Guid InventorySessionId { get; set; }
+
     public short CountType { get; set; }
 
     public Guid? OwnerUserId { get; set; }

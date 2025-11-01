@@ -705,7 +705,7 @@ VALUES (@Id, @RunId, @ProductId, @Quantity, @CountedAtUtc);
                         cancellationToken: cancellationToken)).ConfigureAwait(false);
             }
 
-            await ResolveConflictsForSessionInternalAsync(connection, transaction, inventorySessionId, cancellationToken).ConfigureAwait(false);
+            await ResolveConflictsForLocationInternalAsync(connection, transaction, location.Id, cancellationToken).ConfigureAwait(false);
 
             await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
 
@@ -1233,41 +1233,12 @@ WHERE "Id" = ANY(@SessionIds);
         return sku.Length <= 32 ? sku : sku[^32..];
     }
 
-    private async Task<SessionConflictResolutionResult> ResolveConflictsForSessionInternalAsync(
+    private async Task ResolveConflictsForLocationInternalAsync(
         NpgsqlConnection connection,
         NpgsqlTransaction? transaction,
-        Guid sessionId,
+        Guid locationId,
         CancellationToken cancellationToken)
     {
-        var result = new SessionConflictResolutionResult
-        {
-            SessionId = sessionId,
-            SessionExists = false
-        };
-
-        const string sessionExistsSql = """
-SELECT "Id"
-FROM "InventorySession"
-WHERE "Id" = @SessionId
-LIMIT 1;
-""";
-
-        var sessionIdentifier = await connection
-            .QuerySingleOrDefaultAsync<Guid?>(
-                new CommandDefinition(
-                    sessionExistsSql,
-                    new { SessionId = sessionId },
-                    transaction,
-                    cancellationToken: cancellationToken))
-            .ConfigureAwait(false);
-
-        if (sessionIdentifier is null)
-        {
-            return result;
-        }
-
-        result.SessionExists = true;
-
         var columnsState = await InventoryOperatorSqlHelper
             .DetectOperatorColumnsAsync(connection, cancellationToken)
             .ConfigureAwait(false);
@@ -1281,6 +1252,7 @@ SELECT
     p."Name"            AS "Name",
     cl."Id"             AS "CountLineId",
     cl."CountingRunId"  AS "RunId",
+    cr."InventorySessionId" AS "InventorySessionId",
     cr."CountType"      AS "CountType",
     {operatorSql.OwnerUserIdProjection} AS "OwnerUserId",
     {operatorSql.Projection}            AS "OperatorDisplayName",
@@ -1290,7 +1262,7 @@ FROM "CountingRun" cr
 JOIN "CountLine" cl ON cl."CountingRunId" = cr."Id"
 JOIN "Product" p ON p."Id" = cl."ProductId"
 {InventoryOperatorSqlHelper.AppendJoinClause(operatorSql.JoinClause)}
-WHERE cr."InventorySessionId" = @SessionId
+WHERE cr."LocationId" = @LocationId
   AND cr."CompletedAtUtc" IS NOT NULL
 ORDER BY p."Ean", cr."CompletedAtUtc", cr."Id";
 """;
@@ -1299,7 +1271,7 @@ ORDER BY p."Ean", cr."CompletedAtUtc", cr."Id";
                 .QueryAsync<SessionConflictObservationRow>(
                     new CommandDefinition(
                         observationSql,
-                        new { SessionId = sessionId },
+                        new { LocationId = locationId },
                         transaction,
                         cancellationToken: cancellationToken))
                 .ConfigureAwait(false))
@@ -1317,36 +1289,22 @@ SELECT
 FROM "Conflict" c
 JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
 JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
-WHERE cr."InventorySessionId" = @SessionId;
+WHERE cr."LocationId" = @LocationId;
 """;
 
         var existingConflicts = (await connection
                 .QueryAsync<ExistingConflictRow>(
                     new CommandDefinition(
                         existingConflictsSql,
-                        new { SessionId = sessionId },
+                        new { LocationId = locationId },
                         transaction,
                         cancellationToken: cancellationToken))
                 .ConfigureAwait(false))
             .ToArray();
 
-        if (observationRows.Length == 0)
+        if (observationRows.Length == 0 && existingConflicts.Length == 0)
         {
-            if (existingConflicts.Length > 0)
-            {
-                var orphanIds = existingConflicts.Select(row => row.ConflictId).ToArray();
-                const string deleteSql = """
-DELETE FROM "Conflict"
-WHERE "Id" = ANY(@Ids::uuid[]);
-""";
-                await connection.ExecuteAsync(
-                        new CommandDefinition(deleteSql, new { Ids = orphanIds }, transaction, cancellationToken: cancellationToken))
-                    .ConfigureAwait(false);
-            }
-
-            result.Conflicts = Array.Empty<SessionConflictItem>();
-            result.Resolved = Array.Empty<SessionResolvedConflictItem>();
-            return result;
+            return;
         }
 
         var conflictsLookup = existingConflicts
@@ -1357,8 +1315,6 @@ WHERE "Id" = ANY(@Ids::uuid[]);
         var inserts = new List<ConflictInsertCommand>();
         var reopenUpdates = new List<ConflictOpenUpdate>();
         var resolveUpdates = new List<ConflictResolveUpdate>();
-        var unresolvedItems = new List<SessionConflictItem>();
-        var resolvedItems = new List<SessionResolvedConflictItem>();
 
         foreach (var grouping in observationRows.GroupBy(row => row.ProductId))
         {
@@ -1374,9 +1330,6 @@ WHERE "Id" = ANY(@Ids::uuid[]);
 
             var productId = grouping.Key;
             var productRef = Normalize(productRows[0].Ean) ?? string.Empty;
-            var sku = Normalize(productRows[0].Sku) ?? string.Empty;
-            var name = Normalize(productRows[0].Name) ?? string.Empty;
-
             var existing = conflictsLookup.TryGetValue(productId, out var existingList)
                 ? existingList
                 : new List<ExistingConflictRow>();
@@ -1391,20 +1344,6 @@ WHERE "Id" = ANY(@Ids::uuid[]);
 
             if (existingConflict is not null && existingConflict.IsResolved)
             {
-                var resolvedQuantity = existingConflict.ResolvedQuantity ?? 0;
-                var resolvedAt = existingConflict.ResolvedAtUtc ?? existingConflict.CreatedAtUtc;
-
-                resolvedItems.Add(new SessionResolvedConflictItem
-                {
-                    ProductId = productId,
-                    ProductRef = productRef,
-                    Sku = sku,
-                    Name = name,
-                    ResolvedQuantity = resolvedQuantity,
-                    ResolvedAtUtc = resolvedAt,
-                    ResolutionRule = "two-matching-counts"
-                });
-
                 continue;
             }
 
@@ -1427,7 +1366,6 @@ WHERE "Id" = ANY(@Ids::uuid[]);
                 {
                     deleteIds.Add(existingConflict.ConflictId);
                 }
-
                 continue;
             }
 
@@ -1436,17 +1374,6 @@ WHERE "Id" = ANY(@Ids::uuid[]);
             {
                 var resolvedQuantity = resolution.Quantity;
                 var resolvedAtUtc = resolution.ResolvedAtUtc;
-
-                resolvedItems.Add(new SessionResolvedConflictItem
-                {
-                    ProductId = productId,
-                    ProductRef = productRef,
-                    Sku = sku,
-                    Name = name,
-                    ResolvedQuantity = resolvedQuantity,
-                    ResolvedAtUtc = resolvedAtUtc,
-                    ResolutionRule = "two-matching-counts"
-                });
 
                 if (existingConflict is not null)
                 {
@@ -1474,19 +1401,6 @@ WHERE "Id" = ANY(@Ids::uuid[]);
 
                 continue;
             }
-
-            var variance = ComputeSampleVariance(observationModels.Select(obs => obs.Quantity).ToArray());
-
-            unresolvedItems.Add(new SessionConflictItem
-            {
-                ProductId = productId,
-                ProductRef = productRef,
-                Sku = sku,
-                Name = name,
-                Observations = observationModels,
-                SampleVariance = variance,
-                ResolvedQuantity = null
-            });
 
             var latestObservation = observationModels
                 .OrderByDescending(obs => obs.CountedAtUtc)
@@ -1584,12 +1498,204 @@ WHERE "Id" = @ConflictId;
                         cancellationToken: cancellationToken))
                 .ConfigureAwait(false);
         }
+    }
 
-        result.Conflicts = unresolvedItems;
+    private async Task<SessionConflictResolutionResult> ResolveConflictsForSessionInternalAsync(
+        NpgsqlConnection connection,
+        NpgsqlTransaction? transaction,
+        Guid sessionId,
+        CancellationToken cancellationToken)
+    {
+        var result = new SessionConflictResolutionResult
+        {
+            SessionId = sessionId,
+            SessionExists = false
+        };
+
+        const string sessionExistsSql = """
+SELECT "Id"
+FROM "InventorySession"
+WHERE "Id" = @SessionId
+LIMIT 1;
+""";
+
+        var sessionIdentifier = await connection
+            .QuerySingleOrDefaultAsync<Guid?>(
+                new CommandDefinition(
+                    sessionExistsSql,
+                    new { SessionId = sessionId },
+                    transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        if (sessionIdentifier is null)
+        {
+            return result;
+        }
+
+        result.SessionExists = true;
+
+        const string sessionLocationSql = """
+SELECT "LocationId"
+FROM "CountingRun"
+WHERE "InventorySessionId" = @SessionId
+LIMIT 1;
+""";
+
+        var locationId = await connection
+            .QuerySingleOrDefaultAsync<Guid?>(
+                new CommandDefinition(
+                    sessionLocationSql,
+                    new { SessionId = sessionId },
+                    transaction,
+                    cancellationToken: cancellationToken))
+            .ConfigureAwait(false);
+
+        if (!locationId.HasValue)
+        {
+            result.Conflicts = Array.Empty<SessionConflictItem>();
+            result.Resolved = Array.Empty<SessionResolvedConflictItem>();
+            return result;
+        }
+
+        await ResolveConflictsForLocationInternalAsync(connection, transaction, locationId.Value, cancellationToken).ConfigureAwait(false);
+
+        var columnsState = await InventoryOperatorSqlHelper
+            .DetectOperatorColumnsAsync(connection, cancellationToken)
+            .ConfigureAwait(false);
+        var operatorSql = InventoryOperatorSqlHelper.BuildOperatorSqlFragments("cr", "owner", columnsState);
+
+        var observationSql = $"""
+SELECT
+    p."Id"              AS "ProductId",
+    p."Ean"             AS "Ean",
+    p."Sku"             AS "Sku",
+    p."Name"            AS "Name",
+    cl."Id"             AS "CountLineId",
+    cl."CountingRunId"  AS "RunId",
+    cr."InventorySessionId" AS "InventorySessionId",
+    cr."CountType"      AS "CountType",
+    {operatorSql.OwnerUserIdProjection} AS "OwnerUserId",
+    {operatorSql.Projection}            AS "OperatorDisplayName",
+    cr."CompletedAtUtc" AS "CompletedAtUtc",
+    cl."Quantity"       AS "Quantity"
+FROM "CountingRun" cr
+JOIN "CountLine" cl ON cl."CountingRunId" = cr."Id"
+JOIN "Product" p ON p."Id" = cl."ProductId"
+{InventoryOperatorSqlHelper.AppendJoinClause(operatorSql.JoinClause)}
+WHERE cr."InventorySessionId" = @SessionId
+  AND cr."CompletedAtUtc" IS NOT NULL
+ORDER BY p."Ean", cr."CompletedAtUtc", cr."Id";
+""";
+
+        var observationRows = (await connection
+                .QueryAsync<SessionConflictObservationRow>(
+                    new CommandDefinition(
+                        observationSql,
+                        new { SessionId = sessionId },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false))
+            .ToArray();
+
+        if (observationRows.Length == 0)
+        {
+            result.Conflicts = Array.Empty<SessionConflictItem>();
+            result.Resolved = Array.Empty<SessionResolvedConflictItem>();
+            return result;
+        }
+
+        const string conflictsSql = """
+SELECT
+    c."Id"               AS "ConflictId",
+    c."CountLineId"      AS "CountLineId",
+    cl."ProductId"       AS "ProductId",
+    c."IsResolved"       AS "IsResolved",
+    c."ResolvedQuantity" AS "ResolvedQuantity",
+    c."ResolvedAtUtc"    AS "ResolvedAtUtc",
+    c."CreatedAtUtc"     AS "CreatedAtUtc"
+FROM "Conflict" c
+JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
+JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
+WHERE cr."LocationId" = @LocationId;
+""";
+
+        var conflictRows = (await connection
+                .QueryAsync<ExistingConflictRow>(
+                    new CommandDefinition(
+                        conflictsSql,
+                        new { LocationId = locationId.Value },
+                        transaction,
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false))
+            .ToDictionary(row => row.ProductId, row => row, EqualityComparer<Guid>.Default);
+
+        var conflicts = new List<SessionConflictItem>();
+        var resolvedItems = new List<SessionResolvedConflictItem>();
+
+        foreach (var grouping in observationRows.GroupBy(row => row.ProductId))
+        {
+            if (!conflictRows.TryGetValue(grouping.Key, out var conflict))
+            {
+                continue;
+            }
+
+            var sampleRow = grouping.First();
+            var observations = grouping
+                .OrderBy(row => row.CompletedAtUtc)
+                .ThenBy(row => row.RunId)
+                .Select(row => new SessionConflictObservation
+                {
+                    RunId = row.RunId,
+                    CountLineId = row.CountLineId,
+                    CountType = row.CountType,
+                    CountedByUserId = columnsState.HasOwnerUserId ? row.OwnerUserId : null,
+                    CountedByDisplayName = Normalize(row.OperatorDisplayName),
+                    CountedAtUtc = row.CompletedAtUtc,
+                    Quantity = ToIntQuantity(row.Quantity)
+                })
+                .ToArray();
+
+            var variance = ComputeSampleVariance(observations.Select(obs => obs.Quantity).ToArray());
+            var productRef = Normalize(sampleRow.Ean) ?? string.Empty;
+            var sku = Normalize(sampleRow.Sku) ?? string.Empty;
+            var name = Normalize(sampleRow.Name) ?? string.Empty;
+
+            if (!conflict.IsResolved)
+            {
+                conflicts.Add(new SessionConflictItem
+                {
+                    ProductId = grouping.Key,
+                    ProductRef = productRef,
+                    Sku = sku,
+                    Name = name,
+                    Observations = observations,
+                    SampleVariance = variance,
+                    ResolvedQuantity = null
+                });
+                continue;
+            }
+
+            if (conflict.ResolvedQuantity is int resolvedQuantity)
+            {
+                var resolvedAt = conflict.ResolvedAtUtc ?? conflict.CreatedAtUtc;
+                resolvedItems.Add(new SessionResolvedConflictItem
+                {
+                    ProductId = grouping.Key,
+                    ProductRef = productRef,
+                    Sku = sku,
+                    Name = name,
+                    ResolvedQuantity = resolvedQuantity,
+                    ResolvedAtUtc = resolvedAt,
+                    ResolutionRule = "two-matching-counts"
+                });
+            }
+        }
+
+        result.Conflicts = conflicts;
         result.Resolved = resolvedItems;
         return result;
     }
-
     public async Task<SessionConflictResolutionResult> ResolveConflictsForSessionAsync(Guid sessionId, CancellationToken cancellationToken)
     {
         await using var connection = await _connectionFactory
@@ -1613,30 +1719,6 @@ WHERE "Id" = @ConflictId;
         }
     }
 
-    private static ResolutionCandidate? DetectResolution(IReadOnlyList<SessionConflictObservationRow> observations)
-    {
-        var seen = new Dictionary<int, int>();
-        foreach (var observation in observations)
-        {
-            var quantity = ToIntQuantity(observation.Quantity);
-            if (!seen.TryGetValue(quantity, out var count))
-            {
-                seen[quantity] = 1;
-                continue;
-            }
-
-            count++;
-            seen[quantity] = count;
-
-            if (count >= 2)
-            {
-                return new ResolutionCandidate(quantity, observation.CountLineId, observation.CompletedAtUtc);
-            }
-        }
-
-        return null;
-    }
-
     private static double? ComputeSampleVariance(IReadOnlyList<int> values)
     {
         if (values.Count < 2)
@@ -1658,6 +1740,24 @@ WHERE "Id" = @ConflictId;
 
     private static int ToIntQuantity(decimal quantity) =>
         (int)Math.Round(quantity, MidpointRounding.AwayFromZero);
+
+    private static ResolutionCandidate? DetectResolution(IReadOnlyList<SessionConflictObservationRow> observations)
+    {
+        var seen = new Dictionary<int, Guid>();
+
+        foreach (var observation in observations)
+        {
+            var quantity = ToIntQuantity(observation.Quantity);
+            if (seen.ContainsKey(quantity))
+            {
+                return new ResolutionCandidate(quantity, observation.CountLineId, observation.CompletedAtUtc);
+            }
+
+            seen[quantity] = observation.CountLineId;
+        }
+
+        return null;
+    }
 
     private sealed record ConflictInsertCommand(
         Guid ConflictId,
@@ -1693,3 +1793,4 @@ WHERE "Id" = @ownerUserId
         return await connection.ExecuteScalarAsync<int?>(command).ConfigureAwait(false) is 1;
     }
 }
+
