@@ -1277,6 +1277,12 @@ ORDER BY p."Ean", cr."CompletedAtUtc", cr."Id";
                 .ConfigureAwait(false))
             .ToArray();
 
+        var baselineCountTypes = observationRows
+            .Select(row => row.CountType)
+            .Where(countType => countType is 1 or 2)
+            .Distinct()
+            .ToArray();
+
         const string existingConflictsSql = """
 SELECT
     c."Id"               AS "ConflictId",
@@ -1360,12 +1366,35 @@ WHERE cr."LocationId" = @LocationId;
                 })
                 .ToList();
 
-            if (observationModels.Count < 2)
+            var observedCountTypes = new HashSet<short>(observationModels.Select(obs => obs.CountType));
+            var hasMissingObservation = baselineCountTypes.Length >= 2 &&
+                                        baselineCountTypes.Any(countType => !observedCountTypes.Contains(countType));
+
+            if (observationModels.Count < 2 && !hasMissingObservation)
             {
                 if (existingConflict is not null)
                 {
                     deleteIds.Add(existingConflict.ConflictId);
                 }
+                continue;
+            }
+
+            var latestObservation = observationModels
+                .OrderByDescending(obs => obs.CountedAtUtc)
+                .ThenByDescending(obs => obs.RunId)
+                .First();
+
+            if (hasMissingObservation)
+            {
+                if (existingConflict is not null)
+                {
+                    reopenUpdates.Add(new ConflictOpenUpdate(existingConflict.ConflictId, latestObservation.CountLineId));
+                }
+                else
+                {
+                    inserts.Add(new ConflictInsertCommand(Guid.NewGuid(), latestObservation.CountLineId, "open", latestObservation.CountedAtUtc, null, null, false));
+                }
+
                 continue;
             }
 
@@ -1401,11 +1430,6 @@ WHERE cr."LocationId" = @LocationId;
 
                 continue;
             }
-
-            var latestObservation = observationModels
-                .OrderByDescending(obs => obs.CountedAtUtc)
-                .ThenByDescending(obs => obs.RunId)
-                .First();
 
             if (existingConflict is not null)
             {

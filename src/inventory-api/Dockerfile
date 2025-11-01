@@ -30,11 +30,20 @@ EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080
 
 # Outils min pour healthcheck + création d'un utilisateur non-root
-RUN apt-get update \
- && apt-get install -y --no-install-recommends curl ca-certificates \
- && rm -rf /var/lib/apt/lists/* \
- && if ! getent group app >/dev/null; then groupadd --system app; fi \
- && if ! id app >/dev/null 2>&1; then useradd --system --gid app --create-home --home-dir /home/app app; fi
+RUN set -eux; \
+    rm -f /etc/apt/sources.list; \
+    rm -f /etc/apt/sources.list.d/debian.sources; \
+    printf '%s\n' \
+        'deb https://deb.debian.org/debian bookworm main' \
+        'deb https://deb.debian.org/debian bookworm-updates main' \
+        'deb https://security.debian.org/debian-security bookworm-security main' \
+        'deb https://cloudfront.debian.net/debian bookworm main' \
+        > /etc/apt/sources.list.d/00-custom.list; \
+    apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=20 update; \
+    apt-get install -y --no-install-recommends curl ca-certificates; \
+    rm -rf /var/lib/apt/lists/*; \
+    if ! getent group app >/dev/null; then groupadd --system app; fi; \
+    if ! id app >/dev/null 2>&1; then useradd --system --gid app --create-home --home-dir /home/app app; fi
 
 COPY --from=build /app/publish .
 RUN chown -R app:app /app && mkdir -p /home/app && chown -R app:app /home/app

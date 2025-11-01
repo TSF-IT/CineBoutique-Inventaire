@@ -73,6 +73,61 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task ConflictsEndpoint_FlagsMissingProductWhenSecondRunOmitsItem()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        var seeded = await SeedInventoryContextWithAdditionalProductAsync().ConfigureAwait(false);
+        var client = CreateClient();
+
+        var firstRunItems = new[]
+        {
+            new CompleteRunItemRequest(seeded.ConflictEan, 2m, false),
+            new CompleteRunItemRequest(seeded.StableEan, 6m, false)
+        };
+        var firstRun = await RunCountAsync(
+            client,
+            seeded.ShopId,
+            seeded.LocationId,
+            seeded.PrimaryUserId,
+            1,
+            firstRunItems
+        ).ConfigureAwait(false);
+        firstRun.Should().NotBeNull();
+
+        var secondRunItems = new[]
+        {
+            new CompleteRunItemRequest(seeded.StableEan, 4m, false)
+        };
+        var secondRun = await RunCountAsync(
+            client,
+            seeded.ShopId,
+            seeded.LocationId,
+            seeded.SecondaryUserId,
+            2,
+            secondRunItems
+        ).ConfigureAwait(false);
+        secondRun.Should().NotBeNull();
+
+        var conflictResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/conflicts/{seeded.LocationId}")
+        ).ConfigureAwait(false);
+
+        await conflictResponse.ShouldBeAsync(HttpStatusCode.OK, "conflict detail should list omissions").ConfigureAwait(false);
+        var conflict = await conflictResponse.Content.ReadFromJsonAsync<ConflictZoneDetailDto>().ConfigureAwait(false);
+        conflict.Should().NotBeNull();
+        conflict!.Items.Should().HaveCount(2, "les deux références comptées au premier passage doivent apparaître en conflit");
+
+        var missingProduct = conflict.Items.Single(item => item.Ean == seeded.ConflictEan);
+        missingProduct.QtyC1.Should().Be(2, "le premier comptage a trouvé 2 unités");
+        missingProduct.QtyC2.Should().Be(0, "le second comptage a omis la référence");
+
+        var sharedProduct = conflict.Items.Single(item => item.Ean == seeded.StableEan);
+        sharedProduct.QtyC1.Should().Be(6);
+        sharedProduct.QtyC2.Should().Be(4);
+    }
+
+    [SkippableFact]
     public async Task ConflictsEndpoint_IncludesBaselineCountsForActiveSession()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
