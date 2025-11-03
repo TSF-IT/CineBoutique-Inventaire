@@ -1,5 +1,5 @@
 import { clsx } from 'clsx'
-import type { InputHTMLAttributes } from 'react'
+import type { InputHTMLAttributes, ReactNode } from 'react'
 import { forwardRef, useId } from 'react'
 
 type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'id'> & {
@@ -8,10 +8,14 @@ type InputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'id'> & {
   label?: string
   helpText?: string
   containerClassName?: string
+  endAdornment?: ReactNode
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ id, name, label, helpText, className, containerClassName, ...rest }, ref) => {
+  (
+    { id, name, label, helpText, className, containerClassName, endAdornment, ...rest },
+    ref,
+  ) => {
     const autoId = useId()
     const finalId = id ?? `${name}-${autoId}`
     return (
@@ -24,16 +28,22 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             {label}
           </label>
         )}
-        <input
-          id={finalId}
-          name={name}
-          className={clsx(
-            'h-12 w-full rounded-2xl border border-(--cb-border-soft) bg-(--cb-surface-soft) px-4 text-base text-(--cb-text) shadow-inner transition-all duration-200 [&::placeholder]:text-(--cb-muted) focus-visible:border-brand-300 focus-visible:bg-(--cb-surface) focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-200/50 dark:border-(--cb-border-soft)',
-            className,
+        <div className="relative">
+          <input
+            id={finalId}
+            name={name}
+            className={clsx(
+              'h-12 w-full rounded-2xl border border-(--cb-border-soft) bg-(--cb-surface-soft) px-4 text-base text-(--cb-text) shadow-inner transition-all duration-200 [&::placeholder]:text-(--cb-muted) focus-visible:border-brand-300 focus-visible:bg-(--cb-surface) focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-brand-200/50 dark:border-(--cb-border-soft)',
+              endAdornment && 'pr-12',
+              className,
+            )}
+            ref={ref}
+            {...rest}
+          />
+          {endAdornment && (
+            <div className="absolute inset-y-0 right-0 flex items-center pr-3">{endAdornment}</div>
           )}
-          ref={ref}
-          {...rest}
-        />
+        </div>
         {helpText && <p className="text-xs text-(--cb-muted)">{helpText}</p>}
       </div>
     )

@@ -860,6 +860,13 @@ export const InventorySessionPage = () => {
     [handleDetected],
   )
 
+  const handleClearScan = useCallback(() => {
+    setScanValue('')
+    setErrorMessage(null)
+    setInputLookupStatus('idle')
+    inputRef.current?.focus()
+  }, [setErrorMessage, setInputLookupStatus])
+
   const handleCompleteRun = useCallback(async () => {
     if (!isValidCountType) {
       setErrorMessage('Le type de comptage est invalide.')
@@ -1318,6 +1325,31 @@ export const InventorySessionPage = () => {
                 maxLength={MAX_SCAN_LENGTH}
                 autoComplete="off"
                 aria-invalid={Boolean(scanInputError)}
+                endAdornment={
+                  scanValue ? (
+                    <button
+                      type="button"
+                      onClick={handleClearScan}
+                      aria-label="Effacer la saisie"
+                      className="rounded-full p-1 text-(--cb-muted) transition-colors duration-200 hover:text-(--cb-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-1 focus-visible:ring-offset-(--cb-surface-soft)"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        viewBox="0 0 20 20"
+                        fill="none"
+                        className="h-4 w-4"
+                      >
+                        <path
+                          d="m6 6 8 8m0-8-8 8"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    </button>
+                  ) : null
+                }
                 autoFocus
               />
               {scanInputError && (
