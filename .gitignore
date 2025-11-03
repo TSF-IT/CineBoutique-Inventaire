@@ -57,3 +57,6 @@ src/inventory-web/tests/e2e/certs/
 src/inventory-web/package-lock.json
 
 *.tsbuildinfo
+
+# server-local certs
+ssl/

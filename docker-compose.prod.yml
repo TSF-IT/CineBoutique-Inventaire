@@ -31,7 +31,7 @@ services:
       PUBLIC_HOST: "https://192.168.2.29"
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./certs:/etc/nginx/certs:ro
+      - ./ssl:/etc/nginx/certs:ro
     ports:
       - "80:80"
       - "443:443"
