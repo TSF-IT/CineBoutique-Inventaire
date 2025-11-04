@@ -16,6 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Azure.Core" VersionOverride="1.49.0" />
     <PackageReference Include="Dapper" />
     <PackageReference Include="FluentMigrator.Runner" />
     <PackageReference Include="FluentMigrator.Runner.Postgres" />
