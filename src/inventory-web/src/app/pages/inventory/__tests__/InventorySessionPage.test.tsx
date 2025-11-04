@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
 import { useEffect, useLayoutEffect } from 'react'
@@ -168,17 +168,52 @@ describe('InventorySessionPage - conflits', () => {
   })
 
   it('ouvre le détail des écarts sur demande', async () => {
+    getConflictZoneDetailMock.mockResolvedValueOnce({
+      locationId: baseLocation.id,
+      locationCode: baseLocation.code,
+      locationLabel: baseLocation.label,
+      runs: [
+        { runId: 'run-1', countType: 1, completedAtUtc: '2024-01-01T10:00:00Z', ownerDisplayName: 'Alice' },
+        { runId: 'run-2', countType: 2, completedAtUtc: '2024-01-01T11:00:00Z', ownerDisplayName: 'Bob' },
+      ],
+      items: [
+        {
+          productId: 'prod-1',
+          ean: '0123456789012',
+          qtyC1: 10,
+          qtyC2: 8,
+          delta: 2,
+          allCounts: [
+            { runId: 'run-1', countType: 1, quantity: 10 },
+            { runId: 'run-2', countType: 2, quantity: 8 },
+          ],
+        },
+      ],
+    })
+    fetchProductByEanMock.mockResolvedValue({
+      ean: '0123456789012',
+      name: 'Produit 0123456789012',
+      sku: 'SKU-0123456789012',
+    })
+
     renderSessionPage(CountType.Count3)
 
-    const [button] = await screen.findAllByTestId('btn-view-conflicts')
+    const button = await screen.findByTestId('btn-view-conflicts')
+    expect(button).toHaveAttribute('aria-expanded', 'false')
     fireEvent.click(button)
 
     await waitFor(() => expect(getConflictZoneDetailMock).toHaveBeenCalled())
-    expect(
-      await screen.findByRole('dialog', {
-        name: `${baseLocation.code} · ${baseLocation.label}`,
-      }),
-    ).toBeInTheDocument()
+    const panel = await screen.findByTestId('conflict-details-panel')
+    expect(panel.getAttribute('data-state')).toBe('open')
+
+    const panelScope = within(panel)
+    await panelScope.findByText('Comptage 1')
+    await panelScope.findByText('Comptage 2')
+    await panelScope.findByText('Amplitude')
+
+    fireEvent.click(button)
+    expect(panel.getAttribute('data-state')).toBe('closed')
+    expect(button).toHaveAttribute('aria-expanded', 'false')
   })
 
   it('masque les options de scan lors du troisième comptage', async () => {
@@ -210,8 +245,14 @@ describe('InventorySessionPage - conflits', () => {
     renderSessionPage(CountType.Count3)
 
     await waitFor(() => expect(getConflictZoneDetailMock).toHaveBeenCalled())
-    expect(await screen.findByText('Produit 0123456789012')).toBeInTheDocument()
-    expect(await screen.findByText('Produit 0001112223334')).toBeInTheDocument()
+    const scannedItems = await screen.findAllByTestId('scanned-item')
+    expect(scannedItems).toHaveLength(2)
+    expect(
+      scannedItems.some((element) => /Produit 0123456789012/.test(element.textContent ?? '')),
+    ).toBe(true)
+    expect(
+      scannedItems.some((element) => /Produit 0001112223334/.test(element.textContent ?? '')),
+    ).toBe(true)
 
     const inputs = await screen.findAllByTestId('quantity-input')
     expect(inputs).toHaveLength(2)
@@ -248,8 +289,9 @@ describe('InventorySessionPage - conflits', () => {
     await waitFor(() => expect(getConflictZoneDetailMock).toHaveBeenCalled())
 
     await waitFor(() => {
-      const occurrences = screen.getAllByText('Produit Rollbar')
-      expect(occurrences).toHaveLength(1)
+      const scannedItems = screen.getAllByTestId('scanned-item')
+      expect(scannedItems).toHaveLength(1)
+      expect(within(scannedItems[0]).getByText('Produit Rollbar')).toBeInTheDocument()
     })
     expect(fetchProductByEanMock).toHaveBeenCalledTimes(1)
   })

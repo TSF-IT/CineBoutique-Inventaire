@@ -1,3 +1,4 @@
+import { clsx } from 'clsx'
 import type { ChangeEvent, FocusEvent, PointerEvent, KeyboardEvent } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -12,13 +13,13 @@ import {
   type CompleteInventoryRunPayload,
 } from '../../api/inventoryApi'
 import { Card } from '../../components/Card'
-import { ConflictZoneModal } from '../../components/Conflicts/ConflictZoneModal'
+import { ConflictItemsList } from '../../components/Conflicts/ConflictItemsList'
 import { EmptyState } from '../../components/EmptyState'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { useInventory } from '../../contexts/InventoryContext'
-import type { ConflictZoneItem, ConflictZoneSummary, InventoryItem, Product } from '../../types/inventory'
+import type { ConflictZoneDetail, ConflictZoneItem, ConflictZoneSummary, InventoryItem, Product } from '../../types/inventory'
 import { CountType } from '../../types/inventory'
 
 import { ProductsModal, type ProductsModalItem } from '@/components/products/ProductsModal'
@@ -258,15 +259,18 @@ export const InventorySessionPage = () => {
   const previousItemCountRef = useRef(items.length)
   const pendingFocusEanRef = useRef<string | null>(null)
   const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({})
-  const [conflictModalOpen, setConflictModalOpen] = useState(false)
   const [conflictPrefillStatus, setConflictPrefillStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle')
   const [conflictPrefillError, setConflictPrefillError] = useState<string | null>(null)
   const [conflictPrefillAttempt, setConflictPrefillAttempt] = useState(0)
   const conflictPrefillKeyRef = useRef<string | null>(null)
+  const [conflictDetail, setConflictDetail] = useState<ConflictZoneDetail | null>(null)
+  const [conflictAccordionOpen, setConflictAccordionOpen] = useState(false)
   const [catalogueOpen, setCatalogueOpen] = useState(false)
   const [pendingRemovalItem, setPendingRemovalItem] = useState<InventoryItem | null>(null)
 
   const isConflictResolutionMode = typeof countType === 'number' && countType >= CountType.Count3
+  const canDisplayScanInputs =
+    !isConflictResolutionMode || (typeof countType === 'number' && countType > CountType.Count3)
 
   const updateStatus = useCallback(
     (message: string | null) => {
@@ -347,7 +351,8 @@ export const InventorySessionPage = () => {
 
   useEffect(() => {
     if (!isConflictResolutionMode || !location) {
-      setConflictModalOpen(false)
+      setConflictAccordionOpen(false)
+      setConflictDetail(null)
     }
   }, [isConflictResolutionMode, location])
 
@@ -356,6 +361,7 @@ export const InventorySessionPage = () => {
       setConflictPrefillStatus('idle')
       setConflictPrefillError(null)
       conflictPrefillKeyRef.current = null
+      setConflictDetail(null)
     }
   }, [isConflictResolutionMode])
 
@@ -367,6 +373,7 @@ export const InventorySessionPage = () => {
     if (!locationId) {
       setConflictPrefillStatus('idle')
       setConflictPrefillError('Impossible de charger les références en conflit.')
+      setConflictDetail(null)
       return
     }
 
@@ -410,12 +417,21 @@ export const InventorySessionPage = () => {
           return
         }
 
+        const runs = Array.isArray(detail.runs) ? detail.runs : []
         const rawConflictItems = Array.isArray(detail.items) ? detail.items : []
         const conflictItems = dedupeConflictItems(rawConflictItems)
 
         if (conflictItems.length === 0) {
           initializeItems([])
+          setConflictDetail({
+            locationId: detail.locationId,
+            locationCode: detail.locationCode,
+            locationLabel: detail.locationLabel,
+            runs,
+            items: [],
+          })
           setConflictPrefillStatus('loaded')
+          setConflictPrefillError(null)
           conflictPrefillKeyRef.current = key
           return
         }
@@ -450,27 +466,52 @@ export const InventorySessionPage = () => {
           return
         }
 
-        initializeItems(
-          conflictItems.map((item, index) => {
-            const resolved = products[index]
-            const normalizedEan = (item.ean ?? '').trim()
-            return {
-              product: {
-                ...resolved,
-                ean: resolved.ean?.trim().length ? resolved.ean : normalizedEan || resolved.ean,
-                sku:
-                  resolved.sku && resolved.sku.trim().length > 0
-                    ? resolved.sku
-                    : item.sku?.trim().length
-                      ? item.sku
-                      : undefined,
-              },
-              quantity: 0,
-              hasConflict: true,
-            }
-          }),
-        )
+        const enrichedItems: ConflictZoneItem[] = []
+        const initializationEntries = conflictItems.map((item, index) => {
+          const resolved = products[index]
+          const normalizedEan = (item.ean ?? '').trim()
+          const resolvedName = resolved.name?.trim()
+          const resolvedEan = resolved.ean?.trim()
+          const resolvedSku = resolved.sku?.trim()
+          const fallbackSku = item.sku?.trim() ?? ''
+          const detailSku =
+            resolvedSku && resolvedSku.length > 0
+              ? resolved.sku
+              : fallbackSku.length > 0
+                ? item.sku
+                : undefined
+          const detailEan =
+            resolvedEan && resolvedEan.length > 0
+              ? resolvedEan
+              : normalizedEan || resolved.ean || item.ean
 
+          enrichedItems.push({
+            ...item,
+            name: resolvedName && resolvedName.length > 0 ? resolved.name : item.name,
+            sku: detailSku,
+            ean: detailEan,
+          })
+
+          return {
+            product: {
+              ...resolved,
+              ean: resolvedEan && resolvedEan.length > 0 ? resolvedEan : normalizedEan || resolved.ean,
+              sku: detailSku,
+            },
+            quantity: 0,
+            hasConflict: true,
+          }
+        })
+
+        initializeItems(initializationEntries)
+
+        setConflictDetail({
+          locationId: detail.locationId,
+          locationCode: detail.locationCode,
+          locationLabel: detail.locationLabel,
+          runs,
+          items: enrichedItems,
+        })
         setConflictPrefillStatus('loaded')
         setConflictPrefillError(null)
         conflictPrefillKeyRef.current = key
@@ -482,12 +523,14 @@ export const InventorySessionPage = () => {
           return
         }
         console.error('[inventory] échec chargement références conflit', error)
+        setConflictDetail(null)
         setConflictPrefillError('Impossible de charger les références en conflit.')
         setConflictPrefillStatus('error')
         conflictPrefillKeyRef.current = null
       }
     }
 
+    setConflictDetail(null)
     setConflictPrefillStatus('loading')
     setConflictPrefillError(null)
     conflictPrefillKeyRef.current = key
@@ -517,8 +560,9 @@ export const InventorySessionPage = () => {
   }, [countType, locationId, navigate, selectedUser])
 
   const handleRetryConflictPrefill = useCallback(() => {
+    setConflictDetail(null)
     setConflictPrefillAttempt((attempt) => attempt + 1)
-  }, [])
+  }, [setConflictDetail])
 
   const displayedItems = items
 
@@ -567,8 +611,8 @@ export const InventorySessionPage = () => {
   )
 
   const ensureActiveRun = useCallback(async () => {
-    if (items.length > 0) {
-      return existingRunId || null
+    if (items.length > 0 && existingRunId) {
+      return existingRunId
     }
 
     if (existingRunId) {
@@ -617,7 +661,7 @@ export const InventorySessionPage = () => {
 
   const addProductToSession = useCallback(
     async (product: Product, options?: { isManual?: boolean }) => {
-      if (items.length === 0) {
+      if (!existingRunId) {
         try {
           await ensureActiveRun()
         } catch (error) {
@@ -632,7 +676,7 @@ export const InventorySessionPage = () => {
       addOrIncrementItem(product, options)
       return true
     },
-    [addOrIncrementItem, ensureActiveRun, items.length, setErrorMessage, updateStatus],
+    [addOrIncrementItem, ensureActiveRun, existingRunId, items.length, setErrorMessage, updateStatus],
   )
 
   const handlePickFromCatalogue = useCallback(
@@ -1266,7 +1310,7 @@ export const InventorySessionPage = () => {
           >
             Journal des actions ({logs.length})
           </Button>
-          {!isConflictResolutionMode && (
+          {canDisplayScanInputs && (
             <>
               <Button
                 type="button"
@@ -1291,7 +1335,7 @@ export const InventorySessionPage = () => {
           )}
         </div>
       </div>
-        {isConflictResolutionMode ? (
+        {isConflictResolutionMode && (
           <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-100">
             <p className="font-semibold">Références en conflit</p>
             <p>
@@ -1311,54 +1355,53 @@ export const InventorySessionPage = () => {
               </div>
             )}
           </div>
-        ) : (
-          <>
-            <div className="space-y-2">
-              <Input
-                ref={inputRef}
-                name="scanInput"
-                label="Scanner (douchette ou saisie)"
-                placeholder="Saisissez ou scannez un code EAN/RFID"
-                value={scanValue}
-                onChange={handleInputChange}
-                inputMode="text"
-                maxLength={MAX_SCAN_LENGTH}
-                autoComplete="off"
-                aria-invalid={Boolean(scanInputError)}
-                endAdornment={
-                  scanValue ? (
-                    <button
-                      type="button"
-                      onClick={handleClearScan}
-                      aria-label="Effacer la saisie"
-                      className="rounded-full p-1 text-(--cb-muted) transition-colors duration-200 hover:text-(--cb-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-1 focus-visible:ring-offset-(--cb-surface-soft)"
+        )}
+        {canDisplayScanInputs && (
+          <div className="space-y-2">
+            <Input
+              ref={inputRef}
+              name="scanInput"
+              label="Scanner (douchette ou saisie)"
+              placeholder="Saisissez ou scannez un code EAN/RFID"
+              value={scanValue}
+              onChange={handleInputChange}
+              inputMode="text"
+              maxLength={MAX_SCAN_LENGTH}
+              autoComplete="off"
+              aria-invalid={Boolean(scanInputError)}
+              endAdornment={
+                scanValue ? (
+                  <button
+                    type="button"
+                    onClick={handleClearScan}
+                    aria-label="Effacer la saisie"
+                    className="rounded-full p-1 text-(--cb-muted) transition-colors duration-200 hover:text-(--cb-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-1 focus-visible:ring-offset-(--cb-surface-soft)"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      className="h-4 w-4"
                     >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 20 20"
-                        fill="none"
-                        className="h-4 w-4"
-                      >
-                        <path
-                          d="m6 6 8 8m0-8-8 8"
-                          stroke="currentColor"
-                          strokeWidth="1.5"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </button>
-                  ) : null
-                }
-                autoFocus
-              />
-              {scanInputError && (
-                <p className="text-xs text-rose-600 dark:text-rose-300" aria-live="polite">
-                  {scanInputError}
-                </p>
-              )}
-            </div>
-          </>
+                      <path
+                        d="m6 6 8 8m0-8-8 8"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                ) : null
+              }
+              autoFocus={canDisplayScanInputs}
+            />
+            {scanInputError && (
+              <p className="text-xs text-rose-600 dark:text-rose-300" aria-live="polite">
+                {scanInputError}
+              </p>
+            )}
+          </div>
         )}
         {status && (
           <p className="text-sm text-brand-600 dark:text-brand-200" data-testid="status-message">
@@ -1474,17 +1517,73 @@ export const InventorySessionPage = () => {
                   Zone en conflit
                 </span>
                 <Button
+                  type="button"
                   variant="ghost"
                   className="inline-flex items-center gap-2 rounded-2xl border border-rose-200/80 bg-white/70 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/20"
-                  onClick={() => setConflictModalOpen(true)}
+                  onClick={() => setConflictAccordionOpen((prev) => !prev)}
+                  aria-expanded={conflictAccordionOpen}
+                  aria-controls="conflict-details-panel"
                   data-testid="btn-view-conflicts"
                 >
-                  Voir les écarts
+                  {conflictAccordionOpen ? 'Masquer les écarts' : 'Voir les écarts'}
                 </Button>
               </>
             )}
           </div>
         </div>
+        {conflictZoneSummary && (
+          <div
+            id="conflict-details-panel"
+            data-testid="conflict-details-panel"
+            data-state={conflictAccordionOpen ? 'open' : 'closed'}
+            className={clsx(
+              'grid transition-[grid-template-rows] duration-300 ease-in-out',
+              conflictAccordionOpen
+                ? 'mt-3 grid-rows-[1fr] overflow-hidden rounded-2xl border border-rose-200/80 bg-rose-50/80 dark:border-rose-500/30 dark:bg-rose-500/10'
+                : 'grid-rows-[0fr]',
+            )}
+            aria-hidden={conflictAccordionOpen ? 'false' : 'true'}
+          >
+            <div
+              className={clsx(
+                'min-h-0 overflow-hidden space-y-3 p-4 text-sm text-rose-900 dark:text-rose-100',
+                'transition-opacity duration-200 ease-out',
+                conflictAccordionOpen ? 'opacity-100 delay-75' : 'opacity-0',
+              )}
+            >
+              {conflictPrefillStatus === 'loading' && (
+                <div>
+                  <LoadingIndicator label="Chargement des références en conflit" />
+                </div>
+              )}
+              {conflictPrefillStatus === 'error' && (
+                <div className="flex flex-wrap items-center gap-3 text-rose-700 dark:text-rose-200">
+                  <span>{conflictPrefillError ?? 'Impossible de charger les références en conflit.'}</span>
+                  <Button type="button" variant="ghost" onClick={handleRetryConflictPrefill}>
+                    Réessayer
+                  </Button>
+                </div>
+              )}
+              {conflictPrefillStatus === 'loaded' && conflictDetail && conflictDetail.items.length > 0 && (
+                <ConflictItemsList
+                  items={conflictDetail.items}
+                  runs={conflictDetail.runs}
+                  stackRuns={(conflictDetail.runs?.length ?? 0) > 3}
+                />
+              )}
+              {conflictPrefillStatus === 'loaded' && conflictDetail && conflictDetail.items.length === 0 && (
+                <p className="text-sm font-medium text-rose-700 dark:text-rose-200">
+                  Toutes les divergences ont été résolues pour cette zone.
+                </p>
+              )}
+              {conflictPrefillStatus === 'loaded' && !conflictDetail && (
+                <p className="text-sm font-medium text-rose-700 dark:text-rose-200">
+                  Impossible d’afficher les écarts pour cette zone.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
         {displayedItems.length === 0 && (!isConflictResolutionMode || conflictPrefillStatus === 'loaded') && (
           <EmptyState
             title={isConflictResolutionMode ? 'Aucune référence en conflit' : 'En attente de scan'}
@@ -1644,11 +1743,6 @@ export const InventorySessionPage = () => {
           </div>
         </Card>
       </dialog>
-      <ConflictZoneModal
-        open={Boolean(conflictZoneSummary) && conflictModalOpen}
-        zone={conflictZoneSummary}
-        onClose={() => setConflictModalOpen(false)}
-      />
       <ProductsModal
         open={catalogueOpen && Boolean(shopId)}
         onClose={() => setCatalogueOpen(false)}

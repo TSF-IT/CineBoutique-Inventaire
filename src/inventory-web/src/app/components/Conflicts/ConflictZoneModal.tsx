@@ -4,11 +4,12 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState } fr
 
 import { getConflictZoneDetail } from '../../api/inventoryApi'
 import { useOrientation } from '../../hooks/useOrientation'
-import type { ConflictZoneDetail, ConflictZoneItem, ConflictZoneSummary } from '../../types/inventory'
+import type { ConflictZoneDetail, ConflictZoneSummary } from '../../types/inventory'
 import { LoadingIndicator } from '../LoadingIndicator'
 import { modalOverlayClassName } from '../Modal/modalOverlayClassName'
 import { ModalPortal } from '../Modal/ModalPortal'
 import { Button } from '../ui/Button'
+import { ConflictItemsList } from './ConflictItemsList'
 
 interface ConflictZoneModalProps {
   open: boolean
@@ -37,54 +38,6 @@ const formatOrdinalFr = (value: number) => {
     return `${value}`
   }
   return value === 1 ? '1er' : `${value}ᵉ`
-}
-
-const formatSku = (value: string | null | undefined) => {
-  const trimmed = value?.trim()
-  return trimmed && trimmed.length > 0 ? trimmed : '—'
-}
-
-const formatEan = (value: string | null | undefined) => {
-  const trimmed = value?.trim()
-  return trimmed && trimmed.length > 0 ? trimmed : '—'
-}
-
-const formatSubGroup = (value: string | null | undefined) => {
-  const trimmed = value?.trim()
-  return trimmed && trimmed.length > 0 ? trimmed : null
-}
-
-const getProductName = (item: ConflictZoneItem) => {
-  const trimmed = item.name?.trim()
-  if (trimmed && trimmed.length > 0) {
-    return trimmed
-  }
-
-  const ean = item.ean?.trim()
-  if (ean && ean.length > 0) {
-    return `EAN ${ean}`
-  }
-
-  const sku = item.sku?.trim()
-  if (sku && sku.length > 0) {
-    return `SKU ${sku}`
-  }
-
-  return 'Référence en conflit'
-}
-
-const computeAmplitude = (item: ConflictZoneItem) => {
-  const counts = Array.isArray(item.allCounts) ? item.allCounts : []
-  if (counts.length === 0) {
-    return Math.abs(item.delta)
-  }
-  const quantities = counts.map((count) => count.quantity)
-  if (quantities.length === 0) {
-    return Math.abs(item.delta)
-  }
-  const min = Math.min(...quantities)
-  const max = Math.max(...quantities)
-  return Math.max(0, max - min)
 }
 
 export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: ConflictZoneModalProps) => {
@@ -251,8 +204,6 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
   const items = detail?.items ?? []
   const runs = detail?.runs ?? []
   const hasItems = items.length > 0
-  const hasDynamicColumns =
-    runs.length > 0 && items.some((item) => Array.isArray(item.allCounts) && item.allCounts.length > 0)
   const nextCountType = useMemo(() => {
     if (!detail) {
       return null
@@ -265,39 +216,6 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
     return computed < 3 ? 3 : computed
   }, [detail])
 
-  const formatOwnerName = (value: string | null | undefined) => {
-    const trimmed = typeof value === 'string' ? value.trim() : ''
-    return trimmed.length > 0 ? trimmed : '—'
-  }
-
-  const formatDateTime = (value: string | null | undefined) => {
-    if (!value) {
-      return '—'
-    }
-
-    const parsed = new Date(value)
-    if (Number.isNaN(parsed.getTime())) {
-      return '—'
-    }
-
-    return new Intl.DateTimeFormat('fr-FR', {
-      dateStyle: 'short',
-      timeStyle: 'short',
-    }).format(parsed)
-  }
-
-  const getDeltaClassName = (delta: number, isAmplitude: boolean) => {
-    if (delta === 0) {
-      return 'text-slate-600 dark:text-slate-300'
-    }
-
-    if (isAmplitude) {
-      return 'text-amber-600 dark:text-amber-300'
-    }
-
-    return delta > 0 ? 'text-emerald-600 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300'
-  }
-
   const headerTitle = useMemo(() => {
     if (!zone) {
       return 'Conflits'
@@ -307,58 +225,6 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
 
   const modalClassName = clsx('modal', 'conflict-modal', isCompact ? 'modal-full' : 'modal-window')
   const shouldStackRuns = isCompact || (orientation === 'portrait' && runs.length > 3)
-  const runsContainerClass = clsx('conflict-runs', 'conflict-table', shouldStackRuns && 'conflict-runs--stacked')
-
-  const renderRunSections = (item: ConflictZoneItem) => {
-    if (hasDynamicColumns) {
-      const countsByRun = new Map<string, number>()
-      for (const count of item.allCounts ?? []) {
-        countsByRun.set(count.runId, count.quantity)
-      }
-      const amplitude = computeAmplitude(item)
-
-      return (
-        <>
-          {runs.map((run) => {
-            const quantity = countsByRun.get(run.runId) ?? 0
-            return (
-              <section key={run.runId} className="conflict-run">
-                <p className="conflict-run__title">Comptage {run.countType}</p>
-                <p className="conflict-run__quantity">{quantity}</p>
-                <p className="conflict-run__meta">{formatOwnerName(run.ownerDisplayName)}</p>
-                <p className="conflict-run__meta">{formatDateTime(run.completedAtUtc)}</p>
-              </section>
-            )
-          })}
-          <section className="conflict-run conflict-run--delta">
-            <p className="conflict-run__title">Amplitude</p>
-            <p className={clsx('conflict-run__quantity', getDeltaClassName(amplitude, true))}>
-              {amplitude > 0 ? `±${amplitude}` : amplitude}
-            </p>
-          </section>
-        </>
-      )
-    }
-
-    return (
-      <>
-        <section className="conflict-run">
-          <p className="conflict-run__title">Comptage 1</p>
-          <p className="conflict-run__quantity">{item.qtyC1}</p>
-        </section>
-        <section className="conflict-run">
-          <p className="conflict-run__title">Comptage 2</p>
-          <p className="conflict-run__quantity">{item.qtyC2}</p>
-        </section>
-        <section className="conflict-run conflict-run--delta">
-          <p className="conflict-run__title">Écart</p>
-          <p className={clsx('conflict-run__quantity', getDeltaClassName(item.delta, false))}>
-            {item.delta > 0 ? `+${item.delta}` : item.delta}
-          </p>
-        </section>
-      </>
-    )
-  }
 
   if (!open || !zone) {
     return null
@@ -381,7 +247,7 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
             <h2 id="conflict-zone-modal-title" className="modal-title">
               {headerTitle}
             </h2>
-            <p className="modal-description">Comparatif des quantités par comptage.</p>
+            <p className="modal-description">Quantités relevées lors des précédents comptages.</p>
           </div>
           <button type="button" onClick={onClose} className="modal-close" aria-label="Fermer">
             <span aria-hidden="true">✕</span>
@@ -402,29 +268,7 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
             </div>
           )}
           {status === 'loaded' && detail && hasItems && (
-            <div className="conflict-card-stack">
-              {items.map((item) => {
-                const subGroupLabel = formatSubGroup(item.subGroup)
-                return (
-                <article key={item.productId} className="conflict-card">
-                  <header className="conflict-card__header">
-                    <p className="conflict-card__name">{getProductName(item)}</p>
-                    <p className="conflict-card__codes">
-                      {subGroupLabel ? (
-                        <>
-                          <span className="conflict-card__label">Sous-groupe</span> {subGroupLabel}
-                          <span className="conflict-card__separator" aria-hidden="true">·</span>
-                        </>
-                      ) : null}
-                      <span className="conflict-card__label">EAN</span> {formatEan(item.ean)}
-                      <span className="conflict-card__separator" aria-hidden="true">·</span>
-                      <span className="conflict-card__label">SKU</span> {formatSku(item.sku)}
-                    </p>
-                  </header>
-                  <div className={runsContainerClass}>{renderRunSections(item)}</div>
-                </article>
-              )})}
-            </div>
+            <ConflictItemsList items={items} runs={runs} stackRuns={shouldStackRuns} />
           )}
           {status === 'loaded' && detail && !hasItems && (
             <p className="conflict-empty">Aucun écart détecté entre les comptages pour cette zone.</p>

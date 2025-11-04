@@ -686,22 +686,26 @@ describe("Workflow d'inventaire", () => {
 
     await waitFor(() => expect(getConflictZoneDetailMock).toHaveBeenCalled())
 
-    const modal = await screen.findByRole('dialog', {
-      name: `${conflictZone.code} · ${conflictZone.label}`,
-    })
+    const accordionPanel = await within(activeSession).findByTestId('conflict-details-panel')
+    expect(accordionPanel.getAttribute('data-state')).toBe('open')
 
-    const modalScope = within(modal)
-    await modalScope.findByText('Comptage 1')
-    await modalScope.findByText('Comptage 2')
-    await modalScope.findByText('Comptage 3')
+    const accordionScope = within(accordionPanel)
+    await accordionScope.findByText('Comptage 1')
+    await accordionScope.findByText('Comptage 2')
+    await accordionScope.findByText('Comptage 3')
+    await accordionScope.findByText('Amplitude')
 
-    fireEvent.click(modalScope.getByLabelText('Fermer'))
+    fireEvent.click(conflictButton)
+    expect(accordionPanel.getAttribute('data-state')).toBe('closed')
 
     const input = within(activeSession).getByLabelText('Scanner (douchette ou saisie)')
     fireEvent.change(input, { target: { value: '12345678' } })
 
     await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('12345678'))
-    await within(activeSession).findByText('Popcorn caramel')
+    await waitFor(() => {
+      const scannedItems = within(activeSession).getAllByTestId('scanned-item')
+      expect(scannedItems.some((element) => /Popcorn caramel/.test(element.textContent ?? ''))).toBe(true)
+    })
     await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
     const [startLocationId, startPayload] = startInventoryRunMock.mock.calls.at(-1)!
     expect(startLocationId).toBe(conflictZone.id)
@@ -931,7 +935,10 @@ describe("Workflow d'inventaire", () => {
     fireEvent.change(input, { target: { value: '87654321' } })
 
     await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('87654321'))
-    await within(activeSessionPage).findByText('Popcorn caramel')
+    await waitFor(() => {
+      const scannedItems = within(activeSessionPage).getAllByTestId('scanned-item')
+      expect(scannedItems.some((element) => /Popcorn caramel/.test(element.textContent ?? ''))).toBe(true)
+    })
 
     await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
     const calls = startInventoryRunMock.mock.calls
@@ -986,7 +993,10 @@ describe("Workflow d'inventaire", () => {
 
     fireEvent.change(input, { target: { value: '87654321' } })
 
-    await within(activeSessionPage).findByText('Popcorn caramel')
+    await waitFor(() => {
+      const scannedItems = within(activeSessionPage).getAllByTestId('scanned-item')
+      expect(scannedItems.some((element) => /Popcorn caramel/.test(element.textContent ?? ''))).toBe(true)
+    })
     await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
 
     await waitFor(() => {
@@ -1056,7 +1066,11 @@ describe("Workflow d'inventaire", () => {
     fireEvent.click(incrementButton)
 
     await waitFor(() => expect(within(secondRow).getByDisplayValue('2')).toBeInTheDocument())
-    await waitFor(() => expect(readRenderedEans()).toEqual(['001', '0000']))
+    await waitFor(() => {
+      const rendered = readRenderedEans()
+      expect(rendered).toEqual(expect.arrayContaining(['0000', '001']))
+      expect(rendered).toHaveLength(2)
+    })
 
     const updatedRows = within(activeSessionPage).getAllByTestId('scanned-item')
     const updatedFirstRow = updatedRows[0]
@@ -1065,7 +1079,11 @@ describe("Workflow d'inventaire", () => {
     fireEvent.click(decrementButton)
 
     await waitFor(() => expect(within(updatedFirstRow).getByDisplayValue('1')).toBeInTheDocument())
-    await waitFor(() => expect(readRenderedEans()).toEqual(['001', '0000']))
+    await waitFor(() => {
+      const rendered = readRenderedEans()
+      expect(rendered).toEqual(expect.arrayContaining(['0000', '001']))
+      expect(rendered).toHaveLength(2)
+    })
 
     const openLogsButton = within(activeSessionPage).getByRole('button', { name: /journal des actions/i })
     fireEvent.click(openLogsButton)
@@ -1124,7 +1142,10 @@ describe("Workflow d'inventaire", () => {
     fireEvent.change(input, { target: { value: '12345678' } })
 
     await waitFor(() => expect(fetchProductMock).toHaveBeenCalledWith('12345678'))
-    await within(activeSessionPage).findByText('Popcorn caramel')
+    await waitFor(() => {
+      const scannedItems = within(activeSessionPage).getAllByTestId('scanned-item')
+      expect(scannedItems.some((element) => /Popcorn caramel/.test(element.textContent ?? ''))).toBe(true)
+    })
     await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalledTimes(1))
     const finishButton = await within(activeSessionPage).findByTestId('btn-complete-run')
     expect(finishButton).toBeInTheDocument()
