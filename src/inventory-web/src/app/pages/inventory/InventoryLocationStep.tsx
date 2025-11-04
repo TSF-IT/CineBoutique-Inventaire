@@ -109,7 +109,8 @@ export const InventoryLocationStep = () => {
   const [conflictsLoaded, setConflictsLoaded] = useState(false)
 
   useEffect(() => {
-    clearSession()
+    // Preserve the current user's progress so it can be restored after user switches.
+    clearSession({ preserveSnapshot: true })
     setLocation(null)
     setCountType(null)
     setSessionId(null)

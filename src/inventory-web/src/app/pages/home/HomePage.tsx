@@ -181,6 +181,7 @@ export const HomePage = () => {
     countType,
     location: selectedLocation,
     sessionId,
+    items,
     setLocation,
     setCountType,
     setSessionId,
@@ -216,6 +217,10 @@ export const HomePage = () => {
       throw error
     }
   }, [])
+
+  const scannedItemsCount = items.length
+  const normalizedSessionId = typeof sessionId === 'string' ? sessionId.trim() : ''
+  const hasSelectedLocation = Boolean(selectedLocation)
 
   const handleProductsCardStateChange = useCallback((nextState: { count: number; hasCatalog: boolean } | null) => {
     setCatalogProductCount(typeof nextState?.count === 'number' ? nextState.count : null)
@@ -322,9 +327,21 @@ export const HomePage = () => {
   }, [executeLocationSummaries, executeLocations, executeSummary, shopId])
 
   const handleChangeShop = useCallback(() => {
-    clearSession({ preserveSnapshot: true })
+    const shouldPreserveSnapshot =
+      scannedItemsCount > 0 || normalizedSessionId.length > 0 || countType !== null || hasSelectedLocation
+
+    if (shouldPreserveSnapshot) {
+      clearSession({ preserveSnapshot: true })
+    }
     navigate('/select-user', { state: { redirectTo: '/' } })
-  }, [clearSession, navigate])
+  }, [
+    clearSession,
+    countType,
+    hasSelectedLocation,
+    navigate,
+    normalizedSessionId,
+    scannedItemsCount,
+  ])
 
   const handleStartInventory = useCallback(() => {
     if (catalogProductCount === 0) {
