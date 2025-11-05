@@ -7,6 +7,7 @@ import { useOrientation } from '../../hooks/useOrientation'
 import type { ConflictZoneDetail, ConflictZoneSummary } from '../../types/inventory'
 import { LoadingIndicator } from '../LoadingIndicator'
 import { modalOverlayClassName } from '../Modal/modalOverlayClassName'
+import { modalContainerStyle } from '../Modal/modalContainerStyle'
 import { ModalPortal } from '../Modal/ModalPortal'
 import { Button } from '../ui/Button'
 import { ConflictItemsList } from './ConflictItemsList'
@@ -223,7 +224,18 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
     return `${zone.locationCode} · ${zone.locationLabel}`
   }, [zone])
 
-  const modalClassName = clsx('modal', 'conflict-modal', isCompact ? 'modal-full' : 'modal-window')
+  const containerClassName = clsx(
+    'relative flex w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white text-left shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-rose-500 dark:bg-slate-900',
+  )
+  const headerClassName = clsx(
+    'flex items-start justify-between gap-4 border-b border-rose-200 bg-rose-50/80 px-5 py-4 dark:border-rose-500/40 dark:bg-rose-500/10',
+  )
+  const bodyClassName =
+    'flex-1 min-h-0 overflow-y-auto px-5 py-6 space-y-4 bg-white/95 dark:bg-slate-900/60'
+  const footerClassName =
+    'border-t border-rose-200 bg-rose-50/80 px-5 py-4 dark:border-rose-500/40 dark:bg-rose-500/10'
+  const closeButtonClassName =
+    'shrink-0 rounded-full border border-rose-200 p-2 text-rose-700 transition hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 dark:border-rose-500/40 dark:text-rose-100 dark:hover:bg-rose-500/20'
   const shouldStackRuns = isCompact || (orientation === 'portrait' && runs.length > 3)
 
   if (!open || !zone) {
@@ -238,66 +250,76 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
           role="dialog"
           aria-modal="true"
           aria-labelledby="conflict-zone-modal-title"
-          className={modalClassName}
+          className={containerClassName}
+          data-modal-container=""
+          style={modalContainerStyle}
           tabIndex={-1}
         >
-        <header className="modal-header">
-          <div>
-            <p className="modal-subtitle">Zone en conflit</p>
-            <h2 id="conflict-zone-modal-title" className="modal-title">
-              {headerTitle}
-            </h2>
-            <p className="modal-description">Quantités relevées lors des précédents comptages.</p>
+          <header className={headerClassName}>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-200">
+                Zone en conflit
+              </p>
+              <h2 id="conflict-zone-modal-title" className="mt-1 text-xl font-semibold text-slate-900 dark:text-white">
+                {headerTitle}
+              </h2>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
+                Quantités relevées lors des précédents comptages.
+              </p>
+            </div>
+            <button type="button" onClick={onClose} className={closeButtonClassName} aria-label="Fermer">
+              <span aria-hidden="true">✕</span>
+            </button>
+          </header>
+          <div className={bodyClassName} data-conflict-modal-body="">
+            {status === 'loading' && (
+              <div className="flex justify-center py-8">
+                <LoadingIndicator label="Chargement des divergences" />
+              </div>
+            )}
+            {status === 'error' && (
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200">
+                Impossible de charger le détail du conflit. Réessaie.
+                {import.meta.env.DEV && error ? (
+                  <pre className="mt-3 whitespace-pre-wrap rounded-xl border border-rose-300/50 bg-white/80 p-3 text-xs text-rose-800 dark:border-rose-500/30 dark:bg-rose-950/30 dark:text-rose-100">
+                    {error.message}
+                  </pre>
+                ) : null}
+              </div>
+            )}
+            {status === 'loaded' && detail && hasItems ? (
+              <ConflictItemsList items={items} runs={runs} stackRuns={shouldStackRuns} />
+            ) : null}
+            {status === 'loaded' && detail && !hasItems ? (
+              <p className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-100">
+                Aucun écart détecté entre les comptages pour cette zone.
+              </p>
+            ) : null}
           </div>
-          <button type="button" onClick={onClose} className="modal-close" aria-label="Fermer">
-            <span aria-hidden="true">✕</span>
-          </button>
-        </header>
-        <div className="modal-body">
-          {status === 'loading' && (
-            <div className="modal-loading">
-              <LoadingIndicator label="Chargement des divergences" />
-            </div>
-          )}
-          {status === 'error' && (
-            <div className="modal-error">
-              Impossible de charger le détail du conflit. Réessaie.
-              {import.meta.env.DEV && error && (
-                <pre className="modal-error__details">{error.message}</pre>
-              )}
-            </div>
-          )}
-          {status === 'loaded' && detail && hasItems && (
-            <ConflictItemsList items={items} runs={runs} stackRuns={shouldStackRuns} />
-          )}
-          {status === 'loaded' && detail && !hasItems && (
-            <p className="conflict-empty">Aucun écart détecté entre les comptages pour cette zone.</p>
-          )}
-        </div>
-        <footer className="modal-footer">
-          <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
-            {onStartExtraCount && zone && status === 'loaded' && nextCountType && (
+          <footer className={footerClassName}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+              {onStartExtraCount && zone && status === 'loaded' && nextCountType ? (
+                <Button
+                  type="button"
+                  onClick={() => onStartExtraCount(zone, nextCountType)}
+                  fullWidth={isCompact}
+                  className="sm:order-2"
+                >
+                  Lancer le {formatOrdinalFr(nextCountType)} comptage
+                </Button>
+              ) : null}
               <Button
                 type="button"
-                onClick={() => onStartExtraCount(zone, nextCountType)}
+                variant="secondary"
                 fullWidth={isCompact}
-                className="sm:order-2"
+                onClick={onClose}
+                className="sm:order-1"
               >
-                Lancer le {formatOrdinalFr(nextCountType)} comptage
+                Fermer
               </Button>
-            )}
-            <Button
-              type="button"
-              variant="secondary"
-              fullWidth={isCompact}
-              onClick={onClose}
-              className="sm:order-1"
-            >
-              Fermer
-            </Button>
-          </div>
-        </footer>
-      </div>
+            </div>
+          </footer>
+        </div>
       </div>
     </ModalPortal>
   )

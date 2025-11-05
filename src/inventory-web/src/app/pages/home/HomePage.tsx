@@ -26,6 +26,7 @@ import { CountType } from '../../types/inventory'
 
 import { BackToShopSelectionLink } from '@/app/components/BackToShopSelectionLink'
 import { modalOverlayClassName } from '@/app/components/Modal/modalOverlayClassName'
+import { modalContainerStyle } from '@/app/components/Modal/modalContainerStyle'
 import { ModalPortal } from '@/app/components/Modal/ModalPortal'
 import { ProductsCountCard } from '@/components/products/ProductsCountCard'
 import { ProductsModal } from '@/components/products/ProductsModal'
@@ -1054,7 +1055,10 @@ const CatalogWarningModal = ({ open, onClose, onNavigateToImport }: CatalogWarni
           role="dialog"
           aria-modal="true"
           aria-labelledby="catalog-warning-title"
-          className="relative flex w-full max-w-lg flex-col gap-4 rounded-3xl bg-white p-6 text-left shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:bg-slate-900"
+          className="relative flex w-full max-w-lg flex-col gap-4 overflow-y-auto rounded-3xl bg-white p-6 text-left shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:bg-slate-900"
+          data-modal-container=""
+          style={modalContainerStyle}
+          tabIndex={-1}
         >
         <button
           type="button"
@@ -1107,7 +1111,10 @@ const ResetInventoryModal = ({ open, loading, error, onConfirm, onCancel }: Rese
           role="dialog"
           aria-modal="true"
           aria-labelledby="reset-inventory-title"
-          className="relative flex w-full max-w-lg flex-col gap-4 rounded-3xl bg-white p-6 text-left shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:bg-slate-900"
+          className="relative flex w-full max-w-lg flex-col gap-4 overflow-y-auto rounded-3xl bg-white p-6 text-left shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:bg-slate-900"
+          data-modal-container=""
+          style={modalContainerStyle}
+          tabIndex={-1}
         >
         <button
           type="button"

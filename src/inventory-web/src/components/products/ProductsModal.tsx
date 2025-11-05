@@ -2,6 +2,7 @@ import React from "react";
 import { FixedSizeList as VirtualList } from "react-window";
 
 import { modalOverlayClassName } from "@/app/components/Modal/modalOverlayClassName";
+import { modalContainerStyle } from "@/app/components/Modal/modalContainerStyle";
 import { ModalPortal } from "@/app/components/Modal/ModalPortal";
 
 const GRID_TEMPLATE_CLASS =
@@ -337,6 +338,8 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
           aria-labelledby="products-modal-title"
           className="relative flex w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-product-600 dark:bg-slate-900"
           tabIndex={-1}
+          data-modal-container=""
+          style={modalContainerStyle}
         >
         <header className="flex flex-col gap-4 border-b border-product-200 bg-product-50/80 px-5 py-5 dark:border-product-700/60 dark:bg-product-700/30">
           <div className="flex items-start justify-between gap-3">
@@ -403,9 +406,9 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
           </div>
         </header>
 
-        <div className="flex flex-1 flex-col overflow-hidden bg-white dark:bg-slate-900">
-          <div className="flex-1 overflow-hidden px-5 py-5">
-            <div className="flex h-full flex-col gap-4">
+        <div className="min-h-0 flex flex-1 flex-col overflow-hidden bg-white dark:bg-slate-900">
+          <div className="flex-1 min-h-0 overflow-hidden px-5 py-5">
+            <div className="min-h-0 flex h-full flex-col gap-4">
               <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white/95 shadow-elev-1 dark:border-slate-700 dark:bg-slate-900/40">
                 <div className="max-h-[60vh] overflow-y-auto">
                   <div

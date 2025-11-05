@@ -135,12 +135,15 @@ describe('Responsive layout smoke tests', () => {
     await screen.findByText(/Comptage 1/i)
 
     const modal = screen.getByRole('dialog')
-    expect(modal.classList.contains('modal-full')).toBe(true)
+    expect(modal.dataset.modalContainer).toBe('')
+    expect(modal.style.maxHeight).toContain('calc(100vh')
+    const modalStyles = window.getComputedStyle(modal)
+    expect(modalStyles.borderRadius).not.toBe('0px')
 
-    const body = modal.querySelector('.modal-body') as HTMLElement
+    const body = modal.querySelector('[data-conflict-modal-body]') as HTMLElement
     expect(body).not.toBeNull()
-    expect(body.classList.contains('modal-body')).toBe(true)
-    expect(window.getComputedStyle(body).overflowY).not.toBe('visible')
+    const overflowY = window.getComputedStyle(body).overflowY
+    expect(['auto', 'scroll']).toContain(overflowY)
   })
 
   it('transforms completed runs table into cards on narrow screens', async () => {

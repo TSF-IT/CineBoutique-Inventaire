@@ -60,6 +60,7 @@ html {
   --cb-toggle-knob-dark: linear-gradient(135deg, rgba(39, 51, 78, 0.92), rgba(15, 23, 42, 0.82));
   --safe-area-gutter-x: clamp(1rem, 4vw, 2.5rem);
   --safe-area-gutter-y: clamp(1rem, 3vw, 2rem);
+  --modal-viewport-gap: calc(3rem + env(safe-area-inset-top) + env(safe-area-inset-bottom));
 }
 
 :root[data-theme='dark'],

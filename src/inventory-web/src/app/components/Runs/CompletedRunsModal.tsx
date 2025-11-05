@@ -7,6 +7,7 @@ import type { CompletedRunDetail, CompletedRunSummary } from '../../types/invent
 import { ErrorPanel } from '../ErrorPanel'
 import { LoadingIndicator } from '../LoadingIndicator'
 import { modalOverlayClassName } from '../Modal/modalOverlayClassName'
+import { modalContainerStyle } from '../Modal/modalContainerStyle'
 import { ModalPortal } from '../Modal/ModalPortal'
 import { Button } from '../ui/Button'
 
@@ -556,6 +557,8 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
           aria-labelledby="completed-runs-modal-title"
           className="relative flex w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:bg-slate-900"
           tabIndex={-1}
+          data-modal-container=""
+          style={modalContainerStyle}
         >
         <header className="flex items-start justify-between gap-4 border-b border-emerald-200 bg-emerald-50 px-5 py-4 dark:border-emerald-800/60 dark:bg-emerald-900/20">
           <div>
@@ -576,7 +579,7 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
             <span aria-hidden="true">✕</span>
           </button>
         </header>
-        <div className="flex-1 overflow-y-auto px-5 py-6">
+        <div className="flex-1 min-h-0 overflow-y-auto px-5 py-6">
           {hasDetailView && selectedRun ? (
             <section className="flex flex-col gap-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
