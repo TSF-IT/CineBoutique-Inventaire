@@ -1,4 +1,3 @@
-import { clsx } from 'clsx'
 import type { ChangeEvent, FocusEvent, PointerEvent, KeyboardEvent } from 'react'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -18,7 +17,7 @@ import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { useInventory } from '../../contexts/InventoryContext'
-import type { ConflictRunHeader, ConflictZoneDetail, ConflictZoneItem, ConflictZoneSummary, InventoryItem, Product } from '../../types/inventory'
+import type { ConflictRunHeader, ConflictZoneDetail, ConflictZoneItem, InventoryItem, Product } from '../../types/inventory'
 import { CountType } from '../../types/inventory'
 
 import { ProductsModal, type ProductsModalItem } from '@/components/products/ProductsModal'
@@ -347,19 +346,6 @@ export const InventorySessionPage = () => {
   const existingRunId = typeof sessionId === 'string' ? sessionId.trim() : ''
   const locationId = location?.id?.trim() ?? ''
   const shopId = shop?.id?.trim() ?? ''
-  const conflictZoneSummary = useMemo<ConflictZoneSummary | null>(() => {
-    if (!isConflictResolutionMode || !location) {
-      return null
-    }
-
-    return {
-      locationId: location.id,
-      locationCode: location.code,
-      locationLabel: location.label,
-      conflictLines: 0,
-    }
-  }, [isConflictResolutionMode, location])
-
   const inlineConflictSummariesByKey = useMemo<Map<string, InlineConflictSummary> | null>(() => {
     if (!conflictDetail) {
       return null
@@ -743,7 +729,7 @@ export const InventorySessionPage = () => {
       addOrIncrementItem(product, options)
       return true
     },
-    [addOrIncrementItem, ensureActiveRun, existingRunId, items.length, setErrorMessage, updateStatus],
+    [addOrIncrementItem, ensureActiveRun, existingRunId, setErrorMessage, updateStatus],
   )
 
   const handlePickFromCatalogue = useCallback(
