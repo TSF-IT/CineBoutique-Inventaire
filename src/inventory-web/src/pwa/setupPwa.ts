@@ -17,4 +17,13 @@ export const setupPwa = () => {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") updateSW(true);
   });
+
+  // NEW: quand le nouveau SW prend le contrôle, on force un refresh léger.
+  // (iOS/Safari peut sinon rester avec l'ancien shell en mémoire)
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      // petit délai pour laisser l'activation se finaliser proprement
+      setTimeout(() => window.location.reload(), 100);
+    });
+  }
 };

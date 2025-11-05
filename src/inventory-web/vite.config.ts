@@ -5,7 +5,6 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { defineConfig, configDefaults } from "vitest/config";
 
-// src/inventory-web/vite.config.ts
 const DEV_BACKEND_ORIGIN = (
   process.env.DEV_BACKEND_ORIGIN ?? "http://localhost:8080"
 ).trim();
@@ -26,12 +25,19 @@ export default defineConfig(({ command }) => {
           skipWaiting: true,
           cleanupOutdatedCaches: true,
           navigateFallback: "/index.html",
-          globPatterns: ["**/*.{js,css,svg,png,ico,webmanifest,woff2}"],
+          navigationPreload: true, // CHANGED: accélère le réseau quand SW actif
+          // CHANGED: on inclut aussi l'HTML pour l'offline propre
+          globPatterns: ["**/*.{html,js,css,svg,png,ico,webmanifest,woff2}"],
           runtimeCaching: [
+            // CHANGED: navigation → NetworkFirst avec timeout + expiration courte
             {
               urlPattern: ({ request }) => request.mode === "navigate",
-              handler: "StaleWhileRevalidate",
-              options: { cacheName: "html" },
+              handler: "NetworkFirst",
+              options: {
+                cacheName: "html",
+                networkTimeoutSeconds: 3,
+                expiration: { maxEntries: 3, maxAgeSeconds: 3600 },
+              },
             },
             {
               urlPattern: ({ url }) => url.pathname.startsWith("/api/"),
@@ -56,9 +62,9 @@ export default defineConfig(({ command }) => {
           ],
         },
         manifest: {
-          name: "Cin\u00E9Boutique \u2013 Inventaire",
+          name: "CinéBoutique – Inventaire",
           short_name: "Inventaire",
-          start_url: `/?v=${APP_VERSION}`,
+          start_url: `/?v=${APP_VERSION}`, // garde le bust de cache au 1er lancement
           scope: "/",
           display: "standalone",
           background_color: "#111",
@@ -181,12 +187,7 @@ export default defineConfig(({ command }) => {
           "src/**/*.d.ts",
           "src/**/*.stories.*",
         ],
-        thresholds: {
-          lines: 80,
-          branches: 70,
-          functions: 80,
-          statements: 80,
-        },
+        thresholds: { lines: 80, branches: 70, functions: 80, statements: 80 },
       },
       pool: "threads",
       poolOptions: { threads: { minThreads: 1, maxThreads: 1 } },
