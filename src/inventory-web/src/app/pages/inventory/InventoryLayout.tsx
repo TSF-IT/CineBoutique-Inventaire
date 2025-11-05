@@ -33,6 +33,7 @@ export const InventoryLayout = () => {
   const stepperContainerRef = useRef<HTMLDivElement | null>(null)
   const { shop } = useShop()
   const shopDisplayName = shop?.name?.trim()
+  const isScanCameraRoute = location.pathname === '/inventory/scan-camera'
 
   useEffect(() => {
     const path = location.pathname
@@ -89,6 +90,10 @@ export const InventoryLayout = () => {
     const zoneStepFallback = container.querySelector<HTMLElement>('li:nth-of-type(1)')
     zoneStepFallback?.setAttribute('data-testid', 'step-nav-location')
   }, [location.pathname])
+
+  if (isScanCameraRoute) {
+    return <Outlet />
+  }
 
   const activeIndex = stepIndexByPath[location.pathname] ?? 0
   const homeLinkConfig = homeLinkConfigByPath[location.pathname] ?? defaultHomeLink

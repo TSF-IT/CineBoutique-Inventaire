@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { useNavigate } from "react-router-dom";
 
 import { fetchProductByEan, startInventoryRun } from "../../api/inventoryApi";
@@ -78,6 +85,108 @@ export const ScanCameraPage = () => {
   const locationId = location?.id?.trim() ?? "";
   const countTypeValue = typeof countType === "number" ? countType : null;
   const sessionRunId = typeof sessionId === "string" ? sessionId.trim() : "";
+  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const updateViewportHeight = () => {
+      const nextHeight =
+        window.visualViewport?.height ??
+        window.innerHeight ??
+        document.documentElement?.clientHeight ??
+        0;
+
+      if (nextHeight <= 0) {
+        return;
+      }
+
+      setViewportHeight((previous) => {
+        const rounded = Math.round(nextHeight);
+        return previous && Math.abs(previous - rounded) < 2
+          ? previous
+          : rounded;
+      });
+    };
+
+    updateViewportHeight();
+
+    const visualViewport = window.visualViewport;
+    window.addEventListener("resize", updateViewportHeight);
+    window.addEventListener("orientationchange", updateViewportHeight);
+    visualViewport?.addEventListener("resize", updateViewportHeight);
+    visualViewport?.addEventListener("scroll", updateViewportHeight);
+
+    return () => {
+      window.removeEventListener("resize", updateViewportHeight);
+      window.removeEventListener("orientationchange", updateViewportHeight);
+      visualViewport?.removeEventListener("resize", updateViewportHeight);
+      visualViewport?.removeEventListener("scroll", updateViewportHeight);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    const { body, documentElement } = document;
+    const previousOverflow = body.style.overflow;
+    const previousOverscroll = documentElement.style.overscrollBehaviorY;
+
+    body.style.overflow = "hidden";
+    documentElement.style.overscrollBehaviorY = "contain";
+
+    return () => {
+      body.style.overflow = previousOverflow;
+      documentElement.style.overscrollBehaviorY = previousOverscroll;
+    };
+  }, []);
+
+  const viewportStyle = useMemo<CSSProperties | undefined>(() => {
+    if (!viewportHeight) {
+      return undefined;
+    }
+    return {
+      height: viewportHeight,
+      minHeight: viewportHeight,
+    };
+  }, [viewportHeight]);
+
+  const cameraSectionHeight = useMemo<number | null>(() => {
+    if (!viewportHeight) {
+      return null;
+    }
+    const minHeight = 320;
+    const maxHeight = Math.max(viewportHeight - 240, minHeight);
+    const ideal = Math.round(viewportHeight * 0.58);
+    return Math.min(Math.max(ideal, minHeight), maxHeight);
+  }, [viewportHeight]);
+
+  const cameraSectionStyle = useMemo<CSSProperties>(() => {
+    if (cameraSectionHeight !== null) {
+      return {
+        height: cameraSectionHeight,
+        minHeight: cameraSectionHeight,
+      };
+    }
+    return { minHeight: "58vh" };
+  }, [cameraSectionHeight]);
+
+  const topOverlayStyle = useMemo<CSSProperties>(
+    () => ({
+      paddingTop: "calc(env(safe-area-inset-top, 0px) + 1.25rem)",
+    }),
+    []
+  );
+
+  const bottomSectionPaddingStyle = useMemo<CSSProperties>(
+    () => ({
+      paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1.5rem)",
+    }),
+    []
+  );
 
   useEffect(() => {
     if (!selectedUser) {
@@ -323,6 +432,11 @@ export const ScanCameraPage = () => {
     ]
   );
 
+  const handleGoBack = useCallback(() => {
+    stopCamera();
+    navigate("/inventory/session");
+  }, [navigate, stopCamera]);
+
   const handleDec = useCallback(
     (ean: string, quantity: number) => {
       if (quantity <= 1) {
@@ -357,10 +471,14 @@ export const ScanCameraPage = () => {
 
   return (
     <div
-      className="flex h-full flex-col bg-black text-white"
+      className="scan-camera-screen relative flex min-h-screen flex-col overflow-hidden bg-black text-white"
       data-testid="scan-camera-page"
+      style={viewportStyle}
     >
-      <div className="relative flex-none min-h-[52vh] w-full overflow-hidden">
+      <div
+        className="relative flex-none overflow-hidden"
+        style={cameraSectionStyle}
+      >
         <BarcodeScanner
           active={cameraActive}
           onDetected={handleDetected}
@@ -368,34 +486,55 @@ export const ScanCameraPage = () => {
           enableTorchToggle
           camera={{ videoRef, active: cameraActive, error: cameraError }}
         />
-        <div className="pointer-events-none absolute inset-x-0 top-6 flex justify-center">
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-28 bg-gradient-to-b from-black/80 via-black/40 to-transparent" />
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between px-5 sm:px-8"
+          style={topOverlayStyle}
+        >
+          <button
+            type="button"
+            className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-black/60 px-4 py-2 text-sm font-semibold text-white shadow-lg backdrop-blur transition hover:bg-black/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
+            onClick={handleGoBack}
+            data-testid="scan-camera-back"
+          >
+            <span aria-hidden className="text-base">
+              ←
+            </span>
+            Retour
+          </button>
+        </div>
+        <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center px-6">
           {!cameraActive && !cameraError && (
-            <span className="rounded-full bg-black/60 px-3 py-1 text-sm font-semibold text-white backdrop-blur">
+            <span className="rounded-full bg-black/70 px-3 py-1 text-sm font-semibold text-white shadow-lg backdrop-blur">
               Démarrage caméra…
             </span>
           )}
           {cameraError && (
-            <span className="rounded-full bg-black/60 px-3 py-1 text-sm font-semibold text-rose-200 backdrop-blur">
+            <span className="rounded-full bg-black/70 px-3 py-1 text-sm font-semibold text-rose-200 shadow-lg backdrop-blur">
               Caméra indisponible : {cameraErrorLabel ?? "Erreur inconnue"}
             </span>
           )}
         </div>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col rounded-t-[28px] bg-white text-slate-900 shadow-[0_-16px_40px_-32px_rgba(15,23,42,0.45)] dark:bg-slate-950 dark:text-white">
-        <div className="flex items-center justify-between gap-3 px-5 pb-3 pt-4">
-          <div className="flex min-w-0 flex-col">
-            <span className="text-[11px] uppercase tracking-[0.28em] text-slate-400 dark:text-slate-500">
+      <div
+        className="flex min-h-0 flex-1 flex-col rounded-t-[32px] bg-white text-slate-900 shadow-[0_-20px_48px_-32px_rgba(15,23,42,0.55)] transition-colors duration-300 dark:bg-slate-950 dark:text-white"
+        style={bottomSectionPaddingStyle}
+        data-testid="scan-sheet"
+      >
+        <div className="flex items-center justify-between gap-4 px-6 pt-6">
+          <div className="min-w-0">
+            <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400 dark:text-slate-500">
               {shopName}
-            </span>
-            <span className="mt-1 truncate text-base font-semibold leading-tight text-slate-900 dark:text-white">
+            </p>
+            <p className="mt-2 truncate text-lg font-semibold leading-tight text-slate-900 dark:text-white">
               {location?.label ?? "Zone inconnue"}
-            </span>
+            </p>
           </div>
-          <span className="shrink-0 rounded-full bg-slate-900 px-3 py-1 text-sm font-semibold text-white dark:bg-slate-700">
+          <span className="shrink-0 rounded-full bg-slate-900/90 px-3 py-1 text-sm font-semibold text-white dark:bg-slate-700/80">
             {totalQuantity} pièce{totalQuantity > 1 ? "s" : ""}
           </span>
         </div>
-        <div className="space-y-2 px-5">
+        <div className="space-y-2 px-6 pt-3">
           {statusMessage && (
             <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">
               {statusMessage}
@@ -407,7 +546,7 @@ export const ScanCameraPage = () => {
             </div>
           )}
         </div>
-        <div className="flex-1 overflow-y-auto px-5 pb-8 pt-4">
+        <div className="flex-1 overflow-y-auto px-6 pb-10 pt-4">
           {orderedItems.length === 0 ? (
             <p className="text-sm text-slate-500 dark:text-slate-400">
               Scannez un article pour commencer le comptage.
