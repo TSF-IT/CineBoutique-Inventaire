@@ -66,14 +66,16 @@ export const ScanCameraPage = () => {
   const statusTimeoutRef = useRef<number | null>(null);
   const lockTimeoutRef = useRef<number | null>(null);
   const lockedEanRef = useRef<string | null>(null);
+  const resumeCameraOnVisibleRef = useRef(false);
   const triggerScanRejectionFeedback = useScanRejectionFeedback();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const {
     active: cameraActive,
     error: cameraError,
     stop: stopCamera,
+    start: startCamera,
   } = useCamera(videoRef, {
-    autoResumeOnVisible: true,
+    autoResumeOnVisible: false,
     constraints: {
       video: { facingMode: { ideal: "environment" } },
       audio: false,
@@ -85,47 +87,7 @@ export const ScanCameraPage = () => {
   const locationId = location?.id?.trim() ?? "";
   const countTypeValue = typeof countType === "number" ? countType : null;
   const sessionRunId = typeof sessionId === "string" ? sessionId.trim() : "";
-  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const updateViewportHeight = () => {
-      const nextHeight =
-        window.visualViewport?.height ??
-        window.innerHeight ??
-        document.documentElement?.clientHeight ??
-        0;
-
-      if (nextHeight <= 0) {
-        return;
-      }
-
-      setViewportHeight((previous) => {
-        const rounded = Math.round(nextHeight);
-        return previous && Math.abs(previous - rounded) < 2
-          ? previous
-          : rounded;
-      });
-    };
-
-    updateViewportHeight();
-
-    const visualViewport = window.visualViewport;
-    window.addEventListener("resize", updateViewportHeight);
-    window.addEventListener("orientationchange", updateViewportHeight);
-    visualViewport?.addEventListener("resize", updateViewportHeight);
-    visualViewport?.addEventListener("scroll", updateViewportHeight);
-
-    return () => {
-      window.removeEventListener("resize", updateViewportHeight);
-      window.removeEventListener("orientationchange", updateViewportHeight);
-      visualViewport?.removeEventListener("resize", updateViewportHeight);
-      visualViewport?.removeEventListener("scroll", updateViewportHeight);
-    };
-  }, []);
+  const [hasCameraBooted, setHasCameraBooted] = useState(false);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -144,35 +106,54 @@ export const ScanCameraPage = () => {
     };
   }, []);
 
-  const viewportStyle = useMemo<CSSProperties | undefined>(() => {
-    if (!viewportHeight) {
-      return undefined;
+  useEffect(() => {
+    if (cameraActive) {
+      setHasCameraBooted(true);
     }
-    return {
-      height: viewportHeight,
-      minHeight: viewportHeight,
+  }, [cameraActive]);
+
+  useEffect(() => {
+    if (cameraError) {
+      setHasCameraBooted(false);
+    }
+  }, [cameraError]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") {
+      return;
+    }
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        resumeCameraOnVisibleRef.current = cameraActive;
+        stopCamera();
+      } else if (resumeCameraOnVisibleRef.current) {
+        resumeCameraOnVisibleRef.current = false;
+        void startCamera();
+      }
     };
-  }, [viewportHeight]);
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
+  }, [cameraActive, startCamera, stopCamera]);
 
-  const cameraSectionHeight = useMemo<number | null>(() => {
-    if (!viewportHeight) {
-      return null;
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
     }
-    const minHeight = 320;
-    const maxHeight = Math.max(viewportHeight - 240, minHeight);
-    const ideal = Math.round(viewportHeight * 0.58);
-    return Math.min(Math.max(ideal, minHeight), maxHeight);
-  }, [viewportHeight]);
-
-  const cameraSectionStyle = useMemo<CSSProperties>(() => {
-    if (cameraSectionHeight !== null) {
-      return {
-        height: cameraSectionHeight,
-        minHeight: cameraSectionHeight,
-      };
-    }
-    return { minHeight: "58vh" };
-  }, [cameraSectionHeight]);
+    const handleLifecycle = () => {
+      resumeCameraOnVisibleRef.current = false;
+      stopCamera();
+    };
+    window.addEventListener("pagehide", handleLifecycle);
+    window.addEventListener("popstate", handleLifecycle);
+    window.addEventListener("beforeunload", handleLifecycle);
+    return () => {
+      window.removeEventListener("pagehide", handleLifecycle);
+      window.removeEventListener("popstate", handleLifecycle);
+      window.removeEventListener("beforeunload", handleLifecycle);
+    };
+  }, [stopCamera]);
 
   const topOverlayStyle = useMemo<CSSProperties>(
     () => ({
@@ -204,6 +185,7 @@ export const ScanCameraPage = () => {
 
   useEffect(() => {
     return () => {
+      resumeCameraOnVisibleRef.current = false;
       stopCamera();
       if (highlightTimeoutRef.current) {
         window.clearTimeout(highlightTimeoutRef.current);
@@ -433,6 +415,7 @@ export const ScanCameraPage = () => {
   );
 
   const handleGoBack = useCallback(() => {
+    resumeCameraOnVisibleRef.current = false;
     stopCamera();
     navigate("/inventory/session");
   }, [navigate, stopCamera]);
@@ -471,13 +454,11 @@ export const ScanCameraPage = () => {
 
   return (
     <div
-      className="scan-camera-screen relative flex min-h-screen flex-col overflow-hidden bg-black text-white"
+      className="scan-camera-screen relative flex min-h-[100dvh] h-[100dvh] flex-col overflow-hidden bg-black text-white"
       data-testid="scan-camera-page"
-      style={viewportStyle}
     >
       <div
-        className="relative flex-none overflow-hidden"
-        style={cameraSectionStyle}
+        className="relative flex-none overflow-hidden h-[58dvh] min-h-[320px] max-h-[calc(100dvh-240px)]"
       >
         <BarcodeScanner
           active={cameraActive}
@@ -504,9 +485,14 @@ export const ScanCameraPage = () => {
           </button>
         </div>
         <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center px-6">
-          {!cameraActive && !cameraError && (
+          {!cameraActive && !cameraError && !hasCameraBooted && (
             <span className="rounded-full bg-black/70 px-3 py-1 text-sm font-semibold text-white shadow-lg backdrop-blur">
               Démarrage caméra…
+            </span>
+          )}
+          {!cameraActive && !cameraError && hasCameraBooted && (
+            <span className="rounded-full bg-black/70 px-3 py-1 text-sm font-semibold text-white/80 shadow-lg backdrop-blur">
+              Caméra en pause
             </span>
           )}
           {cameraError && (
