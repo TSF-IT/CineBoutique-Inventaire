@@ -1,6 +1,6 @@
 import { clsx } from 'clsx'
 import type { ChangeEvent, FocusEvent, PointerEvent, KeyboardEvent } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import {
@@ -13,13 +13,12 @@ import {
   type CompleteInventoryRunPayload,
 } from '../../api/inventoryApi'
 import { Card } from '../../components/Card'
-import { ConflictItemsList } from '../../components/Conflicts/ConflictItemsList'
 import { EmptyState } from '../../components/EmptyState'
 import { LoadingIndicator } from '../../components/LoadingIndicator'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import { useInventory } from '../../contexts/InventoryContext'
-import type { ConflictZoneDetail, ConflictZoneItem, ConflictZoneSummary, InventoryItem, Product } from '../../types/inventory'
+import type { ConflictRunHeader, ConflictZoneDetail, ConflictZoneItem, ConflictZoneSummary, InventoryItem, Product } from '../../types/inventory'
 import { CountType } from '../../types/inventory'
 
 import { ProductsModal, type ProductsModalItem } from '@/components/products/ProductsModal'
@@ -126,6 +125,19 @@ const dedupeConflictItems = (items: ConflictZoneItem[]): ConflictZoneItem[] => {
 
   return result
 }
+
+const buildConflictLookupKey = (value: string | null | undefined): string | null => {
+  const normalized = normalizeIdentifier(value)
+  return normalized ? normalized.toUpperCase() : null
+}
+
+type InlineConflictRunSummary = {
+  key: string
+  countType: number
+  quantity: number
+}
+
+type InlineConflictSummary = { runs: InlineConflictRunSummary[] }
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const aggregateItemsForCompletion = (
@@ -264,7 +276,6 @@ export const InventorySessionPage = () => {
   const [conflictPrefillAttempt, setConflictPrefillAttempt] = useState(0)
   const conflictPrefillKeyRef = useRef<string | null>(null)
   const [conflictDetail, setConflictDetail] = useState<ConflictZoneDetail | null>(null)
-  const [conflictAccordionOpen, setConflictAccordionOpen] = useState(false)
   const [catalogueOpen, setCatalogueOpen] = useState(false)
   const [pendingRemovalItem, setPendingRemovalItem] = useState<InventoryItem | null>(null)
 
@@ -349,9 +360,65 @@ export const InventorySessionPage = () => {
     }
   }, [isConflictResolutionMode, location])
 
+  const inlineConflictSummariesByKey = useMemo<Map<string, InlineConflictSummary> | null>(() => {
+    if (!conflictDetail) {
+      return null
+    }
+
+    const runs: ConflictRunHeader[] = Array.isArray(conflictDetail.runs) ? conflictDetail.runs : []
+    const summariesByKey = new Map<string, InlineConflictSummary>()
+
+    for (const conflictItem of conflictDetail.items ?? []) {
+      const counts = Array.isArray(conflictItem.allCounts) ? conflictItem.allCounts : []
+      const countsByRunId = new Map<string, number>()
+      for (const count of counts) {
+        if (!count?.runId) {
+          continue
+        }
+        countsByRunId.set(count.runId, count.quantity)
+      }
+
+      const hasDynamicRuns = runs.length > 0 && countsByRunId.size > 0
+      const inlineRuns: InlineConflictRunSummary[] = hasDynamicRuns
+        ? runs.map((run) => ({
+            key: run.runId,
+            countType: run.countType,
+            quantity: countsByRunId.get(run.runId) ?? 0,
+          }))
+        : [
+            {
+              key: 'count-1',
+              countType: 1,
+              quantity: conflictItem.qtyC1,
+            },
+            {
+              key: 'count-2',
+              countType: 2,
+              quantity: conflictItem.qtyC2,
+            },
+          ]
+
+      const summary: InlineConflictSummary = { runs: inlineRuns }
+
+      const keys = [
+        buildConflictLookupKey(conflictItem.productId),
+        buildConflictLookupKey(conflictItem.ean),
+        buildConflictLookupKey(conflictItem.sku),
+      ]
+
+      for (const key of keys) {
+        if (!key || summariesByKey.has(key)) {
+          continue
+        }
+        summariesByKey.set(key, summary)
+      }
+    }
+
+    return summariesByKey
+  }, [conflictDetail])
+
   useEffect(() => {
     if (!isConflictResolutionMode || !location) {
-      setConflictAccordionOpen(false)
       setConflictDetail(null)
     }
   }, [isConflictResolutionMode, location])
@@ -1289,7 +1356,7 @@ export const InventorySessionPage = () => {
 
   return (
     <div className="flex flex-col gap-6" data-testid="page-session">
-      <Card className="space-y-4">
+      <Card className="space-y-3 md:space-y-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex flex-col gap-2">
             <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Session de comptage</h2>
@@ -1336,24 +1403,38 @@ export const InventorySessionPage = () => {
         </div>
       </div>
         {isConflictResolutionMode && (
-          <div className="space-y-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-900/40 dark:bg-amber-900/20 dark:text-amber-100">
-            <p className="font-semibold">Références en conflit</p>
-            <p>
-              Saisissez la quantité constatée pour chaque produit afin de valider ce comptage de concordance.
-            </p>
+          <div className="space-y-2 rounded-2xl border border-rose-200/80 bg-rose-50/80 p-3 text-sm text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-2 rounded-full border border-rose-300 bg-white/70 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-400/70 dark:bg-rose-500/20 dark:text-rose-100">
+                <span aria-hidden>⚠️</span>
+                Zone en conflit
+              </span>
+              {conflictDetail?.items?.length ? (
+                <span className="text-xs text-rose-500 dark:text-rose-100/70">
+                  {conflictDetail.items.length} référence{conflictDetail.items.length > 1 ? 's' : ''} à vérifier
+                </span>
+              ) : null}
+            </div>
             {conflictPrefillStatus === 'loading' && (
               <div className="pt-1">
                 <LoadingIndicator label="Chargement des références en conflit" />
               </div>
             )}
             {conflictPrefillStatus === 'error' && (
-              <div className="flex flex-wrap items-center gap-3 text-rose-700 dark:text-rose-300">
+              <div className="flex flex-wrap items-center gap-3 text-rose-700 dark:text-rose-200">
                 <span>{conflictPrefillError ?? 'Impossible de charger les références en conflit.'}</span>
-                <Button type="button" variant="ghost" onClick={handleRetryConflictPrefill}>
+                <Button type="button" variant="ghost" size="sm" onClick={handleRetryConflictPrefill}>
                   Réessayer
                 </Button>
               </div>
             )}
+            {conflictPrefillStatus === 'loaded' &&
+              conflictDetail &&
+              conflictDetail.items.length === 0 && (
+                <p className="text-xs font-medium text-rose-600 dark:text-rose-200">
+                  Toutes les divergences ont été résolues pour cette zone.
+                </p>
+              )}
           </div>
         )}
         {canDisplayScanInputs && (
@@ -1509,81 +1590,8 @@ export const InventorySessionPage = () => {
             <h3 className="text-xl font-semibold text-slate-900 dark:text-white">Articles scannés</h3>
             <span className="text-sm text-slate-600 dark:text-slate-400">{items.length} références</span>
           </div>
-          <div className="flex flex-wrap items-center gap-3 sm:justify-end">
-            {conflictZoneSummary && (
-              <>
-                <span className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-500/50 dark:bg-rose-500/10 dark:text-rose-200">
-                  <span aria-hidden>⚠️</span>
-                  Zone en conflit
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  className="inline-flex items-center gap-2 rounded-2xl border border-rose-200/80 bg-white/70 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-400 focus-visible:ring-offset-2 dark:border-rose-500/40 dark:bg-rose-500/10 dark:text-rose-200 dark:hover:bg-rose-500/20"
-                  onClick={() => setConflictAccordionOpen((prev) => !prev)}
-                  aria-expanded={conflictAccordionOpen}
-                  aria-controls="conflict-details-panel"
-                  data-testid="btn-view-conflicts"
-                >
-                  {conflictAccordionOpen ? 'Masquer les écarts' : 'Voir les écarts'}
-                </Button>
-              </>
-            )}
-          </div>
+          <div className="flex flex-wrap items-center gap-3 sm:justify-end" />
         </div>
-        {conflictZoneSummary && (
-          <div
-            id="conflict-details-panel"
-            data-testid="conflict-details-panel"
-            data-state={conflictAccordionOpen ? 'open' : 'closed'}
-            className={clsx(
-              'grid transition-[grid-template-rows] duration-300 ease-in-out',
-              conflictAccordionOpen
-                ? 'mt-3 grid-rows-[1fr] overflow-hidden rounded-2xl border border-rose-200/80 bg-rose-50/80 dark:border-rose-500/30 dark:bg-rose-500/10'
-                : 'grid-rows-[0fr]',
-            )}
-            aria-hidden={conflictAccordionOpen ? 'false' : 'true'}
-          >
-            <div
-              className={clsx(
-                'min-h-0 overflow-hidden space-y-3 p-4 text-sm text-rose-900 dark:text-rose-100',
-                'transition-opacity duration-200 ease-out',
-                conflictAccordionOpen ? 'opacity-100 delay-75' : 'opacity-0',
-              )}
-            >
-              {conflictPrefillStatus === 'loading' && (
-                <div>
-                  <LoadingIndicator label="Chargement des références en conflit" />
-                </div>
-              )}
-              {conflictPrefillStatus === 'error' && (
-                <div className="flex flex-wrap items-center gap-3 text-rose-700 dark:text-rose-200">
-                  <span>{conflictPrefillError ?? 'Impossible de charger les références en conflit.'}</span>
-                  <Button type="button" variant="ghost" onClick={handleRetryConflictPrefill}>
-                    Réessayer
-                  </Button>
-                </div>
-              )}
-              {conflictPrefillStatus === 'loaded' && conflictDetail && conflictDetail.items.length > 0 && (
-                <ConflictItemsList
-                  items={conflictDetail.items}
-                  runs={conflictDetail.runs}
-                  stackRuns={(conflictDetail.runs?.length ?? 0) > 3}
-                />
-              )}
-              {conflictPrefillStatus === 'loaded' && conflictDetail && conflictDetail.items.length === 0 && (
-                <p className="text-sm font-medium text-rose-700 dark:text-rose-200">
-                  Toutes les divergences ont été résolues pour cette zone.
-                </p>
-              )}
-              {conflictPrefillStatus === 'loaded' && !conflictDetail && (
-                <p className="text-sm font-medium text-rose-700 dark:text-rose-200">
-                  Impossible d’afficher les écarts pour cette zone.
-                </p>
-              )}
-            </div>
-          </div>
-        )}
         {displayedItems.length === 0 && (!isConflictResolutionMode || conflictPrefillStatus === 'loaded') && (
           <EmptyState
             title={isConflictResolutionMode ? 'Aucune référence en conflit' : 'En attente de scan'}
@@ -1594,7 +1602,7 @@ export const InventorySessionPage = () => {
             }
           />
         )}
-        <ul className="flex flex-col gap-3">
+        <ul className="flex flex-col gap-2.5 md:gap-3">
           {displayedItems.map((item) => {
             const skuDisplay = formatIdentifierForDisplay(item.product.sku)
             const eanDisplay = formatIdentifierForDisplay(item.product.ean)
@@ -1605,70 +1613,111 @@ export const InventorySessionPage = () => {
               `EAN ${eanDisplay}`,
             ].filter((segment): segment is string => Boolean(segment))
 
+            let inlineConflictSummary: InlineConflictSummary | null = null
+            if (
+              item.hasConflict &&
+              conflictPrefillStatus === 'loaded' &&
+              inlineConflictSummariesByKey
+            ) {
+              const eanKey = buildConflictLookupKey(item.product.ean)
+              if (eanKey) {
+                inlineConflictSummary = inlineConflictSummariesByKey.get(eanKey) ?? null
+              }
+              if (!inlineConflictSummary) {
+                const skuKey = buildConflictLookupKey(item.product.sku)
+                if (skuKey) {
+                  inlineConflictSummary = inlineConflictSummariesByKey.get(skuKey) ?? null
+                }
+              }
+            }
+
+            const showInlineConflicts = Boolean(inlineConflictSummary?.runs.length)
+
             return (
               <li
                 key={item.id}
-                className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition-colors dark:border-slate-700 dark:bg-slate-900/60"
+                className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition-colors dark:border-slate-700 dark:bg-slate-900/60 md:rounded-3xl md:p-4"
                 data-testid="scanned-item"
                 data-item-id={item.id}
                 data-ean={item.product.ean}
                 data-sku={item.product.sku ?? ''}
               >
-                <div className="flex flex-col gap-2">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <p className="text-base font-semibold text-slate-900 dark:text-white sm:text-lg">
-                      {item.product.name}
-                    </p>
-                    {item.hasConflict && (
-                      <span className="inline-flex items-center rounded-full bg-rose-100 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-rose-700 dark:bg-rose-900/60 dark:text-rose-200">
-                        Référence en conflit
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500 sm:text-xs">
-                    {metadataSegments.map((segment) => (
-                      <span key={segment}>{segment}</span>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-400 dark:text-slate-500 sm:hidden">
-                    Quantité
-                  </span>
-                  <div className="flex items-center justify-between gap-2 rounded-2xl bg-slate-100 p-2 shadow-inner sm:bg-transparent sm:p-0 sm:shadow-none">
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      className="tap-highlight-none no-focus-ring btn-glyph-center h-11 w-11 text-xl font-semibold sm:h-10 sm:w-10"
-                      onClick={() => adjustQuantity(item.product.ean, -1)}
-                      aria-label="Retirer"
-                    >
-                      −
-                    </Button>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={4}
-                      data-testid="quantity-input"
-                      aria-label={`Quantité pour ${item.product.name}`}
-                      value={quantityDrafts[item.product.ean] ?? String(item.quantity)}
-                      onChange={(event) => handleQuantityInputChange(item.product.ean, event)}
-                      onBlur={(event) => handleQuantityBlur(item.product.ean, event)}
-                      onKeyDown={(event) => handleQuantityKeyDown(item.product.ean, event)}
-                      onFocus={handleQuantityFocus}
-                      onPointerDown={handleQuantityPointerDown}
-                      className="h-12 w-20 rounded-xl border border-slate-300 bg-white text-center text-2xl font-bold text-slate-900 shadow-sm outline-none focus-visible:border-brand-400 focus-visible:ring-2 focus-visible:ring-brand-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
-                      autoComplete="off"
-                    />
-                    <Button
-                      type="button"
-                      className="tap-highlight-none no-focus-ring btn-glyph-center h-11 w-11 text-xl font-semibold sm:h-10 sm:w-10"
-                      onClick={() => adjustQuantity(item.product.ean, 1)}
-                      aria-label="Ajouter"
-                    >
-                      +
-                    </Button>
+                <div className="flex flex-col gap-2.5">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between md:gap-4">
+                    <div className="flex flex-col gap-1 md:flex-1">
+                      <p className="text-base font-semibold text-slate-900 dark:text-white sm:text-lg">
+                        {item.product.name}
+                      </p>
+                      <div className="flex flex-wrap gap-x-2.5 gap-y-1 text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500 sm:text-xs">
+                        {metadataSegments.map((segment) => (
+                          <span key={segment}>{segment}</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-3 md:flex-none">
+                      {showInlineConflicts && inlineConflictSummary && (
+                        <div
+                          className="inline-flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-rose-200/80 bg-rose-50/80 px-3 py-1.5 text-sm font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-100"
+                          data-testid="scanned-item-conflicts"
+                        >
+                          {inlineConflictSummary.runs.map((run, index) => (
+                            <Fragment key={run.key}>
+                              <span className="inline-flex items-baseline gap-1">
+                                <span className="text-[11px] font-semibold uppercase tracking-wide text-rose-500 dark:text-rose-200">
+                                  C{run.countType}
+                                </span>
+                                <span className="text-base leading-none text-rose-700 dark:text-rose-100">
+                                  {run.quantity}
+                                </span>
+                              </span>
+                              {index < inlineConflictSummary.runs.length - 1 && (
+                                <span className="text-xs font-normal text-rose-300 dark:text-rose-200/70">/</span>
+                              )}
+                            </Fragment>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:gap-2">
+                        <span className="text-[11px] font-semibold uppercase tracking-[0.25em] text-slate-400 dark:text-slate-500 sm:hidden">
+                          Quantité
+                        </span>
+                        <div className="flex items-center gap-2 rounded-xl bg-slate-100 p-2 shadow-inner sm:bg-transparent sm:p-0 sm:shadow-none">
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className="tap-highlight-none no-focus-ring btn-glyph-center h-10 w-10 text-lg font-semibold sm:h-9 sm:w-9"
+                            onClick={() => adjustQuantity(item.product.ean, -1)}
+                            aria-label="Retirer"
+                          >
+                            −
+                          </Button>
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            maxLength={4}
+                            data-testid="quantity-input"
+                            aria-label={`Quantité pour ${item.product.name}`}
+                            value={quantityDrafts[item.product.ean] ?? String(item.quantity)}
+                            onChange={(event) => handleQuantityInputChange(item.product.ean, event)}
+                            onBlur={(event) => handleQuantityBlur(item.product.ean, event)}
+                            onKeyDown={(event) => handleQuantityKeyDown(item.product.ean, event)}
+                            onFocus={handleQuantityFocus}
+                            onPointerDown={handleQuantityPointerDown}
+                            className="h-11 w-20 rounded-lg border border-slate-300 bg-white text-center text-xl font-bold text-slate-900 shadow-sm outline-none focus-visible:border-brand-400 focus-visible:ring-2 focus-visible:ring-brand-200 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                            autoComplete="off"
+                          />
+                          <Button
+                            type="button"
+                            className="tap-highlight-none no-focus-ring btn-glyph-center h-10 w-10 text-lg font-semibold sm:h-9 sm:w-9"
+                            onClick={() => adjustQuantity(item.product.ean, 1)}
+                            aria-label="Ajouter"
+                          >
+                            +
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </li>

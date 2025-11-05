@@ -161,13 +161,13 @@ describe('InventorySessionPage - conflits', () => {
     })
   })
 
-  it('affiche un accès aux écarts pour un troisième comptage', async () => {
+  it('affiche un résumé des écarts pour un troisième comptage', async () => {
     renderSessionPage(CountType.Count3)
 
-    expect(await screen.findByTestId('btn-view-conflicts')).toBeInTheDocument()
+    expect(await screen.findByText(/Zone en conflit/i)).toBeInTheDocument()
   })
 
-  it('ouvre le détail des écarts sur demande', async () => {
+  it('affiche les valeurs des comptages précédents lorsqu’ils sont disponibles', async () => {
     getConflictZoneDetailMock.mockResolvedValueOnce({
       locationId: baseLocation.id,
       locationCode: baseLocation.code,
@@ -198,28 +198,20 @@ describe('InventorySessionPage - conflits', () => {
 
     renderSessionPage(CountType.Count3)
 
-    const button = await screen.findByTestId('btn-view-conflicts')
-    expect(button).toHaveAttribute('aria-expanded', 'false')
-    fireEvent.click(button)
-
     await waitFor(() => expect(getConflictZoneDetailMock).toHaveBeenCalled())
-    const panel = await screen.findByTestId('conflict-details-panel')
-    expect(panel.getAttribute('data-state')).toBe('open')
-
-    const panelScope = within(panel)
-    await panelScope.findByText('Comptage 1')
-    await panelScope.findByText('Comptage 2')
-    await panelScope.findByText('Amplitude')
-
-    fireEvent.click(button)
-    expect(panel.getAttribute('data-state')).toBe('closed')
-    expect(button).toHaveAttribute('aria-expanded', 'false')
+    const conflictSummaries = await screen.findAllByTestId('scanned-item-conflicts')
+    expect(conflictSummaries).not.toHaveLength(0)
+    const summaryContent = conflictSummaries[0].textContent ?? ''
+    expect(summaryContent).toContain('C1')
+    expect(summaryContent).toContain('10')
+    expect(summaryContent).toContain('C2')
+    expect(summaryContent).toContain('8')
   })
 
   it('masque les options de scan lors du troisième comptage', async () => {
     renderSessionPage(CountType.Count3)
 
-    const conflictHeaders = await screen.findAllByText('Références en conflit')
+    const conflictHeaders = await screen.findAllByText(/Zone en conflit/i)
     expect(conflictHeaders.length).toBeGreaterThan(0)
     expect(screen.queryByLabelText(/Scanner \(douchette ou saisie\)/i)).not.toBeInTheDocument()
     expect(screen.queryByTestId('btn-open-manual')).not.toBeInTheDocument()
