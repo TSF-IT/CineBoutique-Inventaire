@@ -1,26 +1,34 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
     <meta http-equiv="X-Content-Type-Options" content="nosniff" />
-    <link rel="icon" type="image/svg+xml" href="/icons/pwa-icon.svg" />
+    <link rel="icon" type="image/png" href="/icons/pwa-icon.png" />
     <meta
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1"
     />
+
     <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="/icons/pwa-icon.svg" />
+
+    <!-- iOS -->
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="/icons/apple-touch-icon-180.png"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
     <meta name="apple-mobile-web-app-title" content="Inventaire" />
+
     <!-- Couleurs système -->
     <meta name="color-scheme" content="light dark" />
-
-    <!-- Firefox Desktop a un support partiel ; on fournit des variantes media -->
-    <meta name="theme-color" content="#f9fafb" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
-    <!-- Valeur par défaut (fallback) -->
     <meta name="theme-color" content="#0f172a" />
+
     <meta name="description" content="CinéBoutique – Inventaire mobile-first" />
     <title>CinéBoutique – Inventaire</title>
   </head>

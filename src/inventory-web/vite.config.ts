@@ -1,6 +1,5 @@
 import { fileURLToPath } from "node:url";
 import path from "path";
-
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { defineConfig, configDefaults } from "vitest/config";
@@ -8,9 +7,6 @@ import { defineConfig, configDefaults } from "vitest/config";
 const DEV_BACKEND_ORIGIN = (
   process.env.DEV_BACKEND_ORIGIN ?? "http://localhost:8080"
 ).trim();
-
-const APP_VERSION =
-  process.env.APP_VERSION || new Date().toISOString().replace(/[-:.TZ]/g, "");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,16 +16,15 @@ export default defineConfig(({ command }) => {
       react(),
       VitePWA({
         registerType: "autoUpdate",
+        includeAssets: ["icons/apple-touch-icon-180.png", "icons/pwa-icon.png"],
         workbox: {
           clientsClaim: true,
           skipWaiting: true,
           cleanupOutdatedCaches: true,
           navigateFallback: "/index.html",
-          navigationPreload: true, // CHANGED: accélère le réseau quand SW actif
-          // CHANGED: on inclut aussi l'HTML pour l'offline propre
+          navigationPreload: true,
           globPatterns: ["**/*.{html,js,css,svg,png,ico,webmanifest,woff2}"],
           runtimeCaching: [
-            // CHANGED: navigation → NetworkFirst avec timeout + expiration courte
             {
               urlPattern: ({ request }) => request.mode === "navigate",
               handler: "NetworkFirst",
@@ -64,11 +59,12 @@ export default defineConfig(({ command }) => {
         manifest: {
           name: "CinéBoutique – Inventaire",
           short_name: "Inventaire",
-          start_url: `/?v=${APP_VERSION}`, // garde le bust de cache au 1er lancement
+          start_url: "/",
           scope: "/",
           display: "standalone",
-          background_color: "#111",
-          theme_color: "#111",
+          background_color: "#0f172a",
+          theme_color: "#0f172a",
+          lang: "fr-FR",
           icons: [
             {
               src: "/icons/pwa-192x192.png",
@@ -164,29 +160,7 @@ export default defineConfig(({ command }) => {
       coverage: {
         provider: "v8",
         reporter: ["text", "lcov", "html"],
-        include: [
-          "src/app/components/Conflicts/**/*.{ts,tsx}",
-          "src/app/components/Runs/**/*.{ts,tsx}",
-          "src/app/components/inventory/**/*.{ts,tsx}",
-          "src/app/components/ui/**/*.{ts,tsx}",
-          "src/app/contexts/**/*.{ts,tsx}",
-          "src/app/hooks/**/*.{ts,tsx}",
-          "src/app/pages/admin/**/*.{ts,tsx}",
-          "src/app/pages/home/**/*.{ts,tsx}",
-          "src/app/pages/select-shop/**/*.{ts,tsx}",
-          "src/app/providers/**/*.{ts,tsx}",
-          "src/app/state/**/*.{ts,tsx}",
-          "src/app/types/**/*.{ts,tsx}",
-        ],
-        exclude: [
-          ...configDefaults.coverage.exclude,
-          "tests/e2e/**",
-          "src/**/e2e/**",
-          "src/**/fixtures/**",
-          "src/**/mocks/**",
-          "src/**/*.d.ts",
-          "src/**/*.stories.*",
-        ],
+        include: ["src/app/**/*.{ts,tsx}"],
         thresholds: { lines: 80, branches: 70, functions: 80, statements: 80 },
       },
       pool: "threads",
