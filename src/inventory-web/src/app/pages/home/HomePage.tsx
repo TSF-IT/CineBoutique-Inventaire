@@ -675,6 +675,7 @@ export const HomePage = () => {
 
   return (
     <Page
+      className="pb-4 sm:pb-5"
       headerAction={
         <div className="flex items-center gap-3 sm:self-start">
           <BackToShopSelectionLink

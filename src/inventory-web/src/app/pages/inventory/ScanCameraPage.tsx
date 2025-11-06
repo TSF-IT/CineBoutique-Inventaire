@@ -14,7 +14,7 @@ import { ScannedRow } from "../../components/inventory/ScannedRow";
 import { useInventory } from "../../contexts/InventoryContext";
 import type { Product } from "../../types/inventory";
 
-import { useCamera } from "@/hooks/useCamera";
+import { useCamera, type CameraOptions } from "@/hooks/useCamera";
 import { useScanRejectionFeedback } from "@/hooks/useScanRejectionFeedback";
 import type { HttpError } from "@/lib/api/http";
 import { useShop } from "@/state/ShopContext";
@@ -67,20 +67,39 @@ export const ScanCameraPage = () => {
   const lockTimeoutRef = useRef<number | null>(null);
   const lockedEanRef = useRef<string | null>(null);
   const resumeCameraOnVisibleRef = useRef(false);
+  const lastVisibilityStateRef = useRef<string | null>(
+    typeof document !== "undefined" ? document.visibilityState : null
+  );
+  const scheduleMeasureRef = useRef<(() => void) | null>(null);
+  const [matchMediaLandscape, setMatchMediaLandscape] = useState<boolean>(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return false;
+    }
+    return window.matchMedia("(orientation: landscape)").matches;
+  });
+  const [viewportSize, setViewportSize] = useState<{
+    width: number;
+    height: number;
+  } | null>(null);
   const triggerScanRejectionFeedback = useScanRejectionFeedback();
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const cameraOptions = useMemo<CameraOptions>(
+    () => ({
+      autoResumeOnVisible: false,
+      constraints: {
+        video: { facingMode: { ideal: "environment" } },
+        audio: false,
+      },
+    }),
+    []
+  );
+
   const {
     active: cameraActive,
     error: cameraError,
     stop: stopCamera,
     start: startCamera,
-  } = useCamera(videoRef, {
-    autoResumeOnVisible: false,
-    constraints: {
-      video: { facingMode: { ideal: "environment" } },
-      audio: false,
-    },
-  });
+  } = useCamera(videoRef, cameraOptions);
 
   const shopName = shop?.name ?? "Boutique";
   const ownerUserId = selectedUser?.id?.trim() ?? "";
@@ -88,6 +107,116 @@ export const ScanCameraPage = () => {
   const countTypeValue = typeof countType === "number" ? countType : null;
   const sessionRunId = typeof sessionId === "string" ? sessionId.trim() : "";
   const [hasCameraBooted, setHasCameraBooted] = useState(false);
+
+  const commitViewportSize = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const visualViewport = window.visualViewport;
+    const nextWidth =
+      visualViewport?.width ??
+      window.innerWidth ??
+      document.documentElement?.clientWidth ??
+      0;
+    const nextHeight =
+      visualViewport?.height ??
+      window.innerHeight ??
+      document.documentElement?.clientHeight ??
+      0;
+
+    if (!nextWidth || !nextHeight) {
+      return;
+    }
+
+    const rounded = {
+      width: Math.round(nextWidth),
+      height: Math.round(nextHeight),
+    };
+
+    setViewportSize((previous) => {
+      if (!previous) {
+        return rounded;
+      }
+      if (
+        Math.abs(previous.width - rounded.width) <= 1 &&
+        Math.abs(previous.height - rounded.height) <= 1
+      ) {
+        return previous;
+      }
+      return rounded;
+    });
+
+    if (typeof window.matchMedia !== "function") {
+      setMatchMediaLandscape(rounded.width > rounded.height);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    let rafId = 0;
+    const schedule = () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      rafId = requestAnimationFrame(() => {
+        rafId = 0;
+        commitViewportSize();
+      });
+    };
+
+    scheduleMeasureRef.current = schedule;
+    schedule();
+    const delayed = window.setTimeout(schedule, 160);
+
+    window.addEventListener("resize", schedule);
+    window.addEventListener("orientationchange", schedule);
+    window.addEventListener("pageshow", schedule);
+    const visualViewport = window.visualViewport;
+    visualViewport?.addEventListener("resize", schedule);
+    visualViewport?.addEventListener("scroll", schedule);
+
+    return () => {
+      scheduleMeasureRef.current = null;
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      window.clearTimeout(delayed);
+      window.removeEventListener("resize", schedule);
+      window.removeEventListener("orientationchange", schedule);
+      window.removeEventListener("pageshow", schedule);
+      visualViewport?.removeEventListener("resize", schedule);
+      visualViewport?.removeEventListener("scroll", schedule);
+    };
+  }, [commitViewportSize]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return;
+    }
+    const query = window.matchMedia("(orientation: landscape)");
+    const handleChange = (event: MediaQueryListEvent) => {
+      setMatchMediaLandscape(event.matches);
+      commitViewportSize();
+    };
+    const handleLegacy = (event: MediaQueryListEvent) => {
+      handleChange(event);
+    };
+    setMatchMediaLandscape(query.matches);
+    commitViewportSize();
+    if (typeof query.addEventListener === "function") {
+      query.addEventListener("change", handleChange);
+      return () => {
+        query.removeEventListener("change", handleChange);
+      };
+    }
+    query.addListener(handleLegacy);
+    return () => {
+      query.removeListener(handleLegacy);
+    };
+  }, [commitViewportSize]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -122,13 +251,20 @@ export const ScanCameraPage = () => {
     if (typeof document === "undefined") {
       return;
     }
+    lastVisibilityStateRef.current = document.visibilityState;
     const handleVisibility = () => {
-      if (document.visibilityState === "hidden") {
+      const nextState = document.visibilityState;
+      if (lastVisibilityStateRef.current === nextState) {
+        return;
+      }
+      lastVisibilityStateRef.current = nextState;
+      if (nextState === "hidden") {
         resumeCameraOnVisibleRef.current = cameraActive;
         stopCamera();
       } else if (resumeCameraOnVisibleRef.current) {
         resumeCameraOnVisibleRef.current = false;
         void startCamera();
+        scheduleMeasureRef.current?.();
       }
     };
     document.addEventListener("visibilitychange", handleVisibility);
@@ -146,27 +282,91 @@ export const ScanCameraPage = () => {
       stopCamera();
     };
     window.addEventListener("pagehide", handleLifecycle);
-    window.addEventListener("popstate", handleLifecycle);
     window.addEventListener("beforeunload", handleLifecycle);
     return () => {
       window.removeEventListener("pagehide", handleLifecycle);
-      window.removeEventListener("popstate", handleLifecycle);
       window.removeEventListener("beforeunload", handleLifecycle);
     };
   }, [stopCamera]);
 
-  const topOverlayStyle = useMemo<CSSProperties>(
-    () => ({
-      paddingTop: "calc(env(safe-area-inset-top, 0px) + 1.25rem)",
-    }),
-    []
-  );
+  const viewportHeight = viewportSize?.height ?? null;
+  const viewportWidth = viewportSize?.width ?? null;
+  const isLandscape = useMemo(() => {
+    if (viewportHeight !== null && viewportWidth !== null) {
+      if (viewportWidth === viewportHeight) {
+        return matchMediaLandscape;
+      }
+      return viewportWidth > viewportHeight;
+    }
+    return matchMediaLandscape;
+  }, [matchMediaLandscape, viewportHeight, viewportWidth]);
+
+  const cameraSectionPixels = useMemo(() => {
+    if (!viewportHeight) {
+      return null;
+    }
+    const minHeight = isLandscape ? 220 : 320;
+    const reserve = isLandscape ? 180 : 240;
+    const maxHeight = Math.max(viewportHeight - reserve, minHeight);
+    const target = Math.round(viewportHeight * (isLandscape ? 0.5 : 0.58));
+    return Math.min(Math.max(target, minHeight), maxHeight);
+  }, [isLandscape, viewportHeight]);
+
+  const viewportStyle = useMemo<CSSProperties | undefined>(() => {
+    if (!viewportHeight) {
+      return undefined;
+    }
+    return {
+      minHeight: viewportHeight,
+      height: viewportHeight,
+    };
+  }, [viewportHeight]);
+
+  const cameraSectionStyle = useMemo<CSSProperties>(() => {
+    if (!cameraSectionPixels) {
+      return {
+        minHeight: isLandscape ? "50vh" : "58vh",
+      };
+    }
+    return {
+      height: cameraSectionPixels,
+      minHeight: cameraSectionPixels,
+    };
+  }, [cameraSectionPixels, isLandscape]);
 
   const bottomSectionPaddingStyle = useMemo<CSSProperties>(
     () => ({
       paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 1.5rem)",
     }),
     []
+  );
+
+  const bottomSectionStyle = useMemo<CSSProperties>(() => {
+    if (!viewportHeight || !cameraSectionPixels) {
+      return bottomSectionPaddingStyle;
+    }
+    const minimum = isLandscape ? 200 : 260;
+    const available = Math.max(viewportHeight - cameraSectionPixels, minimum);
+    return {
+      ...bottomSectionPaddingStyle,
+      height: available,
+      minHeight: available,
+      maxHeight: available,
+    };
+  }, [
+    bottomSectionPaddingStyle,
+    cameraSectionPixels,
+    isLandscape,
+    viewportHeight,
+  ]);
+
+  const topOverlayStyle = useMemo<CSSProperties>(
+    () => ({
+      paddingTop: `calc(env(safe-area-inset-top, 0px) + ${
+        isLandscape ? 0.75 : 1.1
+      }rem)`,
+    }),
+    [isLandscape]
   );
 
   useEffect(() => {
@@ -456,9 +656,11 @@ export const ScanCameraPage = () => {
     <div
       className="scan-camera-screen relative flex min-h-[100dvh] h-[100dvh] flex-col overflow-hidden bg-black text-white"
       data-testid="scan-camera-page"
+      style={viewportStyle}
     >
       <div
-        className="relative flex-none overflow-hidden h-[58dvh] min-h-[320px] max-h-[calc(100dvh-240px)]"
+        className="relative flex-none overflow-hidden"
+        style={cameraSectionStyle}
       >
         <BarcodeScanner
           active={cameraActive}
@@ -504,7 +706,7 @@ export const ScanCameraPage = () => {
       </div>
       <div
         className="flex min-h-0 flex-1 flex-col rounded-t-[32px] bg-white text-slate-900 shadow-[0_-20px_48px_-32px_rgba(15,23,42,0.55)] transition-colors duration-300 dark:bg-slate-950 dark:text-white"
-        style={bottomSectionPaddingStyle}
+        style={bottomSectionStyle}
         data-testid="scan-sheet"
       >
         <div className="flex items-center justify-between gap-4 px-6 pt-6">

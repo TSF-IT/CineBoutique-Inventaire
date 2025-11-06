@@ -58,15 +58,7 @@ const isStatusOwnedByUser = (
 
 export const InventoryCountTypeStep = () => {
   const navigate = useNavigate()
-  const {
-    selectedUser,
-    location,
-    sessionId,
-    countType,
-    setCountType,
-    setSessionId,
-    clearSession,
-  } = useInventory()
+  const { selectedUser, location, sessionId, setCountType, setSessionId, clearSession } = useInventory()
   const selectedUserDisplayName = selectedUser?.displayName ?? null
   const selectedUserId = selectedUser?.id?.trim() ?? null
 
@@ -197,7 +189,7 @@ export const InventoryCountTypeStep = () => {
 
   return (
     <div className="flex flex-col gap-6" data-testid="page-count-type">
-      <Card className="flex flex-col gap-5">
+      <Card className="flex flex-col gap-5 pb-4 sm:pb-5">
         <div className="flex flex-col gap-2">
           <p className="text-xs uppercase tracking-[0.2em] text-brand-500 dark:text-brand-200">Étape 3</p>
           <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">
@@ -212,7 +204,6 @@ export const InventoryCountTypeStep = () => {
         <div className="cards">
           {DISPLAYED_COUNT_TYPES.map((option) => {
             const status = countStatuses.find((item) => item.countType === option)
-            const isSelected = countType === option
             const isCompleted = status?.status === 'completed'
             const isInProgress = status?.status === 'in_progress'
             const isOwnedByUser = isStatusOwnedByUser(status, selectedUserId, selectedUserDisplayName)
@@ -269,8 +260,6 @@ export const InventoryCountTypeStep = () => {
                 className={`flex flex-col gap-2 rounded-3xl border px-6 py-6 text-left transition-all ${
                   isDisabled
                     ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-500'
-                    : isSelected
-                    ? 'border-brand-400 bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-100'
                     : 'border-slate-200 bg-white text-slate-800 hover:border-brand-400/40 hover:bg-brand-50 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200'
                 }`}
                 data-testid={option === CountType.Count1 ? 'btn-count-type-1' : 'btn-count-type-2'}

@@ -1,5 +1,6 @@
+import clsx from 'clsx'
 import { Suspense, lazy } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 
 import { AppErrorBoundary } from './app/components/AppErrorBoundary'
 import { LoadingIndicator } from './app/components/LoadingIndicator'
@@ -125,14 +126,28 @@ export const AppRoutes = () => {
   )
 }
 
+const AppChrome = () => {
+  const location = useLocation()
+  const isScanCameraRoute = location.pathname === '/inventory/scan-camera'
+
+  return (
+    <div
+      className={clsx(
+        'relative min-h-screen overflow-x-hidden text-(--cb-text) antialiased transition-colors duration-300',
+        isScanCameraRoute ? 'pb-0 sm:pb-0' : 'pb-6 sm:pb-8',
+      )}
+    >
+      <AppRoutes />
+    </div>
+  )
+}
+
 export const App = () => (
   <AppProviders>
     <AppErrorBoundary>
       {/* Migration React Router v6 → v7 : https://reactrouter.com/upgrading/v6 */}
       <BrowserRouter>
-        <div className="relative min-h-screen overflow-x-hidden pb-12 text-(--cb-text) antialiased transition-colors duration-300 sm:pb-16">
-          <AppRoutes />
-        </div>
+        <AppChrome />
       </BrowserRouter>
     </AppErrorBoundary>
   </AppProviders>

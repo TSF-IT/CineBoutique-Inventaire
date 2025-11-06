@@ -361,7 +361,7 @@ export const InventoryLocationStep = () => {
 
   return (
     <div className="flex flex-col gap-6" data-testid="page-location">
-      <Card className="flex flex-col gap-4">
+      <Card className="flex flex-col gap-4 pb-4 sm:pb-5">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-2xl font-semibold text-slate-900 dark:text-white">Sélectionnez la zone</h2>
@@ -394,7 +394,6 @@ export const InventoryLocationStep = () => {
             {(Array.isArray(filteredLocations) ? filteredLocations : []).map((zone) => {
               const visibleStatuses = getVisibleStatuses(zone)
               const zoneCompleted = isZoneCompleted(zone)
-              const isSelected = false
               const conflictStatus = (() => {
                 if (!conflictsLoaded) {
                   return null
@@ -423,9 +422,7 @@ export const InventoryLocationStep = () => {
                     : 'Aucun comptage en cours'
               const toneClass = isZoneLocked || isZoneRestrictedToCurrentUser
                 ? 'border-slate-200 bg-slate-50 text-slate-500 opacity-80 dark:border-slate-700 dark:bg-slate-900/60 dark:text-slate-400'
-                : isSelected
-                  ? 'border-brand-400 bg-brand-500/10 text-brand-700 dark:bg-brand-500/20 dark:text-brand-100'
-                  : 'border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200'
+                : 'border-slate-200 bg-white text-slate-800 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200'
               const displayName = getLocationDisplayName(zone.code, zone.label)
               const shouldDisplayLabel = !isLocationLabelRedundant(zone.code, zone.label)
               const nextCount = isConflictZone ? computeNextCountType(zone) : null
