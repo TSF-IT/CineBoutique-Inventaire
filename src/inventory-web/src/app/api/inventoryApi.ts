@@ -10,14 +10,16 @@ import type { CompletedRunDetail, CompletedRunSummary, OpenRunSummary ,
 } from '../types/inventory'
 
 import { API_BASE } from '@/lib/api/config'
-import http from '@/lib/api/http'
-import type { HttpError } from '@/lib/api/http'
+import http, { RequestTimeoutError, type HttpError, type HttpRequestInit } from '@/lib/api/http'
 import { LocationSummaryListSchema, type LocationSummaryList } from '@/types/summary'
 
 /* ------------------------------ HTTP helpers ------------------------------ */
 
 const PRODUCT_LOOKUP_TIMEOUT_MS = 7000
 const INVENTORY_RUN_MUTATION_TIMEOUT_MS = 7000
+type BudgetedRequest = <T = unknown>(url: string, init?: HttpRequestInit) => Promise<T>
+const nowMs = () =>
+  typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
 
 const isHttpError = (value: unknown): value is HttpError =>
   typeof value === 'object' &&
@@ -438,6 +440,7 @@ const tryResolveAmbiguousProduct = async (
   error: HttpError | null,
   fallbackCandidates: ProductCandidate[],
   requestedCode: string,
+  requestWithBudget: BudgetedRequest,
 ): Promise<Product | null> => {
   const problem = (error?.problem ?? null) as ProductLookupConflictProblemLike | null
   const matches = Array.isArray(problem?.matches) ? problem.matches : []
@@ -463,9 +466,7 @@ const tryResolveAmbiguousProduct = async (
     }
 
     try {
-      const rawDetails = await http(`${API_BASE}/products/${encodeURIComponent(candidate.sku)}/details`, {
-        timeoutMs: PRODUCT_LOOKUP_TIMEOUT_MS,
-      })
+      const rawDetails = await requestWithBudget(`${API_BASE}/products/${encodeURIComponent(candidate.sku)}/details`)
       const detailsRecord = (rawDetails ?? {}) as Record<string, unknown>
       const enriched = sanitizeProductCandidate({ ...candidate, ...detailsRecord })
       if (!enriched) {
@@ -571,10 +572,21 @@ const extractOriginalSubGroup = (attributes: unknown): string | null => {
   }
 }
 
-export const fetchProductByEan = async (ean: string): Promise<Product> => {
+export const fetchProductByEan = async (ean: string, options?: { timeoutMs?: number }): Promise<Product> => {
   const rawCode = (ean ?? '').replace(/\r|\n/g, '')
   if (rawCode.length === 0) {
     throw new Error('Code vide ou invalide')
+  }
+
+  const totalBudget = Math.max(500, options?.timeoutMs ?? PRODUCT_LOOKUP_TIMEOUT_MS)
+  const startedAt = nowMs()
+  const requestWithBudget: BudgetedRequest = (url, init) => {
+    const elapsed = nowMs() - startedAt
+    const remaining = totalBudget - elapsed
+    if (remaining <= 0) {
+      throw new RequestTimeoutError(url, totalBudget)
+    }
+    return http(url, { ...init, timeoutMs: remaining })
   }
 
   const normalizedCode = normalizeLookupCode(rawCode)
@@ -584,7 +596,7 @@ export const fetchProductByEan = async (ean: string): Promise<Product> => {
     try {
       const params = new URLSearchParams({ code: rawCode, limit: '5' })
       const searchUrl = `${API_BASE}/products/search?${params.toString()}`
-      const rawResult = await http(searchUrl, { timeoutMs: PRODUCT_LOOKUP_TIMEOUT_MS })
+      const rawResult = await requestWithBudget(searchUrl)
       const candidates = toProductSearchItems(rawResult)
       searchCandidates = dedupeCandidates(candidates)
       const hasMatch = hasMatchingProductCandidate(searchCandidates, normalizedCode)
@@ -595,7 +607,12 @@ export const fetchProductByEan = async (ean: string): Promise<Product> => {
       const matchingCandidates = filterMatchingProductCandidates(searchCandidates, normalizedCode)
       const resolutionCandidates = matchingCandidates.length > 0 ? matchingCandidates : searchCandidates
       if (resolutionCandidates.length > 0) {
-        const resolvedFromSearch = await tryResolveAmbiguousProduct(null, resolutionCandidates, rawCode)
+        const resolvedFromSearch = await tryResolveAmbiguousProduct(
+          null,
+          resolutionCandidates,
+          rawCode,
+          requestWithBudget,
+        )
         if (resolvedFromSearch) {
           return resolvedFromSearch
         }
@@ -611,9 +628,7 @@ export const fetchProductByEan = async (ean: string): Promise<Product> => {
   }
 
   try {
-    const data = await http(`${API_BASE}/products/${encodeURIComponent(rawCode)}`, {
-      timeoutMs: PRODUCT_LOOKUP_TIMEOUT_MS,
-    })
+    const data = await requestWithBudget(`${API_BASE}/products/${encodeURIComponent(rawCode)}`)
     const baseRecord = (data ?? {}) as Record<string, unknown>
     const baseSku = pickFirstString(baseRecord, ['sku', 'Sku'])
     const baseName = pickFirstString(baseRecord, ['name', 'Name'])
@@ -628,9 +643,7 @@ export const fetchProductByEan = async (ean: string): Promise<Product> => {
 
     if (baseSku) {
       try {
-        const detailsResponse = await http(`${API_BASE}/products/${encodeURIComponent(baseSku)}/details`, {
-          timeoutMs: PRODUCT_LOOKUP_TIMEOUT_MS,
-        })
+        const detailsResponse = await requestWithBudget(`${API_BASE}/products/${encodeURIComponent(baseSku)}/details`)
         if (detailsResponse && typeof detailsResponse === 'object') {
           const details = detailsResponse as Record<string, unknown>
           detailsGroup = pickFirstString(details, ['group', 'Group']) ?? null
@@ -668,7 +681,7 @@ export const fetchProductByEan = async (ean: string): Promise<Product> => {
   } catch (error) {
     const err = error as HttpError
     if (isHttpError(err) && err.status === 409) {
-      const resolved = await tryResolveAmbiguousProduct(err, searchCandidates, rawCode)
+      const resolved = await tryResolveAmbiguousProduct(err, searchCandidates, rawCode, requestWithBudget)
       if (resolved) {
         return resolved
       }

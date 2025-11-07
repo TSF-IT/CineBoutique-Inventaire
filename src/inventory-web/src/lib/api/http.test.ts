@@ -111,6 +111,28 @@ describe('http timeouts', () => {
     const [, init] = fetchSpy.mock.calls[0] ?? []
     expect((init as RequestInit | undefined)?.signal).toBeInstanceOf(AbortSignal)
   })
+
+  it("d�clenche un timeout m�me sans AbortController disponible", async () => {
+    vi.useFakeTimers()
+    const globalRef = globalThis as { AbortController?: typeof AbortController }
+    const originalAbort = globalRef.AbortController
+    globalRef.AbortController = undefined
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      () =>
+        new Promise(() => {
+          /* never resolves */
+        }),
+    )
+
+    try {
+      const pending = http(API_URL, { timeoutMs: 400 })
+      pending.catch(() => undefined)
+      await vi.advanceTimersByTimeAsync(500)
+      await expect(pending).rejects.toBeInstanceOf(RequestTimeoutError)
+    } finally {
+      globalRef.AbortController = originalAbort
+    }
+  })
 })
 
 describe('http headers', () => {

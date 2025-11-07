@@ -162,7 +162,7 @@ export function buildHeaders(input?: HeadersInit): Headers {
 }
 
 export default async function http<TBody = unknown>(url: string, init: HttpRequestInit<TBody> = {}): Promise<unknown> {
-  // 1) Construire l’URL et injecter shopId si applicable
+  // 1) Construire l'URL et injecter shopId si applicable
   let finalUrl = url
   try {
     const u = new URL(url, window.location.origin)
@@ -176,7 +176,7 @@ export default async function http<TBody = unknown>(url: string, init: HttpReque
     }
     finalUrl = u.toString()
   } catch {
-    // Si l’URL est relative “bizarre”, on laisse passer tel quel.
+    // Si l'URL est relative "bizarre", on laisse passer tel quel.
   }
 
   // 2) Préparer les headers et le body
@@ -192,8 +192,8 @@ export default async function http<TBody = unknown>(url: string, init: HttpReque
   }
 
   const supportsAbortController = typeof AbortController === 'function'
-  const shouldApplyTimeout = Boolean(supportsAbortController && typeof timeoutMs === 'number' && timeoutMs > 0)
-  const abortController = shouldApplyTimeout ? new AbortController() : null
+  const enableTimeout = typeof timeoutMs === 'number' && timeoutMs > 0
+  const abortController = enableTimeout && supportsAbortController ? new AbortController() : null
   let linkedAbortCleanup: (() => void) | null = null
   let timeoutId: ReturnType<typeof setTimeout> | null = null
   let didTimeout = false
@@ -210,12 +210,10 @@ export default async function http<TBody = unknown>(url: string, init: HttpReque
         linkedAbortCleanup = () => inputSignal.removeEventListener('abort', forwardAbort)
       }
     }
-    if (shouldApplyTimeout) {
-      timeoutId = setTimeout(() => {
-        didTimeout = true
-        abortController.abort()
-      }, timeoutMs)
-    }
+    timeoutId = setTimeout(() => {
+      didTimeout = true
+      abortController.abort()
+    }, timeoutMs)
   }
 
   const cleanupTiming = () => {
@@ -229,17 +227,36 @@ export default async function http<TBody = unknown>(url: string, init: HttpReque
     }
   }
 
+  const fetchPromise = fetch(finalUrl, {
+    ...restInit,
+    headers,
+    body,
+    signal,
+  })
+
   let res: Response
   try {
-    res = await fetch(finalUrl, {
-      ...restInit,
-      headers,
-      body,
-      signal,
-    })
+    if (enableTimeout && !abortController) {
+      res = (await Promise.race([
+        fetchPromise,
+        new Promise<never>((_, reject) => {
+          const handleTimeout = () => reject(new RequestTimeoutError(finalUrl, timeoutMs))
+          // timeoutId est déjà configuré, mais on garde la logique pour s'assurer que la promesse rejette bien
+          timeoutId = setTimeout(() => {
+            didTimeout = true
+            handleTimeout()
+          }, timeoutMs)
+        }),
+      ])) as Response
+    } else {
+      res = await fetchPromise
+    }
     cleanupTiming()
   } catch (rawError: unknown) {
     cleanupTiming()
+    if (!supportsAbortController && didTimeout && rawError instanceof RequestTimeoutError) {
+      throw rawError
+    }
     const error = rawError as { message?: unknown; name?: unknown }
     const message = typeof error.message === 'string' ? error.message : ''
     const normalizedMessage = message.toLowerCase()
@@ -254,7 +271,7 @@ export default async function http<TBody = unknown>(url: string, init: HttpReque
 
     throw rawError
   }
-
+  
   const contentType = res.headers.get('Content-Type') ?? ''
   const isJson = contentType.includes('application/json')
   const text = await res.text()
