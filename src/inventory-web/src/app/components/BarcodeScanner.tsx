@@ -216,6 +216,27 @@ export function BarcodeScanner({
     }
   }, [cancelRaf, dispatchError, onDetected, scheduleHelp, stopZXing])
 
+  const startZXing = useCallback(async () => {
+    lastFrameAtRef.current = performance.now()
+    startWatchdog()
+    const el = videoRef.current
+   ;(readerRef.current = new BrowserMultiFormatReader(hints))
+    try {
+      const controls = await readerRef.current.decodeFromVideoElement(el!, async (result, err) => {
+        if (processingRef.current) return
+        lastFrameAtRef.current = performance.now()
+        if (result) { await handleDetectedValue(result.getText(), 'zxing'); return }
+        if (!err || err instanceof NotFoundException) return
+        const now = Date.now()
+        if (now - lastZXLogRef.current > 2000) { lastZXLogRef.current = now }
+      })
+      controlsRef.current = controls
+      restartRef.current = async () => { if (activeRef.current) await startZXing() }
+    } catch {
+      dispatchError('Lecture du flux caméra impossible. Vérifiez les autorisations.')
+    }
+  }, [dispatchError, handleDetectedValue, hints, startWatchdog, videoRef])
+
   const startBarcodeDetector = useCallback(async () => {
     const el = videoRef.current
     const detectorCtor = window.BarcodeDetector
@@ -282,27 +303,6 @@ export function BarcodeScanner({
     rafRef.current = requestAnimationFrame(loop)
     return true
   }, [cancelRaf, formats, handleDetectedValue, startWatchdog, startZXing, videoRef])
-
-  const startZXing = useCallback(async () => {
-    lastFrameAtRef.current = performance.now()
-    startWatchdog()
-    const el = videoRef.current
-   ;(readerRef.current = new BrowserMultiFormatReader(hints))
-    try {
-      const controls = await readerRef.current.decodeFromVideoElement(el!, async (result, err) => {
-        if (processingRef.current) return
-        lastFrameAtRef.current = performance.now()
-        if (result) { await handleDetectedValue(result.getText(), 'zxing'); return }
-        if (!err || err instanceof NotFoundException) return
-        const now = Date.now()
-        if (now - lastZXLogRef.current > 2000) { lastZXLogRef.current = now }
-      })
-      controlsRef.current = controls
-      restartRef.current = async () => { if (activeRef.current) await startZXing() }
-    } catch {
-      dispatchError('Lecture du flux caméra impossible. Vérifiez les autorisations.')
-    }
-  }, [dispatchError, handleDetectedValue, hints, startWatchdog, videoRef])
 
   useEffect(() => {
     startBarcodeDetectorRef.current = startBarcodeDetector

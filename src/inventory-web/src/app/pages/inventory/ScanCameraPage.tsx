@@ -694,10 +694,9 @@ export const ScanCameraPage = () => {
           setStatusMessage(null);
         }
       } finally {
-        if (scanToken !== scanTokenRef.current) {
-          return;
+        if (scanToken === scanTokenRef.current) {
+          clearPendingScanState();
         }
-        clearPendingScanState();
       }
     },
     [
