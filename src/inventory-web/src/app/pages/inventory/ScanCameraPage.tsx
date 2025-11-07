@@ -26,7 +26,7 @@ import { useShop } from "@/state/ShopContext";
 const MAX_SCAN_LENGTH = 32;
 const LOCK_RELEASE_DELAY = 700;
 
-const sanitizeScanValue = (value: string) => value.replace(/\r|\n/g, "");
+const sanitizeScanValue = (value: string) => value.replace(/[\r\n\t]+/g, "");
 
 const isScanLengthValid = (code: string) =>
   code.length > 0 && code.length <= MAX_SCAN_LENGTH;
@@ -305,12 +305,15 @@ export const ScanCameraPage = () => {
       }
       lastVisibilityStateRef.current = nextState;
       if (nextState === "hidden") {
-        resumeCameraOnVisibleRef.current = cameraActive;
+        // Toujours relancer la caméra ensuite : sur iOS elle peut ne pas être "active" au moment du hide
+        resumeCameraOnVisibleRef.current = true;
         stopCamera();
-      } else if (resumeCameraOnVisibleRef.current) {
-        resumeCameraOnVisibleRef.current = false;
-        void startCamera();
-        scheduleMeasureRef.current?.();
+      } else {
+        if (resumeCameraOnVisibleRef.current) {
+          resumeCameraOnVisibleRef.current = false;
+          void startCamera();
+          requestAnimationFrame(() => scheduleMeasureRef.current?.());
+        }
       }
     };
     document.addEventListener("visibilitychange", handleVisibility);
@@ -558,20 +561,23 @@ export const ScanCameraPage = () => {
     [addOrIncrementItem, ensureActiveRun]
   );
 
-  const armScanLock = useCallback((ean: string | null) => {
-    if (lockTimeoutRef.current) {
-      window.clearTimeout(lockTimeoutRef.current);
-      lockTimeoutRef.current = null;
-    }
-    lockedEanRef.current = ean;
-    if (!ean) {
-      return;
-    }
-    lockTimeoutRef.current = window.setTimeout(() => {
-      lockedEanRef.current = null;
-      lockTimeoutRef.current = null;
-    }, LOCK_RELEASE_DELAY);
-  }, []);
+  const armScanLock = useCallback(
+    (ean: string | null, delayMs: number = LOCK_RELEASE_DELAY) => {
+      if (lockTimeoutRef.current) {
+        window.clearTimeout(lockTimeoutRef.current);
+        lockTimeoutRef.current = null;
+      }
+      lockedEanRef.current = ean;
+      if (!ean) {
+        return;
+      }
+      lockTimeoutRef.current = window.setTimeout(() => {
+        lockedEanRef.current = null;
+        lockTimeoutRef.current = null;
+      }, Math.max(0, delayMs));
+    },
+    []
+  );
 
   const refreshScanLock = useCallback(() => {
     const current = lockedEanRef.current;
@@ -643,9 +649,9 @@ export const ScanCameraPage = () => {
       const scanController = new AbortController();
       pendingScanControllerRef.current = scanController;
       setPendingScan({ ean: sanitized, startedAt: Date.now() });
+      armScanLock(sanitized, 200); // petit lock court pour éviter les doubles lectures instantanées
       setStatusMessage(`Lecture de ${sanitized}.`);
       setErrorMessage(null);
-      armScanLock(sanitized);
 
       try {
         const product = await fetchProductByEan(sanitized, {
@@ -660,6 +666,7 @@ export const ScanCameraPage = () => {
         }
         if (added) {
           handleProductAdded(product);
+          armScanLock(sanitized, LOCK_RELEASE_DELAY); // lock standard de 700 ms
         }
       } catch (error) {
         if (scanToken !== scanTokenRef.current) {
@@ -691,7 +698,6 @@ export const ScanCameraPage = () => {
           return;
         }
         clearPendingScanState();
-        armScanLock(sanitized);
       }
     },
     [

@@ -39,6 +39,9 @@ const DETECTOR_FORMATS: Record<SupportedFormat, DetectorFormat> = {
   CODE_39: 'code_39', ITF: 'itf', QR_CODE: 'qr_code',
 }
 const HELP_TIMEOUT_MS = 9000
+const DETECTOR_FALLBACK_AFTER_MS = 2500
+const WATCHDOG_POLL_MS = 1500        // fréquence de vérification
+const STALL_THRESHOLD_MS = 2500      // au-delà, on considère le pipeline "figé"
 
 const isSecureCameraAvailable = () =>
   typeof window !== 'undefined' &&
@@ -83,6 +86,12 @@ export function BarcodeScanner({
   const activeRef = useRef(false)
   const lastZXLogRef = useRef(0)
   const lastLoopRef = useRef(0)
+  const detectorStartedAtRef = useRef<number>(0)
+  const detectorFallbackDoneRef = useRef(false)
+  const lastFrameAtRef = useRef<number>(0)
+  const watchdogIdRef = useRef<number | null>(null)
+  const startBarcodeDetectorRef = useRef<(() => Promise<boolean>) | null>(null)
+  const startZXingRef = useRef<(() => Promise<void>) | null>(null)
 
   const formats = useMemo(() => {
     const list = (preferredFormats?.length ? preferredFormats : DEFAULT_FORMATS)
@@ -100,13 +109,52 @@ export function BarcodeScanner({
     readerRef.current = null
   }, [])
 
+  const stopWatchdog = useCallback(() => {
+    if (watchdogIdRef.current !== null) {
+      window.clearInterval(watchdogIdRef.current)
+      watchdogIdRef.current = null
+    }
+  }, [])
+
+  const startWatchdog = useCallback(() => {
+    if (watchdogIdRef.current !== null) return
+    watchdogIdRef.current = window.setInterval(async () => {
+      const now = performance.now()
+      const last = lastFrameAtRef.current || 0
+      if (activeRef.current && !processingRef.current && now - last > STALL_THRESHOLD_MS) {
+        try {
+          cancelRaf()
+          stopZXing()
+          let restarted = false
+          const detectorStarter = startBarcodeDetectorRef.current
+          if (detectorStarter) {
+            restarted = await detectorStarter()
+          }
+          if (!restarted) {
+            const zxingStarter = startZXingRef.current
+            if (zxingStarter) {
+              await zxingStarter()
+            }
+          }
+          lastFrameAtRef.current = performance.now()
+          // setStatus("Le lecteur s’est réinitialisé…");
+          // setShowHelp(false);
+        } catch {
+          // Watchdog se déclenchera de nouveau si besoin
+        }
+      }
+    }, WATCHDOG_POLL_MS) as unknown as number
+  }, [cancelRaf, stopZXing])
+
   const cleanup = useCallback(() => {
     cancelRaf()
     stopZXing()
+    stopWatchdog()
     if (helpTimeoutRef.current) { clearTimeout(helpTimeoutRef.current); helpTimeoutRef.current = null }
     restartRef.current = null
     processingRef.current = false
-  }, [cancelRaf, stopZXing])
+    lastFrameAtRef.current = 0
+  }, [cancelRaf, stopWatchdog, stopZXing])
 
   const dispatchError = useCallback((message: string) => {
     setError(message)
@@ -142,6 +190,7 @@ export function BarcodeScanner({
 
   const handleDetectedValue = useCallback(async (value: string, source: 'detector' | 'zxing') => {
     if (!value || processingRef.current) return
+    lastFrameAtRef.current = performance.now()
     processingRef.current = true
     cancelRaf()
     stopZXing()
@@ -180,6 +229,12 @@ export function BarcodeScanner({
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
     if (!ctx) return false
 
+    lastFrameAtRef.current = performance.now()
+    startWatchdog()
+
+    detectorStartedAtRef.current = performance.now()
+    detectorFallbackDoneRef.current = false
+
     const loop = async () => {
       if (!activeRef.current) return
       const now = performance.now()
@@ -206,9 +261,19 @@ export function BarcodeScanner({
             const match = res.find((r) => r.rawValue)
             if (match?.rawValue) {
               await handleDetectedValue(match.rawValue, 'detector')
+              detectorStartedAtRef.current = now // reset après succès
               if (!activeRef.current) return
+            } else if (
+              !detectorFallbackDoneRef.current &&
+              now - detectorStartedAtRef.current > DETECTOR_FALLBACK_AFTER_MS
+            ) {
+              detectorFallbackDoneRef.current = true
+              cancelRaf()
+              await startZXing()
+              return
             }
           } catch { /* ignore */ }
+          lastFrameAtRef.current = performance.now()
         }
       }
       rafRef.current = requestAnimationFrame(loop)
@@ -216,14 +281,17 @@ export function BarcodeScanner({
     restartRef.current = async () => { if (activeRef.current) await startBarcodeDetector() }
     rafRef.current = requestAnimationFrame(loop)
     return true
-  }, [formats, handleDetectedValue, videoRef])
+  }, [cancelRaf, formats, handleDetectedValue, startWatchdog, startZXing, videoRef])
 
   const startZXing = useCallback(async () => {
+    lastFrameAtRef.current = performance.now()
+    startWatchdog()
     const el = videoRef.current
    ;(readerRef.current = new BrowserMultiFormatReader(hints))
     try {
       const controls = await readerRef.current.decodeFromVideoElement(el!, async (result, err) => {
         if (processingRef.current) return
+        lastFrameAtRef.current = performance.now()
         if (result) { await handleDetectedValue(result.getText(), 'zxing'); return }
         if (!err || err instanceof NotFoundException) return
         const now = Date.now()
@@ -234,7 +302,15 @@ export function BarcodeScanner({
     } catch {
       dispatchError('Lecture du flux caméra impossible. Vérifiez les autorisations.')
     }
-  }, [dispatchError, handleDetectedValue, hints, videoRef])
+  }, [dispatchError, handleDetectedValue, hints, startWatchdog, videoRef])
+
+  useEffect(() => {
+    startBarcodeDetectorRef.current = startBarcodeDetector
+  }, [startBarcodeDetector])
+
+  useEffect(() => {
+    startZXingRef.current = startZXing
+  }, [startZXing])
 
   // Démarrage/arrêt de la détection
   useEffect(() => {
