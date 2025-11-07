@@ -210,10 +210,19 @@ export default async function http<TBody = unknown>(url: string, init: HttpReque
         linkedAbortCleanup = () => inputSignal.removeEventListener('abort', forwardAbort)
       }
     }
-    timeoutId = setTimeout(() => {
-      didTimeout = true
-      abortController.abort()
-    }, timeoutMs)
+  }
+
+  let timeoutPromise: Promise<never> | null = null
+  if (enableTimeout) {
+    timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        didTimeout = true
+        if (abortController) {
+          abortController.abort()
+        }
+        reject(new RequestTimeoutError(finalUrl, timeoutMs))
+      }, timeoutMs)
+    })
   }
 
   const cleanupTiming = () => {
@@ -236,25 +245,15 @@ export default async function http<TBody = unknown>(url: string, init: HttpReque
 
   let res: Response
   try {
-    if (enableTimeout && !abortController) {
-      res = (await Promise.race([
-        fetchPromise,
-        new Promise<never>((_, reject) => {
-          const handleTimeout = () => reject(new RequestTimeoutError(finalUrl, timeoutMs))
-          // timeoutId est déjà configuré, mais on garde la logique pour s'assurer que la promesse rejette bien
-          timeoutId = setTimeout(() => {
-            didTimeout = true
-            handleTimeout()
-          }, timeoutMs)
-        }),
-      ])) as Response
+    if (timeoutPromise) {
+      res = (await Promise.race([fetchPromise, timeoutPromise])) as Response
     } else {
       res = await fetchPromise
     }
     cleanupTiming()
   } catch (rawError: unknown) {
     cleanupTiming()
-    if (!supportsAbortController && didTimeout && rawError instanceof RequestTimeoutError) {
+    if (rawError instanceof RequestTimeoutError) {
       throw rawError
     }
     const error = rawError as { message?: unknown; name?: unknown }
