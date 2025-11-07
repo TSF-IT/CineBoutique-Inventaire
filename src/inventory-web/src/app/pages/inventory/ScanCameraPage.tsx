@@ -71,12 +71,17 @@ export const ScanCameraPage = () => {
     typeof document !== "undefined" ? document.visibilityState : null
   );
   const scheduleMeasureRef = useRef<(() => void) | null>(null);
-  const [matchMediaLandscape, setMatchMediaLandscape] = useState<boolean>(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
-      return false;
+  const [matchMediaLandscape, setMatchMediaLandscape] = useState<boolean>(
+    () => {
+      if (
+        typeof window === "undefined" ||
+        typeof window.matchMedia !== "function"
+      ) {
+        return false;
+      }
+      return window.matchMedia("(orientation: landscape)").matches;
     }
-    return window.matchMedia("(orientation: landscape)").matches;
-  });
+  );
   const [viewportSize, setViewportSize] = useState<{
     width: number;
     height: number;
@@ -193,7 +198,10 @@ export const ScanCameraPage = () => {
   }, [commitViewportSize]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+    if (
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    ) {
       return;
     }
     const query = window.matchMedia("(orientation: landscape)");
@@ -654,7 +662,7 @@ export const ScanCameraPage = () => {
 
   return (
     <div
-      className="scan-camera-screen relative flex min-h-[100dvh] h-[100dvh] flex-col overflow-hidden bg-black text-white"
+      className="scan-camera-screen relative flex min-h-dvh h-dvh flex-col overflow-hidden bg-black text-white"
       data-testid="scan-camera-page"
       style={viewportStyle}
     >
@@ -669,7 +677,7 @@ export const ScanCameraPage = () => {
           enableTorchToggle
           camera={{ videoRef, active: cameraActive, error: cameraError }}
         />
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-28 bg-gradient-to-b from-black/80 via-black/40 to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-28 bg-linear-to-b from-black/80 via-black/40 to-transparent" />
         <div
           className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-start justify-between px-5 sm:px-8"
           style={topOverlayStyle}
@@ -705,7 +713,7 @@ export const ScanCameraPage = () => {
         </div>
       </div>
       <div
-        className="flex min-h-0 flex-1 flex-col rounded-t-[32px] bg-white text-slate-900 shadow-[0_-20px_48px_-32px_rgba(15,23,42,0.55)] transition-colors duration-300 dark:bg-slate-950 dark:text-white"
+        className="flex min-h-0 flex-1 flex-col rounded-t-4xl bg-white text-slate-900 shadow-[0_-20px_48px_-32px_rgba(15,23,42,0.55)] transition-colors duration-300 dark:bg-slate-950 dark:text-white"
         style={bottomSectionStyle}
         data-testid="scan-sheet"
       >

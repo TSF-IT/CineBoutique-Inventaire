@@ -304,7 +304,7 @@ export function BarcodeScanner({
     : 'relative overflow-hidden rounded-3xl border border-slate-700 bg-black/80 text-slate-100'
 
   const videoClass = presentation === 'immersive'
-    ? 'h-full w-full object-cover will-change-transform'
+    ? 'pointer-events-none h-full w-full object-cover will-change-transform'
     : 'h-64 w-full object-contain bg-black will-change-transform'
 
   return (
