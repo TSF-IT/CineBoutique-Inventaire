@@ -16,6 +16,9 @@ import { LocationSummaryListSchema, type LocationSummaryList } from '@/types/sum
 
 /* ------------------------------ HTTP helpers ------------------------------ */
 
+const PRODUCT_LOOKUP_TIMEOUT_MS = 7000
+const INVENTORY_RUN_MUTATION_TIMEOUT_MS = 7000
+
 const isHttpError = (value: unknown): value is HttpError =>
   typeof value === 'object' &&
   value !== null &&
@@ -460,7 +463,9 @@ const tryResolveAmbiguousProduct = async (
     }
 
     try {
-      const rawDetails = await http(`${API_BASE}/products/${encodeURIComponent(candidate.sku)}/details`)
+      const rawDetails = await http(`${API_BASE}/products/${encodeURIComponent(candidate.sku)}/details`, {
+        timeoutMs: PRODUCT_LOOKUP_TIMEOUT_MS,
+      })
       const detailsRecord = (rawDetails ?? {}) as Record<string, unknown>
       const enriched = sanitizeProductCandidate({ ...candidate, ...detailsRecord })
       if (!enriched) {
@@ -579,7 +584,7 @@ export const fetchProductByEan = async (ean: string): Promise<Product> => {
     try {
       const params = new URLSearchParams({ code: rawCode, limit: '5' })
       const searchUrl = `${API_BASE}/products/search?${params.toString()}`
-      const rawResult = await http(searchUrl)
+      const rawResult = await http(searchUrl, { timeoutMs: PRODUCT_LOOKUP_TIMEOUT_MS })
       const candidates = toProductSearchItems(rawResult)
       searchCandidates = dedupeCandidates(candidates)
       const hasMatch = hasMatchingProductCandidate(searchCandidates, normalizedCode)
@@ -606,7 +611,9 @@ export const fetchProductByEan = async (ean: string): Promise<Product> => {
   }
 
   try {
-    const data = await http(`${API_BASE}/products/${encodeURIComponent(rawCode)}`)
+    const data = await http(`${API_BASE}/products/${encodeURIComponent(rawCode)}`, {
+      timeoutMs: PRODUCT_LOOKUP_TIMEOUT_MS,
+    })
     const baseRecord = (data ?? {}) as Record<string, unknown>
     const baseSku = pickFirstString(baseRecord, ['sku', 'Sku'])
     const baseName = pickFirstString(baseRecord, ['name', 'Name'])
@@ -621,7 +628,9 @@ export const fetchProductByEan = async (ean: string): Promise<Product> => {
 
     if (baseSku) {
       try {
-        const detailsResponse = await http(`${API_BASE}/products/${encodeURIComponent(baseSku)}/details`)
+        const detailsResponse = await http(`${API_BASE}/products/${encodeURIComponent(baseSku)}/details`, {
+          timeoutMs: PRODUCT_LOOKUP_TIMEOUT_MS,
+        })
         if (detailsResponse && typeof detailsResponse === 'object') {
           const details = detailsResponse as Record<string, unknown>
           detailsGroup = pickFirstString(details, ['group', 'Group']) ?? null
@@ -718,6 +727,7 @@ export const startInventoryRun = async (
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
+    timeoutMs: INVENTORY_RUN_MUTATION_TIMEOUT_MS,
   })) as StartInventoryRunResponse
 }
 

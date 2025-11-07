@@ -16,7 +16,7 @@ import type { Product } from "../../types/inventory";
 
 import { useCamera, type CameraOptions } from "@/hooks/useCamera";
 import { useScanRejectionFeedback } from "@/hooks/useScanRejectionFeedback";
-import type { HttpError } from "@/lib/api/http";
+import { RequestTimeoutError, type HttpError } from "@/lib/api/http";
 import { useShop } from "@/state/ShopContext";
 
 const MAX_SCAN_LENGTH = 32;
@@ -598,14 +598,21 @@ export const ScanCameraPage = () => {
           handleProductAdded(product);
         }
       } catch (error) {
-        const err = error as HttpError;
-        if (err?.status === 404) {
+        if (error instanceof RequestTimeoutError) {
           setErrorMessage(
-            `Code ${sanitized} introuvable dans la liste des produits à inventorier.`
+            "Lecture du produit trop longue. Vérifiez la connexion et réessayez."
           );
           triggerScanRejectionFeedback();
         } else {
-          setErrorMessage("Échec de la récupération du produit. Réessayez.");
+          const err = error as HttpError;
+          if (err?.status === 404) {
+            setErrorMessage(
+              `Code ${sanitized} introuvable dans la liste des produits à inventorier.`
+            );
+            triggerScanRejectionFeedback();
+          } else {
+            setErrorMessage("Échec de la récupération du produit. Réessayez.");
+          }
         }
         setStatusMessage(null);
       } finally {

@@ -33,8 +33,21 @@ export class AbortedRequestError extends Error {
   }
 }
 
+export class RequestTimeoutError extends Error {
+  status = 408 as number
+  url: string
+  timeoutMs: number
+  constructor(url: string, timeoutMs: number) {
+    super('TIMEOUT')
+    this.name = 'RequestTimeoutError'
+    this.url = url
+    this.timeoutMs = timeoutMs
+  }
+}
+
 export type HttpRequestInit<TBody = unknown> = Omit<RequestInit, 'body'> & {
   body?: RequestInit['body'] | TBody
+  timeoutMs?: number
 }
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> => {
@@ -148,10 +161,7 @@ export function buildHeaders(input?: HeadersInit): Headers {
   return headers
 }
 
-export default async function http<TBody = unknown>(
-  url: string,
-  init: HttpRequestInit<TBody> = {},
-): Promise<unknown> {
+export default async function http<TBody = unknown>(url: string, init: HttpRequestInit<TBody> = {}): Promise<unknown> {
   // 1) Construire l’URL et injecter shopId si applicable
   let finalUrl = url
   try {
@@ -170,8 +180,8 @@ export default async function http<TBody = unknown>(
   }
 
   // 2) Préparer les headers et le body
-  const headers = buildHeaders(init.headers)
-  const rawBody = init.body
+  const { timeoutMs, signal: inputSignal, headers: initHeaders, body: rawBody, ...restInit } = init
+  const headers = buildHeaders(initHeaders)
   let body: BodyInit | null | undefined = rawBody as BodyInit | null | undefined
 
   if (shouldJsonStringify(rawBody)) {
@@ -181,22 +191,70 @@ export default async function http<TBody = unknown>(
     body = JSON.stringify(rawBody)
   }
 
-  let res: Response;
+  const supportsAbortController = typeof AbortController === 'function'
+  const shouldApplyTimeout = Boolean(supportsAbortController && typeof timeoutMs === 'number' && timeoutMs > 0)
+  const abortController = shouldApplyTimeout ? new AbortController() : null
+  let linkedAbortCleanup: (() => void) | null = null
+  let timeoutId: ReturnType<typeof setTimeout> | null = null
+  let didTimeout = false
+
+  let signal: AbortSignal | undefined = inputSignal
+  if (abortController) {
+    signal = abortController.signal
+    if (inputSignal) {
+      const forwardAbort = () => abortController.abort()
+      if (inputSignal.aborted) {
+        abortController.abort()
+      } else {
+        inputSignal.addEventListener('abort', forwardAbort, { once: true })
+        linkedAbortCleanup = () => inputSignal.removeEventListener('abort', forwardAbort)
+      }
+    }
+    if (shouldApplyTimeout) {
+      timeoutId = setTimeout(() => {
+        didTimeout = true
+        abortController.abort()
+      }, timeoutMs)
+    }
+  }
+
+  const cleanupTiming = () => {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId)
+      timeoutId = null
+    }
+    if (linkedAbortCleanup) {
+      linkedAbortCleanup()
+      linkedAbortCleanup = null
+    }
+  }
+
+  let res: Response
   try {
-    res = await fetch(finalUrl, { ...init, headers, body });
+    res = await fetch(finalUrl, {
+      ...restInit,
+      headers,
+      body,
+      signal,
+    })
+    cleanupTiming()
   } catch (rawError: unknown) {
+    cleanupTiming()
     const error = rawError as { message?: unknown; name?: unknown }
     const message = typeof error.message === 'string' ? error.message : ''
     const normalizedMessage = message.toLowerCase()
 
-    // Ne hurle pas pour un abort normal (cleanup d’effet, navigation, etc.)
+    // Ne hurle pas pour un abort normal (cleanup d'effet, navigation, etc.)
     if (error?.name === 'AbortError' || normalizedMessage.includes('aborted')) {
+      if (didTimeout && typeof timeoutMs === 'number' && timeoutMs > 0) {
+        throw new RequestTimeoutError(finalUrl, timeoutMs)
+      }
       throw new AbortedRequestError(finalUrl)
     }
 
     throw rawError
   }
-  
+
   const contentType = res.headers.get('Content-Type') ?? ''
   const isJson = contentType.includes('application/json')
   const text = await res.text()

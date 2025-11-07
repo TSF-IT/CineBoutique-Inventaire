@@ -9,6 +9,7 @@ import { InventoryProvider, useInventory } from '../../../contexts/InventoryCont
 import { CountType, type InventoryItem, type Location } from '../../../types/inventory'
 import { ScanCameraPage } from '../ScanCameraPage'
 
+import { RequestTimeoutError } from '@/lib/api/http'
 import type { Shop } from '@/types/shop'
 import type { ShopUser } from '@/types/user'
 
@@ -260,6 +261,21 @@ describe('ScanCameraPage', () => {
       ).toBeInTheDocument(),
     )
     expect(latestItems.some((item) => item.product.ean === '0123456789012')).toBe(false)
+  })
+
+  it('affiche un message lorsque la récupération du produit dépasse le délai', async () => {
+    fetchProductByEanMock.mockRejectedValue(new RequestTimeoutError('/api/products/slow', 5000))
+
+    renderScanCameraPage()
+
+    await waitFor(() => expect(typeof scannerCallbacks.onDetected).toBe('function'))
+    await scannerCallbacks.onDetected?.('0123456789012')
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Lecture du produit trop longue. Vérifiez la connexion et réessayez.'),
+      ).toBeInTheDocument(),
+    )
   })
 
   it('ignore les lectures répétées du même code tant que la caméra le voit', async () => {

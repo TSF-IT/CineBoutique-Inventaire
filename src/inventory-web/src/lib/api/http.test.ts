@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
 
-import http, { type HttpError } from './http'
+import http, { RequestTimeoutError, type HttpError } from './http'
 
 import { __setInventoryHttpContextSnapshotForTests } from '@/app/contexts/inventoryHttpContext'
 
@@ -73,6 +73,43 @@ describe('http helper', () => {
     }
 
     await expect(http(API_URL)).rejects.toMatchObject(expected)
+  })
+})
+
+describe('http timeouts', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('rejette avec RequestTimeoutError quand la requ�te excede timeoutMs', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(globalThis, 'fetch').mockImplementation((_, init) => {
+      const signal = (init as RequestInit | undefined)?.signal
+      return new Promise<never>((_, reject) => {
+        signal?.addEventListener('abort', () => {
+          const abortError = new DOMException('Aborted', 'AbortError')
+          reject(abortError)
+        })
+      })
+    })
+
+    const pending = http(API_URL, { timeoutMs: 500 })
+    const expectation = expect(pending).rejects.toBeInstanceOf(RequestTimeoutError)
+    await vi.advanceTimersByTimeAsync(600)
+
+    await expectation
+  })
+
+  it('relie le signal existant quand un timeout est configur�', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(mockResponse(JSON.stringify({ ok: true }), { headers: { 'Content-Type': 'application/json' } }))
+
+    const controller = new AbortController()
+    await http(API_URL, { timeoutMs: 1000, signal: controller.signal })
+
+    const [, init] = fetchSpy.mock.calls[0] ?? []
+    expect((init as RequestInit | undefined)?.signal).toBeInstanceOf(AbortSignal)
   })
 })
 
