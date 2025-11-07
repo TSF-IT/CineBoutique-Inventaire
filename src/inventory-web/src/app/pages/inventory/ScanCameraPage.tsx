@@ -616,6 +616,13 @@ export const ScanCameraPage = () => {
         return;
       }
 
+      // Éviter les détections concurrentes pendant qu’un scan produit est en cours
+      if (pendingScanControllerRef.current) {
+        // Optionnel: petit feedback (bip/flash) pour signaler "patienter"
+        triggerScanRejectionFeedback();
+        return;
+      }
+
       if (lockedEanRef.current && lockedEanRef.current === sanitized) {
         refreshScanLock();
         return;

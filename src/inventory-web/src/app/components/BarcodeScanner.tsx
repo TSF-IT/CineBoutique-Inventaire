@@ -188,12 +188,10 @@ export function BarcodeScanner({
     }, HELP_TIMEOUT_MS)
   }, [])
 
-  const handleDetectedValue = useCallback(async (value: string, source: 'detector' | 'zxing') => {
+  const handleDetectedValue = useCallback(async (value: string) => {
     if (!value || processingRef.current) return
     lastFrameAtRef.current = performance.now()
     processingRef.current = true
-    cancelRaf()
-    stopZXing()
     setShowHelp(false)
     setStatus('Code détecté, traitement en cours…')
     try {
@@ -202,19 +200,13 @@ export function BarcodeScanner({
     } catch {
       dispatchError('Traitement du code détecté impossible. Réessayez.')
     } finally {
+      // Ne pas arrêter/redémarrer le pipeline ici : la boucle reste vivante.
       processingRef.current = false
-      if (activeRef.current && restartRef.current) {
-        try {
-          await restartRef.current()
-          if (activeRef.current) scheduleHelp()
-        } catch {
-          if (source === 'zxing') {
-            dispatchError('Le lecteur s’est arrêté de manière inattendue. Réactivez la caméra.')
-          }
-        }
+      if (activeRef.current) {
+        scheduleHelp()
       }
     }
-  }, [cancelRaf, dispatchError, onDetected, scheduleHelp, stopZXing])
+  }, [dispatchError, onDetected, scheduleHelp])
 
   const startZXing = useCallback(async () => {
     lastFrameAtRef.current = performance.now()
@@ -225,7 +217,7 @@ export function BarcodeScanner({
       const controls = await readerRef.current.decodeFromVideoElement(el!, async (result, err) => {
         if (processingRef.current) return
         lastFrameAtRef.current = performance.now()
-        if (result) { await handleDetectedValue(result.getText(), 'zxing'); return }
+        if (result) { await handleDetectedValue(result.getText()); return }
         if (!err || err instanceof NotFoundException) return
         const now = Date.now()
         if (now - lastZXLogRef.current > 2000) { lastZXLogRef.current = now }
@@ -281,7 +273,7 @@ export function BarcodeScanner({
             const res = await detector.detect(canvas)
             const match = res.find((r) => r.rawValue)
             if (match?.rawValue) {
-              await handleDetectedValue(match.rawValue, 'detector')
+              await handleDetectedValue(match.rawValue)
               detectorStartedAtRef.current = now // reset après succès
               if (!activeRef.current) return
             } else if (
