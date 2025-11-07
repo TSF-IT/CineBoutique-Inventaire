@@ -75,7 +75,7 @@ export const ScanCameraPage = () => {
   const statusTimeoutRef = useRef<number | null>(null);
   const lockTimeoutRef = useRef<number | null>(null);
   const pendingScanControllerRef = useRef<AbortController | null>(null);
-  const pendingScanCancellationRef = useRef<"user" | "system" | null>(null);
+  const scanTokenRef = useRef(0);
   const lockedEanRef = useRef<string | null>(null);
   const resumeCameraOnVisibleRef = useRef(false);
   const lastVisibilityStateRef = useRef<string | null>(
@@ -123,13 +123,21 @@ export const ScanCameraPage = () => {
   const countTypeValue = typeof countType === "number" ? countType : null;
   const sessionRunId = typeof sessionId === "string" ? sessionId.trim() : "";
   const [hasCameraBooted, setHasCameraBooted] = useState(false);
+  const clearPendingScanState = useCallback(() => {
+    pendingScanControllerRef.current = null;
+    setPendingScan(null);
+    setPendingScanElapsedMs(0);
+  }, []);
 
   useEffect(() => {
     return () => {
-      pendingScanCancellationRef.current = "system";
-      pendingScanControllerRef.current?.abort();
+      if (pendingScanControllerRef.current) {
+        scanTokenRef.current += 1;
+        pendingScanControllerRef.current.abort();
+        clearPendingScanState();
+      }
     };
-  }, []);
+  }, [clearPendingScanState]);
 
   useEffect(() => {
     if (!pendingScan) {
@@ -573,13 +581,6 @@ export const ScanCameraPage = () => {
     armScanLock(current);
   }, [armScanLock]);
 
-  const clearPendingScanState = useCallback(() => {
-    pendingScanControllerRef.current = null;
-    pendingScanCancellationRef.current = null;
-    setPendingScan(null);
-    setPendingScanElapsedMs(0);
-  }, []);
-
   const handleProductAdded = useCallback((product: Product) => {
     setStatusMessage(`${product.name} ajouté`);
     const normalizedEan = product.ean?.trim() ?? null;
@@ -594,11 +595,15 @@ export const ScanCameraPage = () => {
     if (!pendingScanControllerRef.current) {
       return;
     }
-    pendingScanCancellationRef.current = "user";
+    scanTokenRef.current += 1;
     pendingScanControllerRef.current.abort();
-  }, []);
+    clearPendingScanState();
+    setStatusMessage(null);
+    setErrorMessage("Lecture annulée.");
+    armScanLock(null);
+  }, [armScanLock, clearPendingScanState]);
 
-    const handleDetected = useCallback(
+  const handleDetected = useCallback(
     async (rawValue: string) => {
       const sanitized = sanitizeScanValue(rawValue);
       if (!sanitized) {
@@ -632,9 +637,10 @@ export const ScanCameraPage = () => {
         return;
       }
 
-      const scanController = new AbortController();
+      const scanToken = scanTokenRef.current + 1;
+      scanTokenRef.current = scanToken;
       pendingScanControllerRef.current?.abort();
-      pendingScanCancellationRef.current = null;
+      const scanController = new AbortController();
       pendingScanControllerRef.current = scanController;
       setPendingScan({ ean: sanitized, startedAt: Date.now() });
       setStatusMessage(`Lecture de ${sanitized}.`);
@@ -645,17 +651,22 @@ export const ScanCameraPage = () => {
         const product = await fetchProductByEan(sanitized, {
           signal: scanController.signal,
         });
+        if (scanToken !== scanTokenRef.current) {
+          return;
+        }
         const added = await addProductToSession(product);
+        if (scanToken !== scanTokenRef.current) {
+          return;
+        }
         if (added) {
           handleProductAdded(product);
         }
       } catch (error) {
+        if (scanToken !== scanTokenRef.current) {
+          return;
+        }
         if (error instanceof AbortedRequestError) {
-          if (pendingScanCancellationRef.current === "user") {
-            setErrorMessage("Lecture annulée.");
-          } else {
-            setErrorMessage(null);
-          }
+          setErrorMessage(null);
           setStatusMessage(null);
         } else if (error instanceof RequestTimeoutError) {
           setErrorMessage(
@@ -676,6 +687,9 @@ export const ScanCameraPage = () => {
           setStatusMessage(null);
         }
       } finally {
+        if (scanToken !== scanTokenRef.current) {
+          return;
+        }
         clearPendingScanState();
         armScanLock(sanitized);
       }
@@ -691,13 +705,16 @@ export const ScanCameraPage = () => {
     ]
   );
   const handleGoBack = useCallback(() => {
-    pendingScanCancellationRef.current = "system";
-    pendingScanControllerRef.current?.abort();
-    clearPendingScanState();
+    if (pendingScanControllerRef.current) {
+      scanTokenRef.current += 1;
+      pendingScanControllerRef.current.abort();
+      clearPendingScanState();
+      armScanLock(null);
+    }
     resumeCameraOnVisibleRef.current = false;
     stopCamera();
     navigate("/inventory/session");
-  }, [clearPendingScanState, navigate, stopCamera]);
+  }, [armScanLock, clearPendingScanState, navigate, stopCamera]);
 
   const handleDec = useCallback(
     (ean: string, quantity: number) => {
