@@ -882,5 +882,3 @@ export const ScanCameraPage = () => {
 };
 
 export default ScanCameraPage;
-
-
