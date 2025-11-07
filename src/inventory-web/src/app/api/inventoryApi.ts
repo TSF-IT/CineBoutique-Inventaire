@@ -17,7 +17,7 @@ import { LocationSummaryListSchema, type LocationSummaryList } from '@/types/sum
 
 const PRODUCT_LOOKUP_TIMEOUT_MS = 7000
 const INVENTORY_RUN_MUTATION_TIMEOUT_MS = 7000
-type BudgetedRequest = <T = unknown>(url: string, init?: HttpRequestInit) => Promise<T>
+type BudgetedRequest = (url: string, init?: HttpRequestInit) => Promise<unknown>
 const nowMs = () =>
   typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now()
 
