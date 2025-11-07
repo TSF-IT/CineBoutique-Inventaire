@@ -572,7 +572,10 @@ const extractOriginalSubGroup = (attributes: unknown): string | null => {
   }
 }
 
-export const fetchProductByEan = async (ean: string, options?: { timeoutMs?: number }): Promise<Product> => {
+export const fetchProductByEan = async (
+  ean: string,
+  options?: { timeoutMs?: number; signal?: AbortSignal },
+): Promise<Product> => {
   const rawCode = (ean ?? '').replace(/\r|\n/g, '')
   if (rawCode.length === 0) {
     throw new Error('Code vide ou invalide')
@@ -580,13 +583,19 @@ export const fetchProductByEan = async (ean: string, options?: { timeoutMs?: num
 
   const totalBudget = Math.max(500, options?.timeoutMs ?? PRODUCT_LOOKUP_TIMEOUT_MS)
   const startedAt = nowMs()
+  const externalSignal = options?.signal ?? null
   const requestWithBudget: BudgetedRequest = (url, init) => {
     const elapsed = nowMs() - startedAt
     const remaining = totalBudget - elapsed
     if (remaining <= 0) {
       throw new RequestTimeoutError(url, totalBudget)
     }
-    return http(url, { ...init, timeoutMs: remaining })
+    const mergedInit: HttpRequestInit = {
+      ...init,
+      timeoutMs: remaining,
+      signal: externalSignal ?? init?.signal,
+    }
+    return http(url, mergedInit)
   }
 
   const normalizedCode = normalizeLookupCode(rawCode)

@@ -214,7 +214,12 @@ describe('ScanCameraPage', () => {
     await waitFor(() => expect(typeof scannerCallbacks.onDetected).toBe('function'))
     await scannerCallbacks.onDetected?.('0123456789012')
 
-    await waitFor(() => expect(fetchProductByEanMock).toHaveBeenCalledWith('0123456789012'))
+    await waitFor(() =>
+      expect(fetchProductByEanMock).toHaveBeenCalledWith(
+        '0123456789012',
+        expect.objectContaining({ signal: expect.any(Object) }),
+      ),
+    )
     expect(startInventoryRunMock).toHaveBeenCalled()
     await waitFor(() => expect(latestItems.some((item) => item.product.ean === '9876543210987')).toBe(true))
     const row = await screen.findByTestId('scanned-row')
@@ -236,7 +241,12 @@ describe('ScanCameraPage', () => {
     await waitFor(() => expect(typeof scannerCallbacks.onDetected).toBe('function'))
     await scannerCallbacks.onDetected?.(' rf id-123a ')
 
-    await waitFor(() => expect(fetchProductByEanMock).toHaveBeenCalledWith(' rf id-123a '))
+    await waitFor(() =>
+      expect(fetchProductByEanMock).toHaveBeenCalledWith(
+        ' rf id-123a ',
+        expect.objectContaining({ signal: expect.any(Object) }),
+      ),
+    )
     await waitFor(() => expect(startInventoryRunMock).toHaveBeenCalled())
     await waitFor(() => expect(latestItems.some((item) => item.product.ean === 'RFID-123A')).toBe(true))
     expect(await screen.findByText('Badge RFID')).toBeInTheDocument()

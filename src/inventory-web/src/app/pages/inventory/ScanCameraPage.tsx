@@ -16,7 +16,11 @@ import type { Product } from "../../types/inventory";
 
 import { useCamera, type CameraOptions } from "@/hooks/useCamera";
 import { useScanRejectionFeedback } from "@/hooks/useScanRejectionFeedback";
-import { RequestTimeoutError, type HttpError } from "@/lib/api/http";
+import {
+  AbortedRequestError,
+  RequestTimeoutError,
+  type HttpError,
+} from "@/lib/api/http";
 import { useShop } from "@/state/ShopContext";
 
 const MAX_SCAN_LENGTH = 32;
@@ -62,9 +66,16 @@ export const ScanCameraPage = () => {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [highlightEan, setHighlightEan] = useState<string | null>(null);
+  const [pendingScan, setPendingScan] = useState<{
+    ean: string;
+    startedAt: number;
+  } | null>(null);
+  const [pendingScanElapsedMs, setPendingScanElapsedMs] = useState(0);
   const highlightTimeoutRef = useRef<number | null>(null);
   const statusTimeoutRef = useRef<number | null>(null);
   const lockTimeoutRef = useRef<number | null>(null);
+  const pendingScanControllerRef = useRef<AbortController | null>(null);
+  const pendingScanCancellationRef = useRef<"user" | "system" | null>(null);
   const lockedEanRef = useRef<string | null>(null);
   const resumeCameraOnVisibleRef = useRef(false);
   const lastVisibilityStateRef = useRef<string | null>(
@@ -112,6 +123,25 @@ export const ScanCameraPage = () => {
   const countTypeValue = typeof countType === "number" ? countType : null;
   const sessionRunId = typeof sessionId === "string" ? sessionId.trim() : "";
   const [hasCameraBooted, setHasCameraBooted] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      pendingScanCancellationRef.current = "system";
+      pendingScanControllerRef.current?.abort();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!pendingScan) {
+      setPendingScanElapsedMs(0);
+      return;
+    }
+    setPendingScanElapsedMs(Date.now() - pendingScan.startedAt);
+    const intervalId = window.setInterval(() => {
+      setPendingScanElapsedMs(Date.now() - pendingScan.startedAt);
+    }, 250);
+    return () => window.clearInterval(intervalId);
+  }, [pendingScan]);
 
   const commitViewportSize = useCallback(() => {
     if (typeof window === "undefined") {
@@ -543,6 +573,13 @@ export const ScanCameraPage = () => {
     armScanLock(current);
   }, [armScanLock]);
 
+  const clearPendingScanState = useCallback(() => {
+    pendingScanControllerRef.current = null;
+    pendingScanCancellationRef.current = null;
+    setPendingScan(null);
+    setPendingScanElapsedMs(0);
+  }, []);
+
   const handleProductAdded = useCallback((product: Product) => {
     setStatusMessage(`${product.name} ajouté`);
     const normalizedEan = product.ean?.trim() ?? null;
@@ -553,7 +590,15 @@ export const ScanCameraPage = () => {
     }
   }, []);
 
-  const handleDetected = useCallback(
+  const handleCancelPendingScan = useCallback(() => {
+    if (!pendingScanControllerRef.current) {
+      return;
+    }
+    pendingScanCancellationRef.current = "user";
+    pendingScanControllerRef.current.abort();
+  }, []);
+
+    const handleDetected = useCallback(
     async (rawValue: string) => {
       const sanitized = sanitizeScanValue(rawValue);
       if (!sanitized) {
@@ -587,22 +632,37 @@ export const ScanCameraPage = () => {
         return;
       }
 
-      setStatusMessage(`Lecture de ${sanitized}…`);
+      const scanController = new AbortController();
+      pendingScanControllerRef.current?.abort();
+      pendingScanCancellationRef.current = null;
+      pendingScanControllerRef.current = scanController;
+      setPendingScan({ ean: sanitized, startedAt: Date.now() });
+      setStatusMessage(`Lecture de ${sanitized}.`);
       setErrorMessage(null);
       armScanLock(sanitized);
 
       try {
-        const product = await fetchProductByEan(sanitized);
+        const product = await fetchProductByEan(sanitized, {
+          signal: scanController.signal,
+        });
         const added = await addProductToSession(product);
         if (added) {
           handleProductAdded(product);
         }
       } catch (error) {
-        if (error instanceof RequestTimeoutError) {
+        if (error instanceof AbortedRequestError) {
+          if (pendingScanCancellationRef.current === "user") {
+            setErrorMessage("Lecture annulée.");
+          } else {
+            setErrorMessage(null);
+          }
+          setStatusMessage(null);
+        } else if (error instanceof RequestTimeoutError) {
           setErrorMessage(
             "Lecture du produit trop longue. Vérifiez la connexion et réessayez."
           );
           triggerScanRejectionFeedback();
+          setStatusMessage(null);
         } else {
           const err = error as HttpError;
           if (err?.status === 404) {
@@ -613,27 +673,31 @@ export const ScanCameraPage = () => {
           } else {
             setErrorMessage("Échec de la récupération du produit. Réessayez.");
           }
+          setStatusMessage(null);
         }
-        setStatusMessage(null);
       } finally {
+        clearPendingScanState();
         armScanLock(sanitized);
       }
     },
     [
       addProductToSession,
       armScanLock,
+      clearPendingScanState,
       ensureScanPrerequisites,
       handleProductAdded,
       refreshScanLock,
       triggerScanRejectionFeedback,
     ]
   );
-
   const handleGoBack = useCallback(() => {
+    pendingScanCancellationRef.current = "system";
+    pendingScanControllerRef.current?.abort();
+    clearPendingScanState();
     resumeCameraOnVisibleRef.current = false;
     stopCamera();
     navigate("/inventory/session");
-  }, [navigate, stopCamera]);
+  }, [clearPendingScanState, navigate, stopCamera]);
 
   const handleDec = useCallback(
     (ean: string, quantity: number) => {
@@ -738,6 +802,23 @@ export const ScanCameraPage = () => {
           </span>
         </div>
         <div className="space-y-2 px-6 pt-3">
+          {pendingScan && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <span>
+                  Lecture de {pendingScan.ean}…{" "}
+                  {Math.max(1, Math.round(pendingScanElapsedMs / 1000))} s
+                </span>
+                <button
+                  type="button"
+                  className="rounded-full border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-900 transition hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 dark:border-amber-500/50 dark:text-amber-50 dark:hover:bg-amber-500/20"
+                  onClick={handleCancelPendingScan}
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          )}
           {statusMessage && (
             <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">
               {statusMessage}
@@ -784,3 +865,5 @@ export const ScanCameraPage = () => {
 };
 
 export default ScanCameraPage;
+
+
