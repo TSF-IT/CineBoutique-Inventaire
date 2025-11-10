@@ -72,8 +72,8 @@ internal sealed class StartInventoryRunHandler
                     [nameof(startResult.ShopId)] = startResult.ShopId
                 }),
             StartRunStatus.SequentialPrerequisiteMissing => EndpointUtilities.Problem(
-                "Pré-requis manquant",
-                "Terminez le comptage n°1 avant de lancer le comptage n°2.",
+                "PrÃ©-requis manquant",
+                "Terminez le comptage nÂ°1 avant de lancer le comptage nÂ°2.",
                 StatusCodes.Status409Conflict),
             StartRunStatus.ConflictOtherOwner => EndpointUtilities.Problem(
                 "Conflit",
@@ -100,3 +100,4 @@ internal sealed class StartInventoryRunHandler
     private static string FormatOwnerLabel(string? label) =>
         string.IsNullOrWhiteSpace(label) ? "un autre utilisateur" : label.Trim();
 }
+

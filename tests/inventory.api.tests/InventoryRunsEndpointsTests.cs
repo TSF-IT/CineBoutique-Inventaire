@@ -3,6 +3,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Fixtures;
@@ -99,7 +100,9 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
 
         response.StatusCode.Should().Be(HttpStatusCode.Conflict);
         var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
-        body.Should().Contain("comptage n°1");
+        using var document = JsonDocument.Parse(body);
+        document.RootElement.TryGetProperty("detail", out var detailElement).Should().BeTrue("le corps doit contenir un détail");
+        detailElement.GetString().Should().Contain("comptage n°1");
     }
 
     [SkippableFact]

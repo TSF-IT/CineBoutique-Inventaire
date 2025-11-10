@@ -270,7 +270,7 @@ builder.Services
         o.JsonSerializerOptions.DictionaryKeyPolicy = JsonNamingPolicy.CamelCase;
         o.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
         o.JsonSerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.Never;
-        o.JsonSerializerOptions.Encoder = JavaScriptEncoder.Default;
+        o.JsonSerializerOptions.Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
         o.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     });
 

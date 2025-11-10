@@ -11,6 +11,7 @@ using Dapper;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using FluentValidation.Results;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -136,7 +137,8 @@ WHERE LOWER(table_name) = LOWER(@TableName)
     {
         var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
         {
-            DictionaryKeyPolicy = null
+            DictionaryKeyPolicy = null,
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
         };
 
         if (!options.Converters.OfType<JsonStringEnumConverter>().Any())
