@@ -404,14 +404,14 @@ export const SelectShopPage = () => {
 
         {shouldShowShopForm && (
           <>
-            <form className="space-y-5" onSubmit={(event) => event.preventDefault()}>
-              <fieldset className="space-y-4 border-0 p-0">
+            <form className="flex flex-col gap-5" onSubmit={(event) => event.preventDefault()}>
+              <fieldset className="flex flex-col gap-4 border-0 p-0">
                 <legend id={cardsLabelId} className="sr-only">
                   Boutiques disponibles
                 </legend>
                 <div
                   aria-labelledby={cardsLabelId}
-                  className="space-y-3 sm:grid sm:grid-cols-2 sm:gap-3 sm:space-y-0"
+                  className="flex flex-col gap-3 sm:grid sm:grid-cols-2 sm:gap-3"
                   role="radiogroup"
                 >
                   {entityCards.map((card, index) => {
