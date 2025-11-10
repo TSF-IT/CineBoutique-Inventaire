@@ -16,7 +16,11 @@ export default defineConfig(({ command }) => {
       react(),
       VitePWA({
         registerType: "autoUpdate",
-        includeAssets: ["icons/apple-touch-icon-180.png", "icons/pwa-icon.png"],
+        includeAssets: [
+          "apple-touch-icon.png",
+          "icons/apple-touch-icon-180.png",
+          "icons/pwa-icon.png",
+        ],
         workbox: {
           clientsClaim: true,
           skipWaiting: true,
