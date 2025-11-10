@@ -11,17 +11,18 @@ import http from '@/lib/api/http'
 import { clearSelectedUserForShop, saveSelectedUserForShop } from '@/lib/selectedUserStorage'
 import { clearShop } from '@/lib/shopStorage'
 import { useShop } from '@/state/ShopContext'
+import type { ShopUser } from '@/types/user'
 
-type ShopUser = {
-  id: string
-  displayName: string
-  email?: string | null
-}
+type SelectableUser = ShopUser & { email?: string | null }
 
 const ShopUserApiSchema = z.object({
   id: z.string().trim().min(1, 'Identifiant utilisateur manquant'),
+  shopId: z.string().trim().min(1, 'Identifiant boutique manquant'),
+  login: z.string().trim().min(1, 'Login manquant'),
   displayName: z.string().optional().default('Utilisateur'),
-  email: z.string().email().nullable().optional()
+  isAdmin: z.boolean().optional(),
+  disabled: z.boolean().optional(),
+  email: z.string().email().nullable().optional(),
 }).passthrough()
 
 const UsersApiSchema = z.array(ShopUserApiSchema)
@@ -47,7 +48,7 @@ export default function SelectUserPage() {
   const { shop, setShop, isLoaded } = useShop()
   const { setSelectedUser, reset } = useInventory()
 
-  const [users, setUsers] = useState<ShopUser[]>([])
+  const [users, setUsers] = useState<SelectableUser[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
 
@@ -85,11 +86,15 @@ export default function SelectUserPage() {
         const arrUnknown: unknown[] = Array.isArray(res) ? res : []
 
         const parsed = UsersApiSchema.safeParse(arrUnknown)
-        const normalized: ShopUser[] = parsed.success
-          ? parsed.data.map(u => ({
+        const normalized: SelectableUser[] = parsed.success
+          ? parsed.data.map((u) => ({
               id: u.id,
-              displayName: u.displayName ?? 'Utilisateur',
-              email: u.email ?? null
+              shopId: u.shopId,
+              login: u.login,
+              displayName: u.displayName ?? u.login ?? 'Utilisateur',
+              isAdmin: Boolean(u.isAdmin),
+              disabled: Boolean(u.disabled),
+              email: u.email ?? null,
             }))
           : []
 
@@ -138,21 +143,23 @@ export default function SelectUserPage() {
     }
   }, [shop, isLoaded, navigate, redirectTo])
 
-  const onPick = (u: ShopUser) => {
+  const onPick = (u: SelectableUser) => {
     if (!shop) return
 
     type Snapshot = Parameters<typeof saveSelectedUserForShop>[1]
 
-    const loginCandidate =
-      u.email && u.email.trim().length > 0 ? u.email.trim() : u.displayName
+    const loginCandidate = [u.login, u.email, u.displayName, u.id]
+      .map((candidate) => (candidate ? candidate.trim() : ''))
+      .find((value) => value.length > 0)
+      ?? u.id
 
     const snapshot: Snapshot = {
       id: u.id,
-      displayName: u.displayName,
-      shopId: shop.id,
+      displayName: u.displayName ?? loginCandidate,
+      shopId: u.shopId ?? shop.id,
       login: loginCandidate,
-      isAdmin: false,
-      disabled: false
+      isAdmin: Boolean(u.isAdmin),
+      disabled: Boolean(u.disabled),
     }
 
     setSelectedUser(snapshot)
@@ -223,7 +230,12 @@ export default function SelectUserPage() {
                     className={userCardClasses}
                   >
                     <span className="text-lg font-semibold leading-tight">{u.displayName}</span>
-                    {u.email ? <span className={userCardSubtitleClasses}>{u.email}</span> : null}
+                    <span className={userCardSubtitleClasses}>
+                      {u.isAdmin ? 'Administrateur' : 'Utilisateur'}
+                    </span>
+                    {u.email ? (
+                      <span className={userCardSubtitleClasses}>{u.email}</span>
+                    ) : null}
                   </button>
                 </li>
               ))}

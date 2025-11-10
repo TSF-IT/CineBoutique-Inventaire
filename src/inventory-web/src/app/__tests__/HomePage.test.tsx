@@ -199,11 +199,15 @@ const InventoryUserInitializer = ({ user }: { user: ShopUser }) => {
   return null
 }
 
-const withProviders = (ui: ReactNode) => (
+type WithProvidersOptions = {
+  user?: ShopUser
+}
+
+const withProviders = (ui: ReactNode, options?: WithProvidersOptions) => (
   <ThemeProvider>
     <ShopProvider>
       <InventoryProvider>
-        <InventoryUserInitializer user={defaultUser} />
+        <InventoryUserInitializer user={options?.user ?? defaultUser} />
         <MemoryRouter>{ui}</MemoryRouter>
       </InventoryProvider>
     </ShopProvider>
@@ -229,7 +233,7 @@ describe('HomePage', () => {
     productsCountCardState.current = { count: 25, hasCatalog: true }
   })
 
-  it("affiche les indicateurs et le bouton d'accès", async () => {
+  it("affiche les indicateurs sans bouton d’administration pour un utilisateur standard", async () => {
     render(withProviders(<HomePage />))
 
     await waitFor(() => {
@@ -246,11 +250,12 @@ describe('HomePage', () => {
         expect(within(conflictsCard).getByText(/Touchez une zone pour voir le détail/i)).toBeInTheDocument()
       }
 
-      expect(screen.getByText('2 comptages terminés sur 4')).toBeInTheDocument()
+      expect(screen.getByText('2/4')).toBeInTheDocument()
       expect(screen.getByText('0 zones terminées sur 2')).toBeInTheDocument()
     })
 
     expect(screen.getByRole('button', { name: 'Débuter un comptage' })).toBeInTheDocument()
+    expect(screen.queryByLabelText('Accéder à l’espace administrateur')).not.toBeInTheDocument()
     expect(fetchLocationsMock).toHaveBeenCalled()
     const [shopIdArg, optionsArg] = fetchLocationsMock.mock.calls[0] ?? []
     expect(shopIdArg).toBe(testShop.id)
@@ -278,6 +283,13 @@ describe('HomePage', () => {
     expect(await screen.findByText('Aucun comptage terminé')).toBeInTheDocument()
     expect(await screen.findByText('Aucune zone terminée')).toBeInTheDocument()
     expect(await screen.findByText('Aucun comptage en cours pour cette boutique.')).toBeInTheDocument()
+  })
+
+  it('affiche le raccourci administrateur pour un profil admin', async () => {
+    const adminUser: ShopUser = { ...defaultUser, isAdmin: true }
+    render(withProviders(<HomePage />, { user: adminUser }))
+
+    expect(await screen.findByLabelText('Accéder à l’espace administrateur')).toBeInTheDocument()
   })
 
 })

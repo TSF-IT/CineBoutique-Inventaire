@@ -18,6 +18,7 @@ import { AppProviders } from './app/providers/AppProviders'
 import { ProductDetailsPage } from './features/products/ProductDetailsPage'
 import { ProductScanSearch } from './features/products/ProductScanSearch'
 
+import RequireAdmin from '@/app/router/RequireAdmin'
 import RequireInventorySession from '@/app/router/RequireInventorySession'
 import RequireShop from '@/app/router/RequireShop'
 import RequireUser from '@/app/router/RequireUser'
@@ -114,9 +115,11 @@ export const AppRoutes = () => {
               path="/scan"
               element={<ProductScanSearch onPick={(sku) => console.log('picked', sku)} />}
             />
-            <Route path="/admin" element={<AdminLayout />}>
-              <Route index element={<AdminLocationsPage />} />
-              <Route path="products" element={<AdminProductsPage />} />
+            <Route element={<RequireAdmin />}>
+              <Route path="/admin" element={<AdminLayout />}>
+                <Route index element={<AdminLocationsPage />} />
+                <Route path="products" element={<AdminProductsPage />} />
+              </Route>
             </Route>
           </Route>
         </Route>

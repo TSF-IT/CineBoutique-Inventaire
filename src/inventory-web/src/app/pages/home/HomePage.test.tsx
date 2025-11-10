@@ -187,11 +187,7 @@ describe('HomePage', () => {
     const dialog = await screen.findByRole('dialog', { name: /B1 · Zone B1/i })
     expect(dialog).toBeInTheDocument()
 
-    const eanLine = await within(dialog).findByText((content, element) => {
-      if (!element) return false
-      return element.classList.contains('conflict-card__codes') && content.includes('111')
-    })
-    expect(eanLine).toBeInTheDocument()
+    expect(await within(dialog).findByText(/EAN 111/i)).toBeInTheDocument()
     expect(within(dialog).getAllByText('Comptage 1').length).toBeGreaterThan(0)
     expect(within(dialog).getAllByText('Comptage 2').length).toBeGreaterThan(0)
   })

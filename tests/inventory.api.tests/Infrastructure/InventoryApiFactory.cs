@@ -116,5 +116,10 @@ public sealed class InventoryApiFactory : WebApplicationFactory<Program>
         {
             client.DefaultRequestHeaders.Add("X-Operator-Name", defaultOperatorName);
         }
+
+        if (!client.DefaultRequestHeaders.Contains("X-Admin"))
+        {
+            client.DefaultRequestHeaders.Add("X-Admin", "true");
+        }
     }
 }

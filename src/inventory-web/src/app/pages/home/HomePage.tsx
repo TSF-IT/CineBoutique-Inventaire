@@ -1,7 +1,7 @@
 import { clsx } from "clsx";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { MouseEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import type { KeyboardEvent, MouseEvent } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 import {
   fetchInventorySummary,
@@ -39,6 +39,10 @@ import { API_BASE } from "@/lib/api/config";
 import type { HttpError } from "@/lib/api/http";
 import { useShop } from "@/state/ShopContext";
 import type { LocationSummary } from "@/types/summary";
+
+type AdminRedirectLocationState =
+  | { adminAccessDenied?: boolean; from?: string | null }
+  | null;
 
 const isHttpError = (value: unknown): value is HttpError =>
   typeof value === "object" &&
@@ -188,6 +192,8 @@ const isRunOwnedByUser = (
 
 export const HomePage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { pathname, search, hash, state } = location;
   const { shop, isLoaded } = useShop();
   const shopId = shop?.id ?? null;
   const {
@@ -217,6 +223,10 @@ export const HomePage = () => {
   const [resetError, setResetError] = useState<string | null>(null);
   const [lastResetSummary, setLastResetSummary] =
     useState<ResetShopInventoryResponse | null>(null);
+  const [adminAccessDeniedOpen, setAdminAccessDeniedOpen] = useState(false);
+  const [adminRedirectSource, setAdminRedirectSource] = useState<string | null>(
+    null
+  );
   const onError = useCallback((error: unknown) => {
     if (isProductNotFoundError(error)) {
       console.warn("[home] produit introuvable ignoré", error);
@@ -241,6 +251,7 @@ export const HomePage = () => {
   const normalizedSessionId =
     typeof sessionId === "string" ? sessionId.trim() : "";
   const hasSelectedLocation = Boolean(selectedLocation);
+  const isAdminUser = Boolean(selectedUser?.isAdmin);
 
   const handleProductsCardStateChange = useCallback(
     (nextState: { count: number; hasCatalog: boolean } | null) => {
@@ -257,8 +268,13 @@ export const HomePage = () => {
 
   const handleNavigateToCatalogImport = useCallback(() => {
     setCatalogWarningOpen(false);
+    if (!isAdminUser) {
+      setAdminRedirectSource("/admin");
+      setAdminAccessDeniedOpen(true);
+      return;
+    }
     navigate("/admin");
-  }, [navigate]);
+  }, [isAdminUser, navigate]);
 
   const {
     data: summaryData,
@@ -309,6 +325,18 @@ export const HomePage = () => {
     onError,
     immediate: false,
   });
+
+  useEffect(() => {
+    const navState = state as AdminRedirectLocationState;
+    if (!navState?.adminAccessDenied) {
+      return;
+    }
+
+    setAdminRedirectSource(navState.from ?? null);
+    setAdminAccessDeniedOpen(true);
+    const currentPath = `${pathname}${search}${hash}` || "/";
+    navigate(currentPath || "/", { replace: true, state: null });
+  }, [hash, navigate, pathname, search, state]);
 
   useEffect(() => {
     if (!isLoaded) {
@@ -784,14 +812,16 @@ export const HomePage = () => {
             label="Retour au choix de l’utilisateur"
             onClick={handleChangeShop}
           />
-          <Link
-            to="/admin"
-            className="inline-flex h-11 w-11 min-h-(--tap-min) items-center justify-center rounded-full border border-(--cb-border-soft) bg-(--cb-surface-soft) text-lg font-semibold text-brand-600 shadow-panel-soft transition-all duration-200 hover:-translate-y-0.5 hover:text-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2 focus-visible:ring-offset-(--cb-surface) dark:text-brand-200 dark:hover:text-brand-100"
-            aria-label="Accéder à l’espace administrateur"
-          >
-            <span aria-hidden="true">⚙️</span>
-            <span className="sr-only">Accéder à l’espace administrateur</span>
-          </Link>
+          {isAdminUser && (
+            <Link
+              to="/admin"
+              className="inline-flex h-11 w-11 min-h-(--tap-min) items-center justify-center rounded-full border border-(--cb-border-soft) bg-(--cb-surface-soft) text-lg font-semibold text-brand-600 shadow-panel-soft transition-all duration-200 hover:-translate-y-0.5 hover:text-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 focus-visible:ring-offset-2 focus-visible:ring-offset-(--cb-surface) dark:text-brand-200 dark:hover:text-brand-100"
+              aria-label="Accéder à l’espace administrateur"
+            >
+              <span aria-hidden="true">⚙️</span>
+              <span className="sr-only">Accéder à l’espace administrateur</span>
+            </Link>
+          )}
         </div>
       }
     >
@@ -1140,6 +1170,15 @@ export const HomePage = () => {
         open={catalogWarningOpen}
         onClose={handleCloseCatalogWarning}
         onNavigateToImport={handleNavigateToCatalogImport}
+        canNavigateToAdmin={isAdminUser}
+      />
+      <AdminAccessDeniedModal
+        open={adminAccessDeniedOpen}
+        attemptedPath={adminRedirectSource}
+        onClose={() => {
+          setAdminAccessDeniedOpen(false);
+          setAdminRedirectSource(null);
+        }}
       />
       <ResetInventoryModal
         open={resetModalOpen}
@@ -1164,16 +1203,27 @@ interface CatalogWarningModalProps {
   open: boolean;
   onClose: () => void;
   onNavigateToImport: () => void;
+  canNavigateToAdmin: boolean;
 }
 
 const CatalogWarningModal = ({
   open,
   onClose,
   onNavigateToImport,
+  canNavigateToAdmin,
 }: CatalogWarningModalProps) => {
   const handleOverlayClick = useCallback(
     (event: MouseEvent<HTMLDivElement>) => {
       if (event.target === event.currentTarget) {
+        onClose();
+      }
+    },
+    [onClose]
+  );
+  const handleOverlayKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === "Escape" || event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
         onClose();
       }
     },
@@ -1189,7 +1239,9 @@ const CatalogWarningModal = ({
       <div
         className={modalOverlayClassName}
         role="presentation"
+        tabIndex={-1}
         onClick={handleOverlayClick}
+        onKeyDown={handleOverlayKeyDown}
       >
         <div
           role="dialog"
@@ -1223,13 +1275,108 @@ const CatalogWarningModal = ({
               catalogue produits avant de démarrer un comptage.
             </p>
           </div>
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
             <Button variant="secondary" onClick={onClose}>
               Fermer
             </Button>
-            <Button onClick={onNavigateToImport}>
-              Accéder à l’espace administrateur
-            </Button>
+            {canNavigateToAdmin ? (
+              <Button onClick={onNavigateToImport}>
+                Accéder à l’espace administrateur
+              </Button>
+            ) : (
+              <p className="text-sm text-slate-600 dark:text-slate-300 sm:text-right">
+                Seul un administrateur peut importer un catalogue.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    </ModalPortal>
+  );
+};
+
+interface AdminAccessDeniedModalProps {
+  open: boolean;
+  attemptedPath: string | null;
+  onClose: () => void;
+}
+
+const AdminAccessDeniedModal = ({
+  open,
+  attemptedPath,
+  onClose,
+}: AdminAccessDeniedModalProps) => {
+  const handleOverlayClick = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      if (event.target === event.currentTarget) {
+        onClose();
+      }
+    },
+    [onClose]
+  );
+  const handleOverlayKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === "Escape" || event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        onClose();
+      }
+    },
+    [onClose]
+  );
+
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <ModalPortal>
+      <div
+        className={modalOverlayClassName}
+        role="presentation"
+        tabIndex={-1}
+        onClick={handleOverlayClick}
+        onKeyDown={handleOverlayKeyDown}
+      >
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="admin-denied-title"
+          className="relative flex w-full max-w-lg flex-col gap-4 overflow-y-auto rounded-3xl bg-white p-6 text-left shadow-2xl outline-none focus-visible:ring-2 focus-visible:ring-brand-500 dark:bg-slate-900"
+          data-modal-container=""
+          style={modalContainerStyle}
+          tabIndex={-1}
+        >
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute right-4 top-4 rounded-full border border-slate-200 p-1 text-slate-500 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+            aria-label="Fermer la fenêtre"
+          >
+            <span aria-hidden="true">✕</span>
+          </button>
+          <div className="space-y-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-brand-600 dark:text-brand-200">
+              Accès restreint
+            </p>
+            <h2
+              id="admin-denied-title"
+              className="text-2xl font-semibold text-slate-900 dark:text-white"
+            >
+              Espace réservé aux administrateurs
+            </h2>
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              Seuls les profils administrateur peuvent accéder à cet espace. Si
+              vous avez besoin d’un accès, rapprochez-vous d’un responsable.
+            </p>
+            {attemptedPath && (
+              <p className="text-xs text-slate-400 dark:text-slate-500">
+                Chemin demandé :
+                <span className="ml-1 font-medium">{attemptedPath}</span>
+              </p>
+            )}
+          </div>
+          <div className="mt-4 flex justify-end">
+            <Button onClick={onClose}>Retour à l’accueil</Button>
           </div>
         </div>
       </div>
@@ -1252,6 +1399,15 @@ const ResetInventoryModal = ({
     },
     [onCancel]
   );
+  const handleOverlayKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === "Escape" || event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        onCancel();
+      }
+    },
+    [onCancel]
+  );
 
   if (!open) {
     return null;
@@ -1262,7 +1418,9 @@ const ResetInventoryModal = ({
       <div
         className={modalOverlayClassName}
         role="presentation"
+        tabIndex={-1}
         onClick={handleOverlayClick}
+        onKeyDown={handleOverlayKeyDown}
       >
         <div
           role="dialog"

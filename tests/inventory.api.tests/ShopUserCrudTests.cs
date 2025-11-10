@@ -258,4 +258,31 @@ public sealed class ShopUserCrudTests : IntegrationTestBase
         secondPayload.Should().NotBeNull();
         secondPayload!.Disabled.Should().BeTrue();
     }
+
+    [SkippableFact]
+    public async Task ShopUserMutationsRequireAdminPrivileges()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        Guid shopId = Guid.Empty;
+
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.CreateShopAsync("Boutique Interdite").ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Remove("X-Admin");
+
+        var response = await client.PostAsJsonAsync(
+            client.CreateRelativeUri($"/api/shops/{shopId}/users"),
+            new CreateShopUserRequest
+            {
+                Login = "nouvel-user",
+                DisplayName = "Interdit",
+                IsAdmin = false
+            }).ConfigureAwait(false);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+    }
 }

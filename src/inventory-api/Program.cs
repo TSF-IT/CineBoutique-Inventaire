@@ -114,7 +114,7 @@ builder.Services.AddSingleton<IShopResolver, DefaultShopResolver>();
 builder.Services.Configure<AppSettingsOptions>(builder.Configuration.GetSection("AppSettings"));
 
 var useAdminHeaderAuth = builder.Configuration.GetValue<bool?>("Authentication:UseAdminHeader") ?? true;
-var adminEndpointsPublic = builder.Configuration.GetValue<bool?>("AppSettings:AdminEndpointsPublic") ?? true;
+var adminEndpointsPublic = builder.Configuration.GetValue<bool?>("AppSettings:AdminEndpointsPublic") ?? false;
 
 var authenticationBuilder = builder.Services.AddAuthentication(options =>
 {

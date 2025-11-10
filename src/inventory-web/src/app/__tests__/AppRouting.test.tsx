@@ -282,4 +282,89 @@ describe('AppRoutes', () => {
 
     expect(await screen.findByTestId('inventory-location-step')).toBeInTheDocument()
   })
+
+  it('redirige vers l’accueil quand un utilisateur standard tente d’accéder à /admin', async () => {
+    const shop: Shop = { id: 'shop-admin', name: 'Boutique Admin', kind: 'boutique' }
+    useShopMock.mockReturnValue(
+      createUseShopValue({
+        shop,
+        setShop: vi.fn() as unknown as UseShopValue['setShop'],
+        isLoaded: true,
+      }),
+    )
+    const nonAdmin = { ...defaultInventoryUser, isAdmin: false }
+    sessionStorage.setItem(
+      `${SELECTED_USER_STORAGE_PREFIX}.${shop.id}`,
+      JSON.stringify({
+        userId: nonAdmin.id,
+        displayName: nonAdmin.displayName,
+        login: nonAdmin.login,
+        shopId: shop.id,
+        isAdmin: nonAdmin.isAdmin,
+        disabled: nonAdmin.disabled,
+      }),
+    )
+    useInventoryMock.mockReturnValue(
+      createUseInventoryValue({
+        selectedUser: nonAdmin,
+      }),
+    )
+
+    const seenPaths: string[] = []
+    const LocationTracker = () => {
+      const loc = useLocation()
+      useEffect(() => {
+        seenPaths.push(loc.pathname)
+      }, [loc])
+      return null
+    }
+
+    render(
+      <MemoryRouter initialEntries={['/admin']}>
+        <LocationTracker />
+        <AppRoutes />
+      </MemoryRouter>,
+    )
+
+    const homeInstances = await screen.findAllByTestId('home-page')
+    expect(homeInstances.length).toBeGreaterThan(0)
+    expect(screen.queryByTestId('admin-layout')).not.toBeInTheDocument()
+    expect(seenPaths.at(-1)).toBe('/')
+  })
+
+  it('affiche la page administrateur pour un utilisateur admin', async () => {
+    const shop: Shop = { id: 'shop-admin2', name: 'Boutique Admin 2', kind: 'boutique' }
+    const adminUser = { ...defaultInventoryUser, isAdmin: true }
+    useShopMock.mockReturnValue(
+      createUseShopValue({
+        shop,
+        setShop: vi.fn() as unknown as UseShopValue['setShop'],
+        isLoaded: true,
+      }),
+    )
+    sessionStorage.setItem(
+      `${SELECTED_USER_STORAGE_PREFIX}.${shop.id}`,
+      JSON.stringify({
+        userId: adminUser.id,
+        displayName: adminUser.displayName,
+        login: adminUser.login,
+        shopId: shop.id,
+        isAdmin: adminUser.isAdmin,
+        disabled: adminUser.disabled,
+      }),
+    )
+    useInventoryMock.mockReturnValue(
+      createUseInventoryValue({
+        selectedUser: adminUser,
+      }),
+    )
+
+    render(
+      <MemoryRouter initialEntries={['/admin']}>
+        <AppRoutes />
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByTestId('admin-layout')).toBeInTheDocument()
+  })
 })
