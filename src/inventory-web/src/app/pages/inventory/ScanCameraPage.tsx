@@ -483,7 +483,7 @@ export const ScanCameraPage = () => {
     [items]
   );
 
-  const orderedItems = useMemo(() => [...items].reverse(), [items]);
+  const orderedItems = items;
 
   const cameraErrorLabel = useMemo(
     () => (cameraError ? formatCameraError(cameraError) : null),
