@@ -18,6 +18,10 @@ export default defineConfig(({ command }) => {
         registerType: "autoUpdate",
         includeAssets: [
           "apple-touch-icon.png",
+          "apple-touch-icon-120.png",
+          "apple-touch-icon-152.png",
+          "apple-touch-icon-167.png",
+          "apple-touch-icon-180.png",
           "icons/apple-touch-icon-180.png",
           "icons/pwa-icon.png",
         ],
