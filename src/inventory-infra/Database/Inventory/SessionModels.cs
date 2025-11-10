@@ -20,6 +20,7 @@ public enum StartRunStatus
     LocationNotFound,
     LocationDisabled,
     OwnerInvalid,
+    SequentialPrerequisiteMissing,
     ConflictOtherOwner
 }
 

@@ -391,7 +391,7 @@ describe("Workflow d'inventaire", () => {
     releaseInventoryRunMock.mockResolvedValue()
   })
 
-  it('permet de sélectionner zone et type en respectant les statuts', async () => {
+  it('bloque le comptage n°2 tant que le n°1 est en cours', async () => {
     renderInventoryRoutes('/inventory/location')
 
     const locationPages = await screen.findAllByTestId('page-location')
@@ -416,19 +416,8 @@ describe("Workflow d'inventaire", () => {
     expect(countTypeOneButton).toBeDisabled()
 
     const countTypeTwoButton = within(activeCountTypePage).getByTestId('btn-count-type-2')
-    expect(countTypeTwoButton).not.toBeDisabled()
-    fireEvent.click(countTypeTwoButton)
-
-    await waitFor(() =>
-      expect(
-        screen.getAllByText((content) => content.replace(/\s+/g, ' ').includes('Zone : Salle 1')).length,
-      ).toBeGreaterThan(0),
-    )
-    await waitFor(() =>
-      expect(
-        screen.getAllByText((content) => content.replace(/\s+/g, ' ').includes('Comptage : 2')).length,
-      ).toBeGreaterThan(0),
-    )
+    expect(countTypeTwoButton).toBeDisabled()
+    expect(within(countTypeTwoButton).getByText(/Terminez d’abord le comptage n°1\./i)).toBeInTheDocument()
   })
 
   it("affiche l'état de conflit pour une zone terminée", async () => {

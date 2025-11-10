@@ -85,6 +85,24 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task StartRun_Count2BeforeCompletingCount1_Returns409()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
+        var client = CreateClient();
+
+        var response = await client.PostAsJsonAsync(
+            client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
+            new StartRunRequest(seeded.ShopId, seeded.PrimaryUserId, 2)
+        ).ConfigureAwait(false);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+        body.Should().Contain("comptage n°1");
+    }
+
+    [SkippableFact]
     public async Task CompleteRun_MakesRunCompleted_ActiveRunLookupReturnsNotFound()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
@@ -252,6 +270,7 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
 
         var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
         var client = CreateClient();
+        await CompleteFirstCountAsync(client, seeded).ConfigureAwait(false);
 
         var initialStart = await client.PostAsJsonAsync(
             client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
@@ -458,6 +477,29 @@ public sealed class InventoryRunsEndpointsTests : IntegrationTestBase
         completeResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         var message = await completeResponse.Content.ReadAsStringAsync().ConfigureAwait(false);
         message.Should().Contain("BAD@CODE");
+    }
+
+    private async Task CompleteFirstCountAsync(
+        HttpClient client,
+        (Guid ShopId, Guid LocationId, Guid PrimaryUserId, Guid SecondaryUserId, string ProductSku, string ProductEan) seeded)
+    {
+        var firstStart = await client.PostAsJsonAsync(
+            client.CreateRelativeUri($"/api/inventories/{seeded.LocationId}/start"),
+            new StartRunRequest(seeded.ShopId, seeded.PrimaryUserId, 1)
+        ).ConfigureAwait(false);
+        await firstStart.ShouldBeAsync(HttpStatusCode.OK, "start prerequisite count 1");
+        var firstRun = await firstStart.Content.ReadFromJsonAsync<StartInventoryRunResponse>().ConfigureAwait(false);
+        firstRun.Should().NotBeNull();
+
+        var firstComplete = await CompleteRunAsync(
+            client,
+            seeded.LocationId,
+            firstRun!.RunId,
+            seeded.PrimaryUserId,
+            1,
+            (seeded.ProductEan, 1m)
+        ).ConfigureAwait(false);
+        await firstComplete.ShouldBeAsync(HttpStatusCode.OK, "complete prerequisite count 1");
     }
 
     private async Task<(Guid ShopId, Guid LocationId, Guid PrimaryUserId, Guid SecondaryUserId, string ProductSku, string ProductEan)> SeedInventoryContextAsync()

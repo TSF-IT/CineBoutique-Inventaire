@@ -109,7 +109,7 @@ export const InventoryCountTypeStep = () => {
     if (!count1Status) {
       return false
     }
-    return count1Status.status === 'in_progress' || count1Status.status === 'completed'
+    return count1Status.status === 'completed'
   }, [count1Status])
 
   const hasUserCompletedOtherEligibleCount = useCallback(
@@ -240,7 +240,7 @@ export const InventoryCountTypeStep = () => {
                 return 'Vous avez déjà un autre comptage en cours pour cette zone.'
               }
               if (isSequentiallyLocked) {
-                return 'Commencez d’abord le comptage n°1.'
+                return 'Terminez d’abord le comptage n°1.'
               }
               if (isInProgressByOther) {
                 const label = ownerNameForMessage ?? 'un autre opérateur'

@@ -82,6 +82,38 @@ LIMIT 1;
             };
         }
 
+        if (parameters.CountType == 2)
+        {
+            const string hasCompletedFirstCountSql = """
+SELECT EXISTS (
+    SELECT 1
+    FROM "CountingRun"
+    WHERE "LocationId" = @LocationId
+      AND "CountType" = 1
+      AND "CompletedAtUtc" IS NOT NULL
+) AS "HasCompletedCount1";
+""";
+
+            var hasCompletedFirstCount = await connection
+                .ExecuteScalarAsync<bool>(
+                    new CommandDefinition(
+                        hasCompletedFirstCountSql,
+                        new { parameters.LocationId },
+                        cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (!hasCompletedFirstCount)
+            {
+                return new StartRunResult
+                {
+                    Status = StartRunStatus.SequentialPrerequisiteMissing,
+                    LocationId = parameters.LocationId,
+                    ShopId = location.ShopId,
+                    OwnerUserId = parameters.OwnerUserId
+                };
+            }
+        }
+
         const string selectOwnerDisplayNameSql = """
 SELECT "DisplayName"
 FROM "ShopUser"

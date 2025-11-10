@@ -71,6 +71,10 @@ internal sealed class StartInventoryRunHandler
                     [nameof(startResult.OwnerUserId)] = startResult.OwnerUserId,
                     [nameof(startResult.ShopId)] = startResult.ShopId
                 }),
+            StartRunStatus.SequentialPrerequisiteMissing => EndpointUtilities.Problem(
+                "PrÈ-requis manquant",
+                "Terminez le comptage n∞1 avant de lancer le comptage n∞2.",
+                StatusCodes.Status409Conflict),
             StartRunStatus.ConflictOtherOwner => EndpointUtilities.Problem(
                 "Conflit",
                 $"Comptage d√©j√† en cours par {FormatOwnerLabel(startResult.ConflictingOwnerLabel)}.",
