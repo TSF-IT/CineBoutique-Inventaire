@@ -471,6 +471,11 @@ LIMIT @top;";
     {
         ArgumentNullException.ThrowIfNull(builder);
 
+        if (catalogEndpointsPublic)
+        {
+            return builder.AllowAnonymous();
+        }
+
         return builder.RequireAuthorization();
     }
 

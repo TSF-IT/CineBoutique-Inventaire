@@ -183,7 +183,8 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
 
     try {
       const response = await fetch(
-        `/api/shops/${shop.id}/products/import/status`
+        `/api/shops/${shop.id}/products/import/status`,
+        { headers: buildHeaders() }
       );
 
       if (response.status === 404) {

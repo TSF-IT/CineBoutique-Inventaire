@@ -97,7 +97,16 @@ const formatOrdinalFr = (n: number) => (n === 1 ? '1er' : `${n}ᵉ`)
 
 export const InventoryLocationStep = () => {
   const navigate = useNavigate()
-  const { selectedUser, location, sessionId, setLocation, setSessionId, clearSession, setCountType } = useInventory()
+  const {
+    selectedUser,
+    location,
+    sessionId,
+    items,
+    setLocation,
+    setSessionId,
+    clearSession,
+    setCountType,
+  } = useInventory()
   const selectedUserDisplayName = selectedUser?.displayName ?? null
   const selectedUserId = selectedUser?.id?.trim() ?? null
   const { shop } = useShop()
@@ -108,13 +117,18 @@ export const InventoryLocationStep = () => {
   const [conflictLookup, setConflictLookup] = useState<Map<string, true>>(new Map())
   const [conflictsLoaded, setConflictsLoaded] = useState(false)
 
+  const hasActiveRun = items.length > 0
+
   useEffect(() => {
+    if (hasActiveRun) {
+      return
+    }
     // Preserve the current user's progress so it can be restored after user switches.
     clearSession({ preserveSnapshot: true })
     setLocation(null)
     setCountType(null)
     setSessionId(null)
-  }, [clearSession, setCountType, setLocation, setSessionId])
+  }, [clearSession, hasActiveRun, setCountType, setLocation, setSessionId])
   const loadLocations = useCallback(
     async (options?: { isCancelled?: () => boolean }) => {
       const isCancelled = options?.isCancelled ?? (() => false)

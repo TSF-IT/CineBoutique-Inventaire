@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 
+import { AdminShortcutButton } from '@/app/components/AdminShortcutButton'
 import { Page } from '../../components/Page'
 import { Stepper } from '../../components/Stepper'
 import { useInventory } from '../../contexts/InventoryContext'
@@ -34,6 +35,7 @@ export const InventoryLayout = () => {
   const { shop } = useShop()
   const shopDisplayName = shop?.name?.trim()
   const isScanCameraRoute = location.pathname === '/inventory/scan-camera'
+  const isAdminUser = Boolean(selectedUser?.isAdmin)
 
   useEffect(() => {
     const path = location.pathname
@@ -98,12 +100,15 @@ export const InventoryLayout = () => {
   const activeIndex = stepIndexByPath[location.pathname] ?? 0
   const homeLinkConfig = homeLinkConfigByPath[location.pathname] ?? defaultHomeLink
 
+  const headerAction = isAdminUser ? <AdminShortcutButton /> : null
+
   return (
     <Page
       className="gap-8"
       showHomeLink
       homeLinkTo={homeLinkConfig.to}
       homeLinkLabel={homeLinkConfig.label}
+      headerAction={headerAction}
     >
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
