@@ -1,29 +1,46 @@
 import { registerSW } from "virtual:pwa-register";
 
 export const setupPwa = () => {
-  const updateSW = registerSW({
+  let registration: ServiceWorkerRegistration | undefined;
+
+  const requestUpdate = () => {
+    if (registration) return registration.update();
+    if (!("serviceWorker" in navigator)) return;
+
+    return navigator.serviceWorker.getRegistration().then((reg) => {
+      if (reg) {
+        registration = reg;
+        return reg.update();
+      }
+    });
+  };
+
+  registerSW({
     immediate: true,
-    onNeedRefresh() {
-      // Active immédiatement la nouvelle version (skipWaiting + clientsClaim)
-      updateSW(true);
-    },
     onRegisteredSW(_url, reg) {
-      // Vérif périodique : déclenche la recherche de mise à jour
-      if (reg) setInterval(() => reg.update(), 30 * 60_000);
+      registration = reg;
+      requestUpdate();
+
+      if (reg) {
+        // Vérif périodique pour éviter que Safari iOS garde une version figée
+        setInterval(() => reg.update(), 30 * 60_000);
+      }
     },
   });
 
-  // Reload “discret” quand l’appli revient au premier plan
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") updateSW(true);
-  });
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === "visible") {
+      requestUpdate();
+    }
+  };
 
-  // NEW: quand le nouveau SW prend le contrôle, on force un refresh léger.
-  // (iOS/Safari peut sinon rester avec l'ancien shell en mémoire)
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  window.addEventListener("focus", requestUpdate);
+
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.addEventListener("controllerchange", () => {
-      // petit délai pour laisser l'activation se finaliser proprement
-      setTimeout(() => window.location.reload(), 100);
+      // Laisse le nouveau SW prendre totalement le contrôle avant reload
+      setTimeout(() => window.location.reload(), 150);
     });
   }
 };
