@@ -11,6 +11,8 @@ services:
       DISABLE_MIGRATIONS: "false"
       AppSettings__SeedOnStartup: "false"
       DISABLE_SERILOG: "false"
+      Serilog__MinimumLevel__Default: "Debug"
+      Serilog__WriteTo__0__Name: "Console"
       ASPNETCORE_URLS: http://0.0.0.0:8080
       AppSettings__CatalogEndpointsPublic: "true"
     ports:
