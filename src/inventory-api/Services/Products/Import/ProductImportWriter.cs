@@ -113,20 +113,37 @@ WHERE "ShopId" = @ShopId
         }
 
         Dictionary<string, string>? preloadedAttributes = null;
-        string[] normalizedEansForDeletion = Array.Empty<string>();
+        string[] normalizedSkusForDeletion = Array.Empty<string>();
+        string[] normalizedEansForBlocking = Array.Empty<string>();
         if (mode == ProductImportMode.ReplaceCatalogue)
         {
             preloadedAttributes = await LoadExistingAttributesBySkuAsync(rows, shopId, npgsqlTransaction, cancellationToken)
                 .ConfigureAwait(false);
 
-            normalizedEansForDeletion = rows
+            normalizedSkusForDeletion = rows
+                .Select(static row => row.Sku)
+                .Where(static sku => !string.IsNullOrWhiteSpace(sku))
+                .Select(static sku => sku!.Trim().ToLowerInvariant())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            // Keep the blocking detection aligned with legacy behavior: products
+            // that have no EAN should not surface as blockers even if their SKU
+            // disappears from the incoming file.
+            normalizedEansForBlocking = rows
                 .Select(row => NormalizeEan(row.Ean))
                 .Where(static ean => !string.IsNullOrWhiteSpace(ean))
                 .Select(static ean => ean!)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            await DeleteExistingProductsAsync(shopId, normalizedEansForDeletion, npgsqlTransaction, cancellationToken).ConfigureAwait(false);
+            await DeleteExistingProductsAsync(
+                    shopId,
+                    normalizedSkusForDeletion,
+                    normalizedEansForBlocking,
+                    npgsqlTransaction,
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
 
         return await UpsertRowsAsync(rows, shopId, npgsqlTransaction, cancellationToken, preloadedAttributes)
@@ -341,6 +358,7 @@ WHERE "ShopId" = @ShopId
 
     private static async Task DeleteExistingProductsAsync(
         Guid shopId,
+        string[] normalizedSkus,
         string[] normalizedEans,
         NpgsqlTransaction transaction,
         CancellationToken cancellationToken)
@@ -348,7 +366,7 @@ WHERE "ShopId" = @ShopId
         const string sql = """
 DELETE FROM "Product" p
 WHERE p."ShopId" = @ShopId
-  AND p."Ean" <> ALL(@EanList)
+  AND LOWER(p."Sku") <> ALL(@LowerSkus)
   AND NOT EXISTS (
         SELECT 1
         FROM "CountLine" cl
@@ -360,13 +378,18 @@ WHERE p."ShopId" = @ShopId
 
         var command = new CommandDefinition(
             sql,
-            new { ShopId = shopId, EanList = normalizedEans.Length == 0 ? Array.Empty<string>() : normalizedEans },
+            new { ShopId = shopId, LowerSkus = normalizedSkus.Length == 0 ? Array.Empty<string>() : normalizedSkus },
             transaction: transaction,
             cancellationToken: cancellationToken);
 
         await connection.ExecuteAsync(command).ConfigureAwait(false);
 
-        var blocked = await FindBlockedProductsAsync(shopId, normalizedEans, transaction, cancellationToken).ConfigureAwait(false);
+        var blocked = await FindBlockedProductsAsync(
+                shopId,
+                normalizedEans.Length == 0 ? Array.Empty<string>() : normalizedEans,
+                transaction,
+                cancellationToken)
+            .ConfigureAwait(false);
         if (blocked is { } snapshot)
         {
             throw new ProductImportBlockedException(snapshot.LocationId, snapshot.SampleProductIds);
