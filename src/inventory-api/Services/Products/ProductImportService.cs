@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -213,93 +215,107 @@ public sealed class ProductImportService : IProductImportService
                     ProductImportResultType.DryRun);
             }
 
+            ProductImportWriteStatistics writeStats;
             try
             {
-                var writeStats = await _writer
+                writeStats = await _writer
                     .WriteAsync(parseOutcome.Rows, shopId, command.Mode, transaction, cancellationToken)
                     .ConfigureAwait(false);
-
-                var finishedAt = _clock.UtcNow;
-
-                await _historyStore.CompleteAsync(
+            }
+            catch (ProductImportBlockedException)
+            {
+                await transaction.RollbackAsync("before_import", cancellationToken).ConfigureAwait(false);
+                await FinalizeFailedImportAsync(
                         historyId,
-                        ProductImportHistoryStatuses.Succeeded,
                         totalLines,
-                        inserted: writeStats.Created + writeStats.Updated,
-                        errorCount: 0,
-                        finishedAt,
-                        stopwatch.Elapsed,
+                        unknownColumns,
+                        buffer.Sha256,
+                        command,
+                        stopwatch,
+                        transaction,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                throw;
+            }
+            catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+            {
+                await transaction.RollbackAsync("before_import", cancellationToken).ConfigureAwait(false);
+
+                var blocked = await FetchBlockingProductsAsync(npgsqlConnection, shopId, cancellationToken).ConfigureAwait(false);
+
+                await FinalizeFailedImportAsync(
+                        historyId,
+                        totalLines,
+                        unknownColumns,
+                        buffer.Sha256,
+                        command,
+                        stopwatch,
                         transaction,
                         cancellationToken)
                     .ConfigureAwait(false);
 
-                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-
-                _metrics.IncrementSucceeded(false);
-                _metrics.ObserveDuration(stopwatch.Elapsed, false);
-
-                LogImportEvent(
-                    "ImportCompleted",
-                    ProductImportHistoryStatuses.Succeeded,
-                    command.Username,
-                    buffer.Sha256,
-                    totalLines,
-                    created: writeStats.Created,
-                    updated: writeStats.Updated,
-                    stopwatch.Elapsed,
-                    unknownColumns);
-
-                ApiLog.ImportStep(
-                    _logger,
-                    $"Import produits terminé : {writeStats.Created} créations, {writeStats.Updated} mises à jour.");
-
-                return new ProductImportResult(
-                    ProductImportResponse.Success(
-                        totalLines,
-                        writeStats.Created,
-                        writeStats.Updated,
-                        unknownColumns,
-                        parseOutcome.ProposedGroups,
-                        parseOutcome.SkippedLines,
-                        parseOutcome.Duplicates),
-                    ProductImportResultType.Succeeded);
+                throw new ProductImportBlockedException(blocked.LocationId, blocked.SampleProductIds);
             }
             catch
             {
                 await transaction.RollbackAsync("before_import", cancellationToken).ConfigureAwait(false);
-
-                var finishedAt = _clock.UtcNow;
-
-                await _historyStore.CompleteAsync(
+                await FinalizeFailedImportAsync(
                         historyId,
-                        ProductImportHistoryStatuses.Failed,
                         totalLines,
-                        inserted: 0,
-                        errorCount: 0,
-                        finishedAt,
-                        stopwatch.Elapsed,
+                        unknownColumns,
+                        buffer.Sha256,
+                        command,
+                        stopwatch,
                         transaction,
                         cancellationToken)
                     .ConfigureAwait(false);
-
-                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-
-                _metrics.IncrementFailed();
-                _metrics.ObserveDuration(stopwatch.Elapsed, command.DryRun);
-
-                LogImportEvent(
-                    "ImportCompleted",
-                    ProductImportHistoryStatuses.Failed,
-                    command.Username,
-                    buffer.Sha256,
-                    totalLines,
-                    created: 0,
-                    updated: 0,
-                    stopwatch.Elapsed,
-                    unknownColumns);
-
                 throw;
             }
+
+            var successFinishedAt = _clock.UtcNow;
+
+            await _historyStore.CompleteAsync(
+                    historyId,
+                    ProductImportHistoryStatuses.Succeeded,
+                    totalLines,
+                    inserted: writeStats.Created + writeStats.Updated,
+                    errorCount: 0,
+                    successFinishedAt,
+                    stopwatch.Elapsed,
+                    transaction,
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+            _metrics.IncrementSucceeded(false);
+            _metrics.ObserveDuration(stopwatch.Elapsed, false);
+
+            LogImportEvent(
+                "ImportCompleted",
+                ProductImportHistoryStatuses.Succeeded,
+                command.Username,
+                buffer.Sha256,
+                totalLines,
+                created: writeStats.Created,
+                updated: writeStats.Updated,
+                stopwatch.Elapsed,
+                unknownColumns);
+
+            ApiLog.ImportStep(
+                _logger,
+                $"Import produits terminé : {writeStats.Created} créations, {writeStats.Updated} mises à jour.");
+
+            return new ProductImportResult(
+                ProductImportResponse.Success(
+                    totalLines,
+                    writeStats.Created,
+                    writeStats.Updated,
+                    unknownColumns,
+                    parseOutcome.ProposedGroups,
+                    parseOutcome.SkippedLines,
+                    parseOutcome.Duplicates),
+                ProductImportResultType.Succeeded);
         }
         finally
         {
@@ -309,6 +325,86 @@ public sealed class ProductImportService : IProductImportService
             }
         }
     }
+
+    private async Task FinalizeFailedImportAsync(
+        Guid historyId,
+        int totalLines,
+        System.Collections.Generic.IReadOnlyCollection<string> unknownColumns,
+        string fileSha256,
+        ProductImportCommand command,
+        Stopwatch stopwatch,
+        NpgsqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        var finishedAt = _clock.UtcNow;
+
+        await _historyStore.CompleteAsync(
+                historyId,
+                ProductImportHistoryStatuses.Failed,
+                totalLines,
+                inserted: 0,
+                errorCount: 0,
+                finishedAt,
+                stopwatch.Elapsed,
+                transaction,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+        _metrics.IncrementFailed();
+        _metrics.ObserveDuration(stopwatch.Elapsed, command.DryRun);
+
+        LogImportEvent(
+            "ImportCompleted",
+            ProductImportHistoryStatuses.Failed,
+            command.Username,
+            fileSha256,
+            totalLines,
+            created: 0,
+            updated: 0,
+            stopwatch.Elapsed,
+            unknownColumns);
+    }
+
+    private async Task<BlockedProductsSnapshot> FetchBlockingProductsAsync(
+        NpgsqlConnection connection,
+        Guid shopId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+SELECT cl."ProductId", cr."LocationId"
+FROM "CountLine" cl
+JOIN "Product" p ON p."Id" = cl."ProductId"
+JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
+JOIN "Location" l ON l."Id" = cr."LocationId"
+WHERE p."ShopId" = @ShopId
+LIMIT 10;
+""";
+
+        var rows = (await connection
+                .QueryAsync<(Guid ProductId, Guid LocationId)>(
+                    new CommandDefinition(sql, new { ShopId = shopId }, cancellationToken: cancellationToken))
+                .ConfigureAwait(false))
+            .ToList();
+
+        if (rows.Count == 0)
+        {
+            return new BlockedProductsSnapshot(null, Array.Empty<Guid>());
+        }
+
+        var chosenLocation = rows[0].LocationId;
+        var sampleProducts = rows
+            .Where(row => row.LocationId == chosenLocation)
+            .Select(row => row.ProductId)
+            .Distinct()
+            .Take(5)
+            .ToArray();
+
+        return new BlockedProductsSnapshot(chosenLocation, sampleProducts);
+    }
+
+    private sealed record BlockedProductsSnapshot(Guid? LocationId, IReadOnlyList<Guid> SampleProductIds);
 
     private void LogImportEvent(
         string eventName,

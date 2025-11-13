@@ -25,3 +25,14 @@ public sealed class UpdateLocationRequest
 
     public bool? Disabled { get; set; }
 }
+
+/// <summary>
+/// Requ�te de mise � jour du statut d'activation d'une zone.
+/// </summary>
+[ExcludeFromCodeCoverage]
+public sealed class UpdateLocationStatusRequest
+{
+    public bool? IsActive { get; set; }
+
+    public bool? Force { get; set; }
+}

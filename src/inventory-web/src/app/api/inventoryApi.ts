@@ -276,6 +276,53 @@ export const fetchLocations = async (shopId: string, options: FetchLocationsOpti
   return LocationsSchema.parse(sanitized)
 }
 
+type UpdateLocationStatusOptions = {
+  isActive: boolean
+  force?: boolean
+}
+
+type LocationStatusConflictPayload = {
+  counts?: {
+    lines?: number
+  }
+}
+
+export const updateLocationStatus = async (
+  locationId: string,
+  { isActive, force = false }: UpdateLocationStatusOptions,
+): Promise<void> => {
+  const trimmedId = typeof locationId === 'string' ? locationId.trim() : ''
+  if (!trimmedId) {
+    throw new Error("L'identifiant de zone est requis.")
+  }
+
+  try {
+    await http(`${API_BASE}/locations/${encodeURIComponent(trimmedId)}/status`, {
+      method: 'PATCH',
+      body: {
+        isActive: Boolean(isActive),
+        force: Boolean(force),
+      },
+    })
+  } catch (error) {
+    if (isHttpError(error) && error.status === 409) {
+      const conflictPayload = (error.problem as LocationStatusConflictPayload | undefined)?.counts
+      const lines =
+        typeof conflictPayload?.lines === 'number' && Number.isFinite(conflictPayload.lines)
+          ? conflictPayload.lines
+          : null
+      const message = getHttpErrorMessage(error) ?? 'Cette zone a déjà des lignes de comptage.'
+      throw Object.assign(new Error(message), {
+        status: error.status,
+        problem: error.problem,
+        counts: { lines },
+      })
+    }
+
+    throw error
+  }
+}
+
 /* ----------------------------- Produits par EAN --------------------------- */
 
 interface ProductSearchItemDtoLike {

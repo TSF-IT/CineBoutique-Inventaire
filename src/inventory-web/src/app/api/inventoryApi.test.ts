@@ -105,6 +105,55 @@ describe('fetchLocations', () => {
     await expect(fetchLocations(defaultShopId)).rejects.toMatchObject({ status: 404 })
   })
 })
+
+describe('updateLocationStatus', () => {
+  const defaultLocationId = '00000000-0000-4000-8000-000000000001'
+
+  beforeEach(() => {
+    vi.resetModules()
+    vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    vi.resetModules()
+    vi.doUnmock('@/lib/api/http')
+    vi.restoreAllMocks()
+  })
+
+  it('envoie une requête PATCH avec le corps attendu', async () => {
+    const httpMock = vi.fn().mockResolvedValue(undefined)
+    mockHttpModule(httpMock)
+
+    const { updateLocationStatus } = await import('./inventoryApi')
+
+    await expect(updateLocationStatus(defaultLocationId, { isActive: false })).resolves.toBeUndefined()
+
+    expect(httpMock).toHaveBeenCalledWith(
+      expect.stringContaining(`/locations/${encodeURIComponent(defaultLocationId)}/status`),
+      expect.objectContaining({
+        method: 'PATCH',
+        body: { isActive: false, force: false },
+      }),
+    )
+  })
+
+  it('expose le payload counts quand le serveur retourne 409', async () => {
+    const httpError = Object.assign(new Error('HTTP 409'), {
+      status: 409,
+      url: `/api/locations/${defaultLocationId}/status`,
+      problem: { counts: { lines: 17 } },
+    })
+    const httpMock = vi.fn().mockRejectedValue(httpError)
+    mockHttpModule(httpMock)
+
+    const { updateLocationStatus } = await import('./inventoryApi')
+
+    await expect(updateLocationStatus(defaultLocationId, { isActive: false })).rejects.toMatchObject({
+      status: 409,
+      counts: { lines: 17 },
+    })
+  })
+})
   it('signale includeDisabled dans la requête quand demandé', async () => {
     const httpMock = vi.fn().mockResolvedValue([])
     mockHttpModule(httpMock)

@@ -363,6 +363,142 @@ internal static class LocationsEndpoints
         .Produces(StatusCodes.Status409Conflict)
         .AddEndpointFilter<RequireOperatorHeadersFilter>();
 
+        app.MapPatch(
+            "/api/locations/{locationId:guid}/status",
+            async (
+                Guid locationId,
+                string? shopId,
+                UpdateLocationStatusRequest? request,
+                IDbConnection connection,
+                IAuditLogger auditLogger,
+                IClock clock,
+                HttpContext httpContext,
+                ILoggerFactory loggerFactory,
+                CancellationToken cancellationToken) =>
+        {
+            if (!TryNormalizeShopId(shopId, out var parsedShopId, out var errorResult))
+            {
+                return errorResult;
+            }
+
+            if (request is null || request.IsActive is null)
+            {
+                return EndpointUtilities.Problem(
+                    "Requête invalide",
+                    "Le corps de la requête doit contenir le champ isActive.",
+                    StatusCodes.Status400BadRequest);
+            }
+
+            await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
+
+            var shop = await LoadShopAsync(connection, parsedShopId, cancellationToken).ConfigureAwait(false);
+            if (shop is null)
+            {
+                return EndpointUtilities.Problem(
+                    "Boutique introuvable",
+                    "Impossible de trouver la boutique ciblée.",
+                    StatusCodes.Status404NotFound);
+            }
+
+            var existing = await InventoryLocationQueries.LoadLocationMetadataAsync(connection, parsedShopId, locationId, cancellationToken).ConfigureAwait(false);
+            if (existing is null)
+            {
+                return EndpointUtilities.Problem(
+                    "Zone introuvable",
+                    "Impossible de trouver cette zone pour la boutique demandée.",
+                    StatusCodes.Status404NotFound);
+            }
+
+            var actor = EndpointUtilities.FormatActorLabel(httpContext);
+            var timestamp = EndpointUtilities.FormatTimestamp(clock.UtcNow);
+            var shopLabel = string.IsNullOrWhiteSpace(shop.Name) ? parsedShopId.ToString() : shop.Name;
+            var zoneDescription = FormatZoneDescription(existing.Code, existing.Label);
+            var userName = EndpointUtilities.GetAuthenticatedUserName(httpContext);
+
+            if (request.IsActive.Value)
+            {
+                const string enableSql = """
+UPDATE "Location"
+SET "Disabled" = FALSE
+WHERE "Id" = @Id AND "ShopId" = @ShopId;
+""";
+
+                var affected = await connection.ExecuteAsync(
+                        new CommandDefinition(enableSql, new { Id = locationId, ShopId = parsedShopId }, cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+
+                if (affected == 0)
+                {
+                    return EndpointUtilities.Problem(
+                        "Zone introuvable",
+                        "Impossible de trouver cette zone pour la boutique demandée.",
+                        StatusCodes.Status404NotFound);
+                }
+
+                await auditLogger
+                    .LogAsync(
+                        $"{actor} a réactivé la zone {zoneDescription} pour la boutique {shopLabel} le {timestamp} UTC.",
+                        userName,
+                        "locations.enable.success",
+                        cancellationToken)
+                    .ConfigureAwait(false);
+
+                return Results.Ok(new
+                {
+                    locationId,
+                    isActive = true,
+                    activated = true,
+                    purged = false
+                });
+            }
+
+            var force = request.Force ?? false;
+            var disableLogger = loggerFactory.CreateLogger("LocationsEndpoints.Disable");
+            var disableResult = await DisableLocationAsync(connection, parsedShopId, locationId, force, disableLogger, cancellationToken).ConfigureAwait(false);
+
+            if (disableResult.NotFound)
+            {
+                return EndpointUtilities.Problem(
+                    "Zone introuvable",
+                    "Impossible de trouver cette zone pour la boutique demandée.",
+                    StatusCodes.Status404NotFound);
+            }
+
+            if (disableResult.HasCountConflict)
+            {
+                return BuildCountLinesConflict(locationId, disableResult.ConflictLines);
+            }
+
+            if (disableResult.PurgeBlocked)
+            {
+                return BuildPurgeConflict(locationId);
+            }
+
+            await auditLogger
+                .LogAsync(
+                    $"{actor} a désactivé la zone {zoneDescription} pour la boutique {shopLabel} le {timestamp} UTC.",
+                    userName,
+                    "locations.disable.success",
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            return Results.Ok(new
+            {
+                locationId,
+                isActive = false,
+                deactivated = true,
+                purged = disableResult.Purged,
+                purgedLines = disableResult.PurgedLines
+            });
+        })
+        .WithName("UpdateLocationStatus")
+        .WithTags("Locations")
+        .Produces(StatusCodes.Status200OK)
+        .Produces(StatusCodes.Status400BadRequest)
+        .Produces(StatusCodes.Status404NotFound)
+        .Produces(StatusCodes.Status409Conflict)
+        .AddEndpointFilter<RequireOperatorHeadersFilter>();
+
         app.MapDelete(
             "/api/locations/{locationId:guid}",
             async (
@@ -371,6 +507,7 @@ internal static class LocationsEndpoints
                 IDbConnection connection,
                 IAuditLogger auditLogger,
                 IClock clock,
+                ILoggerFactory loggerFactory,
                 HttpContext httpContext,
                 CancellationToken cancellationToken) =>
         {
@@ -399,22 +536,25 @@ internal static class LocationsEndpoints
                     StatusCodes.Status404NotFound);
             }
 
-            const string disableSql = """
-UPDATE "Location"
-SET "Disabled" = TRUE
-WHERE "Id" = @Id AND "ShopId" = @ShopId;
-""";
+            var disableLogger = loggerFactory.CreateLogger("LocationsEndpoints.Disable");
+            var disableResult = await DisableLocationAsync(connection, parsedShopId, locationId, force: false, disableLogger, cancellationToken).ConfigureAwait(false);
 
-            var affected = await connection.ExecuteAsync(
-                    new CommandDefinition(disableSql, new { Id = locationId, ShopId = parsedShopId }, cancellationToken: cancellationToken))
-                .ConfigureAwait(false);
-
-            if (affected == 0)
+            if (disableResult.NotFound)
             {
                 return EndpointUtilities.Problem(
                     "Zone introuvable",
                     "Impossible de trouver cette zone pour la boutique demandée.",
                     StatusCodes.Status404NotFound);
+            }
+
+            if (disableResult.HasCountConflict)
+            {
+                return BuildCountLinesConflict(locationId, disableResult.ConflictLines);
+            }
+
+            if (disableResult.PurgeBlocked)
+            {
+                return BuildPurgeConflict(locationId);
             }
 
             var disabled = (await QueryLocationsAsync(connection, parsedShopId, null, new[] { locationId }, includeDisabled: true, cancellationToken).ConfigureAwait(false))
@@ -450,6 +590,146 @@ WHERE "Id" = @Id AND "ShopId" = @ShopId;
         .Produces(StatusCodes.Status404NotFound)
         .AddEndpointFilter<RequireOperatorHeadersFilter>();
     }
+
+    private static async Task<DisableLocationOperationResult> DisableLocationAsync(
+        IDbConnection connection,
+        Guid shopId,
+        Guid locationId,
+        bool force,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        if (connection is not NpgsqlConnection npgsqlConnection)
+        {
+            throw new InvalidOperationException("Cette opération requiert une connexion Npgsql.");
+        }
+
+        await using var transaction = await npgsqlConnection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+
+        logger.LogInformation("DisableRequested {LocationId} {Force}", locationId, force);
+
+        try
+        {
+            const string countLinesSql = """
+SELECT COUNT(*)
+FROM "CountLine" cl
+JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
+WHERE cr."LocationId" = @LocationId;
+""";
+
+            var countLines = await npgsqlConnection.ExecuteScalarAsync<int>(
+                    new CommandDefinition(countLinesSql, new { LocationId = locationId }, transaction, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (countLines > 0 && !force)
+            {
+                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                return DisableLocationOperationResult.CreateCountConflict(countLines);
+            }
+
+            var purgedLines = 0;
+            if (countLines > 0)
+            {
+                try
+                {
+                    const string deleteLinesSql = """
+DELETE FROM "CountLine" cl
+USING "CountingRun" cr
+WHERE cr."Id" = cl."CountingRunId"
+  AND cr."LocationId" = @LocationId;
+""";
+
+                    purgedLines = await npgsqlConnection.ExecuteAsync(
+                            new CommandDefinition(deleteLinesSql, new { LocationId = locationId }, transaction, cancellationToken: cancellationToken))
+                        .ConfigureAwait(false);
+
+                    const string deleteOrphanRunsSql = """
+DELETE FROM "CountingRun" cr
+WHERE cr."LocationId" = @LocationId
+  AND NOT EXISTS (SELECT 1 FROM "CountLine" cl WHERE cl."CountingRunId" = cr."Id");
+""";
+
+                    await npgsqlConnection.ExecuteAsync(
+                            new CommandDefinition(deleteOrphanRunsSql, new { LocationId = locationId }, transaction, cancellationToken: cancellationToken))
+                        .ConfigureAwait(false);
+                }
+                catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+                {
+                    await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                    return DisableLocationOperationResult.CreatePurgeBlocked();
+                }
+            }
+
+            const string disableSql = """
+UPDATE "Location"
+SET "Disabled" = TRUE
+WHERE "Id" = @LocationId AND "ShopId" = @ShopId;
+""";
+
+            var affected = await npgsqlConnection.ExecuteAsync(
+                    new CommandDefinition(disableSql, new { LocationId = locationId, ShopId = shopId }, transaction, cancellationToken: cancellationToken))
+                .ConfigureAwait(false);
+
+            if (affected == 0)
+            {
+                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                return DisableLocationOperationResult.CreateNotFound();
+            }
+
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+            logger.LogInformation("DisableCompleted {LocationId} {PurgedLines}", locationId, purgedLines);
+
+            return DisableLocationOperationResult.CreateSuccess(purgedLines);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    private sealed record DisableLocationOperationResult(
+        bool Success,
+        bool NotFound,
+        bool HasCountConflict,
+        int ConflictLines,
+        bool PurgeBlocked,
+        int PurgedLines)
+    {
+        public bool Purged => PurgedLines > 0;
+
+        public static DisableLocationOperationResult CreateSuccess(int purgedLines) =>
+            new(true, false, false, 0, false, purgedLines);
+
+        public static DisableLocationOperationResult CreateNotFound() =>
+            new(false, true, false, 0, false, 0);
+
+        public static DisableLocationOperationResult CreateCountConflict(int lines) =>
+            new(false, false, true, lines, false, 0);
+
+        public static DisableLocationOperationResult CreatePurgeBlocked() =>
+            new(false, false, false, 0, true, 0);
+    }
+
+    private static IResult BuildCountLinesConflict(Guid locationId, int countLines) =>
+        Results.Conflict(new
+        {
+            title = "Zone comptée",
+            status = StatusCodes.Status409Conflict,
+            detail = "Cette zone a déjà des lignes de comptage.",
+            counts = new { lines = countLines },
+            locationId
+        });
+
+    private static IResult BuildPurgeConflict(Guid locationId) =>
+        Results.Conflict(new
+        {
+            title = "Purge impossible",
+            status = StatusCodes.Status409Conflict,
+            detail = "Impossible de purger les lignes de comptage de cette zone.",
+            locationId
+        });
 
     private static bool TryNormalizeShopId(string? shopId, out Guid parsedShopId, out IResult? errorResult)
     {

@@ -1,12 +1,15 @@
 using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Minimal;
 using CineBoutique.Inventory.Api.Models;
+using CineBoutique.Inventory.Api.Services.Products;
 using Dapper;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
@@ -47,23 +50,8 @@ internal static class ImportEndpoints
                 var importMode = ParseImportMode(mode);
 
                 // dryRun (bool)
-                bool isDryRun = false;
+                var isDryRun = false;
                 if (!string.IsNullOrWhiteSpace(dryRun) && bool.TryParse(dryRun, out var b)) isDryRun = b;
-
-                if (!isDryRun && importMode == CineBoutique.Inventory.Api.Models.ProductImportMode.ReplaceCatalogue)
-                {
-                    var hasCountLines = await HasCountLinesForShopAsync(shopId, connection, ct).ConfigureAwait(false);
-                    if (hasCountLines)
-                    {
-                        return Results.Json(
-                            new
-                            {
-                                reason = "catalog_locked",
-                                message = "Impossible de remplacer le catalogue : des comptages contiennent déjà des produits issus de ce CSV. Importez un fichier complémentaire pour ajouter de nouvelles références."
-                            },
-                            statusCode: StatusCodes.Status423Locked);
-                    }
-                }
 
                 // 25 MiB
                 const long maxCsvSizeBytes = 25L * 1024L * 1024L;
@@ -95,16 +83,49 @@ internal static class ImportEndpoints
                 }
 
                 var user = EndpointUtilities.GetAuthenticatedUserName(request.HttpContext);
-                var importService = request.HttpContext.RequestServices.GetRequiredService<CineBoutique.Inventory.Api.Services.Products.IProductImportService>();
-                var cmd = new CineBoutique.Inventory.Api.Models.ProductImportCommand(csvStream, isDryRun, user, shopId, importMode);
-                var result = await importService.ImportAsync(cmd, ct).ConfigureAwait(false);
+                var importService = request.HttpContext.RequestServices.GetRequiredService<IProductImportService>();
+                var cmd = new ProductImportCommand(csvStream, isDryRun, user, shopId, importMode);
 
-                return result.ResultType switch
+                try
                 {
-                    CineBoutique.Inventory.Api.Models.ProductImportResultType.ValidationFailed => Results.BadRequest(result.Response),
-                    CineBoutique.Inventory.Api.Models.ProductImportResultType.Skipped          => Results.StatusCode(StatusCodes.Status204NoContent),
-                    _                                                                          => Results.Ok(result.Response)
-                };
+                    var result = await importService.ImportAsync(cmd, ct).ConfigureAwait(false);
+
+                    return result.ResultType switch
+                    {
+                        ProductImportResultType.ValidationFailed => Results.BadRequest(result.Response),
+                        ProductImportResultType.Skipped => Results.StatusCode(StatusCodes.Status204NoContent),
+                        _ => Results.Ok(result.Response)
+                    };
+                }
+                catch (ProductImportBlockedException blockedException)
+                {
+                    var extensions = new Dictionary<string, object?>
+                    {
+                        ["blocked"] = new
+                        {
+                            sampleProductIds = blockedException.SampleProductIds,
+                            locationId = blockedException.LocationId
+                        }
+                    };
+
+                    return Results.Problem(
+                        detail: "Certains produits sont utilisés dans des comptages. Désactivez d’abord la zone ou réinitialisez son comptage.",
+                        statusCode: StatusCodes.Status409Conflict,
+                        title: "Suppression impossible",
+                        extensions: extensions);
+                }
+                catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+                {
+                    var problem = new ProblemDetails
+                    {
+                        Title = "Suppression impossible",
+                        Status = StatusCodes.Status409Conflict,
+                        Detail = "Cette action nécessite la réinitialisation d’un comptage existant (lignes liées).",
+                        Instance = request.Path.ToString()
+                    };
+
+                    return Results.Json(problem, statusCode: StatusCodes.Status409Conflict);
+                }
             }
         })
         .AddEndpointFilter<RequireOperatorHeadersFilter>()

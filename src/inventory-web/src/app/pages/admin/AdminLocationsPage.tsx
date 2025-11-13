@@ -1,5 +1,5 @@
 import { clsx } from "clsx";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
 
 import {
   createLocation,
@@ -7,9 +7,8 @@ import {
   createShopUser,
   updateShopUser,
   disableShopUser,
-  disableLocation,
 } from "../../api/adminApi";
-import { fetchLocations } from "../../api/inventoryApi";
+import { fetchLocations, updateLocationStatus } from "../../api/inventoryApi";
 import { fetchShopUsers } from "../../api/shopUsers";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
@@ -1379,7 +1378,6 @@ const LocationListItem = ({
     setIsDisabling(true);
     try {
       await onDisable(location.id);
-      disableConfirmationDialogRef.current?.close();
     } catch (err) {
       const message =
         err instanceof Error
@@ -1387,6 +1385,7 @@ const LocationListItem = ({
           : "Impossible de désactiver la zone.";
       setError(message);
     } finally {
+      disableConfirmationDialogRef.current?.close();
       setIsDisabling(false);
     }
   };
@@ -1881,6 +1880,30 @@ type LocationsPanelProps = {
   description: string;
 };
 
+type ConfirmDisableDialogState = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  cancelLabel: string;
+  onConfirm: () => Promise<void> | void;
+};
+
+const extractLocationStatusConflict = (
+  error: unknown
+): { lines: number | null } | null => {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+  const status = (error as { status?: number }).status;
+  if (status !== 409) {
+    return null;
+  }
+  const lines = (error as { counts?: { lines?: unknown } }).counts?.lines;
+  return {
+    lines: typeof lines === "number" && Number.isFinite(lines) ? lines : null,
+  };
+};
+
 const LocationsPanel = ({ description }: LocationsPanelProps) => {
   const { shop } = useShop();
 
@@ -1905,6 +1928,20 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
   const [creatingLocation, setCreatingLocation] = useState(false);
   const [locationFeedback, setLocationFeedback] = useState<FeedbackState>(null);
   const [hideDisabledLocations, setHideDisabledLocations] = useState(true);
+  const forceDisableDialogRef = useRef<HTMLDialogElement | null>(null);
+  const forceDisableConfirmButtonRef = useRef<HTMLButtonElement | null>(null);
+  const forceDisableDialogTitleId = useId();
+  const forceDisableDialogDescriptionId = useId();
+  const [forceDisableDialogState, setForceDisableDialogState] =
+    useState<ConfirmDisableDialogState | null>(null);
+  const [forceDisableLoading, setForceDisableLoading] = useState(false);
+  const toast = useMemo(
+    () => ({
+      success: (message: string) =>
+        setLocationFeedback({ type: "success", message }),
+    }),
+    [setLocationFeedback]
+  );
 
   const sortedLocations = useMemo(
     () => [...(data ?? [])].sort((a, b) => a.code.localeCompare(b.code)),
@@ -1918,6 +1955,72 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
         : sortedLocations,
     [hideDisabledLocations, sortedLocations]
   );
+
+  const markLocationDisabled = useCallback(
+    (targetId: string, disabled: boolean) => {
+      setData((prev) =>
+        prev?.map((item) => (item.id === targetId ? { ...item, disabled } : item)) ?? []
+      );
+    },
+    [setData]
+  );
+
+  const refreshLocations = useCallback(async () => {
+    try {
+      const refreshed = await loadLocations();
+      setData(refreshed);
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Impossible de rafraîchir les zones.";
+      setLocationFeedback({ type: "error", message });
+    }
+  }, [loadLocations, setData, setLocationFeedback]);
+
+  const closeForceDisableDialog = useCallback(() => {
+    forceDisableDialogRef.current?.close();
+    setForceDisableDialogState(null);
+    setForceDisableLoading(false);
+  }, []);
+
+  const openConfirmModal = useCallback(
+    (state: ConfirmDisableDialogState) => {
+      setForceDisableDialogState(state);
+      setForceDisableLoading(false);
+      const dialog = forceDisableDialogRef.current;
+      if (dialog && typeof dialog.showModal === "function") {
+        dialog.showModal();
+        requestAnimationFrame(() => {
+          forceDisableConfirmButtonRef.current?.focus();
+        });
+      }
+    },
+    []
+  );
+
+  const handleForceDisableCancel = useCallback(() => {
+    closeForceDisableDialog();
+  }, [closeForceDisableDialog]);
+
+  const handleForceDisableConfirm = useCallback(async () => {
+    if (!forceDisableDialogState) {
+      closeForceDisableDialog();
+      return;
+    }
+    setForceDisableLoading(true);
+    try {
+      await forceDisableDialogState.onConfirm();
+      closeForceDisableDialog();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Impossible de désactiver la zone.";
+      setLocationFeedback({ type: "error", message });
+      setForceDisableLoading(false);
+    }
+  }, [closeForceDisableDialog, forceDisableDialogState]);
 
   const handleCreateLocation = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
@@ -1961,38 +2064,50 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
   const handleDisableLocation = async (id: string) => {
     setLocationFeedback(null);
     try {
-      const disabled = await disableLocation(id);
-      setData(
-        (prev) =>
-          prev?.map((item) => (item.id === disabled.id ? disabled : item)) ?? []
-      );
-      setLocationFeedback({ type: "success", message: "Zone désactivée." });
+      await updateLocationStatus(id, { isActive: false, force: false });
+      markLocationDisabled(id, true);
+      toast.success("Zone désactivée");
     } catch (err) {
+      const conflict = extractLocationStatusConflict(err);
+      if (conflict) {
+        openConfirmModal({
+          title: "Réinitialiser le comptage ?",
+          message: conflict.lines
+            ? `Cette zone a déjà été comptée (${conflict.lines} lignes). Si vous la désactivez, son comptage sera entièrement réinitialisé.`
+            : "Cette zone a déjà été comptée. Si vous la désactivez, son comptage sera entièrement réinitialisé.",
+          confirmLabel: "Oui, réinitialiser et désactiver",
+          cancelLabel: "Annuler",
+          onConfirm: async () => {
+            await updateLocationStatus(id, { isActive: false, force: true });
+            markLocationDisabled(id, true);
+            toast.success("Zone désactivée et comptage réinitialisé");
+            await refreshLocations();
+          },
+        });
+        return;
+      }
       const message =
         err instanceof Error
           ? err.message
           : "Impossible de désactiver cette zone.";
       setLocationFeedback({ type: "error", message });
-      throw new Error(message);
+      throw (err instanceof Error ? err : new Error(message));
     }
   };
 
   const handleEnableLocation = async (id: string) => {
     setLocationFeedback(null);
     try {
-      const enabled = await updateLocation(id, { disabled: false });
-      setData(
-        (prev) =>
-          prev?.map((item) => (item.id === enabled.id ? enabled : item)) ?? []
-      );
-      setLocationFeedback({ type: "success", message: "Zone réactivée." });
+      await updateLocationStatus(id, { isActive: true });
+      markLocationDisabled(id, false);
+      toast.success("Zone réactivée.");
     } catch (err) {
       const message =
         err instanceof Error
           ? err.message
           : "Impossible de réactiver cette zone.";
       setLocationFeedback({ type: "error", message });
-      throw new Error(message);
+      throw (err instanceof Error ? err : new Error(message));
     }
   };
 
@@ -2119,6 +2234,53 @@ const LocationsPanel = ({ description }: LocationsPanelProps) => {
           )}
         </div>
       )}
+      <dialog
+        ref={forceDisableDialogRef}
+        aria-modal="true"
+        aria-labelledby={forceDisableDialogTitleId}
+        aria-describedby={forceDisableDialogDescriptionId}
+        className="px-4"
+        onCancel={(event) => {
+          event.preventDefault();
+          handleForceDisableCancel();
+        }}
+      >
+        <Card className="w-full max-w-lg shadow-elev-2">
+          <div className="space-y-4">
+            <p id={forceDisableDialogTitleId} className="text-lg font-semibold">
+              {forceDisableDialogState?.title ?? "Confirmation"}
+            </p>
+            <p
+              id={forceDisableDialogDescriptionId}
+              className="text-sm text-slate-600 dark:text-slate-300"
+            >
+              {forceDisableDialogState?.message ??
+                "Cette action est irréversible."}
+            </p>
+          </div>
+          <div className="mt-6 flex justify-end gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={handleForceDisableCancel}
+              disabled={forceDisableLoading}
+            >
+              {forceDisableDialogState?.cancelLabel ?? "Annuler"}
+            </Button>
+            <Button
+              ref={forceDisableConfirmButtonRef}
+              type="button"
+              onClick={handleForceDisableConfirm}
+              className="bg-red-600 text-white shadow-soft hover:bg-red-500 focus-visible:ring-2 focus-visible:ring-red-300 dark:bg-red-500 dark:hover:bg-red-400"
+              disabled={forceDisableLoading}
+            >
+              {forceDisableLoading
+                ? "Désactivation…"
+                : forceDisableDialogState?.confirmLabel ?? "Confirmer"}
+            </Button>
+          </div>
+        </Card>
+      </dialog>
     </Card>
   );
 };

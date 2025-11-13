@@ -12,12 +12,11 @@ import { ThemeProvider } from "../../../../theme/ThemeProvider";
 import {
   createLocation,
   updateLocation,
-  disableLocation,
   createShopUser,
   updateShopUser,
   disableShopUser,
 } from "../../../api/adminApi";
-import { fetchLocations } from "../../../api/inventoryApi";
+import { fetchLocations, updateLocationStatus } from "../../../api/inventoryApi";
 import { fetchShopUsers } from "../../../api/shopUsers";
 import type { Location } from "../../../types/inventory";
 import { AdminLocationsPage } from "../AdminLocationsPage";
@@ -27,12 +26,12 @@ import type { ShopUser } from "@/types/user";
 
 vi.mock("../../../api/inventoryApi", () => ({
   fetchLocations: vi.fn(),
+  updateLocationStatus: vi.fn(),
 }));
 
 vi.mock("../../../api/adminApi", () => ({
   createLocation: vi.fn(),
   updateLocation: vi.fn(),
-  disableLocation: vi.fn(),
   createShopUser: vi.fn(),
   updateShopUser: vi.fn(),
   disableShopUser: vi.fn(),
@@ -43,17 +42,18 @@ vi.mock("../../../api/shopUsers", () => ({
 }));
 
 const { fetchLocations: mockedFetchLocations } = vi.mocked({ fetchLocations });
+const { updateLocationStatus: mockedUpdateLocationStatus } = vi.mocked({
+  updateLocationStatus,
+});
 const {
   createLocation: mockedCreateLocation,
   updateLocation: mockedUpdateLocation,
-  disableLocation: mockedDisableLocation,
   createShopUser: mockedCreateShopUser,
   updateShopUser: mockedUpdateShopUser,
   disableShopUser: mockedDisableShopUser,
 } = vi.mocked({
   createLocation,
   updateLocation,
-  disableLocation,
   createShopUser,
   updateShopUser,
   disableShopUser,
@@ -89,6 +89,36 @@ const renderAdminPage = async () => {
   const [shopIdArg, optionsArg] = mockedFetchLocations.mock.calls[0] ?? [];
   expect(shopIdArg).toBe(testShop.id);
   expect(optionsArg).toEqual({ includeDisabled: true });
+};
+
+const patchDialogMethods = () => {
+  const dialogPrototype = window.HTMLDialogElement?.prototype;
+  if (!dialogPrototype) {
+    return () => undefined;
+  }
+
+  const originalShowModal = dialogPrototype.showModal;
+  const originalClose = dialogPrototype.close;
+
+  dialogPrototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute("open", "true");
+  };
+  dialogPrototype.close = function close(this: HTMLDialogElement) {
+    this.removeAttribute("open");
+  };
+
+  return () => {
+    if (originalShowModal) {
+      dialogPrototype.showModal = originalShowModal;
+    } else {
+      Reflect.deleteProperty(dialogPrototype, "showModal");
+    }
+    if (originalClose) {
+      dialogPrototype.close = originalClose;
+    } else {
+      Reflect.deleteProperty(dialogPrototype, "close");
+    }
+  };
 };
 
 const openUsersTab = async (user: ReturnType<typeof userEvent.setup>) => {
@@ -132,7 +162,8 @@ describe("AdminLocationsPage", () => {
     mockedFetchLocations.mockResolvedValue([baseLocation]);
     mockedCreateLocation.mockReset();
     mockedUpdateLocation.mockReset();
-    mockedDisableLocation.mockReset();
+    mockedUpdateLocationStatus.mockReset();
+    mockedUpdateLocationStatus.mockResolvedValue(undefined);
     mockedFetchShopUsers.mockReset();
     mockedFetchShopUsers.mockResolvedValue([]);
     mockedCreateShopUser.mockReset();
@@ -199,39 +230,22 @@ describe("AdminLocationsPage", () => {
   });
 
   it("désactive une zone et la masque par défaut", async () => {
-    mockedDisableLocation.mockResolvedValue({
-      ...baseLocation,
-      disabled: true,
-    });
-    mockedUpdateLocation.mockResolvedValue({
-      ...baseLocation,
-      disabled: false,
-    });
+    mockedUpdateLocationStatus.mockResolvedValue(undefined);
 
     await renderAdminPage();
 
     const user = userEvent.setup();
-    const dialogPrototype = window.HTMLDialogElement?.prototype;
-    const originalShowModal = dialogPrototype?.showModal;
-    const originalClose = dialogPrototype?.close;
-    if (dialogPrototype) {
-      dialogPrototype.showModal = function showModal() {
-        this.setAttribute("open", "true");
-      };
-      dialogPrototype.close = function close() {
-        this.removeAttribute("open");
-      };
-    }
-
-    const locationCards = await screen.findAllByTestId("location-card");
-    expect(locationCards.length).toBeGreaterThan(0);
-    const [locationCard] = locationCards;
-    const disableButton = within(locationCard).getByRole("button", {
-      name: "Désactiver",
-    });
-    await user.click(disableButton);
+    const restoreDialog = patchDialogMethods();
 
     try {
+      const locationCards = await screen.findAllByTestId("location-card");
+      expect(locationCards.length).toBeGreaterThan(0);
+      const [locationCard] = locationCards;
+      const disableButton = within(locationCard).getByRole("button", {
+        name: "Désactiver",
+      });
+      await user.click(disableButton);
+
       const confirmDialog = await screen.findByRole("dialog", {
         name: `Désactiver ${baseLocation.code} ?`,
       });
@@ -240,8 +254,14 @@ describe("AdminLocationsPage", () => {
       });
       await user.click(confirmButton);
 
-      expect(mockedDisableLocation).toHaveBeenCalledWith(baseLocation.id);
-      expect(await screen.findByText("Zone désactivée.")).toBeInTheDocument();
+      expect(mockedUpdateLocationStatus).toHaveBeenNthCalledWith(
+        1,
+        baseLocation.id,
+        { isActive: false, force: false }
+      );
+      expect(
+        await screen.findByText("Zone désactivée")
+      ).toBeInTheDocument();
       await waitFor(() => {
         expect(screen.queryByTestId("location-card")).not.toBeInTheDocument();
       });
@@ -259,9 +279,11 @@ describe("AdminLocationsPage", () => {
       await user.click(reactivateButton);
 
       await waitFor(() => {
-        expect(mockedUpdateLocation).toHaveBeenCalledWith(baseLocation.id, {
-          disabled: false,
-        });
+        expect(mockedUpdateLocationStatus).toHaveBeenNthCalledWith(
+          2,
+          baseLocation.id,
+          { isActive: true }
+        );
       });
       expect(await screen.findByText("Zone réactivée.")).toBeInTheDocument();
       await waitFor(() => {
@@ -270,22 +292,67 @@ describe("AdminLocationsPage", () => {
         ).not.toBeInTheDocument();
       });
     } finally {
-      if (dialogPrototype) {
-        const prototypeWithOverrides = dialogPrototype as {
-          showModal?: (() => void) | undefined;
-          close?: (() => void) | undefined;
-        };
-        if (originalShowModal) {
-          prototypeWithOverrides.showModal = originalShowModal;
-        } else {
-          delete prototypeWithOverrides.showModal;
-        }
-        if (originalClose) {
-          prototypeWithOverrides.close = originalClose;
-        } else {
-          delete prototypeWithOverrides.close;
-        }
-      }
+      restoreDialog();
+    }
+  });
+
+  it("propose la purge quand la désactivation renvoie un conflit", async () => {
+    mockedFetchLocations.mockResolvedValueOnce([baseLocation]);
+    mockedFetchLocations.mockResolvedValueOnce([
+      { ...baseLocation, disabled: true },
+    ]);
+    const conflictError = Object.assign(new Error("HTTP 409"), {
+      status: 409,
+      counts: { lines: 12 },
+    });
+    mockedUpdateLocationStatus
+      .mockRejectedValueOnce(conflictError)
+      .mockResolvedValueOnce(undefined);
+
+    await renderAdminPage();
+
+    const user = userEvent.setup();
+    const restoreDialog = patchDialogMethods();
+
+    try {
+      const [locationCard] = await screen.findAllByTestId("location-card");
+      const disableButton = within(locationCard).getByRole("button", {
+        name: "Désactiver",
+      });
+      await user.click(disableButton);
+
+      const confirmDialog = await screen.findByRole("dialog", {
+        name: `Désactiver ${baseLocation.code} ?`,
+      });
+      const confirmButton = within(confirmDialog).getByRole("button", {
+        name: "Confirmer la désactivation",
+      });
+      await user.click(confirmButton);
+
+      const purgeDialog = await screen.findByRole("dialog", {
+        name: "Réinitialiser le comptage ?",
+      });
+      expect(
+        within(purgeDialog).getByText(/déjà été comptée/i)
+      ).toBeInTheDocument();
+
+      const purgeConfirm = within(purgeDialog).getByRole("button", {
+        name: "Oui, réinitialiser et désactiver",
+      });
+      await user.click(purgeConfirm);
+
+      await waitFor(() => {
+        expect(mockedUpdateLocationStatus).toHaveBeenNthCalledWith(
+          2,
+          baseLocation.id,
+          { isActive: false, force: true }
+        );
+      });
+      expect(
+        await screen.findByText("Zone désactivée et comptage réinitialisé")
+      ).toBeInTheDocument();
+    } finally {
+      restoreDialog();
     }
   });
   it("met à jour le code et le libellé d’une zone existante", async () => {
@@ -654,7 +721,10 @@ describe("AdminLocationsPage", () => {
 
       await waitFor(() => {
         expect(lockedFetch).toHaveBeenCalledWith(
-          `/api/shops/${testShop.id}/products/import/status`
+          `/api/shops/${testShop.id}/products/import/status`,
+          expect.objectContaining({
+            headers: expect.any(Headers),
+          })
         );
       });
 

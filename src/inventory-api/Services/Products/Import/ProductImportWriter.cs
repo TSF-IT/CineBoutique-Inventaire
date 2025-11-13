@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
+using CineBoutique.Inventory.Api.Services.Products;
 using CineBoutique.Inventory.Api.Validation;
 using CineBoutique.Inventory.Infrastructure.Database.Products;
 using Dapper;
@@ -112,12 +113,20 @@ WHERE "ShopId" = @ShopId
         }
 
         Dictionary<string, string>? preloadedAttributes = null;
+        string[] normalizedEansForDeletion = Array.Empty<string>();
         if (mode == ProductImportMode.ReplaceCatalogue)
         {
             preloadedAttributes = await LoadExistingAttributesBySkuAsync(rows, shopId, npgsqlTransaction, cancellationToken)
                 .ConfigureAwait(false);
 
-            await DeleteExistingProductsAsync(shopId, npgsqlTransaction, cancellationToken).ConfigureAwait(false);
+            normalizedEansForDeletion = rows
+                .Select(row => NormalizeEan(row.Ean))
+                .Where(static ean => !string.IsNullOrWhiteSpace(ean))
+                .Select(static ean => ean!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            await DeleteExistingProductsAsync(shopId, normalizedEansForDeletion, npgsqlTransaction, cancellationToken).ConfigureAwait(false);
         }
 
         return await UpsertRowsAsync(rows, shopId, npgsqlTransaction, cancellationToken, preloadedAttributes)
@@ -332,20 +341,36 @@ WHERE "ShopId" = @ShopId
 
     private static async Task DeleteExistingProductsAsync(
         Guid shopId,
+        string[] normalizedEans,
         NpgsqlTransaction transaction,
         CancellationToken cancellationToken)
     {
-        const string sql = "DELETE FROM \"Product\" WHERE \"ShopId\" = @ShopId;";
+        const string sql = """
+DELETE FROM "Product" p
+WHERE p."ShopId" = @ShopId
+  AND p."Ean" <> ALL(@EanList)
+  AND NOT EXISTS (
+        SELECT 1
+        FROM "CountLine" cl
+        WHERE cl."ProductId" = p."Id"
+    );
+""";
 
         var connection = transaction.Connection ?? throw new InvalidOperationException("Transaction not bound to a connection.");
 
         var command = new CommandDefinition(
             sql,
-            new { ShopId = shopId },
+            new { ShopId = shopId, EanList = normalizedEans.Length == 0 ? Array.Empty<string>() : normalizedEans },
             transaction: transaction,
             cancellationToken: cancellationToken);
 
         await connection.ExecuteAsync(command).ConfigureAwait(false);
+
+        var blocked = await FindBlockedProductsAsync(shopId, normalizedEans, transaction, cancellationToken).ConfigureAwait(false);
+        if (blocked is { } snapshot)
+        {
+            throw new ProductImportBlockedException(snapshot.LocationId, snapshot.SampleProductIds);
+        }
     }
 
     private string? NormalizeEan(string? ean)
@@ -444,4 +469,51 @@ WHERE "ShopId" = @ShopId
             _ => element.GetRawText()
         };
     }
+
+    private static async Task<BlockedProductsSample?> FindBlockedProductsAsync(
+        Guid shopId,
+        string[] normalizedEans,
+        NpgsqlTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+SELECT cl."ProductId", cr."LocationId"
+FROM "CountLine" cl
+JOIN "Product" p ON p."Id" = cl."ProductId"
+JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
+JOIN "Location" l ON l."Id" = cr."LocationId"
+WHERE p."ShopId" = @ShopId
+  AND p."Ean" <> ALL(@EanList)
+LIMIT 10;
+""";
+
+        var connection = transaction.Connection ?? throw new InvalidOperationException("Transaction not bound to a connection.");
+        var command = new CommandDefinition(
+            sql,
+            new { ShopId = shopId, EanList = normalizedEans.Length == 0 ? Array.Empty<string>() : normalizedEans },
+            transaction: transaction,
+            cancellationToken: cancellationToken);
+
+        var rows = (await connection
+                .QueryAsync<(Guid ProductId, Guid LocationId)>(command)
+                .ConfigureAwait(false))
+            .ToList();
+
+        if (rows.Count == 0)
+        {
+            return null;
+        }
+
+        var chosenLocation = rows[0].LocationId;
+        var products = rows
+            .Where(row => row.LocationId == chosenLocation)
+            .Select(row => row.ProductId)
+            .Distinct()
+            .Take(5)
+            .ToArray();
+
+        return new BlockedProductsSample(chosenLocation, products);
+    }
+
+    private sealed record BlockedProductsSample(Guid LocationId, IReadOnlyList<Guid> SampleProductIds);
 }

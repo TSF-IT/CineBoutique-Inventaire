@@ -4,12 +4,14 @@ using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Tests.Fixtures;
 using CineBoutique.Inventory.Api.Tests.Infrastructure;
 using CineBoutique.Inventory.Api.Tests.Infra;
 using FluentAssertions;
+using Microsoft.AspNetCore.Mvc;
 using Npgsql;
 using Xunit;
 
@@ -204,5 +206,107 @@ public sealed class ProductImportEndpointTests : IntegrationTestBase
         };
         var totalProducts = (long)await countCommand.ExecuteScalarAsync().ConfigureAwait(false);
         totalProducts.Should().Be(2);
+    }
+
+    [SkippableFact]
+    public async Task ImportProducts_ReplaceBlockedByCounts_ReturnsConflictProblem()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "Backend d'intégration indisponible.");
+
+        Guid shopId = Guid.Empty;
+        Guid locationId = Guid.Empty;
+        Guid productId = Guid.Empty;
+
+        await Fixture.ResetAndSeedAsync(async seeder =>
+        {
+            shopId = await seeder.GetDefaultShopIdAsync().ConfigureAwait(false);
+            locationId = await seeder.CreateLocationAsync(shopId, "ZBLO", "Zone bloquée").ConfigureAwait(false);
+            productId = await seeder.CreateProductAsync(shopId, "SKU-LOCK", "Produit bloqué", "5555555555555").ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        await InsertCountingRunWithLineAsync(locationId, productId).ConfigureAwait(false);
+
+        var client = CreateClient();
+        client.DefaultRequestHeaders.Add("X-Admin", "true");
+
+        var csv = "\"barcode\";\"item\";\"descr\"\n" +
+                  "\"1111111111111\";\"SKU-NEW\";\"Nouveau produit\"\n";
+
+        using var content = new StringContent(csv, Encoding.UTF8, "text/csv");
+        var response = await client.PostAsync($"/api/shops/{shopId}/products/import", content).ConfigureAwait(false);
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        var problem = await response.Content.ReadFromJsonAsync<ProblemDetails>().ConfigureAwait(false);
+        problem.Should().NotBeNull();
+        problem!.Title.Should().Be("Suppression impossible");
+        problem.Status.Should().Be((int)HttpStatusCode.Conflict);
+        problem.Detail.Should().Contain("comptages");
+
+        problem.Extensions.Should().ContainKey("blocked");
+        var blockedJson = problem.Extensions["blocked"] as JsonElement?;
+        blockedJson.HasValue.Should().BeTrue();
+
+        var blockedElement = blockedJson!.Value;
+        blockedElement.TryGetProperty("sampleProductIds", out var sampleIdsElement).Should().BeTrue();
+        var sampleIds = sampleIdsElement.EnumerateArray()
+            .Select(item => Guid.Parse(item.GetString() ?? Guid.Empty.ToString()))
+            .ToArray();
+        sampleIds.Should().Contain(productId);
+
+        if (blockedElement.TryGetProperty("locationId", out var locationElement) &&
+            locationElement.ValueKind == JsonValueKind.String)
+        {
+            Guid.Parse(locationElement.GetString()!).Should().Be(locationId);
+        }
+    }
+
+    private async Task InsertCountingRunWithLineAsync(Guid locationId, Guid productId)
+    {
+        var sessionId = Guid.NewGuid();
+        var runId = Guid.NewGuid();
+        var lineId = Guid.NewGuid();
+
+        await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync().ConfigureAwait(false);
+
+        await using (var sessionCommand = new NpgsqlCommand(
+                   "INSERT INTO \"InventorySession\" (\"Id\", \"Name\", \"StartedAtUtc\") VALUES (@id, @name, @startedAt);",
+                   connection,
+                   transaction))
+        {
+            sessionCommand.Parameters.AddWithValue("id", sessionId);
+            sessionCommand.Parameters.AddWithValue("name", "Session blocage");
+            sessionCommand.Parameters.AddWithValue("startedAt", DateTimeOffset.UtcNow);
+            await sessionCommand.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+
+        await using (var runCommand = new NpgsqlCommand(
+                   "INSERT INTO \"CountingRun\" (\"Id\", \"InventorySessionId\", \"LocationId\", \"CountType\", \"StartedAtUtc\", \"CompletedAtUtc\", \"OperatorDisplayName\") VALUES (@id, @sessionId, @locationId, @countType, @startedAt, NULL, @operator);",
+                   connection,
+                   transaction))
+        {
+            runCommand.Parameters.AddWithValue("id", runId);
+            runCommand.Parameters.AddWithValue("sessionId", sessionId);
+            runCommand.Parameters.AddWithValue("locationId", locationId);
+            runCommand.Parameters.AddWithValue("countType", (short)1);
+            runCommand.Parameters.AddWithValue("startedAt", DateTimeOffset.UtcNow);
+            runCommand.Parameters.AddWithValue("operator", "Tests");
+            await runCommand.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+
+        await using (var lineCommand = new NpgsqlCommand(
+                   "INSERT INTO \"CountLine\" (\"Id\", \"CountingRunId\", \"ProductId\", \"Quantity\", \"CountedAtUtc\") VALUES (@id, @runId, @productId, @quantity, @countedAt);",
+                   connection,
+                   transaction))
+        {
+            lineCommand.Parameters.AddWithValue("id", lineId);
+            lineCommand.Parameters.AddWithValue("runId", runId);
+            lineCommand.Parameters.AddWithValue("productId", productId);
+            lineCommand.Parameters.AddWithValue("quantity", 1m);
+            lineCommand.Parameters.AddWithValue("countedAt", DateTimeOffset.UtcNow);
+            await lineCommand.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync().ConfigureAwait(false);
     }
 }
