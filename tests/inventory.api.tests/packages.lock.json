@@ -1120,7 +1120,7 @@
           "BCrypt.Net-Next": "[4.0.3, )",
           "CineBoutique.Inventory.Domain": "[1.0.0, )",
           "CineBoutique.Inventory.Infrastructure": "[1.0.0, )",
-          "CsvHelper": "[30.0.1, )",
+          "CsvHelper": "[33.1.0, )",
           "Dapper": "[2.1.66, )",
           "FluentMigrator.Runner": "[6.0.0, )",
           "FluentMigrator.Runner.Postgres": "[6.0.0, )",
@@ -1163,9 +1163,9 @@
       },
       "CsvHelper": {
         "type": "CentralTransitive",
-        "requested": "[30.0.1, )",
-        "resolved": "30.0.1",
-        "contentHash": "rcZtgbWR+As4G3Vpgx0AMNmShGuQLFjkHAPIIflzrfkJCx8/AOd4m96ZRmiU1Wi39qS5UVjV0P8qdgqOo5Cwyg=="
+        "requested": "[33.1.0, )",
+        "resolved": "33.1.0",
+        "contentHash": "kqfTOZGrn7NarNeXgjh86JcpTHUoeQDMB8t9NVa/ZtlSYiV1rxfRnQ49WaJsob4AiGrbK0XDzpyKkBwai4F8eg=="
       },
       "Dapper": {
         "type": "CentralTransitive",
