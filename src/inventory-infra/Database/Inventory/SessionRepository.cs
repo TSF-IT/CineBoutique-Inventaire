@@ -1433,6 +1433,24 @@ WHERE cr."LocationId" = @LocationId;
                 continue;
             }
 
+            var resolution = observationModels.Count >= 2 ? DetectResolution(productRows) : null;
+            if (resolution is not null)
+            {
+                var resolvedQuantity = resolution.Quantity;
+                var resolvedAtUtc = resolution.ResolvedAtUtc;
+
+                if (existingConflict is not null)
+                {
+                    resolveUpdates.Add(new ConflictResolveUpdate(existingConflict.ConflictId, resolution.CountLineId, resolvedQuantity, resolvedAtUtc));
+                }
+                else
+                {
+                    inserts.Add(new ConflictInsertCommand(Guid.NewGuid(), resolution.CountLineId, "resolved", resolvedAtUtc, resolvedAtUtc, resolvedQuantity, true));
+                }
+
+                continue;
+            }
+
             var latestObservation = observationModels
                 .OrderByDescending(obs => obs.CountedAtUtc)
                 .ThenByDescending(obs => obs.RunId)
@@ -1447,24 +1465,6 @@ WHERE cr."LocationId" = @LocationId;
                 else
                 {
                     inserts.Add(new ConflictInsertCommand(Guid.NewGuid(), latestObservation.CountLineId, "open", latestObservation.CountedAtUtc, null, null, false));
-                }
-
-                continue;
-            }
-
-            var resolution = DetectResolution(productRows);
-            if (resolution is not null)
-            {
-                var resolvedQuantity = resolution.Quantity;
-                var resolvedAtUtc = resolution.ResolvedAtUtc;
-
-                if (existingConflict is not null)
-                {
-                    resolveUpdates.Add(new ConflictResolveUpdate(existingConflict.ConflictId, resolution.CountLineId, resolvedQuantity, resolvedAtUtc));
-                }
-                else
-                {
-                    inserts.Add(new ConflictInsertCommand(Guid.NewGuid(), resolution.CountLineId, "resolved", resolvedAtUtc, resolvedAtUtc, resolvedQuantity, true));
                 }
 
                 continue;

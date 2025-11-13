@@ -199,6 +199,79 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task Conflicts_Disappear_WhenMatchingThirdCountExistsWithoutProductCountTypeTwo()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        var seeded = await SeedInventoryContextWithAdditionalProductAsync().ConfigureAwait(false);
+        var client = CreateClient();
+
+        var firstRunItems = new[]
+        {
+            new CompleteRunItemRequest(seeded.ConflictEan, 3m, false),
+            new CompleteRunItemRequest(seeded.StableEan, 5m, false)
+        };
+        await RunCountAsync(
+            client,
+            seeded.ShopId,
+            seeded.LocationId,
+            seeded.PrimaryUserId,
+            1,
+            firstRunItems).ConfigureAwait(false);
+
+        var baselineItems = new[]
+        {
+            new CompleteRunItemRequest(seeded.StableEan, 5m, false)
+        };
+        await RunCountAsync(
+            client,
+            seeded.ShopId,
+            seeded.LocationId,
+            seeded.SecondaryUserId,
+            2,
+            baselineItems).ConfigureAwait(false);
+
+        var pendingConflictResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/conflicts/{seeded.LocationId}")
+        ).ConfigureAwait(false);
+
+        await pendingConflictResponse.ShouldBeAsync(HttpStatusCode.OK, "détails des conflits avant le troisième comptage").ConfigureAwait(false);
+        var pendingConflict = await pendingConflictResponse.Content.ReadFromJsonAsync<ConflictZoneDetailDto>().ConfigureAwait(false);
+        pendingConflict.Should().NotBeNull();
+        pendingConflict!.Items.Should().ContainSingle(item => item.Ean == seeded.ConflictEan, "l'article reste en anomalie tant que C2 n'a pas été réalisé");
+
+        var thirdRunItems = new[]
+        {
+            new CompleteRunItemRequest(seeded.ConflictEan, 3m, false)
+        };
+        await RunCountAsync(
+            client,
+            seeded.ShopId,
+            seeded.LocationId,
+            seeded.PrimaryUserId,
+            3,
+            thirdRunItems).ConfigureAwait(false);
+
+        var conflictResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/conflicts/{seeded.LocationId}")
+        ).ConfigureAwait(false);
+
+        await conflictResponse.ShouldBeAsync(HttpStatusCode.OK, "détails des conflits après un troisième comptage ciblé").ConfigureAwait(false);
+        var conflict = await conflictResponse.Content.ReadFromJsonAsync<ConflictZoneDetailDto>().ConfigureAwait(false);
+        conflict.Should().NotBeNull();
+        conflict!.Items.Should().BeEmpty("deux comptages concordants doivent lever le conflit même sans C2 pour l'article");
+
+        var summaryResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/inventories/summary?shopId={seeded.ShopId}")
+        ).ConfigureAwait(false);
+
+        await summaryResponse.ShouldBeAsync(HttpStatusCode.OK, "résumé après résolution implicite").ConfigureAwait(false);
+        var summary = await summaryResponse.Content.ReadFromJsonAsync<InventorySummaryDto>().ConfigureAwait(false);
+        summary.Should().NotBeNull();
+        summary!.ConflictZones.Should().NotContain(zone => zone.LocationId == seeded.LocationId, "la zone ne doit plus apparaître en conflit");
+    }
+
+    [SkippableFact]
     public async Task ConflictDetail_IncludesAllRuns_WhenConflictsPersistAcrossCounts()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
