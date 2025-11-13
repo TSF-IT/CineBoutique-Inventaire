@@ -341,6 +341,7 @@ internal static class CatalogEndpoints
             string? q,
             string? sortBy,
             string? sortDir,
+            string? countStatus,
             IDbConnection connection,
             CancellationToken ct) =>
         {
@@ -380,6 +381,47 @@ WHERE
     COALESCE(p."Name",'') ILIKE '%'||@Filter||'%'
 """;
 
+            const string productJoins = """
+LEFT JOIN "ProductGroup" pg  ON pg."Id"  = p."GroupId"
+LEFT JOIN "ProductGroup" pgp ON pgp."Id" = pg."ParentId"
+LEFT JOIN LATERAL (
+    SELECT MAX(cl."CountedAtUtc") AS "LastCountedAt"
+    FROM "CountLine" cl
+    JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
+    WHERE cl."ProductId" = p."Id"
+      AND cr."CompletedAtUtc" IS NOT NULL
+) counted ON TRUE
+""";
+
+            var normalizedCountStatus = (countStatus ?? "all").Trim();
+            normalizedCountStatus = normalizedCountStatus.Length == 0 ? "all" : normalizedCountStatus.ToLowerInvariant();
+            var statusIsValid = normalizedCountStatus is "all" or "counted" or "not_counted";
+            if (!statusIsValid)
+            {
+                return Results.BadRequest("Le paramètre countStatus doit valoir all, counted ou not_counted.");
+            }
+
+            var statusCondition = normalizedCountStatus switch
+            {
+                "counted" => "AND counted.\"LastCountedAt\" IS NOT NULL",
+                "not_counted" => "AND counted.\"LastCountedAt\" IS NULL",
+                _ => string.Empty
+            };
+
+            string ApplyStatusCondition(string clause)
+            {
+                if (string.IsNullOrEmpty(statusCondition))
+                {
+                    return clause;
+                }
+
+                return $"{clause}\n  {statusCondition}";
+            }
+
+            var scopedWhereClause = ApplyStatusCondition(whereClause);
+            var scopedGlobalWhereClause = ApplyStatusCondition(globalWhereClause);
+
+
             static IResult BuildPagedResult(
                 long totalCount,
                 IEnumerable<dynamic> rows,
@@ -387,7 +429,8 @@ WHERE
                 int pageSizeValue,
                 string sortField,
                 string sortDirectionValue,
-                string? filterValue)
+                string? filterValue,
+                string countStatusValue)
             {
                 var totalPagesValue = totalCount == 0
                     ? 0
@@ -402,7 +445,8 @@ WHERE
                     totalPages = totalPagesValue,
                     sortBy = sortField,
                     sortDir = sortDirectionValue,
-                    q = filterValue
+                    q = filterValue,
+                    countStatus = countStatusValue
                 });
             }
 
@@ -412,7 +456,8 @@ WHERE
                     new CommandDefinition($$"""
 SELECT COUNT(*)
 FROM "Product" p
-{{whereClause}};
+{{productJoins}}
+{{scopedWhereClause}};
 """, new { ShopId = shopId, Filter = filter }, cancellationToken: ct)).ConfigureAwait(false);
 
                 var data = await connection.QueryAsync(
@@ -427,11 +472,11 @@ SELECT
   COALESCE(
     CASE WHEN pgp."Id" IS NULL THEN NULL ELSE pg."Label" END,
     p."Attributes"->>'originalSousGroupe'
-  ) AS "subGroup"
+  ) AS "subGroup",
+  counted."LastCountedAt" AS "lastCountedAt"
 FROM "Product" p
-LEFT JOIN "ProductGroup" pg  ON pg."Id"  = p."GroupId"
-LEFT JOIN "ProductGroup" pgp ON pgp."Id" = pg."ParentId"
-{{whereClause}}
+{{productJoins}}
+{{scopedWhereClause}}
 ORDER BY
   CASE WHEN @Sort='ean'   THEN p."Ean"
        WHEN @Sort='name'  THEN p."Name"
@@ -441,7 +486,7 @@ ORDER BY
 LIMIT @Limit OFFSET @Offset;
 """, new { ShopId = shopId, Filter = filter, Sort = sort, Limit = ps, Offset = off }, cancellationToken: ct)).ConfigureAwait(false);
 
-                return BuildPagedResult(total, data, p, ps, sort, dir, filter);
+                return BuildPagedResult(total, data, p, ps, sort, dir, filter, normalizedCountStatus);
             }
             catch (PostgresException ex) when (IsShopScopeMissing(ex))
             {
@@ -449,7 +494,8 @@ LIMIT @Limit OFFSET @Offset;
                     new CommandDefinition($$"""
 SELECT COUNT(*)
 FROM "Product" p
-{{globalWhereClause}};
+{{productJoins}}
+{{scopedGlobalWhereClause}};
 """, new { Filter = filter }, cancellationToken: ct)).ConfigureAwait(false);
 
                 var data = await connection.QueryAsync(
@@ -464,11 +510,11 @@ SELECT
   COALESCE(
     CASE WHEN pgp."Id" IS NULL THEN NULL ELSE pg."Label" END,
     p."Attributes"->>'originalSousGroupe'
-  ) AS "subGroup"
+  ) AS "subGroup",
+  counted."LastCountedAt" AS "lastCountedAt"
 FROM "Product" p
-LEFT JOIN "ProductGroup" pg  ON pg."Id"  = p."GroupId"
-LEFT JOIN "ProductGroup" pgp ON pgp."Id" = pg."ParentId"
-{{globalWhereClause}}
+{{productJoins}}
+{{scopedGlobalWhereClause}}
 ORDER BY
   CASE WHEN @Sort='ean'   THEN p."Ean"
        WHEN @Sort='name'  THEN p."Name"
@@ -478,7 +524,7 @@ ORDER BY
 LIMIT @Limit OFFSET @Offset;
 """, new { Filter = filter, Sort = sort, Limit = ps, Offset = off }, cancellationToken: ct)).ConfigureAwait(false);
 
-                return BuildPagedResult(total, data, p, ps, sort, dir, filter);
+                return BuildPagedResult(total, data, p, ps, sort, dir, filter, normalizedCountStatus);
             }
         }), catalogEndpointsPublic);
 
@@ -528,6 +574,25 @@ LIMIT @Limit OFFSET @Offset;
             var count = await connection.ExecuteScalarAsync<long>(
                 new CommandDefinition(countSql, new { ShopId = shopId }, cancellationToken: ct)).ConfigureAwait(false);
 
+            long countedReferences = 0;
+            try
+            {
+                const string countedSql = """
+SELECT COUNT(DISTINCT cl."ProductId")
+FROM "CountLine" cl
+JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
+JOIN "Product" p ON p."Id" = cl."ProductId"
+WHERE p."ShopId" = @ShopId
+  AND cr."CompletedAtUtc" IS NOT NULL;
+""";
+                countedReferences = await connection.ExecuteScalarAsync<long>(
+                    new CommandDefinition(countedSql, new { ShopId = shopId }, cancellationToken: ct)).ConfigureAwait(false);
+            }
+            catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UndefinedTable)
+            {
+                countedReferences = 0;
+            }
+
             bool hasCatalog;
             try
             {
@@ -542,7 +607,7 @@ LIMIT @Limit OFFSET @Offset;
                     new CommandDefinition(fallbackSql, new { ShopId = shopId }, cancellationToken: ct)).ConfigureAwait(false);
             }
 
-            return Results.Ok(new { count, hasCatalog });
+            return Results.Ok(new { count, hasCatalog, countedReferences });
         }), catalogEndpointsPublic);
     }
 

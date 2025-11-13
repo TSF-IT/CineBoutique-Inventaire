@@ -119,4 +119,31 @@ describe('InventoryLocationStep', () => {
       'Vous avez déjà compté cette zone.',
     )
   })
+
+  it("n'affiche pas les zones désactivées", async () => {
+    const disabledLocation: Location = {
+      ...baseLocation,
+      id: 'disabled-zone',
+      code: 'Z99',
+      label: 'Zone désactivée',
+      disabled: true,
+      countStatuses: [],
+    }
+    fetchLocationsMock.mockResolvedValue([baseLocation, disabledLocation])
+
+    render(
+      <MemoryRouter initialEntries={[{ pathname: '/inventory/location' }]}>
+        <InventoryProvider>
+          <InventoryInitializer>
+            <InventoryLocationStep />
+          </InventoryInitializer>
+        </InventoryProvider>
+      </MemoryRouter>,
+    )
+
+    await waitFor(() => expect(fetchLocationsMock).toHaveBeenCalled())
+
+    expect(screen.queryByTestId('zone-card-disabled-zone')).not.toBeInTheDocument()
+    expect(screen.getAllByText(baseLocation.label)[0]).toBeInTheDocument()
+  })
 })

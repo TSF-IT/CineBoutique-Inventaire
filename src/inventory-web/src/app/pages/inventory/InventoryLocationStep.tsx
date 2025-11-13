@@ -224,11 +224,12 @@ export const InventoryLocationStep = () => {
 
   const filteredLocations = useMemo(() => {
     const safeList = Array.isArray(locations) ? locations : []
+    const enabledLocations = safeList.filter((zone) => !zone.disabled)
     if (!search.trim()) {
-      return safeList
+      return enabledLocations
     }
     const lowerSearch = search.toLowerCase()
-    return safeList.filter((zone) =>
+    return enabledLocations.filter((zone) =>
       zone.label.toLowerCase().includes(lowerSearch) || zone.code.toLowerCase().includes(lowerSearch),
     )
   }, [locations, search])

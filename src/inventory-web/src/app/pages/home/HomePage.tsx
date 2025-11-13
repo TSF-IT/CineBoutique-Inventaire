@@ -257,7 +257,7 @@ export const HomePage = () => {
   const isAdminUser = Boolean(selectedUser?.isAdmin);
 
   const handleProductsCardStateChange = useCallback(
-    (nextState: { count: number; hasCatalog: boolean } | null) => {
+    (nextState: { count: number; countedReferences: number; hasCatalog: boolean } | null) => {
       setCatalogProductCount(
         typeof nextState?.count === "number" ? nextState.count : null
       );

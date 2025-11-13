@@ -1,10 +1,11 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { ProductsCountCard } from '../ProductsCountCard'
 
 describe('ProductsCountCard', () => {
   afterEach(() => {
+    cleanup()
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
@@ -13,7 +14,7 @@ describe('ProductsCountCard', () => {
     const shopId = '00000000-0000-0000-0000-000000000001'
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: vi.fn().mockResolvedValue({ count: 42, hasCatalog: true })
+      json: vi.fn().mockResolvedValue({ count: 42, countedReferences: 10, hasCatalog: true })
     })
 
     vi.stubGlobal('fetch', fetchMock)
@@ -21,6 +22,8 @@ describe('ProductsCountCard', () => {
     render(<ProductsCountCard shopId={shopId} onClick={() => {}} />)
 
     await waitFor(() => expect(screen.getByText('42')).toBeInTheDocument())
+    expect(screen.getByText('10 / 42 comptés')).toBeInTheDocument()
+    expect(screen.getByText('32 références à compter')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Ouvrir le catalogue produits' })).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith(`/api/shops/${shopId}/products/count`)
   })
@@ -29,7 +32,7 @@ describe('ProductsCountCard', () => {
     const shopId = '00000000-0000-0000-0000-000000000002'
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
-      json: vi.fn().mockResolvedValue({ count: 0, hasCatalog: false })
+      json: vi.fn().mockResolvedValue({ count: 0, countedReferences: 0, hasCatalog: false })
     })
 
     vi.stubGlobal('fetch', fetchMock)

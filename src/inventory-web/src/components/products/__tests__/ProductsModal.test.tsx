@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -6,6 +6,7 @@ import { ProductsModal } from '../ProductsModal'
 
 describe('ProductsModal', () => {
   afterEach(() => {
+    cleanup()
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
   })
@@ -19,7 +20,8 @@ describe('ProductsModal', () => {
           sku: 'SKU-1',
           name: 'Produit 1',
           ean: '1234567890123',
-          codeDigits: '99'
+          codeDigits: '99',
+          lastCountedAt: '2024-10-10T10:00:00Z'
         }
       ],
       page: 1,
@@ -28,7 +30,8 @@ describe('ProductsModal', () => {
       totalPages: 1,
       sortBy: 'sku',
       sortDir: 'asc' as const,
-      q: ''
+      q: '',
+      countStatus: 'all' as const
     }
 
     let resolveJson: (value: typeof response) => void = () => {}
@@ -53,11 +56,13 @@ describe('ProductsModal', () => {
     await waitFor(() => expect(screen.queryByText('Chargement…')).not.toBeInTheDocument())
 
     expect(fetchMock).toHaveBeenCalledWith(
-      `/api/shops/${shopId}/products?page=1&pageSize=50&q=&sortBy=sku&sortDir=asc`
+      `/api/shops/${shopId}/products?page=1&pageSize=50&q=&sortBy=sku&sortDir=asc&countStatus=all`
     )
 
     const rows = within(screen.getByRole('table')).getAllByRole('row')
     expect(rows).toHaveLength(2)
+    expect(screen.getAllByText('Compté')[0]).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Comptées' })).toBeInTheDocument()
   })
 
   it('permet de sélectionner un produit lorsque onSelect est fourni', async () => {
@@ -110,5 +115,50 @@ describe('ProductsModal', () => {
 
     await waitFor(() => expect(onSelect).toHaveBeenCalledWith(response.items[0]))
     await waitFor(() => expect(onClose).toHaveBeenCalled())
+  })
+
+  it('permet de filtrer sur les références comptées', async () => {
+    const shopId = 'shop-456'
+    const initialResponse = {
+      items: [],
+      page: 1,
+      pageSize: 50,
+      total: 0,
+      totalPages: 0,
+      sortBy: 'sku',
+      sortDir: 'asc' as const,
+      q: '',
+      countStatus: 'all' as const,
+    }
+    const countedResponse = {
+      ...initialResponse,
+      countStatus: 'counted' as const,
+    }
+
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => initialResponse,
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => countedResponse,
+      })
+
+    vi.stubGlobal('fetch', fetchMock)
+    const user = userEvent.setup()
+
+    render(<ProductsModal open={true} onClose={() => {}} shopId={shopId} />)
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+
+    await user.click(await screen.findByRole('button', { name: 'Comptées' }))
+
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenLastCalledWith(
+        `/api/shops/${shopId}/products?page=1&pageSize=50&q=&sortBy=sku&sortDir=asc&countStatus=counted`,
+      ),
+    )
   })
 })

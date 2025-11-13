@@ -92,4 +92,78 @@ public class ProductAdminEndpointsTests : IClassFixture<TestApiFactory>
 
     Assert.Equal(before + 1, after);
   }
+
+  [Fact]
+  public async System.Threading.Tasks.Task Shop_Product_Count_Includes_Counted_References()
+  {
+    Skip.If(!_f.IsAvailable, _f.SkipReason ?? "Backend d'intégration indisponible.");
+
+    var shopId = Guid.NewGuid();
+    var locationId = Guid.NewGuid();
+    var sku = $"Z-SKU-{Guid.NewGuid():N}".Substring(0, 12).ToUpperInvariant();
+
+    using var scope = await _f.WithDbAsync(async conn =>
+    {
+      await conn.ExecuteAsync(
+        @"INSERT INTO ""Shop"" (""Id"", ""Name"", ""Kind"") VALUES (@Id, @Name, 'boutique');",
+        new { Id = shopId, Name = $"Boutique Comptage {Guid.NewGuid():N}" }).ConfigureAwait(false);
+
+      await conn.ExecuteAsync(
+        @"INSERT INTO ""Location"" (""Id"", ""ShopId"", ""Code"", ""Label"", ""Disabled"")
+          VALUES (@Id, @ShopId, @Code, @Label, FALSE);",
+        new
+        {
+          Id = locationId,
+          ShopId = shopId,
+          Code = $"ZCNT-{Guid.NewGuid():N}".Substring(0, 8).ToUpperInvariant(),
+          Label = "Zone Comptage"
+        }).ConfigureAwait(false);
+
+      await _f.UpsertProductAsync(conn, shopId, sku, "Produit compté", "3710000000007", null).ConfigureAwait(false);
+      var productId = await conn.ExecuteScalarAsync<Guid>(
+        @"SELECT ""Id"" FROM ""Product"" WHERE ""ShopId""=@ShopId AND ""Sku""=@Sku LIMIT 1;",
+        new { ShopId = shopId, Sku = sku }).ConfigureAwait(false);
+
+      var sessionId = Guid.NewGuid();
+      var now = DateTimeOffset.UtcNow;
+      await conn.ExecuteAsync(
+        @"INSERT INTO ""InventorySession"" (""Id"", ""Name"", ""StartedAtUtc"", ""CompletedAtUtc"")
+          VALUES (@Id, @Name, @StartedAtUtc, @CompletedAtUtc);",
+        new { Id = sessionId, Name = "Session comptée", StartedAtUtc = now, CompletedAtUtc = now }).ConfigureAwait(false);
+
+      var runId = Guid.NewGuid();
+      await conn.ExecuteAsync(
+        @"INSERT INTO ""CountingRun"" (""Id"", ""InventorySessionId"", ""LocationId"", ""CountType"", ""StartedAtUtc"", ""CompletedAtUtc"", ""OperatorDisplayName"")
+          VALUES (@Id, @SessionId, @LocationId, @CountType, @StartedAtUtc, @CompletedAtUtc, @Operator);",
+        new
+        {
+          Id = runId,
+          SessionId = sessionId,
+          LocationId = locationId,
+          CountType = (short)1,
+          StartedAtUtc = now,
+          CompletedAtUtc = now,
+          Operator = "Tests"
+        }).ConfigureAwait(false);
+
+      await conn.ExecuteAsync(
+        @"INSERT INTO ""CountLine"" (""Id"", ""CountingRunId"", ""ProductId"", ""Quantity"", ""CountedAtUtc"")
+          VALUES (@Id, @RunId, @ProductId, @Quantity, @CountedAtUtc);",
+        new
+        {
+          Id = Guid.NewGuid(),
+          RunId = runId,
+          ProductId = productId,
+          Quantity = 2m,
+          CountedAtUtc = now
+        }).ConfigureAwait(false);
+    }).ConfigureAwait(false);
+
+    var response = await _f.Client.GetAsync($"/api/shops/{shopId}/products/count");
+    response.EnsureSuccessStatusCode();
+
+    using var payload = System.Text.Json.JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+    var counted = payload.RootElement.GetProperty("countedReferences").GetInt64();
+    Assert.True(counted >= 1);
+  }
 }

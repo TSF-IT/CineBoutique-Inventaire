@@ -1,4 +1,5 @@
 import React from "react";
+import { clsx } from "clsx";
 import { FixedSizeList as VirtualList } from "react-window";
 
 import { modalOverlayClassName } from "@/app/components/Modal/modalOverlayClassName";
@@ -19,6 +20,7 @@ type Item = {
   codeDigits?: string | null;
   group?: string | null;
   subGroup?: string | null;
+  lastCountedAt?: string | null;
 };
 type Response = {
   items: Item[];
@@ -29,6 +31,7 @@ type Response = {
   sortBy: string;
   sortDir: "asc" | "desc";
   q?: string | null;
+  countStatus?: CountStatus;
 };
 
 type Props = {
@@ -55,6 +58,14 @@ const BASE_COLUMNS: ReadonlyArray<Column> = [
 
 const SUBGROUP_COLUMN: Column = { key: "subGroup", label: "Sous-groupe", sortable: false };
 
+type CountStatus = "all" | "counted" | "not_counted";
+
+const COUNT_STATUS_OPTIONS: ReadonlyArray<{ value: CountStatus; label: string }> = [
+  { value: "all", label: "Toutes" },
+  { value: "not_counted", label: "À compter" },
+  { value: "counted", label: "Comptées" },
+];
+
 const VirtualizedRowGroup = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
   function VirtualizedRowGroup(props, ref) {
     return <div {...props} ref={ref} role="rowgroup" />;
@@ -70,11 +81,35 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
   const [page, setPage] = React.useState(1);
   const [sortBy, setSortBy] = React.useState<ColumnKey>("sku");
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("asc");
+  const [countStatus, setCountStatus] = React.useState<CountStatus>("all");
   const [data, setData] = React.useState<Response | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [pendingSelectionId, setPendingSelectionId] = React.useState<string | null>(null);
   const listRef = React.useRef<VirtualListInstance | null>(null);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
+  const countedAtFormatter = React.useMemo(
+    () =>
+      new Intl.DateTimeFormat("fr-FR", {
+        day: "2-digit",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    [],
+  );
+  const formatLastCountedAt = React.useCallback(
+    (value?: string | null) => {
+      if (!value) {
+        return null;
+      }
+      const parsed = new Date(value);
+      if (Number.isNaN(parsed.getTime())) {
+        return null;
+      }
+      return countedAtFormatter.format(parsed);
+    },
+    [countedAtFormatter],
+  );
 
   const isInteractive = typeof onSelect === "function";
 
@@ -88,6 +123,7 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
       q: q.trim(),
       sortBy,
       sortDir,
+      countStatus,
     });
     (async () => {
       try {
@@ -104,7 +140,7 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
     return () => {
       abort = true;
     };
-  }, [open, shopId, page, sortBy, sortDir, q]);
+  }, [open, shopId, page, sortBy, sortDir, q, countStatus]);
 
   const setSort = React.useCallback(
     (col: typeof sortBy) => {
@@ -119,7 +155,7 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
 
   React.useEffect(() => {
     listRef.current?.scrollToItem?.(0);
-  }, [page, sortBy, sortDir, q, data?.items]);
+  }, [page, sortBy, sortDir, q, countStatus, data?.items]);
 
   React.useEffect(() => {
     if (!open) {
@@ -159,6 +195,11 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
   const handleClearSearch = React.useCallback(() => {
     setPage(1);
     setQ("");
+  }, []);
+
+  const handleCountStatusChange = React.useCallback((next: CountStatus) => {
+    setPage(1);
+    setCountStatus(next);
   }, []);
 
   const handleRowActivation = React.useCallback(
@@ -217,6 +258,8 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
               </div>
             );
           case "name":
+          {
+            const countedLabel = formatLastCountedAt(product.lastCountedAt);
             return (
               <div
                 key={column.key}
@@ -225,8 +268,17 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
                 title={product.name}
               >
                 <span className="truncate flex-1">{product.name}</span>
+                {product.lastCountedAt ? (
+                  <span
+                    className="shrink-0 rounded-full bg-emerald-100/70 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-100"
+                    title={countedLabel ? `Compté le ${countedLabel}` : undefined}
+                  >
+                    Compté
+                  </span>
+                ) : null}
               </div>
             );
+          }
           case "subGroup":
             return (
               <div
@@ -243,7 +295,7 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
           }
         }
       }),
-    [visibleColumns],
+    [formatLastCountedAt, visibleColumns],
   );
 
   const header = React.useMemo(
@@ -363,11 +415,11 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
               <span aria-hidden="true">✕</span>
             </button>
           </div>
-          <div className="mt-1">
-            <label htmlFor="products-search" className="sr-only">
-              Rechercher un produit
-            </label>
-            <div className="relative flex items-center">
+          <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+            <div className="relative flex-1">
+              <label htmlFor="products-search" className="sr-only">
+                Rechercher un produit
+              </label>
               <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-400 dark:text-slate-500" aria-hidden="true">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -403,9 +455,31 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
                 </button>
               ) : null}
             </div>
+            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                Statut
+              </span>
+              <div className="inline-flex flex-wrap gap-2">
+                {COUNT_STATUS_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => handleCountStatusChange(option.value)}
+                    className={clsx(
+                      "rounded-full border px-3 py-1 text-xs font-semibold transition focus-visible:outline-none focus-visible:ring-2",
+                      countStatus === option.value
+                        ? "border-product-600 bg-product-600/15 text-product-700 focus-visible:ring-product-600 dark:border-product-400 dark:bg-product-400/20 dark:text-product-100"
+                        : "border-slate-200 text-slate-600 hover:border-product-400 hover:text-product-700 focus-visible:ring-product-600 dark:border-slate-600 dark:text-slate-200 dark:hover:border-product-400",
+                    )}
+                    aria-pressed={countStatus === option.value}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </header>
-
         <div className="min-h-0 flex flex-1 flex-col overflow-hidden bg-white dark:bg-slate-900">
           <div className="flex-1 min-h-0 overflow-hidden px-5 py-5">
             <div className="min-h-0 flex h-full flex-col gap-4">
@@ -471,17 +545,28 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
                               void handleRowActivation(product);
                             };
 
+                            const rowClassName = clsx(
+                              commonRowClassName,
+                              "last:border-b-0",
+                              product.lastCountedAt &&
+                                "border-emerald-200/80 bg-emerald-50/70 dark:border-emerald-500/40 dark:bg-emerald-500/15",
+                              isInteractive
+                                ? isDisabled
+                                  ? "cursor-not-allowed opacity-60"
+                                  : [
+                                      "cursor-pointer focus-visible:outline-none focus-visible:ring-2",
+                                      product.lastCountedAt
+                                        ? "hover:bg-emerald-50/80 focus-visible:ring-emerald-500 dark:hover:bg-emerald-500/30"
+                                        : "hover:bg-product-50/60 focus-visible:ring-product-600",
+                                    ]
+                                : "cursor-default hover:bg-product-50/60 focus-within:bg-product-50/60",
+                            );
+
                             return (
                               <div
                                 role="row"
                                 style={style}
-                                className={`${commonRowClassName} last:border-b-0 ${
-                                  isInteractive
-                                    ? isDisabled
-                                      ? "cursor-not-allowed opacity-60"
-                                      : "cursor-pointer hover:bg-product-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-product-600"
-                                    : "cursor-default hover:bg-product-50/60 focus-within:bg-product-50/60"
-                                }`}
+                                className={rowClassName}
                                 tabIndex={
                                   isInteractive ? (isRowInteractive ? 0 : -1) : undefined
                                 }
@@ -498,6 +583,7 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
                                 }
                                 aria-disabled={isPending || undefined}
                                 data-testid={`products-modal-row-${product.id}`}
+                                data-count-status={product.lastCountedAt ? "counted" : "not-counted"}
                               >
                                 {renderCells(product)}
                               </div>
@@ -519,17 +605,27 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
                             void handleRowActivation(product);
                           };
 
+                          const rowClassName = clsx(
+                            commonRowClassName,
+                            product.lastCountedAt &&
+                              "border-emerald-200/80 bg-emerald-50/70 dark:border-emerald-500/40 dark:bg-emerald-500/15",
+                            isInteractive
+                              ? isDisabled
+                                ? "cursor-not-allowed opacity-60"
+                                : [
+                                    "cursor-pointer focus-visible:outline-none focus-visible:ring-2",
+                                    product.lastCountedAt
+                                      ? "hover:bg-emerald-50/80 focus-visible:ring-emerald-500 dark:hover:bg-emerald-500/30"
+                                      : "hover:bg-product-50/60 focus-visible:ring-product-600",
+                                  ]
+                              : "cursor-default hover:bg-product-50/60 focus-within:bg-product-50/60",
+                          );
+
                           return (
                             <div
                               role="row"
                               key={itemKey(index, items)}
-                              className={`${commonRowClassName} ${
-                                isInteractive
-                                  ? isDisabled
-                                    ? "cursor-not-allowed opacity-60"
-                                    : "cursor-pointer hover:bg-product-50/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-product-600"
-                                  : "cursor-default hover:bg-product-50/60 focus-within:bg-product-50/60"
-                              }`}
+                              className={rowClassName}
                               tabIndex={
                                 isInteractive ? (isRowInteractive ? 0 : -1) : undefined
                               }
@@ -546,6 +642,7 @@ export function ProductsModal({ open, onClose, shopId, onSelect }: Props) {
                               }
                               aria-disabled={isPending || undefined}
                               data-testid={`products-modal-row-${product.id}`}
+                              data-count-status={product.lastCountedAt ? "counted" : "not-counted"}
                             >
                               {renderCells(product)}
                             </div>

@@ -1,7 +1,7 @@
 import { clsx } from 'clsx'
 import React from 'react'
 
-type ProductsCountState = { count: number; hasCatalog: boolean }
+type ProductsCountState = { count: number; countedReferences: number; hasCatalog: boolean }
 
 type Props = {
   shopId: string
@@ -10,7 +10,7 @@ type Props = {
 } & React.ComponentProps<'button'>
 
 export function ProductsCountCard({ shopId, onOpen, onClick, onStateChange, className, ...rest }: Props) {
-  const [state, setState] = React.useState<{ count: number; hasCatalog: boolean } | null>(null)
+  const [state, setState] = React.useState<ProductsCountState | null>(null)
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
@@ -23,6 +23,7 @@ export function ProductsCountCard({ shopId, onOpen, onClick, onStateChange, clas
         if (!aborted) {
           const nextState: ProductsCountState = {
             count: typeof json?.count === 'number' ? json.count : 0,
+            countedReferences: typeof json?.countedReferences === 'number' ? json.countedReferences : 0,
             hasCatalog: Boolean(json?.hasCatalog),
           }
           setState(nextState)
@@ -30,7 +31,7 @@ export function ProductsCountCard({ shopId, onOpen, onClick, onStateChange, clas
         }
       } catch {
         if (!aborted) {
-          const fallback: ProductsCountState = { count: 0, hasCatalog: false }
+          const fallback: ProductsCountState = { count: 0, countedReferences: 0, hasCatalog: false }
           setState(fallback)
           onStateChange?.(fallback)
         }
@@ -46,6 +47,15 @@ export function ProductsCountCard({ shopId, onOpen, onClick, onStateChange, clas
 
   const count = state?.count ?? 0
   const hasData = count > 0
+  const rawCountedReferences = state?.countedReferences ?? 0
+  const countedReferences = Math.max(0, Math.min(count, rawCountedReferences))
+  const remainingReferences = Math.max(count - countedReferences, 0)
+  const remainingLabel =
+    !hasData || countedReferences === 0
+      ? 'Aucune référence comptée pour le moment'
+      : remainingReferences === 0
+        ? 'Toutes les références ont été comptées'
+        : `${remainingReferences} référence${remainingReferences > 1 ? 's' : ''} à compter`
   const baseCardClasses =
     'flex w-full min-h-[192px] flex-col gap-3 rounded-xl border p-5 text-left shadow-elev-1 transition'
   const defaultToneClasses =
@@ -100,6 +110,8 @@ export function ProductsCountCard({ shopId, onOpen, onClick, onStateChange, clas
         <>
           <div className="h-4 w-32 animate-pulse rounded bg-product-200/50" />
           <div className="h-10 w-24 animate-pulse rounded bg-product-200/60" />
+          <div className="mt-4 h-3 w-full animate-pulse rounded-full bg-product-200/40" />
+          <div className="h-2 w-full animate-pulse rounded-full bg-product-200/40" />
         </>
       ) : (
         <>
@@ -111,11 +123,16 @@ export function ProductsCountCard({ shopId, onOpen, onClick, onStateChange, clas
               </span>
             )}
           </div>
-          <p className="mt-2 text-4xl font-semibold text-product-700 dark:text-white">{count}</p>
-          <p className="text-xs font-semibold uppercase tracking-wide text-product-600/80 dark:text-product-200/80">
-            Produits référencés
-          </p>
-          <p className="mt-1 text-xs text-product-600/70 dark:text-product-200/70">Touchez pour voir le catalogue</p>
+          <div className="mt-2 flex flex-wrap items-baseline justify-between gap-3">
+            <p className="text-4xl font-semibold text-product-700 dark:text-white">{count}</p>
+            <div className="text-right">
+              <p className="text-sm font-semibold uppercase tracking-wide text-product-700 dark:text-product-200">
+                {countedReferences} / {count} comptés
+              </p>
+              <p className="text-xs text-product-600/80 dark:text-product-200/80">{remainingLabel}</p>
+            </div>
+          </div>
+          <p className="mt-3 text-xs text-product-600/70 dark:text-product-200/70">Touchez pour voir le catalogue</p>
         </>
       )}
     </button>
