@@ -33,8 +33,6 @@ internal static class AdminEndpoints
         ArgumentNullException.ThrowIfNull(app);
 
         MapCreateProductEndpoint(app);
-        MapSearchProductsEndpoint(app);
-        MapGetProductEndpoint(app);
         MapUpdateProductEndpoints(app);
 
         return app;

@@ -36,7 +36,6 @@
   <ItemGroup>
     <ProjectReference Include="../inventory-domain/CineBoutique.Inventory.Domain.csproj" />
     <ProjectReference Include="../inventory-infra/CineBoutique.Inventory.Infrastructure.csproj" />
-    <ProjectReference Include="../inventory-shared/CineBoutique.Inventory.Shared.csproj" />
   </ItemGroup>
 
   <!-- fiabilise la copie des appsettings* lors du build/publish -->

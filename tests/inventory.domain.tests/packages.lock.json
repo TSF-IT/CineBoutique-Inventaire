@@ -114,12 +114,6 @@
         }
       },
       "cineboutique.inventory.domain": {
-        "type": "Project",
-        "dependencies": {
-          "CineBoutique.Inventory.Shared": "[1.0.0, )"
-        }
-      },
-      "cineboutique.inventory.shared": {
         "type": "Project"
       }
     }

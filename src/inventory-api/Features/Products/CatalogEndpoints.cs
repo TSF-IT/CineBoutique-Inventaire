@@ -1,18 +1,28 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Endpoints;
+using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Shops;
+using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
+using CineBoutique.Inventory.Api.Services.Products;
+using CineBoutique.Inventory.Api.Validation;
 using Dapper;
+using FluentValidation.Results;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.OpenApi;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Logging;
 using Npgsql;
+using Microsoft.OpenApi.Any;
+using Microsoft.OpenApi.Models;
 
 namespace CineBoutique.Inventory.Api.Features.Products;
 
@@ -23,6 +33,8 @@ internal static class CatalogEndpoints
         ArgumentNullException.ThrowIfNull(app);
 
         MapProductDetailsEndpoint(app);
+        MapProductLookupEndpoint(app, catalogEndpointsPublic);
+        MapProductSearchEndpoint(app, catalogEndpointsPublic);
         MapProductCountEndpoint(app, catalogEndpointsPublic);
         MapShopCatalogEndpoints(app, catalogEndpointsPublic);
         MapProductSuggestEndpoint(app, catalogEndpointsPublic);
@@ -52,6 +64,210 @@ internal static class CatalogEndpoints
             return row is null ? Results.NotFound() : Results.Ok(row);
         })
         .WithMetadata(new Microsoft.AspNetCore.Authorization.AllowAnonymousAttribute());
+    }
+
+    private static void MapProductLookupEndpoint(IEndpointRouteBuilder app, bool catalogEndpointsPublic)
+    {
+        ApplyCatalogVisibility(app.MapGet("/api/products/{code}", async (
+                string code,
+                IProductLookupService lookupService,
+                IAuditLogger auditLogger,
+                IClock clock,
+                HttpContext httpContext,
+                ILogger<ProductLookupLogger> logger,
+                IProductLookupMetrics lookupMetrics,
+                CancellationToken cancellationToken) =>
+            {
+                var result = await lookupService.ResolveAsync(code, cancellationToken).ConfigureAwait(false);
+
+                var now = clock.UtcNow;
+                var userName = EndpointUtilities.GetAuthenticatedUserName(httpContext);
+                var actor = EndpointUtilities.FormatActorLabel(httpContext);
+                var timestamp = EndpointUtilities.FormatTimestamp(now);
+                var displayCode = string.IsNullOrWhiteSpace(result.NormalizedCode) ? "(vide)" : result.NormalizedCode;
+
+                switch (result.Status)
+                {
+                    case ProductLookupStatus.Success:
+                    {
+                        var product = result.Product!;
+                        var productLabel = product.Name;
+                        var skuLabel = string.IsNullOrWhiteSpace(product.Sku) ? "non renseigné" : product.Sku;
+                        var eanLabel = string.IsNullOrWhiteSpace(product.Ean) ? "non renseigné" : product.Ean;
+                        var successMessage = $"{actor} a scanné le code {displayCode} et a identifié le produit \"{productLabel}\" (SKU {skuLabel}, EAN {eanLabel}) le {timestamp} UTC.";
+                        await auditLogger.LogAsync(successMessage, userName, "products.scan.success", cancellationToken).ConfigureAwait(false);
+                        return Results.Ok(product);
+                    }
+
+                    case ProductLookupStatus.Conflict:
+                    {
+                        var matches = result.Matches
+                            .Select(match => new ProductLookupConflictMatch(match.Sku, match.Code))
+                            .ToArray();
+
+                        lookupMetrics.IncrementAmbiguity();
+                        logger.LogInformation(
+                            "ProductLookupAmbiguity {@Lookup}",
+                            new
+                            {
+                                Code = result.OriginalCode,
+                                Digits = result.Digits ?? string.Empty,
+                                MatchCount = matches.Length
+                            });
+
+                        var conflictPayload = new ProductLookupConflictResponse(
+                            Ambiguous: true,
+                            Code: result.OriginalCode,
+                            Digits: result.Digits ?? string.Empty,
+                            Matches: matches);
+
+                        var digitsLabel = string.IsNullOrEmpty(result.Digits) ? "(n/a)" : result.Digits;
+                        var conflictMessage = $"{actor} a scanné le code {displayCode} mais plusieurs produits partagent les chiffres {digitsLabel} le {timestamp} UTC.";
+                        await auditLogger.LogAsync(conflictMessage, userName, "products.scan.conflict", cancellationToken).ConfigureAwait(false);
+                        return Results.Json(conflictPayload, statusCode: StatusCodes.Status409Conflict);
+                    }
+
+                    default:
+                    {
+                        var notFoundMessage = $"{actor} a scanné le code {displayCode} sans correspondance produit le {timestamp} UTC.";
+                        await auditLogger.LogAsync(notFoundMessage, userName, "products.scan.not_found", cancellationToken).ConfigureAwait(false);
+                        return Results.NotFound();
+                    }
+                }
+            }), catalogEndpointsPublic)
+            .WithName("GetProductByCode")
+            .WithTags("Produits")
+            .Produces<ProductDto>(StatusCodes.Status200OK)
+            .Produces<ProductLookupConflictResponse>(StatusCodes.Status409Conflict)
+            .Produces(StatusCodes.Status404NotFound)
+            .WithOpenApi(op =>
+            {
+                op.Summary = "Recherche un produit par code scanné (SKU, code brut, chiffres).";
+                op.Description = "Résout d'abord par SKU exact, puis par code brut (EAN/Code) et enfin par chiffres extraits. Retourne 409 en cas de collisions sur CodeDigits.";
+                return op;
+            });
+    }
+
+    private static void MapProductSearchEndpoint(IEndpointRouteBuilder app, bool catalogEndpointsPublic)
+    {
+        ApplyCatalogVisibility(app.MapGet("/api/products/search", async (
+                string? code,
+                int? limit,
+                int? page,
+                int? pageSize,
+                string? sort,
+                string? dir,
+                IProductSearchService searchService,
+                CancellationToken cancellationToken) =>
+            {
+                var sanitizedCode = code?.Trim();
+                if (string.IsNullOrWhiteSpace(sanitizedCode))
+                {
+                    var validation = new ValidationResult(new[]
+                    {
+                        new ValidationFailure("code", "Le paramètre 'code' est obligatoire.")
+                    });
+
+                    return EndpointUtilities.ValidationProblem(validation);
+                }
+
+                var hasPaging = page.HasValue || pageSize.HasValue;
+                var p = Math.Max(1, page ?? 1);
+                var ps = Math.Max(1, Math.Min(100, pageSize ?? 50));
+                var offset = (p - 1) * ps;
+
+                var effectiveLimit = limit.GetValueOrDefault(20);
+                if (effectiveLimit < 1 || effectiveLimit > 50)
+                {
+                    var validation = new ValidationResult(new[]
+                    {
+                        new ValidationFailure("limit", "Le paramètre 'limit' doit être compris entre 1 et 50.")
+                    });
+
+                    return EndpointUtilities.ValidationProblem(validation);
+                }
+
+                var items = await searchService
+                    .SearchAsync(sanitizedCode, effectiveLimit, hasPaging, ps, offset, sort, dir, cancellationToken)
+                    .ConfigureAwait(false);
+
+                var response = items
+                    .Select(item => new ProductSearchItemDto(item.Sku, item.Code, item.Name, item.Group, item.SubGroup))
+                    .ToArray();
+                return Results.Ok(response);
+            }), catalogEndpointsPublic)
+            .WithName("SearchProducts")
+            .WithTags("Produits")
+            .Produces<IReadOnlyList<ProductSearchItemDto>>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status400BadRequest)
+            .WithOpenApi(operation =>
+            {
+                operation.Summary = "Recherche un ensemble de produits à partir d'un code scanné.";
+                operation.Description = "La recherche combine une requête SQL unique mêlant préfixes sur le SKU/EAN et similarité trigram sur le nom et les groupes. Les résultats sont dédupliqués par SKU et limités par le paramètre 'limit'.";
+
+                if (operation.Parameters is { Count: > 0 })
+                {
+                    foreach (var parameter in operation.Parameters)
+                    {
+                        if (string.Equals(parameter.Name, "code", StringComparison.OrdinalIgnoreCase))
+                        {
+                            parameter.Description = "Code recherché (SKU exact, EAN ou code brut).";
+                            parameter.Required = true;
+                        }
+                        else if (string.Equals(parameter.Name, "limit", StringComparison.OrdinalIgnoreCase))
+                        {
+                            parameter.Description = "Nombre maximum de résultats (défaut : 20, maximum : 50).";
+                            if (parameter.Schema is not null)
+                            {
+                                parameter.Schema.Minimum = 1;
+                                parameter.Schema.Maximum = 50;
+                                parameter.Schema.Default = new OpenApiInteger(20);
+                            }
+                        }
+                    }
+                }
+
+                operation.Responses ??= new OpenApiResponses();
+                operation.Responses[StatusCodes.Status200OK.ToString(CultureInfo.InvariantCulture)] = new OpenApiResponse
+                {
+                    Description = "Liste des produits correspondant au code recherché.",
+                    Content =
+                    {
+                        ["application/json"] = new OpenApiMediaType
+                        {
+                            Schema = new OpenApiSchema
+                            {
+                                Type = "array",
+                                Items = new OpenApiSchema
+                                {
+                                    Reference = new OpenApiReference
+                                    {
+                                        Type = ReferenceType.Schema,
+                                        Id = nameof(ProductSearchItemDto)
+                                    }
+                                }
+                            },
+                            Example = new OpenApiArray
+                            {
+                                new OpenApiObject
+                                {
+                                    ["sku"] = new OpenApiString("CB-0001"),
+                                    ["code"] = new OpenApiString("CB-0001"),
+                                    ["name"] = new OpenApiString("Café grains 1kg")
+                                },
+                                new OpenApiObject
+                                {
+                                    ["sku"] = new OpenApiString("CB-0101"),
+                                    ["code"] = new OpenApiString("0001"),
+                                    ["name"] = new OpenApiString("Bonbon réglisse")
+                                }
+                            }
+                        }
+                    }
+                };
+
+                return operation;
+            });
     }
 
     private static void MapProductCountEndpoint(IEndpointRouteBuilder app, bool catalogEndpointsPublic)
@@ -477,6 +693,10 @@ LIMIT @top;";
         }
 
         return builder.RequireAuthorization();
+    }
+
+    private sealed class ProductLookupLogger
+    {
     }
 
     private static bool IsShopScopeMissing(PostgresException ex)

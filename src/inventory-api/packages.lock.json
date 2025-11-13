@@ -842,24 +842,17 @@
         "contentHash": "okurQJO6NRE/apDIP23ajJ0hpiNmJ+f0BwOlB/cSqTLQlw5upkf+5+96+iG2Jw40G1fCVCyPz/FhIABUjMR+RQ=="
       },
       "cineboutique.inventory.domain": {
-        "type": "Project",
-        "dependencies": {
-          "CineBoutique.Inventory.Shared": "[1.0.0, )"
-        }
+        "type": "Project"
       },
       "cineboutique.inventory.infrastructure": {
         "type": "Project",
         "dependencies": {
           "CineBoutique.Inventory.Domain": "[1.0.0, )",
-          "CineBoutique.Inventory.Shared": "[1.0.0, )",
           "Dapper": "[2.1.66, )",
           "FluentMigrator.Runner": "[6.0.0, )",
           "FluentMigrator.Runner.Postgres": "[6.0.0, )",
           "Npgsql": "[8.0.3, )"
         }
-      },
-      "cineboutique.inventory.shared": {
-        "type": "Project"
       },
       "Microsoft.Extensions.Logging.Abstractions": {
         "type": "CentralTransitive",

@@ -519,12 +519,6 @@
         "contentHash": "okurQJO6NRE/apDIP23ajJ0hpiNmJ+f0BwOlB/cSqTLQlw5upkf+5+96+iG2Jw40G1fCVCyPz/FhIABUjMR+RQ=="
       },
       "cineboutique.inventory.domain": {
-        "type": "Project",
-        "dependencies": {
-          "CineBoutique.Inventory.Shared": "[1.0.0, )"
-        }
-      },
-      "cineboutique.inventory.shared": {
         "type": "Project"
       },
       "Azure.Core": {
