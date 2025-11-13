@@ -8,6 +8,7 @@ using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure;
 using CineBoutique.Inventory.Api.Infrastructure.Logging;
 using CineBoutique.Inventory.Api.Models;
+using CineBoutique.Inventory.Infrastructure.Database.Inventory;
 using Dapper;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -34,6 +35,7 @@ internal static class ConflictsEndpoints
         app.MapGet("/api/conflicts/{locationId:guid}", async (
             Guid locationId,
             IDbConnection connection,
+            [FromServices] ISessionRepository sessionRepository,
             [FromServices] ILogger<InventoryEndpointsMarker> logger,
             CancellationToken cancellationToken) =>
         {
@@ -50,6 +52,8 @@ internal static class ConflictsEndpoints
             {
                 return Results.NotFound();
             }
+
+            await sessionRepository.ResolveConflictsForLocationAsync(locationId, cancellationToken).ConfigureAwait(false);
 
             const string runsSql = """
 WITH conflict_products AS (

@@ -15,5 +15,7 @@ public interface ISessionRepository
 
     Task<SessionConflictResolutionResult> ResolveConflictsForSessionAsync(Guid sessionId, CancellationToken cancellationToken);
 
+    Task ResolveConflictsForLocationAsync(Guid locationId, CancellationToken cancellationToken);
+
     Task<ResetShopInventoryResult> ResetShopInventoryAsync(Guid shopId, CancellationToken cancellationToken);
 }

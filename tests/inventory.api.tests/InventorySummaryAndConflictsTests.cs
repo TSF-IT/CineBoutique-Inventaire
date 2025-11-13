@@ -272,6 +272,30 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task ConflictsEndpoint_ReplaysResolverBeforeReturningPayload()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        var seeded = await SeedInventoryContextAsync().ConfigureAwait(false);
+        var client = CreateClient();
+
+        await RunCountAsync(client, seeded, seeded.PrimaryUserId, 1, 10m).ConfigureAwait(false);
+        await RunCountAsync(client, seeded, seeded.SecondaryUserId, 2, 9m).ConfigureAwait(false);
+        await RunCountAsync(client, seeded, seeded.PrimaryUserId, 3, 10m).ConfigureAwait(false);
+
+        await ReopenResolvedConflictForProductAsync(seeded.LocationId, seeded.ProductEan).ConfigureAwait(false);
+
+        var conflictResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/conflicts/{seeded.LocationId}")
+        ).ConfigureAwait(false);
+
+        await conflictResponse.ShouldBeAsync(HttpStatusCode.OK, "l'endpoint rejoue la résolution avant de répondre").ConfigureAwait(false);
+        var conflict = await conflictResponse.Content.ReadFromJsonAsync<ConflictZoneDetailDto>().ConfigureAwait(false);
+        conflict.Should().NotBeNull();
+        conflict!.Items.Should().BeEmpty("la résolution automatique doit effacer l'entrée ré-ouverte manuellement");
+    }
+
+    [SkippableFact]
     public async Task ConflictDetail_IncludesAllRuns_WhenConflictsPersistAcrossCounts()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
@@ -544,6 +568,62 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
             insert.Parameters.AddWithValue("quantity", quantity);
             insert.Parameters.AddWithValue("at", DateTimeOffset.UtcNow);
             await insert.ExecuteNonQueryAsync().ConfigureAwait(false);
+        }
+
+        await transaction.CommitAsync().ConfigureAwait(false);
+    }
+
+    private async Task ReopenResolvedConflictForProductAsync(Guid locationId, string productEan)
+    {
+        await using var connection = await Fixture.OpenConnectionAsync().ConfigureAwait(false);
+        await using var transaction = await connection.BeginTransactionAsync().ConfigureAwait(false);
+
+        Guid? conflictId;
+        await using (var lookup = new NpgsqlCommand(
+                   """
+                   SELECT c."Id"
+                   FROM "Conflict" c
+                   JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
+                   JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
+                   JOIN "Product" p ON p."Id" = cl."ProductId"
+                   WHERE cr."LocationId" = @locationId
+                     AND p."Ean" = @ean
+                   LIMIT 1;
+                   """,
+                   connection,
+                   transaction))
+        {
+            lookup.Parameters.AddWithValue("locationId", locationId);
+            lookup.Parameters.AddWithValue("ean", productEan);
+            var result = await lookup.ExecuteScalarAsync().ConfigureAwait(false);
+            conflictId = result as Guid? ?? (result is Guid id ? id : null);
+        }
+
+        if (!conflictId.HasValue)
+        {
+            await transaction.RollbackAsync().ConfigureAwait(false);
+            throw new InvalidOperationException("Impossible de ré-ouvrir un conflit inexistant.");
+        }
+
+        await using (var update = new NpgsqlCommand(
+                   """
+                   UPDATE "Conflict"
+                   SET "Status" = 'open',
+                       "ResolvedAtUtc" = NULL,
+                       "ResolvedQuantity" = NULL,
+                       "IsResolved" = FALSE
+                   WHERE "Id" = @id;
+                   """,
+                   connection,
+                   transaction))
+        {
+            update.Parameters.AddWithValue("id", conflictId.Value);
+            var rows = await update.ExecuteNonQueryAsync().ConfigureAwait(false);
+            if (rows != 1)
+            {
+                await transaction.RollbackAsync().ConfigureAwait(false);
+                throw new InvalidOperationException("La ré-ouverture du conflit n'a pas affecté la ligne attendue.");
+            }
         }
 
         await transaction.CommitAsync().ConfigureAwait(false);

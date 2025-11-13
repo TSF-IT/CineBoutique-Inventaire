@@ -1797,6 +1797,28 @@ WHERE cr."LocationId" = @LocationId;
         }
     }
 
+    public async Task ResolveConflictsForLocationAsync(Guid locationId, CancellationToken cancellationToken)
+    {
+        await using var connection = await _connectionFactory
+            .CreateOpenConnectionAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        await using var transaction = await connection
+            .BeginTransactionAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        try
+        {
+            await ResolveConflictsForLocationInternalAsync(connection, transaction, locationId, cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            throw;
+        }
+    }
+
     private static double? ComputeSampleVariance(IReadOnlyList<int> values)
     {
         if (values.Count < 2)
