@@ -530,7 +530,7 @@ internal static class AdminEndpoints
 
                 return operation;
             })
-            .RequireAuthorization("Admin");
+            .RequireAuthorization();
         }
 
         private static void MapGetProductEndpoint(IEndpointRouteBuilder app)
@@ -613,7 +613,7 @@ internal static class AdminEndpoints
                 op.Description = "Résout d'abord par SKU exact, puis par code brut (EAN/Code) et enfin par chiffres extraits. Retourne 409 en cas de collisions sur CodeDigits.";
                 return op;
             })
-            .RequireAuthorization("Admin");
+            .RequireAuthorization();
         }
 
         private static async Task LogProductCreationAttemptAsync(
