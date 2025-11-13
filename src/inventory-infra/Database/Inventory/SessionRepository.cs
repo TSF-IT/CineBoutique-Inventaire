@@ -1105,9 +1105,9 @@ LIMIT 1;
 
             const string runsSql = """
 SELECT
-    cr."Id"                AS "RunId",
+    cr."Id"                 AS "RunId",
     cr."InventorySessionId" AS "SessionId",
-    cr."LocationId"        AS "LocationId"
+    cr."LocationId"         AS "LocationId"
 FROM "CountingRun" cr
 JOIN "Location" l ON l."Id" = cr."LocationId"
 WHERE l."ShopId" = @ShopId;
@@ -1122,59 +1122,75 @@ WHERE l."ShopId" = @ShopId;
                 .ConfigureAwait(false))
                 .ToArray();
 
-            if (runRows.Length == 0)
-            {
-                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-                return new ResetShopInventoryResult
-                {
-                    ShopId = shopId,
-                    ShopName = shopName,
-                    RunsRemoved = 0,
-                    CountLinesRemoved = 0,
-                    ConflictsRemoved = 0,
-                    SessionsRemoved = 0,
-                    LocationsAffected = 0
-                };
-            }
-
-            var runIds = runRows.Select(row => row.RunId).Distinct().ToArray();
             var sessionIds = runRows.Select(row => row.SessionId).Distinct().ToArray();
             var locationsAffected = runRows.Select(row => row.LocationId).Distinct().Count();
 
             const string deleteConflictsSql = """
-DELETE FROM "Conflict"
-USING "CountLine" cl
-WHERE "Conflict"."CountLineId" = cl."Id"
-  AND cl."CountingRunId" = ANY(@RunIds);
+DELETE FROM "Conflict" c
+WHERE EXISTS (
+        SELECT 1
+        FROM "CountLine" cl
+        JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
+        JOIN "Location" l ON l."Id" = cr."LocationId"
+        WHERE cl."Id" = c."CountLineId"
+          AND l."ShopId" = @ShopId
+    )
+   OR EXISTS (
+        SELECT 1
+        FROM "CountLine" cl
+        JOIN "Product" p ON p."Id" = cl."ProductId"
+        WHERE cl."Id" = c."CountLineId"
+          AND p."ShopId" = @ShopId
+    );
 """;
+
             var conflictsRemoved = await connection.ExecuteAsync(
                     new CommandDefinition(
                         deleteConflictsSql,
-                        new { RunIds = runIds },
+                        new { ShopId = shopId },
                         transaction,
                         cancellationToken: cancellationToken))
                 .ConfigureAwait(false);
 
             const string deleteCountLinesSql = """
-DELETE FROM "CountLine"
-WHERE "CountingRunId" = ANY(@RunIds);
+DELETE FROM "CountLine" cl
+WHERE EXISTS (
+        SELECT 1
+        FROM "CountingRun" cr
+        JOIN "Location" l ON l."Id" = cr."LocationId"
+        WHERE cr."Id" = cl."CountingRunId"
+          AND l."ShopId" = @ShopId
+    )
+   OR EXISTS (
+        SELECT 1
+        FROM "Product" p
+        WHERE p."Id" = cl."ProductId"
+          AND p."ShopId" = @ShopId
+    );
 """;
+
             var countLinesRemoved = await connection.ExecuteAsync(
                     new CommandDefinition(
                         deleteCountLinesSql,
-                        new { RunIds = runIds },
+                        new { ShopId = shopId },
                         transaction,
                         cancellationToken: cancellationToken))
                 .ConfigureAwait(false);
 
             const string deleteRunsSql = """
-DELETE FROM "CountingRun"
-WHERE "Id" = ANY(@RunIds);
+DELETE FROM "CountingRun" cr
+WHERE EXISTS (
+    SELECT 1
+    FROM "Location" l
+    WHERE l."Id" = cr."LocationId"
+      AND l."ShopId" = @ShopId
+);
 """;
+
             var runsRemoved = await connection.ExecuteAsync(
                     new CommandDefinition(
                         deleteRunsSql,
-                        new { RunIds = runIds },
+                        new { ShopId = shopId },
                         transaction,
                         cancellationToken: cancellationToken))
                 .ConfigureAwait(false);
@@ -1183,9 +1199,15 @@ WHERE "Id" = ANY(@RunIds);
             if (sessionIds.Length > 0)
             {
                 const string deleteSessionsSql = """
-DELETE FROM "InventorySession"
-WHERE "Id" = ANY(@SessionIds);
+DELETE FROM "InventorySession" s
+WHERE s."Id" = ANY(@SessionIds)
+  AND NOT EXISTS (
+        SELECT 1
+        FROM "CountingRun" cr
+        WHERE cr."InventorySessionId" = s."Id"
+    );
 """;
+
                 sessionsRemoved = await connection.ExecuteAsync(
                         new CommandDefinition(
                             deleteSessionsSql,
