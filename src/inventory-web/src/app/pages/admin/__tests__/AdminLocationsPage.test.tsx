@@ -16,7 +16,11 @@ import {
   updateShopUser,
   disableShopUser,
 } from "../../../api/adminApi";
-import { fetchLocations, updateLocationStatus } from "../../../api/inventoryApi";
+import {
+  fetchLocations,
+  resetShopInventory,
+  updateLocationStatus,
+} from "../../../api/inventoryApi";
 import { fetchShopUsers } from "../../../api/shopUsers";
 import type { Location } from "../../../types/inventory";
 import { AdminLocationsPage } from "../AdminLocationsPage";
@@ -27,6 +31,7 @@ import type { ShopUser } from "@/types/user";
 vi.mock("../../../api/inventoryApi", () => ({
   fetchLocations: vi.fn(),
   updateLocationStatus: vi.fn(),
+  resetShopInventory: vi.fn(),
 }));
 
 vi.mock("../../../api/adminApi", () => ({
@@ -44,6 +49,9 @@ vi.mock("../../../api/shopUsers", () => ({
 const { fetchLocations: mockedFetchLocations } = vi.mocked({ fetchLocations });
 const { updateLocationStatus: mockedUpdateLocationStatus } = vi.mocked({
   updateLocationStatus,
+});
+const { resetShopInventory: mockedResetShopInventory } = vi.mocked({
+  resetShopInventory,
 });
 const {
   createLocation: mockedCreateLocation,
@@ -169,6 +177,16 @@ describe("AdminLocationsPage", () => {
     mockedCreateShopUser.mockReset();
     mockedUpdateShopUser.mockReset();
     mockedDisableShopUser.mockReset();
+    mockedResetShopInventory.mockReset();
+    mockedResetShopInventory.mockResolvedValue({
+      shopId: testShop.id,
+      shopName: testShop.name,
+      zonesCleared: 3,
+      runsCleared: 2,
+      linesCleared: 12,
+      conflictsCleared: 0,
+      sessionsClosed: 1,
+    });
 
     fetchStatusMock = vi.fn().mockResolvedValue({
       ok: true,
@@ -1285,6 +1303,84 @@ describe("AdminLocationsPage", () => {
     } finally {
       global.fetch = previousFetch;
     }
+  });
+
+  it("affiche la modale de réinitialisation depuis la carte administrateur", async () => {
+    await renderAdminPage();
+    const user = userEvent.setup();
+
+    const resetButton = await screen.findByRole("button", {
+      name: /réinitialiser les comptages/i,
+    });
+    await user.click(resetButton);
+
+    expect(
+      await screen.findByRole("dialog", { name: /relancer un inventaire/i })
+    ).toBeInTheDocument();
+  });
+
+  it("réinitialise les comptages et rafraîchit le statut d'import", async () => {
+    await renderAdminPage();
+    const user = userEvent.setup();
+
+    await openCatalogTab(user);
+    await waitFor(() => {
+      expect(fetchStatusMock).toHaveBeenCalled();
+    });
+    const initialFetchCalls = fetchStatusMock.mock.calls.length;
+
+    const resetButton = await screen.findByRole("button", {
+      name: /réinitialiser les comptages/i,
+    });
+    await user.click(resetButton);
+
+    const confirmButton = await screen.findByRole("button", {
+      name: /confirmer le reset/i,
+    });
+    await user.click(confirmButton);
+
+    await waitFor(() => {
+      expect(mockedResetShopInventory).toHaveBeenCalledWith(testShop.id);
+    });
+    await waitFor(() => {
+      expect(fetchStatusMock.mock.calls.length).toBeGreaterThan(
+        initialFetchCalls
+      );
+    });
+
+    expect(
+      await screen.findByText(/inventaire réinitialisé/i)
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/3 zones réinitialisées/i)
+    ).toBeInTheDocument();
+  });
+
+  it("affiche un message d'erreur si la réinitialisation échoue", async () => {
+    mockedResetShopInventory.mockRejectedValueOnce(
+      new Error("Reset impossible")
+    );
+    await renderAdminPage();
+    const user = userEvent.setup();
+
+    const resetButton = await screen.findByRole("button", {
+      name: /réinitialiser les comptages/i,
+    });
+    await user.click(resetButton);
+
+    const confirmButton = await screen.findByRole("button", {
+      name: /confirmer le reset/i,
+    });
+    await user.click(confirmButton);
+
+    await waitFor(() => {
+      expect(mockedResetShopInventory).toHaveBeenCalled();
+    });
+
+    expect(await screen.findByText("Reset impossible")).toBeInTheDocument();
+    expect(
+      screen.getByRole("dialog", { name: /relancer un inventaire/i })
+    ).toBeInTheDocument();
   });
 });
 

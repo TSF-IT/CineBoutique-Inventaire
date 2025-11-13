@@ -8,7 +8,12 @@ import {
   updateShopUser,
   disableShopUser,
 } from "../../api/adminApi";
-import { fetchLocations, updateLocationStatus } from "../../api/inventoryApi";
+import {
+  fetchLocations,
+  resetShopInventory,
+  updateLocationStatus,
+} from "../../api/inventoryApi";
+import type { ResetShopInventoryResponse } from "../../api/inventoryApi";
 import { fetchShopUsers } from "../../api/shopUsers";
 import { Card } from "../../components/Card";
 import { EmptyState } from "../../components/EmptyState";
@@ -24,6 +29,8 @@ import {
   decodeCsvBuffer,
   type CsvEncoding,
 } from "@/features/import/csvEncoding";
+import { ResetInventoryModal } from "@/app/components/ResetInventoryModal";
+import { formatResetInventorySummary } from "@/app/lib/resetSummary";
 import { normalizeKey } from "@/features/import/csvMapping";
 import { buildHeaders } from "@/lib/api/http";
 import { useShop } from "@/state/ShopContext";
@@ -156,7 +163,13 @@ type ImportAccessStatus = {
   hasCountLines: boolean;
 };
 
-const CatalogImportPanel = ({ description }: { description: string }) => {
+const CatalogImportPanel = ({
+  description,
+  refreshKey = 0,
+}: {
+  description: string;
+  refreshKey?: number;
+}) => {
   const { shop } = useShop();
   const [importStatus, setImportStatus] = useState<ImportAccessStatus | null>(
     null
@@ -227,7 +240,7 @@ const CatalogImportPanel = ({ description }: { description: string }) => {
 
   useEffect(() => {
     void fetchImportStatus();
-  }, [fetchImportStatus]);
+  }, [fetchImportStatus, refreshKey]);
 
   useEffect(() => {
     if (importStatus?.canReplace === false) {
@@ -2622,15 +2635,134 @@ const UsersPanel = ({ description, isActive }: UsersPanelProps) => {
     </Card>
   );
 };
+type InventoryResetPanelProps = {
+  onResetSuccess?: () => void;
+};
+
+const InventoryResetPanel = ({ onResetSuccess }: InventoryResetPanelProps) => {
+  const { shop } = useShop();
+  const shopId = shop?.id?.trim() ?? "";
+  const shopDisplayName = shop?.name?.trim();
+  const [resetModalOpen, setResetModalOpen] = useState(false);
+  const [resettingInventory, setResettingInventory] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const [lastResetSummary, setLastResetSummary] =
+    useState<ResetShopInventoryResponse | null>(null);
+
+  useEffect(() => {
+    setLastResetSummary(null);
+  }, [shopId]);
+
+  const handleOpenModal = useCallback(() => {
+    setResetError(null);
+    setResetModalOpen(true);
+  }, []);
+
+  const handleCloseModal = useCallback(() => {
+    if (resettingInventory) {
+      return;
+    }
+    setResetModalOpen(false);
+  }, [resettingInventory]);
+
+  const handleConfirmReset = useCallback(async () => {
+    if (!shopId) {
+      setResetError("Boutique introuvable.");
+      return;
+    }
+    setResetError(null);
+    setResettingInventory(true);
+    try {
+      const summary = await resetShopInventory(shopId);
+      setLastResetSummary(summary);
+      setResetModalOpen(false);
+      onResetSuccess?.();
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Impossible de réinitialiser les comptages.";
+      setResetError(message);
+    } finally {
+      setResettingInventory(false);
+    }
+  }, [onResetSuccess, shopId]);
+
+  const resetSummaryMessage = useMemo(
+    () => formatResetInventorySummary(lastResetSummary),
+    [lastResetSummary]
+  );
+
+  const dismissSummary = useCallback(() => {
+    setLastResetSummary(null);
+  }, []);
+
+  const canReset = Boolean(shopId);
+
+  return (
+    <Card className="flex flex-col gap-4">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+          Réinitialiser les comptages
+        </h2>
+        <p className="text-sm text-slate-600 dark:text-slate-400">
+          Supprime tous les comptages, lignes et conflits pour{" "}
+          {shopDisplayName ?? "la boutique sélectionnée"} afin de relancer un
+          inventaire complet.
+        </p>
+      </div>
+      {resetSummaryMessage && (
+        <div className="flex items-start justify-between gap-4 rounded-2xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-brand-700 dark:border-brand-500/40 dark:bg-brand-500/10 dark:text-brand-100">
+          <div>
+            <p className="font-semibold">Inventaire réinitialisé</p>
+            <p className="mt-1">{resetSummaryMessage}</p>
+          </div>
+          <button
+            type="button"
+            onClick={dismissSummary}
+            className="rounded-full border border-brand-200 p-1 text-brand-600 transition hover:bg-brand-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 dark:border-brand-500/40 dark:text-brand-100 dark:hover:bg-brand-500/20"
+            aria-label="Masquer le message de confirmation"
+          >
+            <span aria-hidden="true">✕</span>
+          </button>
+        </div>
+      )}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-slate-600 dark:text-slate-400">
+          Action irréversible : toutes les lignes et sessions seront supprimées.
+        </p>
+        <Button
+          variant="danger"
+          onClick={handleOpenModal}
+          disabled={!canReset || resettingInventory}
+        >
+          {resettingInventory ? "Réinitialisation…" : "Réinitialiser les comptages"}
+        </Button>
+      </div>
+      <ResetInventoryModal
+        open={resetModalOpen}
+        loading={resettingInventory}
+        error={resetError}
+        onCancel={handleCloseModal}
+        onConfirm={handleConfirmReset}
+      />
+    </Card>
+  );
+};
 
 export const AdminLocationsPage = () => {
   const [activeSection, setActiveSection] = useState<AdminSection>("locations");
+  const [resetRefreshKey, setResetRefreshKey] = useState(0);
   const activeDefinition =
     ADMIN_SECTIONS.find((section) => section.id === activeSection) ??
     ADMIN_SECTIONS[0];
+  const handleResetSuccess = useCallback(() => {
+    setResetRefreshKey((value) => value + 1);
+  }, []);
 
   return (
     <div className="flex flex-col gap-6">
+      <InventoryResetPanel onResetSuccess={handleResetSuccess} />
       <SectionSwitcher
         activeSection={activeSection}
         onChange={setActiveSection}
@@ -2643,7 +2775,10 @@ export const AdminLocationsPage = () => {
           isActive={activeSection === "users"}
         />
       ) : (
-        <CatalogImportPanel description={activeDefinition.description} />
+        <CatalogImportPanel
+          description={activeDefinition.description}
+          refreshKey={resetRefreshKey}
+        />
       )}
     </div>
   );
