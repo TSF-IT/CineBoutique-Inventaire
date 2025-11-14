@@ -311,3 +311,37 @@ body.inventory-flash-active::after {
     opacity: 0;
   }
 }
+
+body.inventory-duplicate-flash-active::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: rgba(251, 191, 36, 0.35);
+  pointer-events: none;
+  animation: inventory-duplicate-flash 720ms ease-in-out 1;
+  z-index: 2147483646;
+}
+
+@keyframes inventory-duplicate-flash {
+  0% {
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.55;
+  }
+  28% {
+    opacity: 0;
+  }
+  48% {
+    opacity: 0.45;
+  }
+  68% {
+    opacity: 0;
+  }
+  84% {
+    opacity: 0.35;
+  }
+  100% {
+    opacity: 0;
+  }
+}

@@ -42,7 +42,7 @@ describe('InventoryContext', () => {
     })
 
     expect(result.current.items).toHaveLength(1)
-    expect(result.current.items[0]?.quantity).toBe(2)
+    expect(result.current.items[0]?.quantity).toBe(1)
 
     act(() => {
       getInventory().setSelectedUser(userB)
@@ -56,7 +56,7 @@ describe('InventoryContext', () => {
 
     expect(result.current.items).toHaveLength(1)
     expect(result.current.items[0]?.product.ean).toBe(sampleProduct.ean)
-    expect(result.current.items[0]?.quantity).toBe(2)
+    expect(result.current.items[0]?.quantity).toBe(1)
   })
 
   it('restores items when the session is preserved before switching users', () => {

@@ -11,10 +11,11 @@ import { useNavigate } from "react-router-dom";
 import { fetchProductByEan, startInventoryRun } from "../../api/inventoryApi";
 import { BarcodeScanner } from "../../components/BarcodeScanner";
 import { ScannedRow } from "../../components/inventory/ScannedRow";
-import { useInventory } from "../../contexts/InventoryContext";
+import { useInventory, type InventoryItemMutationResult } from "../../contexts/InventoryContext";
 import type { Product } from "../../types/inventory";
 
 import { useCamera, type CameraOptions } from "@/hooks/useCamera";
+import { useScanDuplicateFeedback } from "@/hooks/useScanDuplicateFeedback";
 import { useScanRejectionFeedback } from "@/hooks/useScanRejectionFeedback";
 import {
   AbortedRequestError,
@@ -49,6 +50,8 @@ const formatCameraError = (error: unknown) => {
   return String(error);
 };
 
+type StatusTone = "info" | "success" | "warning";
+
 export const ScanCameraPage = () => {
   const navigate = useNavigate();
   const { shop } = useShop();
@@ -63,7 +66,8 @@ export const ScanCameraPage = () => {
     sessionId,
     setSessionId,
   } = useInventory();
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] =
+    useState<{ text: string; tone: StatusTone } | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [highlightEan, setHighlightEan] = useState<string | null>(null);
   const [pendingScan, setPendingScan] = useState<{
@@ -82,6 +86,7 @@ export const ScanCameraPage = () => {
     typeof document !== "undefined" ? document.visibilityState : null
   );
   const scheduleMeasureRef = useRef<(() => void) | null>(null);
+  const pendingFocusEanRef = useRef<string | null>(null);
   const [matchMediaLandscape, setMatchMediaLandscape] = useState<boolean>(
     () => {
       if (
@@ -97,6 +102,7 @@ export const ScanCameraPage = () => {
     width: number;
     height: number;
   } | null>(null);
+  const triggerScanDuplicateFeedback = useScanDuplicateFeedback();
   const triggerScanRejectionFeedback = useScanRejectionFeedback();
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cameraOptions = useMemo<CameraOptions>(
@@ -128,6 +134,17 @@ export const ScanCameraPage = () => {
     setPendingScan(null);
     setPendingScanElapsedMs(0);
   }, []);
+
+  const showStatusMessage = useCallback(
+    (message: string | null, tone: StatusTone = "info") => {
+      if (!message) {
+        showStatusMessage(null);
+        return;
+      }
+      setStatusMessage({ text: message, tone });
+    },
+    []
+  );
 
   useEffect(() => {
     return () => {
@@ -466,6 +483,23 @@ export const ScanCameraPage = () => {
   }, [highlightEan]);
 
   useEffect(() => {
+    const targetEan = pendingFocusEanRef.current;
+    if (!targetEan) {
+      return;
+    }
+    const quantityInput = document.querySelector<HTMLInputElement>(
+      `[data-ean="${targetEan}"] input[data-testid="quantity-input"]`
+    );
+    if (quantityInput) {
+      requestAnimationFrame(() => {
+        quantityInput.focus({ preventScroll: true });
+        quantityInput.select?.();
+      });
+    }
+    pendingFocusEanRef.current = null;
+  }, [items]);
+
+  useEffect(() => {
     if (!statusMessage) {
       return;
     }
@@ -473,7 +507,7 @@ export const ScanCameraPage = () => {
       window.clearTimeout(statusTimeoutRef.current);
     }
     statusTimeoutRef.current = window.setTimeout(() => {
-      setStatusMessage(null);
+      showStatusMessage(null);
       statusTimeoutRef.current = null;
     }, 2200);
   }, [statusMessage]);
@@ -547,18 +581,29 @@ export const ScanCameraPage = () => {
       try {
         await ensureActiveRun();
       } catch (error) {
-        setStatusMessage(null);
+        showStatusMessage(null);
         setErrorMessage(
           error instanceof Error
             ? error.message
             : "Impossible de démarrer le comptage."
         );
-        return false;
+        return null;
       }
-      addOrIncrementItem(product);
-      return true;
+      const result = addOrIncrementItem(product);
+      if (result.status === 'existing') {
+        const normalizedEan = product.ean?.trim();
+        if (normalizedEan) {
+          pendingFocusEanRef.current = normalizedEan;
+        }
+        triggerScanDuplicateFeedback();
+      }
+      return result;
     },
-    [addOrIncrementItem, ensureActiveRun]
+    [
+      addOrIncrementItem,
+      ensureActiveRun,
+      triggerScanDuplicateFeedback,
+    ]
   );
 
   const armScanLock = useCallback(
@@ -587,15 +632,22 @@ export const ScanCameraPage = () => {
     armScanLock(current);
   }, [armScanLock]);
 
-  const handleProductAdded = useCallback((product: Product) => {
-    setStatusMessage(`${product.name} ajouté`);
-    const normalizedEan = product.ean?.trim() ?? null;
-    if (normalizedEan) {
-      setHighlightEan(normalizedEan);
-    } else {
-      setHighlightEan(null);
-    }
-  }, []);
+  const handleProductScanOutcome = useCallback(
+    (product: Product, mutation: InventoryItemMutationResult) => {
+      if (mutation.status === "existing") {
+        showStatusMessage(`${product.name} déjà scanné précédemment`, "warning");
+      } else {
+        showStatusMessage(`${product.name} ajouté`, "success");
+      }
+      const normalizedEan = product.ean?.trim() ?? null;
+      if (normalizedEan) {
+        setHighlightEan(normalizedEan);
+      } else {
+        setHighlightEan(null);
+      }
+    },
+    [showStatusMessage]
+  );
 
   const handleCancelPendingScan = useCallback(() => {
     if (!pendingScanControllerRef.current) {
@@ -604,7 +656,7 @@ export const ScanCameraPage = () => {
     scanTokenRef.current += 1;
     pendingScanControllerRef.current.abort();
     clearPendingScanState();
-    setStatusMessage(null);
+    showStatusMessage(null);
     setErrorMessage("Lecture annulée.");
     armScanLock(null);
   }, [armScanLock, clearPendingScanState]);
@@ -632,7 +684,7 @@ export const ScanCameraPage = () => {
         setErrorMessage(
           `Code ${sanitized} invalide : ${MAX_SCAN_LENGTH} caractères maximum.`
         );
-        setStatusMessage(null);
+        showStatusMessage(null);
         armScanLock(sanitized);
         return;
       }
@@ -645,7 +697,7 @@ export const ScanCameraPage = () => {
             ? error.message
             : "Impossible de lancer le scan."
         );
-        setStatusMessage(null);
+        showStatusMessage(null);
         armScanLock(null);
         return;
       }
@@ -657,7 +709,7 @@ export const ScanCameraPage = () => {
       pendingScanControllerRef.current = scanController;
       setPendingScan({ ean: sanitized, startedAt: Date.now() });
       armScanLock(sanitized, 200); // petit lock court pour éviter les doubles lectures instantanées
-      setStatusMessage(`Lecture de ${sanitized}.`);
+      showStatusMessage(`Lecture de ${sanitized}.`);
       setErrorMessage(null);
 
       try {
@@ -667,12 +719,12 @@ export const ScanCameraPage = () => {
         if (scanToken !== scanTokenRef.current) {
           return;
         }
-        const added = await addProductToSession(product);
+        const mutation = await addProductToSession(product);
         if (scanToken !== scanTokenRef.current) {
           return;
         }
-        if (added) {
-          handleProductAdded(product);
+        if (mutation) {
+          handleProductScanOutcome(product, mutation);
           armScanLock(sanitized, LOCK_RELEASE_DELAY); // lock standard de 700 ms
         }
       } catch (error) {
@@ -681,13 +733,13 @@ export const ScanCameraPage = () => {
         }
         if (error instanceof AbortedRequestError) {
           setErrorMessage(null);
-          setStatusMessage(null);
+          showStatusMessage(null);
         } else if (error instanceof RequestTimeoutError) {
           setErrorMessage(
             "Lecture du produit trop longue. Vérifiez la connexion et réessayez."
           );
           triggerScanRejectionFeedback();
-          setStatusMessage(null);
+          showStatusMessage(null);
         } else {
           const err = error as HttpError;
           if (err?.status === 404) {
@@ -698,7 +750,7 @@ export const ScanCameraPage = () => {
           } else {
             setErrorMessage("Échec de la récupération du produit. Réessayez.");
           }
-          setStatusMessage(null);
+          showStatusMessage(null);
         }
       } finally {
         if (scanToken === scanTokenRef.current) {
@@ -711,7 +763,7 @@ export const ScanCameraPage = () => {
       armScanLock,
       clearPendingScanState,
       ensureScanPrerequisites,
-      handleProductAdded,
+      handleProductScanOutcome,
       refreshScanLock,
       triggerScanRejectionFeedback,
     ]
@@ -849,8 +901,14 @@ export const ScanCameraPage = () => {
             </div>
           )}
           {statusMessage && (
-            <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200">
-              {statusMessage}
+            <div
+              className={`rounded-2xl px-3 py-2 text-xs font-semibold ${
+                statusMessage.tone === "warning"
+                  ? "bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-100"
+                  : "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-200"
+              }`}
+            >
+              {statusMessage.text}
             </div>
           )}
           {errorMessage && (

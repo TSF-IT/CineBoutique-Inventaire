@@ -176,7 +176,7 @@ export interface InventoryItem {
 export type InventoryLogEventType =
   | 'status'
   | 'item-added'
-  | 'item-incremented'
+  | 'item-rescanned'
   | 'item-quantity-updated'
   | 'item-removed'
 

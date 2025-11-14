@@ -21,6 +21,7 @@ import type { ConflictRunHeader, ConflictZoneDetail, ConflictZoneItem, Inventory
 import { CountType } from '../../types/inventory'
 
 import { ProductsModal, type ProductsModalItem } from '@/components/products/ProductsModal'
+import { useScanDuplicateFeedback } from '@/hooks/useScanDuplicateFeedback'
 import { useScanRejectionFeedback } from '@/hooks/useScanRejectionFeedback'
 import type { HttpError } from '@/lib/api/http'
 import { useShop } from '@/state/ShopContext'
@@ -138,6 +139,8 @@ type InlineConflictRunSummary = {
 
 type InlineConflictSummary = { runs: InlineConflictRunSummary[] }
 
+type StatusTone = 'info' | 'warning'
+
 // eslint-disable-next-line react-refresh/only-export-components
 export const aggregateItemsForCompletion = (
   items: InventoryItem[],
@@ -253,7 +256,8 @@ export const InventorySessionPage = () => {
   } = useInventory()
   const { shop } = useShop()
   const triggerScanRejectionFeedback = useScanRejectionFeedback()
-  const [status, setStatusState] = useState<string | null>(null)
+  const triggerDuplicateFeedback = useScanDuplicateFeedback()
+  const [status, setStatusState] = useState<{ text: string; tone: StatusTone } | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [scanValue, setScanValue] = useState('')
   const [, setInputLookupStatus] = useState<'idle' | 'loading' | 'found' | 'not-found' | 'error'>('idle')
@@ -283,19 +287,22 @@ export const InventorySessionPage = () => {
     !isConflictResolutionMode || (typeof countType === 'number' && countType > CountType.Count3)
 
   const updateStatus = useCallback(
-    (message: string | null) => {
-      setStatusState(message)
-      if (message) {
-        const normalized = message.trim().toLowerCase()
-        const isLookupMessage = normalized.startsWith('recherche du code')
-        const containsProductAddition =
-          normalized.includes('ajouté') || normalized.includes('ajoutée')
-        if (!isLookupMessage && !containsProductAddition) {
-          logEvent({
-            type: 'status',
-            message,
-          })
-        }
+    (message: string | null, options?: { tone?: StatusTone }) => {
+      if (!message) {
+        setStatusState(null)
+        return
+      }
+      const tone = options?.tone ?? 'info'
+      setStatusState({ text: message, tone })
+      const normalized = message.trim().toLowerCase()
+      const isLookupMessage = normalized.startsWith('recherche du code')
+      const containsProductAddition =
+        normalized.includes('ajout�') || normalized.includes('ajout�e')
+      if (!isLookupMessage && !containsProductAddition) {
+        logEvent({
+          type: 'status',
+          message,
+        })
       }
     },
     [logEvent],
@@ -718,18 +725,32 @@ export const InventorySessionPage = () => {
         try {
           await ensureActiveRun()
         } catch (error) {
-          const message = resolveLifecycleErrorMessage(error, 'Impossible de démarrer le comptage.')
+          const message = resolveLifecycleErrorMessage(error, 'Impossible de d�marrer le comptage.')
           updateStatus(null)
           setErrorMessage(message)
-          return false
+          return null
         }
       }
 
       setErrorMessage(null)
-      addOrIncrementItem(product, options)
-      return true
+      const result = addOrIncrementItem(product, options)
+      if (result.status === 'existing') {
+        const normalizedEan = product.ean?.trim()
+        if (normalizedEan) {
+          pendingFocusEanRef.current = normalizedEan
+        }
+        triggerDuplicateFeedback()
+      }
+      return result
     },
-    [addOrIncrementItem, ensureActiveRun, existingRunId, setErrorMessage, updateStatus],
+    [
+      addOrIncrementItem,
+      ensureActiveRun,
+      existingRunId,
+      setErrorMessage,
+      triggerDuplicateFeedback,
+      updateStatus,
+    ],
   )
 
   const handlePickFromCatalogue = useCallback(
@@ -758,39 +779,46 @@ export const InventorySessionPage = () => {
       updateStatus(`Ajout de ${row.name}…`)
       setErrorMessage(null)
 
-      try {
-        const product = await fetchProductByEan(sanitizedEan)
-        const added = await addProductToSession(
-          { ...product, sku: product.sku ?? row.sku },
-          { isManual: true },
-        )
-        if (!added) {
-          updateStatus(null)
-          return false
-        }
+      const fallbackProduct: Product = {
+        ean: sanitizedEan,
+        name: row.name ?? sanitizedEan,
+        sku: row.sku ?? undefined,
+        group: row.group ?? null,
+        subGroup: row.subGroup ?? null,
+      }
 
-        updateStatus(`${product.name} ajouté`)
-        pendingFocusEanRef.current = product.ean ?? sanitizedEan
-        return true
+      let resolvedProduct: Product | null = null
+      try {
+        resolvedProduct = await fetchProductByEan(sanitizedEan)
       } catch (error) {
-        const err = error as HttpError
-        if (err?.status === 404) {
-          setErrorMessage(`Produit introuvable pour ${sanitizedEan}. Signalez ce code.`)
-          triggerScanRejectionFeedback()
-        } else {
-          setErrorMessage('Impossible d’ajouter ce produit. Réessayez.')
-        }
+        console.warn('[inventory] catalogue lookup failed, using fallback payload', error)
+      }
+
+      const productToAdd = resolvedProduct ?? fallbackProduct
+      const result = await addProductToSession(
+        { ...productToAdd, sku: productToAdd.sku ?? row.sku ?? undefined },
+        { isManual: true },
+      )
+      if (!result) {
         updateStatus(null)
         return false
       }
+
+      if (result.status === 'existing') {
+        updateStatus(`${productToAdd.name} déjà scanné précédemment`, { tone: 'warning' })
+        pendingFocusEanRef.current = productToAdd.ean ?? sanitizedEan
+        setErrorMessage(null)
+        return true
+      }
+
+      updateStatus(
+        resolvedProduct ? `${productToAdd.name} ajouté` : `${productToAdd.name} ajouté via catalogue`,
+      )
+      pendingFocusEanRef.current = productToAdd.ean ?? sanitizedEan
+      setErrorMessage(null)
+      return true
     },
-    [
-      addProductToSession,
-      ensureScanPrerequisites,
-      triggerScanRejectionFeedback,
-      updateStatus,
-      setErrorMessage,
-    ],
+    [addProductToSession, ensureScanPrerequisites, updateStatus, setErrorMessage],
   )
 
   const handleUnknownProduct = useCallback(
@@ -827,9 +855,13 @@ export const InventorySessionPage = () => {
 
       if (result.status === 'found') {
         const product: Product = result.product
-        const added = await addProductToSession(product)
-        if (added) {
-          updateStatus(`${product.name} ajouté`)
+        const mutation = await addProductToSession(product)
+        if (mutation) {
+          if (mutation.status === 'existing') {
+            updateStatus(`${product.name} déjà scanné précédemment`, { tone: 'warning' })
+          } else {
+            updateStatus(`${product.name} ajouté`)
+          }
         }
         return
       }
@@ -891,7 +923,7 @@ export const InventorySessionPage = () => {
 
     const timeoutId = window.setTimeout(() => {
       void (async () => {
-        const result = await searchProductByEan(normalizedScanValue)
+      const result = await searchProductByEan(normalizedScanValue)
 
         if (manualLookupIdRef.current !== currentLookupId) {
           return
@@ -899,9 +931,13 @@ export const InventorySessionPage = () => {
 
         if (result.status === 'found') {
           const product: Product = result.product
-          const added = await addProductToSession(product)
-          if (added) {
-            updateStatus(`${product.name} ajouté`)
+          const mutation = await addProductToSession(product)
+          if (mutation) {
+            if (mutation.status === 'existing') {
+              updateStatus(`${product.name} déjà scanné précédemment`, { tone: 'warning' })
+            } else {
+              updateStatus(`${product.name} ajouté`)
+            }
             setScanValue('')
             setInputLookupStatus('found')
           } else {
@@ -936,6 +972,7 @@ export const InventorySessionPage = () => {
     normalizedScanValue,
     scanInputError,
     searchProductByEan,
+    setScanValue,
     updateStatus,
   ])
 
@@ -1471,8 +1508,15 @@ export const InventorySessionPage = () => {
           </div>
         )}
         {status && (
-          <p className="text-sm text-brand-600 dark:text-brand-200" data-testid="status-message">
-            {status}
+          <p
+            className={
+              status.tone === 'warning'
+                ? 'text-sm text-amber-700 dark:text-amber-300'
+                : 'text-sm text-brand-600 dark:text-brand-200'
+            }
+            data-testid="status-message"
+          >
+            {status.text}
           </p>
         )}
         {errorMessage && <p className="text-sm text-red-600 dark:text-red-300">{errorMessage}</p>}

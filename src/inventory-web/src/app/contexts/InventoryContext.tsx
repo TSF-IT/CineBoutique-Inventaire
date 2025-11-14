@@ -7,6 +7,11 @@ import { resetInventoryHttpContextSnapshot, syncInventoryHttpContextSnapshot } f
 
 import type { ShopUser } from '@/types/user'
 
+export type InventoryItemMutationResult = {
+  status: 'added' | 'existing'
+  item: InventoryItem
+}
+
 export interface InventoryContextValue {
   selectedUser: ShopUser | null
   countType: number | null
@@ -18,7 +23,7 @@ export interface InventoryContextValue {
   setCountType: (type: number | null) => void
   setLocation: (location: Location | null) => void
   setSessionId: (sessionId: string | null) => void
-  addOrIncrementItem: (product: Product, options?: { isManual?: boolean }) => void
+  addOrIncrementItem: (product: Product, options?: { isManual?: boolean }) => InventoryItemMutationResult
   initializeItems: (
     entries: Array<{ product: Product; quantity?: number; isManual?: boolean; hasConflict?: boolean }>,
   ) => void
@@ -184,60 +189,79 @@ export const InventoryProvider = ({ children }: { children: ReactNode }) => {
     }))
   }, [])
 
-  const addOrIncrementItem = useCallback((product: Product, options?: { isManual?: boolean }) => {
-    setState((prev) => {
-      const existingIndex = prev.items.findIndex((item) => item.product.ean === product.ean)
-      const timestamp = new Date().toISOString()
-      if (existingIndex >= 0) {
-        const existing = prev.items[existingIndex]
-        const updated: InventoryItem = {
-          ...existing,
-          quantity: existing.quantity + 1,
-          lastScanAt: timestamp,
-          isManual: existing.isManual || Boolean(options?.isManual),
+  const addOrIncrementItem = useCallback(
+    (product: Product, options?: { isManual?: boolean }): InventoryItemMutationResult => {
+      let mutationResult: InventoryItemMutationResult | null = null
+      setState((prev) => {
+        const existingIndex = prev.items.findIndex((item) => item.product.ean === product.ean)
+        const timestamp = new Date().toISOString()
+        if (existingIndex >= 0) {
+          const existing = prev.items[existingIndex]
+          const updated: InventoryItem = {
+            ...existing,
+            lastScanAt: timestamp,
+            isManual: existing.isManual || Boolean(options?.isManual),
+          }
+          const remaining = prev.items.filter((_, index) => index !== existingIndex)
+          mutationResult = { status: 'existing', item: updated }
+          return {
+            ...prev,
+            items: [updated, ...remaining],
+            pendingSnapshotUserId: null,
+            logs: prependLogEntry(prev.logs, {
+              type: 'item-rescanned',
+              message: `${updated.product.name} relu (EAN ${updated.product.ean})  quantit� ${updated.quantity}`,
+              context: {
+                ean: updated.product.ean,
+                productName: updated.product.name,
+                quantity: updated.quantity,
+                isManual: updated.isManual,
+              },
+            }),
+          }
         }
-        const remaining = prev.items.filter((_, index) => index !== existingIndex)
+        const nextItem: InventoryItem = {
+          id: createInventoryItemId(),
+          product,
+          quantity: 1,
+          lastScanAt: timestamp,
+          isManual: Boolean(options?.isManual),
+          addedAt: Date.now(),
+        }
+        mutationResult = { status: 'added', item: nextItem }
         return {
           ...prev,
-          items: [updated, ...remaining],
+          items: [nextItem, ...prev.items],
           pendingSnapshotUserId: null,
           logs: prependLogEntry(prev.logs, {
-            type: 'item-incremented',
-            message: `Quantité augmentée pour ${updated.product.name} (EAN ${updated.product.ean}) → ${updated.quantity}`,
+            type: 'item-added',
+            message: `${product.name} ${options?.isManual ? 'ajout� manuellement' : 'ajout� � la session'} (EAN ${product.ean})`,
             context: {
-              ean: updated.product.ean,
-              productName: updated.product.name,
-              quantity: updated.quantity,
-              isManual: updated.isManual,
+              ean: product.ean,
+              productName: product.name,
+              quantity: nextItem.quantity,
+              isManual: nextItem.isManual,
             },
           }),
         }
-      }
-      const nextItem: InventoryItem = {
-        id: createInventoryItemId(),
-        product,
-        quantity: 1,
-        lastScanAt: timestamp,
-        isManual: Boolean(options?.isManual),
-        addedAt: Date.now(),
-      }
-      return {
-        ...prev,
-        items: [nextItem, ...prev.items],
-        pendingSnapshotUserId: null,
-        logs: prependLogEntry(prev.logs, {
-          type: 'item-added',
-          message: `${product.name} ${options?.isManual ? 'ajouté manuellement' : 'ajouté à la session'} (EAN ${product.ean})`,
-          context: {
-            ean: product.ean,
-            productName: product.name,
-            quantity: nextItem.quantity,
-            isManual: nextItem.isManual,
+      })
+      if (!mutationResult) {
+        return {
+          status: 'added',
+          item: {
+            id: createInventoryItemId(),
+            product: { ...product },
+            quantity: 1,
+            lastScanAt: new Date().toISOString(),
+            isManual: Boolean(options?.isManual),
+            addedAt: Date.now(),
           },
-        }),
+        }
       }
-    })
-  }, [])
+      return mutationResult
+    },
+    [],
+  )
 
   const initializeItems = useCallback<InventoryContextValue['initializeItems']>((entries) => {
     setState((prev) => {

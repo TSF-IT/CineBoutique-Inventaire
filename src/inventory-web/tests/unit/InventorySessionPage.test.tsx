@@ -110,6 +110,17 @@ describe('InventorySessionPage - ajout manuel', () => {
   beforeEach(() => {
     fetchProductByEanMock.mockReset()
     addOrIncrementItemMock.mockReset()
+    addOrIncrementItemMock.mockReturnValue({
+      status: 'added',
+      item: {
+        id: 'mock-item',
+        product: { ean: '0123456789012', name: 'Produit mock' },
+        quantity: 1,
+        lastScanAt: new Date().toISOString(),
+        isManual: false,
+        addedAt: Date.now(),
+      },
+    })
     logEventMock.mockReset()
     mockNavigate.mockReset()
     startInventoryRunMock.mockReset()

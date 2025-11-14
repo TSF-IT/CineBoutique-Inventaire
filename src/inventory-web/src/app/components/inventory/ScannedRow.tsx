@@ -108,6 +108,7 @@ export const ScannedRow = ({
       )}
       data-testid="scanned-row"
       data-item-id={id}
+      data-ean={ean ?? ''}
     >
       <div className="flex flex-col gap-1">
         <label
@@ -164,6 +165,7 @@ export const ScannedRow = ({
           type="text"
           inputMode="numeric"
           pattern="[0-9]*"
+          data-testid="quantity-input"
           value={draft}
           onChange={handleChange}
           onBlur={handleBlur}
