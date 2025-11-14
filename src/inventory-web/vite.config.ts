@@ -16,7 +16,6 @@ export default defineConfig(({ command }) => {
       react(),
       VitePWA({
         registerType: "autoUpdate",
-        useLocalWorkbox: true,
         includeAssets: [
           "apple-touch-icon.png",
           "apple-touch-icon-120.png",
@@ -32,6 +31,7 @@ export default defineConfig(({ command }) => {
           cleanupOutdatedCaches: true,
           navigateFallback: "/index.html",
           navigationPreload: true,
+          inlineWorkboxRuntime: true,
           globPatterns: ["**/*.{html,js,css,svg,png,ico,webmanifest,woff2}"],
           runtimeCaching: [
             {
