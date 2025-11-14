@@ -28,11 +28,12 @@ export default defineConfig(({ command }) => {
         workbox: {
           clientsClaim: true,
           skipWaiting: true,
-          cleanupOutdatedCaches: true,
-          navigateFallback: "/index.html",
-          navigationPreload: true,
-          globPatterns: ["**/*.{html,js,css,svg,png,ico,webmanifest,woff2}"],
-          runtimeCaching: [
+        cleanupOutdatedCaches: true,
+        navigateFallback: "/index.html",
+        navigationPreload: true,
+        globPatterns: ["**/*.{html,js,css,svg,png,ico,webmanifest,woff2}"],
+        useLocalWorkbox: true,
+        runtimeCaching: [
             {
               urlPattern: ({ request }) => request.mode === "navigate",
               handler: "NetworkFirst",
