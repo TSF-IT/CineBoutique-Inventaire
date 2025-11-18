@@ -188,10 +188,7 @@ export function BarcodeScanner({
     restartRef.current = null
     processingRef.current = false
     lastFrameAtRef.current = 0
-    if (torchEnabledRef.current) {
-      void setTorch(false)
-    }
-  }, [cancelRaf, setTorch, stopWatchdog, stopZXing])
+  }, [cancelRaf, stopWatchdog, stopZXing])
 
   useEffect(() => {
     torchEnabledRef.current = torchEnabled
