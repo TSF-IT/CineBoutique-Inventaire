@@ -29,8 +29,25 @@ vi.mock('../../../api/inventoryApi', async (importOriginal) => {
 })
 
 vi.mock('../../../components/BarcodeScanner', () => ({
-  BarcodeScanner: ({ onDetected }: { onDetected: (value: string) => void | Promise<void> }) => {
+  BarcodeScanner: ({
+    onDetected,
+    onTorchStateChange,
+    torchControllerRef,
+  }: {
+    onDetected: (value: string) => void | Promise<void>
+    onTorchStateChange?: (state: { supported: boolean; enabled: boolean }) => void
+    torchControllerRef?: {
+      current: null | { set: (value: boolean) => Promise<boolean>; toggle: () => Promise<boolean> }
+    }
+  }) => {
     scannerCallbacks.onDetected = onDetected
+    onTorchStateChange?.({ supported: false, enabled: false })
+    if (torchControllerRef) {
+      torchControllerRef.current = {
+        set: async () => true,
+        toggle: async () => true,
+      }
+    }
     return (
       <button type="button" data-testid="mock-barcode-scanner" onClick={() => onDetected('0123456789012')}>
         Simuler un scan

@@ -10,6 +10,11 @@ type SupportedFormat = 'EAN_13' | 'EAN_8' | 'CODE_128' | 'CODE_39' | 'ITF' | 'QR
 type DetectorFormat = 'ean_13' | 'ean_8' | 'code_128' | 'code_39' | 'itf' | 'qr_code'
 type TorchCapabilities = MediaTrackCapabilities & { torch?: boolean }
 type TorchConstraintSet = MediaTrackConstraintSet & { torch?: boolean }
+export type TorchState = { supported: boolean; enabled: boolean }
+export type TorchController = {
+  set: (on: boolean) => Promise<boolean>
+  toggle: () => Promise<boolean>
+}
 
 type ExternalCameraBinding = {
   videoRef: MutableRefObject<HTMLVideoElement | null>
@@ -23,9 +28,11 @@ interface BarcodeScannerProps {
   onError?: (reason: string) => void
   onPickImage?: (file: File) => void
   enableTorchToggle?: boolean
+  onTorchStateChange?: (state: TorchState) => void
+  torchControllerRef?: MutableRefObject<TorchController | null>
   preferredFormats?: SupportedFormat[]
   presentation?: 'embedded' | 'immersive'
-  /** Si fourni, on n’ouvre/ferme jamais la caméra ici : on se contente de lire le flux. */
+  /** Si fourni, on n'ouvre/ferme jamais la caméra ici : on se contente de lire le flux. */
   camera?: ExternalCameraBinding
 }
 
@@ -62,6 +69,8 @@ export function BarcodeScanner({
   onError,
   onPickImage,
   enableTorchToggle = true,
+  onTorchStateChange,
+  torchControllerRef,
   preferredFormats,
   presentation = 'embedded',
   camera,
@@ -76,6 +85,7 @@ export function BarcodeScanner({
   const [torchSupported, setTorchSupported] = useState(false)
   const [torchEnabled, setTorchEnabled] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const torchEnabledRef = useRef(false)
 
   const controlsRef = useRef<IScannerControls | null>(null)
   const readerRef = useRef<BrowserMultiFormatReader | null>(null)
@@ -146,16 +156,6 @@ export function BarcodeScanner({
     }, WATCHDOG_POLL_MS) as unknown as number
   }, [cancelRaf, stopZXing])
 
-  const cleanup = useCallback(() => {
-    cancelRaf()
-    stopZXing()
-    stopWatchdog()
-    if (helpTimeoutRef.current) { clearTimeout(helpTimeoutRef.current); helpTimeoutRef.current = null }
-    restartRef.current = null
-    processingRef.current = false
-    lastFrameAtRef.current = 0
-  }, [cancelRaf, stopWatchdog, stopZXing])
-
   const dispatchError = useCallback((message: string) => {
     setError(message)
     onError?.(message)
@@ -179,6 +179,42 @@ export function BarcodeScanner({
       return false
     }
   }, [dispatchError, getCurrentStream])
+
+  const cleanup = useCallback(() => {
+    cancelRaf()
+    stopZXing()
+    stopWatchdog()
+    if (helpTimeoutRef.current) { clearTimeout(helpTimeoutRef.current); helpTimeoutRef.current = null }
+    restartRef.current = null
+    processingRef.current = false
+    lastFrameAtRef.current = 0
+    if (torchEnabledRef.current) {
+      void setTorch(false)
+    }
+  }, [cancelRaf, setTorch, stopWatchdog, stopZXing])
+
+  useEffect(() => {
+    torchEnabledRef.current = torchEnabled
+  }, [torchEnabled])
+
+  useEffect(() => {
+    if (!onTorchStateChange) return
+    onTorchStateChange({ supported: torchSupported, enabled: torchEnabled })
+  }, [onTorchStateChange, torchEnabled, torchSupported])
+
+  useEffect(() => {
+    if (!torchControllerRef) return
+    const controller: TorchController = {
+      set: async (on: boolean) => await setTorch(on),
+      toggle: async () => await setTorch(!torchEnabledRef.current),
+    }
+    torchControllerRef.current = controller
+    return () => {
+      if (torchControllerRef.current === controller) {
+        torchControllerRef.current = null
+      }
+    }
+  }, [setTorch, torchControllerRef])
 
   const scheduleHelp = useCallback(() => {
     if (helpTimeoutRef.current) clearTimeout(helpTimeoutRef.current)

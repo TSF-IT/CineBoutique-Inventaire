@@ -9,7 +9,11 @@ import {
 import { useNavigate } from "react-router-dom";
 
 import { fetchProductByEan, startInventoryRun } from "../../api/inventoryApi";
-import { BarcodeScanner } from "../../components/BarcodeScanner";
+import {
+  BarcodeScanner,
+  type TorchController,
+  type TorchState,
+} from "../../components/BarcodeScanner";
 import { ScannedRow } from "../../components/inventory/ScannedRow";
 import { useInventory, type InventoryItemMutationResult } from "../../contexts/InventoryContext";
 import type { Product } from "../../types/inventory";
@@ -102,9 +106,14 @@ export const ScanCameraPage = () => {
     width: number;
     height: number;
   } | null>(null);
+  const [torchState, setTorchState] = useState<TorchState>({
+    supported: false,
+    enabled: false,
+  });
   const triggerScanDuplicateFeedback = useScanDuplicateFeedback();
   const triggerScanRejectionFeedback = useScanRejectionFeedback();
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const torchControllerRef = useRef<TorchController | null>(null);
   const cameraOptions = useMemo<CameraOptions>(
     () => ({
       autoResumeOnVisible: false,
@@ -775,10 +784,23 @@ export const ScanCameraPage = () => {
       clearPendingScanState();
       armScanLock(null);
     }
+    void torchControllerRef.current?.set(false);
     resumeCameraOnVisibleRef.current = false;
     stopCamera();
     navigate("/inventory/session");
   }, [armScanLock, clearPendingScanState, navigate, stopCamera]);
+
+  const handleTorchStateChange = useCallback((state: TorchState) => {
+    setTorchState(state);
+  }, []);
+
+  const handleTorchToggle = useCallback(() => {
+    const controller = torchControllerRef.current;
+    if (!controller) {
+      return;
+    }
+    void controller.toggle();
+  }, []);
 
   const handleDec = useCallback(
     (ean: string, quantity: number) => {
@@ -812,6 +834,10 @@ export const ScanCameraPage = () => {
     [removeItem, setQuantity]
   );
 
+  const torchButtonActionLabel = torchState.enabled
+    ? "Eteindre la lampe"
+    : "Allumer la lampe";
+
   return (
     <div
       className="scan-camera-screen relative flex min-h-dvh h-dvh flex-col overflow-hidden bg-black text-white"
@@ -827,6 +853,8 @@ export const ScanCameraPage = () => {
           onDetected={handleDetected}
           presentation="immersive"
           enableTorchToggle
+          onTorchStateChange={handleTorchStateChange}
+          torchControllerRef={torchControllerRef}
           camera={{ videoRef, active: cameraActive, error: cameraError }}
         />
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-28 bg-linear-to-b from-black/80 via-black/40 to-transparent" />
@@ -845,6 +873,30 @@ export const ScanCameraPage = () => {
             </span>
             Retour
           </button>
+          {torchState.supported && (
+            <button
+              type="button"
+              className={`pointer-events-auto inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold shadow-lg backdrop-blur transition focus-visible:outline-none focus-visible:ring-2 ${
+                torchState.enabled
+                  ? "bg-amber-400/20 text-amber-100 hover:bg-amber-400/30 focus-visible:ring-amber-200"
+                  : "bg-black/60 text-white hover:bg-black/70 focus-visible:ring-white/70"
+              } disabled:cursor-not-allowed disabled:opacity-60`}
+              onClick={handleTorchToggle}
+              aria-pressed={torchState.enabled}
+              aria-label={torchButtonActionLabel}
+              title={torchButtonActionLabel}
+              disabled={!cameraActive}
+              data-testid="scan-camera-torch-toggle"
+            >
+              <span
+                aria-hidden
+                className={`h-2 w-2 rounded-full ${
+                  torchState.enabled ? "bg-amber-200" : "bg-white/70"
+                }`}
+              />
+              Lampe
+            </button>
+          )}
         </div>
         <div className="pointer-events-none absolute inset-x-0 bottom-6 z-20 flex justify-center px-6">
           {!cameraActive && !cameraError && !hasCameraBooted && (
