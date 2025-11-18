@@ -421,7 +421,7 @@ export const SelectShopPage = () => {
             Choisir une entité
           </h1>
           <p className="mt-2 max-w-xl text-sm leading-relaxed text-(--cb-muted)">
-            Sélectionnez votre entité pour poursuivre l’identification.Test.
+            Sélectionnez votre entité pour poursuivre l’identification.
           </p>
         </div>
 
