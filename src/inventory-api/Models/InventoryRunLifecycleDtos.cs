@@ -1,58 +1,42 @@
-using System;
-
-namespace CineBoutique.Inventory.Api.Models;
-
-public sealed record StartRunRequest(Guid ShopId, Guid OwnerUserId, short CountType);
-
-[Obsolete("Use StartRunRequest instead.")]
-public sealed record StartInventoryRunRequest
+namespace CineBoutique.Inventory.Api.Models
 {
-    public Guid ShopId { get; init; }
+    public sealed record StartRunRequest(Guid ShopId, Guid OwnerUserId, short CountType);
 
-    public Guid OwnerUserId { get; init; }
+    public sealed class StartInventoryRunResponse
+    {
+        public Guid RunId { get; set; }
 
-    public short CountType { get; init; }
+        public Guid InventorySessionId { get; set; }
 
-    [Obsolete("Operator has been replaced by OwnerUserId.")]
-    public string? Operator { get; init; }
+        public Guid LocationId { get; set; }
 
-    public StartRunRequest ToStartRunRequest() => new(ShopId, OwnerUserId, CountType);
-}
+        public short CountType { get; set; }
 
-public sealed class StartInventoryRunResponse
-{
-    public Guid RunId { get; set; }
+        public Guid? OwnerUserId { get; set; }
 
-    public Guid InventorySessionId { get; set; }
+        public string? OwnerDisplayName { get; set; }
 
-    public Guid LocationId { get; set; }
+        public string? OperatorDisplayName { get; set; }
 
-    public short CountType { get; set; }
+        public DateTimeOffset StartedAtUtc { get; set; }
+    }
 
-    public Guid? OwnerUserId { get; set; }
+    public sealed record RestartRunRequest(Guid OwnerUserId, short CountType);
 
-    public string? OwnerDisplayName { get; set; }
+    public sealed class ResetShopInventoryResponse
+    {
+        public Guid ShopId { get; init; }
 
-    public string? OperatorDisplayName { get; set; }
+        public string? ShopName { get; init; }
 
-    public DateTimeOffset StartedAtUtc { get; set; }
-}
+        public int ZonesCleared { get; init; }
 
-public sealed record RestartRunRequest(Guid OwnerUserId, short CountType);
+        public int RunsCleared { get; init; }
 
-public sealed class ResetShopInventoryResponse
-{
-    public Guid ShopId { get; init; }
+        public int LinesCleared { get; init; }
 
-    public string? ShopName { get; init; }
+        public int ConflictsCleared { get; init; }
 
-    public int ZonesCleared { get; init; }
-
-    public int RunsCleared { get; init; }
-
-    public int LinesCleared { get; init; }
-
-    public int ConflictsCleared { get; init; }
-
-    public int SessionsClosed { get; init; }
+        public int SessionsClosed { get; init; }
+    }
 }

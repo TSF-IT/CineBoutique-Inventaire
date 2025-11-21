@@ -1,19 +1,18 @@
-using System;
-
-namespace CineBoutique.Inventory.Api.Infrastructure.Middleware;
-
-internal sealed class OperatorContext
+namespace CineBoutique.Inventory.Api.Infrastructure.Middleware
 {
-    public OperatorContext(Guid operatorId, string? operatorName, string? sessionId)
+    internal sealed class OperatorContext
     {
-        OperatorId = operatorId;
-        OperatorName = operatorName;
-        SessionId = sessionId;
+        public OperatorContext(Guid operatorId, string? operatorName, string? sessionId)
+        {
+            OperatorId = operatorId;
+            OperatorName = operatorName;
+            SessionId = sessionId;
+        }
+
+        public Guid OperatorId { get; }
+
+        public string? OperatorName { get; }
+
+        public string? SessionId { get; }
     }
-
-    public Guid OperatorId { get; }
-
-    public string? OperatorName { get; }
-
-    public string? SessionId { get; }
 }

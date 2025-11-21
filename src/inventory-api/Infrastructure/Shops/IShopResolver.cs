@@ -1,8 +1,9 @@
-namespace CineBoutique.Inventory.Api.Infrastructure.Shops;
-
-using System.Data;
-
-public interface IShopResolver
+namespace CineBoutique.Inventory.Api.Infrastructure.Shops
 {
-    Task<Guid> GetDefaultForBackCompatAsync(IDbConnection connection, CancellationToken cancellationToken);
+    using System.Data;
+
+    public interface IShopResolver
+    {
+        Task<Guid> GetDefaultForBackCompatAsync(IDbConnection connection, CancellationToken cancellationToken);
+    }
 }

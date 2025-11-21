@@ -1,11 +1,6 @@
-using System;
-using System.IO;
-using System.Linq;
 using System.Text;
 using System.Text.Json;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 using Microsoft.Net.Http.Headers;
 
 namespace CineBoutique.Inventory.Api.Infrastructure.Http;
@@ -63,14 +58,10 @@ public sealed class LegacyOperatorNameWriteGuardMiddleware
         ArgumentNullException.ThrowIfNull(request);
 
         if (!GuardedMethods.Contains(request.Method, StringComparer.OrdinalIgnoreCase))
-        {
             return false;
-        }
 
         if (!request.Path.StartsWithSegments("/api/inventories", StringComparison.OrdinalIgnoreCase))
-        {
             return false;
-        }
 
         return HasJsonContentType(request);
     }
@@ -80,9 +71,7 @@ public sealed class LegacyOperatorNameWriteGuardMiddleware
         request.EnableBuffering();
 
         if (!request.Body.CanSeek)
-        {
             return false;
-        }
 
         request.Body.Position = 0;
 
@@ -95,24 +84,18 @@ public sealed class LegacyOperatorNameWriteGuardMiddleware
         request.Body.Position = 0;
 
         if (string.IsNullOrWhiteSpace(payload))
-        {
             return false;
-        }
 
         try
         {
             using var document = JsonDocument.Parse(payload, new JsonDocumentOptions { AllowTrailingCommas = true });
             if (document.RootElement.ValueKind != JsonValueKind.Object)
-            {
                 return false;
-            }
 
             foreach (var property in document.RootElement.EnumerateObject())
             {
                 if (string.Equals(property.Name, "operatorName", StringComparison.OrdinalIgnoreCase))
-                {
                     return true;
-                }
             }
         }
         catch (JsonException)
@@ -126,25 +109,17 @@ public sealed class LegacyOperatorNameWriteGuardMiddleware
     private static bool HasJsonContentType(HttpRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.ContentType))
-        {
             return false;
-        }
 
         if (!MediaTypeHeaderValue.TryParse(request.ContentType, out var mediaType))
-        {
             return false;
-        }
 
         var mediaTypeValue = mediaType.MediaType.Value;
         if (!string.IsNullOrEmpty(mediaTypeValue) && mediaTypeValue.Equals("application/json", StringComparison.OrdinalIgnoreCase))
-        {
             return true;
-        }
 
         if (mediaType.Suffix.HasValue && mediaType.Suffix.Value.Equals("json", StringComparison.OrdinalIgnoreCase))
-        {
             return true;
-        }
 
         return false;
     }

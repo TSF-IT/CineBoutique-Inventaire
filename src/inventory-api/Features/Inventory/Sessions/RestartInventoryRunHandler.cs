@@ -1,35 +1,22 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Infrastructure.Database.Inventory;
 using FluentValidation;
-using Microsoft.AspNetCore.Http;
 
 namespace CineBoutique.Inventory.Api.Features.Inventory.Sessions;
 
-internal sealed class RestartInventoryRunHandler
+internal sealed class RestartInventoryRunHandler(
+    IValidator<RestartRunRequest> validator,
+    ISessionRepository sessionRepository,
+    IAuditLogger auditLogger,
+    IClock clock)
 {
-    private readonly IValidator<RestartRunRequest> _validator;
-    private readonly ISessionRepository _sessionRepository;
-    private readonly IAuditLogger _auditLogger;
-    private readonly IClock _clock;
-
-    public RestartInventoryRunHandler(
-        IValidator<RestartRunRequest> validator,
-        ISessionRepository sessionRepository,
-        IAuditLogger auditLogger,
-        IClock clock)
-    {
-        _validator = validator ?? throw new ArgumentNullException(nameof(validator));
-        _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
-        _auditLogger = auditLogger ?? throw new ArgumentNullException(nameof(auditLogger));
-        _clock = clock ?? throw new ArgumentNullException(nameof(clock));
-    }
+    private readonly IValidator<RestartRunRequest> _validator = validator ?? throw new ArgumentNullException(nameof(validator));
+    private readonly ISessionRepository _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
+    private readonly IAuditLogger _auditLogger = auditLogger ?? throw new ArgumentNullException(nameof(auditLogger));
+    private readonly IClock _clock = clock ?? throw new ArgumentNullException(nameof(clock));
 
     public async Task<IResult> HandleAsync(
         Guid locationId,
@@ -47,9 +34,7 @@ internal sealed class RestartInventoryRunHandler
 
         var validationResult = await _validator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
         if (!validationResult.IsValid)
-        {
             return EndpointUtilities.ValidationProblem(validationResult);
-        }
 
         var parameters = new RestartRunParameters
         {
@@ -61,9 +46,7 @@ internal sealed class RestartInventoryRunHandler
 
         var result = await _sessionRepository.RestartRunAsync(parameters, cancellationToken).ConfigureAwait(false);
         if (result.Error is not null)
-        {
             return ToProblem(result.Error);
-        }
 
         var run = result.Run!;
         var userName = EndpointUtilities.GetAuthenticatedUserName(httpContext);
@@ -84,14 +67,10 @@ internal sealed class RestartInventoryRunHandler
     private static string BuildZoneDescription(RestartRunInfo runInfo)
     {
         if (!string.IsNullOrWhiteSpace(runInfo.LocationCode))
-        {
             return $"la zone {runInfo.LocationCode} – {runInfo.LocationLabel}";
-        }
 
         if (!string.IsNullOrWhiteSpace(runInfo.LocationLabel))
-        {
             return $"la zone {runInfo.LocationLabel}";
-        }
 
         return $"la zone {runInfo.LocationId}";
     }
@@ -102,9 +81,7 @@ internal sealed class RestartInventoryRunHandler
 
         IDictionary<string, object?>? extensions = null;
         if (error.Metadata is { Count: > 0 })
-        {
             extensions = new Dictionary<string, object?>(error.Metadata, StringComparer.Ordinal);
-        }
 
         return EndpointUtilities.Problem(error.Title, error.Detail, error.StatusCode, extensions);
     }

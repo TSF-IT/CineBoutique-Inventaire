@@ -1,14 +1,6 @@
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Infrastructure.Database.Inventory;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
 
 namespace CineBoutique.Inventory.Api.Features.Inventory;
 
@@ -131,9 +123,7 @@ internal static class ReportsEndpoints
         builder.AppendLine("SKU/item;Zone;Quantité validée");
 
         if (summaries.Count == 0)
-        {
             return builder.ToString();
-        }
 
         foreach (var zone in summaries
                      .OrderBy(summary => summary.LocationCode, StringComparer.OrdinalIgnoreCase)
@@ -141,9 +131,7 @@ internal static class ReportsEndpoints
         {
             var zoneLabel = BuildZoneLabel(zone);
             if (zone.Items.Count == 0)
-            {
                 continue;
-            }
 
             foreach (var item in zone.Items
                          .OrderBy(i => string.IsNullOrWhiteSpace(i.Sku) ? i.Ean : i.Sku, StringComparer.OrdinalIgnoreCase)
@@ -166,19 +154,13 @@ internal static class ReportsEndpoints
         var label = zone.LocationLabel?.Trim();
 
         if (!string.IsNullOrWhiteSpace(code) && !string.IsNullOrWhiteSpace(label))
-        {
             return $"{code} – {label}";
-        }
 
         if (!string.IsNullOrWhiteSpace(code))
-        {
             return code!;
-        }
 
         if (!string.IsNullOrWhiteSpace(label))
-        {
             return label!;
-        }
 
         return zone.LocationId.ToString("D");
     }
@@ -186,14 +168,10 @@ internal static class ReportsEndpoints
     private static string ResolveSkuOrEan(FinalizedZoneItemModel item)
     {
         if (!string.IsNullOrWhiteSpace(item.Sku))
-        {
             return item.Sku.Trim();
-        }
 
         if (!string.IsNullOrWhiteSpace(item.Ean))
-        {
             return item.Ean.Trim();
-        }
 
         return "—";
     }
@@ -202,9 +180,7 @@ internal static class ReportsEndpoints
     {
         var sanitized = value?.Trim() ?? string.Empty;
         if (sanitized.Length == 0)
-        {
             return "—";
-        }
 
         if (sanitized.IndexOfAny(new[] { ';', '"', '\n', '\r' }) >= 0)
         {

@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
 
@@ -12,9 +10,7 @@ public sealed class CorrelationIdResponseOperationFilter : IOperationFilter
     public void Apply(OpenApiOperation operation, OperationFilterContext context)
     {
         if (operation?.Responses is null || operation.Responses.Count == 0)
-        {
             return;
-        }
 
         foreach (var response in operation.Responses.Values)
         {

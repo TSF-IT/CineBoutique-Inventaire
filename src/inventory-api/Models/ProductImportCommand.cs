@@ -1,16 +1,17 @@
-namespace CineBoutique.Inventory.Api.Models;
-
-using System.IO;
-
-public enum ProductImportMode
+namespace CineBoutique.Inventory.Api.Models
 {
-    Merge,
-    ReplaceCatalogue
-}
+    using System.IO;
 
-public sealed record ProductImportCommand(
-    Stream CsvStream,
-    bool DryRun,
-    string? Username,
-    Guid ShopId,
-    ProductImportMode Mode = ProductImportMode.ReplaceCatalogue);
+    public enum ProductImportMode
+    {
+        Merge,
+        ReplaceCatalogue
+    }
+
+    public sealed record ProductImportCommand(
+        Stream CsvStream,
+        bool DryRun,
+        string? Username,
+        Guid ShopId,
+        ProductImportMode Mode = ProductImportMode.ReplaceCatalogue);
+}

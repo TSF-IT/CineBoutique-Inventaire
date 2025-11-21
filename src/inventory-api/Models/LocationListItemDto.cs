@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace CineBoutique.Inventory.Api.Models;
@@ -50,5 +48,5 @@ public sealed class LocationListItemDto
 
     public DateTimeOffset? ActiveStartedAtUtc { get; set; }
 
-    public IReadOnlyList<LocationCountStatusDto> CountStatuses { get; set; } = Array.Empty<LocationCountStatusDto>();
+    public IReadOnlyList<LocationCountStatusDto> CountStatuses { get; set; } = [];
 }

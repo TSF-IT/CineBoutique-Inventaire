@@ -1,28 +1,17 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Infrastructure.Database.Inventory;
 using FluentValidation;
-using Microsoft.AspNetCore.Http;
 
 namespace CineBoutique.Inventory.Api.Features.Inventory.Sessions;
 
-internal sealed class StartInventoryRunHandler
+internal sealed class StartInventoryRunHandler(
+    IValidator<StartRunRequest> validator,
+    ISessionRepository sessionRepository)
 {
-    private readonly IValidator<StartRunRequest> _validator;
-    private readonly ISessionRepository _sessionRepository;
-
-    public StartInventoryRunHandler(
-        IValidator<StartRunRequest> validator,
-        ISessionRepository sessionRepository)
-    {
-        _validator = validator ?? throw new ArgumentNullException(nameof(validator));
-        _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
-    }
+    private readonly IValidator<StartRunRequest> _validator = validator ?? throw new ArgumentNullException(nameof(validator));
+    private readonly ISessionRepository _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
 
     public async Task<IResult> HandleAsync(Guid locationId, StartRunRequest? request, CancellationToken cancellationToken)
     {
@@ -36,9 +25,7 @@ internal sealed class StartInventoryRunHandler
 
         var validationResult = await _validator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
         if (!validationResult.IsValid)
-        {
             return EndpointUtilities.ValidationProblem(validationResult);
-        }
 
         var startResult = await _sessionRepository
             .StartRunAsync(

@@ -1,20 +1,9 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure;
 using CineBoutique.Inventory.Api.Infrastructure.Logging;
-using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Infrastructure.Database.Inventory;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.OpenApi;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.Logging;
 
 namespace CineBoutique.Inventory.Api.Features.Inventory;
 
@@ -187,14 +176,10 @@ internal static class RunsEndpoints
             CancellationToken cancellationToken) =>
         {
             if (countType < 1)
-            {
                 return Results.BadRequest(new { message = "countType doit être supérieur ou égal à 1." });
-            }
 
             if (ownerUserId == Guid.Empty)
-            {
                 return Results.BadRequest(new { message = "ownerUserId est requis." });
-            }
 
             var lookup = await runRepository
                 .FindActiveRunAsync(locationId, (short)countType, ownerUserId, sessionId, cancellationToken)
@@ -204,10 +189,10 @@ internal static class RunsEndpoints
             {
                 ActiveRunLookupStatus.Success when lookup.Run is not null => Results.Ok(new
                 {
-                    SessionId = lookup.SessionId,
-                    RunId = lookup.Run.RunId,
+                    lookup.SessionId,
+                    lookup.Run.RunId,
                     CountType = countType,
-                    OwnerUserId = lookup.OwnerUserId,
+                    lookup.OwnerUserId,
                     OperatorDisplayName = lookup.Run.OperatorDisplayName ?? lookup.OwnerDisplayName,
                     StartedAtUtc = TimeUtil.ToUtcOffset(lookup.Run.StartedAtUtc)
                 }),

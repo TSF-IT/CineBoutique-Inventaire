@@ -1,23 +1,21 @@
-using System;
-using System.Collections.Generic;
-
-namespace CineBoutique.Inventory.Api.Models;
-
-public sealed class ConflictZoneItemDto
+namespace CineBoutique.Inventory.Api.Models
 {
-    public string Sku { get; set; } = string.Empty;
+    public sealed class ConflictZoneItemDto
+    {
+        public string Sku { get; set; } = string.Empty;
 
-    public string Ean { get; set; } = string.Empty;
+        public string Ean { get; set; } = string.Empty;
 
-    public string Name { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
 
-    public Guid ProductId { get; set; }
+        public Guid ProductId { get; set; }
 
-    public int QtyC1 { get; set; }
+        public int QtyC1 { get; set; }
 
-    public int QtyC2 { get; set; }
+        public int QtyC2 { get; set; }
 
-    public IReadOnlyList<ConflictRunQtyDto> AllCounts { get; set; } = Array.Empty<ConflictRunQtyDto>();
+        public IReadOnlyList<ConflictRunQtyDto> AllCounts { get; set; } = [];
 
-    public int Delta => QtyC1 - QtyC2;
+        public int Delta => QtyC1 - QtyC2;
+    }
 }

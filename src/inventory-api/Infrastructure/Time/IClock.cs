@@ -1,8 +1,7 @@
-using System;
-
-namespace CineBoutique.Inventory.Api.Infrastructure.Time;
-
-public interface IClock
+namespace CineBoutique.Inventory.Api.Infrastructure.Time
 {
-    DateTimeOffset UtcNow { get; }
+    public interface IClock
+    {
+        DateTimeOffset UtcNow { get; }
+    }
 }

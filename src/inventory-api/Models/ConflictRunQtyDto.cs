@@ -1,12 +1,11 @@
-using System;
-
-namespace CineBoutique.Inventory.Api.Models;
-
-public sealed class ConflictRunQtyDto
+namespace CineBoutique.Inventory.Api.Models
 {
-    public Guid RunId { get; set; }
+    public sealed class ConflictRunQtyDto
+    {
+        public Guid RunId { get; set; }
 
-    public short CountType { get; set; }
+        public short CountType { get; set; }
 
-    public int Quantity { get; set; }
+        public int Quantity { get; set; }
+    }
 }

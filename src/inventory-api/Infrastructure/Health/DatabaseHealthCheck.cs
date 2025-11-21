@@ -1,7 +1,4 @@
-using System;
 using System.Data.Common;
-using System.Threading;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Npgsql;
@@ -11,14 +8,9 @@ namespace CineBoutique.Inventory.Api.Infrastructure.Health
     /// <summary>
     /// Vérifie que la connexion à la base est possible.
     /// </summary>
-    public sealed class DatabaseHealthCheck : IHealthCheck
+    public sealed class DatabaseHealthCheck(IDbConnectionFactory connectionFactory) : IHealthCheck
     {
-        private readonly IDbConnectionFactory _connectionFactory;
-
-        public DatabaseHealthCheck(IDbConnectionFactory connectionFactory)
-        {
-            _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
-        }
+        private readonly IDbConnectionFactory _connectionFactory = connectionFactory ?? throw new ArgumentNullException(nameof(connectionFactory));
 
         public async Task<HealthCheckResult> CheckHealthAsync(
             HealthCheckContext context,
@@ -46,9 +38,7 @@ namespace CineBoutique.Inventory.Api.Infrastructure.Health
             finally
             {
                 if (conn is not null)
-                {
                     await conn.DisposeAsync().ConfigureAwait(false);
-                }
             }
         }
     }

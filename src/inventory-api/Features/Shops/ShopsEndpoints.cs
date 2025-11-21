@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Minimal;
@@ -10,11 +6,7 @@ using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Services;
 using CineBoutique.Inventory.Api.Services.Exceptions;
 using FluentValidation;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.OpenApi;
-using Microsoft.AspNetCore.Routing;
 
 namespace CineBoutique.Inventory.Api.Features.Shops;
 

@@ -1,9 +1,5 @@
-using System;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using CsvHelper;
-using Microsoft.Extensions.Logging;
 using Npgsql;
 using CineBoutique.Inventory.Api.Infrastructure.Logging;
 using DomainAuditEntry = CineBoutique.Inventory.Domain.Auditing.AuditEntry;

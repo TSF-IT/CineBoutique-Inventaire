@@ -1,6 +1,3 @@
-using System;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
 using Serilog.Context;
 
 namespace CineBoutique.Inventory.Api.Infrastructure.Middleware;
@@ -11,17 +8,11 @@ public sealed class CorrelationIdMiddleware
 
     private readonly RequestDelegate _next;
 
-    public CorrelationIdMiddleware(RequestDelegate next)
-    {
-        _next = next ?? throw new ArgumentNullException(nameof(next));
-    }
+    public CorrelationIdMiddleware(RequestDelegate next) => _next = next ?? throw new ArgumentNullException(nameof(next));
 
     public async Task InvokeAsync(HttpContext context)
     {
-        if (context is null)
-        {
-            throw new ArgumentNullException(nameof(context));
-        }
+        ArgumentNullException.ThrowIfNull(context);
 
         var correlationId = ResolveCorrelationId(context);
 

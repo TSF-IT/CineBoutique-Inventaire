@@ -1,9 +1,4 @@
-using System;
-using System.Threading;
 using Dapper;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using Npgsql;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Logging;
@@ -24,9 +19,7 @@ public sealed class DbAuditLogger : IAuditLogger
 
         var connectionString = configuration.GetConnectionString("Default");
         if (string.IsNullOrWhiteSpace(connectionString))
-        {
             throw new InvalidOperationException("La chaîne de connexion 'Default' est absente ou vide.");
-        }
 
         _connectionString = connectionString;
     }

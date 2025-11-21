@@ -1,25 +1,15 @@
-using System;
-using System.Collections.Generic;
 using System.Data;
 using System.Globalization;
-using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Shops;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Services.Products;
-using CineBoutique.Inventory.Api.Validation;
 using Dapper;
 using FluentValidation.Results;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.OpenApi;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.Logging;
 using Npgsql;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
@@ -163,10 +153,10 @@ internal static class CatalogEndpoints
                 var sanitizedCode = code?.Trim();
                 if (string.IsNullOrWhiteSpace(sanitizedCode))
                 {
-                    var validation = new ValidationResult(new[]
-                    {
+                    var validation = new ValidationResult(
+                    [
                         new ValidationFailure("code", "Le paramètre 'code' est obligatoire.")
-                    });
+                    ]);
 
                     return EndpointUtilities.ValidationProblem(validation);
                 }
@@ -179,10 +169,10 @@ internal static class CatalogEndpoints
                 var effectiveLimit = limit.GetValueOrDefault(20);
                 if (effectiveLimit < 1 || effectiveLimit > 50)
                 {
-                    var validation = new ValidationResult(new[]
-                    {
+                    var validation = new ValidationResult(
+                    [
                         new ValidationFailure("limit", "Le paramètre 'limit' doit être compris entre 1 et 50.")
-                    });
+                    ]);
 
                     return EndpointUtilities.ValidationProblem(validation);
                 }
@@ -227,7 +217,7 @@ internal static class CatalogEndpoints
                     }
                 }
 
-                operation.Responses ??= new OpenApiResponses();
+                operation.Responses ??= [];
                 operation.Responses[StatusCodes.Status200OK.ToString(CultureInfo.InvariantCulture)] = new OpenApiResponse
                 {
                     Description = "Liste des produits correspondant au code recherché.",
@@ -397,9 +387,7 @@ LEFT JOIN LATERAL (
             normalizedCountStatus = normalizedCountStatus.Length == 0 ? "all" : normalizedCountStatus.ToLowerInvariant();
             var statusIsValid = normalizedCountStatus is "all" or "counted" or "not_counted";
             if (!statusIsValid)
-            {
                 return Results.BadRequest("Le paramètre countStatus doit valoir all, counted ou not_counted.");
-            }
 
             var statusCondition = normalizedCountStatus switch
             {
@@ -411,9 +399,7 @@ LEFT JOIN LATERAL (
             string ApplyStatusCondition(string clause)
             {
                 if (string.IsNullOrEmpty(statusCondition))
-                {
                     return clause;
-                }
 
                 return $"{clause}\n  {statusCondition}";
             }
@@ -753,9 +739,7 @@ LIMIT @top;";
         ArgumentNullException.ThrowIfNull(builder);
 
         if (catalogEndpointsPublic)
-        {
             return builder.AllowAnonymous();
-        }
 
         return builder.RequireAuthorization();
     }

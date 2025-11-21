@@ -1,13 +1,5 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 
 namespace CineBoutique.Inventory.Api.Endpoints;
@@ -22,13 +14,9 @@ internal static class DiagnosticsEndpoints
         var diag = app.MapGroup("/api/_diag");
 
         if (env.IsDevelopment())
-        {
             diag.AllowAnonymous();
-        }
         else
-        {
             diag.RequireAuthorization("Admin");
-        }
 
         diag.MapGet("/info", (IConfiguration cfg, IWebHostEnvironment env) =>
         {
@@ -57,9 +45,7 @@ internal static class DiagnosticsEndpoints
         {
             var cs = cfg.GetConnectionString("Default");
             if (string.IsNullOrWhiteSpace(cs))
-            {
                 return Results.Problem("ConnectionStrings:Default is missing.", statusCode: StatusCodes.Status500InternalServerError);
-            }
 
             var stopwatch = Stopwatch.StartNew();
             NpgsqlConnection? conn = null;
@@ -87,14 +73,10 @@ internal static class DiagnosticsEndpoints
             finally
             {
                 if (cmd is not null)
-                {
                     await cmd.DisposeAsync().ConfigureAwait(false);
-                }
 
                 if (conn is not null)
-                {
                     await conn.DisposeAsync().ConfigureAwait(false);
-                }
             }
         }).WithName("DiagPingDb");
 #pragma warning restore CA1031

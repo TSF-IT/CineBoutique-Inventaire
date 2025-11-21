@@ -1,17 +1,10 @@
-using System;
-using System.Collections.Generic;
 using System.Data;
-using System.Threading;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Minimal;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Services.Products;
 using Dapper;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
 
 namespace CineBoutique.Inventory.Api.Features.Products;
@@ -31,13 +24,13 @@ internal static class ImportEndpoints
     {
         // IMPORT CSV PAR BOUTIQUE (écrase ou merge selon service d'import)
         app.MapPost("/api/shops/{shopId:guid}/products/import", async (
-            System.Guid shopId,
-            Microsoft.AspNetCore.Http.HttpRequest request,
-            System.Data.IDbConnection connection,
+            Guid shopId,
+            HttpRequest request,
+            IDbConnection connection,
             CineBoutique.Inventory.Infrastructure.Locks.IImportLockService importLockService,
             string? dryRun,
             string? mode,
-            System.Threading.CancellationToken ct) =>
+            CancellationToken ct) =>
         {
             var lockHandle = await importLockService.TryAcquireForShopAsync(shopId, ct).ConfigureAwait(false);
             if (lockHandle is null)
@@ -59,7 +52,7 @@ internal static class ImportEndpoints
                     return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
 
                 // Récupération du flux CSV
-                System.IO.Stream csvStream;
+                Stream csvStream;
                 if (request.HasFormContentType)
                 {
                     var form = await request.ReadFormAsync(ct).ConfigureAwait(false);
@@ -132,9 +125,9 @@ internal static class ImportEndpoints
         .RequireAuthorization("Admin");
 
         app.MapGet("/api/shops/{shopId:guid}/products/import/status", async (
-            System.Guid shopId,
-            System.Data.IDbConnection connection,
-            System.Threading.CancellationToken ct) =>
+            Guid shopId,
+            IDbConnection connection,
+            CancellationToken ct) =>
         {
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, ct).ConfigureAwait(false);
 
@@ -152,9 +145,7 @@ internal static class ImportEndpoints
     private static ProductImportMode ParseImportMode(string? mode)
     {
         if (string.Equals(mode, "merge", StringComparison.OrdinalIgnoreCase))
-        {
             return ProductImportMode.Merge;
-        }
 
         return ProductImportMode.ReplaceCatalogue;
     }

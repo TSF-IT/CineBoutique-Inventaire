@@ -1,12 +1,11 @@
-using System;
-
-namespace CineBoutique.Inventory.Api.Infrastructure;
-
-internal static class TimeUtil
+namespace CineBoutique.Inventory.Api.Infrastructure
 {
-    public static DateTimeOffset ToUtcOffset(DateTime dt) =>
-        new(DateTime.SpecifyKind(dt, DateTimeKind.Utc));
+    internal static class TimeUtil
+    {
+        public static DateTimeOffset ToUtcOffset(DateTime dt) =>
+            new(DateTime.SpecifyKind(dt, DateTimeKind.Utc));
 
-    public static DateTimeOffset? ToUtcOffset(DateTime? dt) =>
-        dt.HasValue ? ToUtcOffset(dt.Value) : (DateTimeOffset?)null;
+        public static DateTimeOffset? ToUtcOffset(DateTime? dt) =>
+            dt.HasValue ? ToUtcOffset(dt.Value) : (DateTimeOffset?)null;
+    }
 }

@@ -1,21 +1,10 @@
-using System;
-using System.Collections.Generic;
 using System.Data;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Endpoints;
-using CineBoutique.Inventory.Api.Infrastructure;
 using CineBoutique.Inventory.Api.Infrastructure.Logging;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Infrastructure.Database.Inventory;
 using Dapper;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.OpenApi;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.Logging;
 
 namespace CineBoutique.Inventory.Api.Features.Inventory;
 
@@ -49,9 +38,7 @@ internal static class ConflictsEndpoints
                 .ConfigureAwait(false);
 
             if (location is null)
-            {
                 return Results.NotFound();
-            }
 
             await sessionRepository.ResolveConflictsForLocationAsync(locationId, cancellationToken).ConfigureAwait(false);
 

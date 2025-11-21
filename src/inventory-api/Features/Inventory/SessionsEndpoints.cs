@@ -1,12 +1,6 @@
-using System;
-using System.Threading;
 using CineBoutique.Inventory.Api.Features.Inventory.Sessions;
 using CineBoutique.Inventory.Api.Infrastructure.Minimal;
 using CineBoutique.Inventory.Api.Models;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.OpenApi;
-using Microsoft.AspNetCore.Routing;
 
 namespace CineBoutique.Inventory.Api.Features.Inventory;
 

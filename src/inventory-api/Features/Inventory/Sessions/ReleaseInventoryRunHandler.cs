@@ -1,27 +1,16 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Infrastructure.Database.Inventory;
 using FluentValidation;
-using Microsoft.AspNetCore.Http;
 
 namespace CineBoutique.Inventory.Api.Features.Inventory.Sessions;
 
-internal sealed class ReleaseInventoryRunHandler
+internal sealed class ReleaseInventoryRunHandler(
+    IValidator<ReleaseRunRequest> validator,
+    ISessionRepository sessionRepository)
 {
-    private readonly IValidator<ReleaseRunRequest> _validator;
-    private readonly ISessionRepository _sessionRepository;
-
-    public ReleaseInventoryRunHandler(
-        IValidator<ReleaseRunRequest> validator,
-        ISessionRepository sessionRepository)
-    {
-        _validator = validator ?? throw new ArgumentNullException(nameof(validator));
-        _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
-    }
+    private readonly IValidator<ReleaseRunRequest> _validator = validator ?? throw new ArgumentNullException(nameof(validator));
+    private readonly ISessionRepository _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
 
     public async Task<IResult> HandleAsync(Guid locationId, ReleaseRunRequest? request, CancellationToken cancellationToken)
     {
@@ -35,9 +24,7 @@ internal sealed class ReleaseInventoryRunHandler
 
         var validationResult = await _validator.ValidateAsync(request, cancellationToken).ConfigureAwait(false);
         if (!validationResult.IsValid)
-        {
             return EndpointUtilities.ValidationProblem(validationResult);
-        }
 
         var result = await _sessionRepository
             .ReleaseRunAsync(
@@ -51,9 +38,7 @@ internal sealed class ReleaseInventoryRunHandler
             .ConfigureAwait(false);
 
         if (result.Error is not null)
-        {
             return ToProblem(result.Error);
-        }
 
         return Results.NoContent();
     }
@@ -64,9 +49,7 @@ internal sealed class ReleaseInventoryRunHandler
 
         IDictionary<string, object?>? extensions = null;
         if (error.Metadata is { Count: > 0 })
-        {
             extensions = new Dictionary<string, object?>(error.Metadata, StringComparer.Ordinal);
-        }
 
         return EndpointUtilities.Problem(error.Title, error.Detail, error.StatusCode, extensions);
     }

@@ -1,9 +1,5 @@
-using System;
 using CineBoutique.Inventory.Api.Configuration;
 using CineBoutique.Inventory.Api.Features.Products;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace CineBoutique.Inventory.Api.Endpoints;

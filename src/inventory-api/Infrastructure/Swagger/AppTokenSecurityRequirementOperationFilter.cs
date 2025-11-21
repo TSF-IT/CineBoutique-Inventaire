@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-using System.Linq;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
@@ -17,42 +15,30 @@ internal sealed class AppTokenSecurityRequirementOperationFilter : IOperationFil
     public void Apply(OpenApiOperation operation, OperationFilterContext context)
     {
         if (operation == null || context == null)
-        {
             return;
-        }
 
         if (AllowsAnonymous(context))
-        {
             return;
-        }
 
         EnsureRequirement(operation, SwaggerSecuritySchemeNames.AppToken);
 
         if (RequiresAdmin(context))
-        {
             EnsureRequirement(operation, SwaggerSecuritySchemeNames.Admin);
-        }
     }
 
     private static bool AllowsAnonymous(OperationFilterContext context)
     {
         var endpointMetadata = context.ApiDescription.ActionDescriptor?.EndpointMetadata;
         if (endpointMetadata?.OfType<IAllowAnonymous>().Any() == true)
-        {
             return true;
-        }
 
         if (context.MethodInfo != null)
         {
             if (context.MethodInfo.GetCustomAttributes(true).OfType<IAllowAnonymous>().Any())
-            {
                 return true;
-            }
 
             if (context.MethodInfo.DeclaringType?.GetCustomAttributes(true).OfType<IAllowAnonymous>().Any() == true)
-            {
                 return true;
-            }
         }
 
         return false;
@@ -70,9 +56,7 @@ internal sealed class AppTokenSecurityRequirementOperationFilter : IOperationFil
 
         var endpointMetadata = context.ApiDescription.ActionDescriptor?.EndpointMetadata;
         if (endpointMetadata != null)
-        {
             items.AddRange(endpointMetadata.OfType<IAuthorizeData>());
-        }
 
         if (context.MethodInfo != null)
         {
@@ -80,9 +64,7 @@ internal sealed class AppTokenSecurityRequirementOperationFilter : IOperationFil
 
             var declaringType = context.MethodInfo.DeclaringType;
             if (declaringType != null)
-            {
                 items.AddRange(declaringType.GetCustomAttributes(true).OfType<IAuthorizeData>());
-            }
         }
 
         return items;
@@ -96,9 +78,7 @@ internal sealed class AppTokenSecurityRequirementOperationFilter : IOperationFil
             existing.Keys.Any(key => string.Equals(key.Reference?.Id, schemeId, System.StringComparison.Ordinal)));
 
         if (!alreadyPresent)
-        {
             operation.Security.Add(CreateRequirement(schemeId));
-        }
     }
 
     private static OpenApiSecurityRequirement CreateRequirement(string schemeId)
@@ -114,7 +94,7 @@ internal sealed class AppTokenSecurityRequirementOperationFilter : IOperationFil
                         Id = schemeId
                     }
                 },
-                System.Array.Empty<string>()
+                Array.Empty<string>()
             }
         };
     }

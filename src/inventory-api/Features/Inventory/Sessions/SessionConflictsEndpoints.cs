@@ -1,13 +1,5 @@
-using System;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Infrastructure.Database.Inventory;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.OpenApi;
-using Microsoft.AspNetCore.Routing;
 
 namespace CineBoutique.Inventory.Api.Features.Inventory.Sessions;
 
@@ -35,9 +27,7 @@ internal static class SessionConflictsEndpoints
                 .ConfigureAwait(false);
 
             if (!result.SessionExists)
-            {
                 return Results.NotFound();
-            }
 
             var response = new SessionConflictsResponseDto
             {
@@ -73,9 +63,7 @@ internal static class SessionConflictsEndpoints
                 .ConfigureAwait(false);
 
             if (!result.SessionExists)
-            {
                 return Results.NotFound();
-            }
 
             var response = new SessionResolvedConflictsResponseDto
             {

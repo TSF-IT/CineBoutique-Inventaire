@@ -1,26 +1,12 @@
-using System;
-using System.Collections.Generic;
 using System.Data;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
-using CineBoutique.Inventory.Api.Infrastructure.Logging;
 using CineBoutique.Inventory.Api.Infrastructure.Minimal;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
-using CineBoutique.Inventory.Api.Validation;
-using CineBoutique.Inventory.Infrastructure.Database;
 using CineBoutique.Inventory.Infrastructure.Database.Inventory;
 using Dapper;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.OpenApi;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using Npgsql;
 
@@ -44,9 +30,7 @@ internal static class LocationsEndpoints
             async (string? shopId, int? countType, bool? includeDisabled, IDbConnection connection, CancellationToken cancellationToken) =>
         {
             if (!TryNormalizeShopId(shopId, out var parsedShopId, out var errorResult))
-            {
                 return errorResult;
-            }
 
             if (countType.HasValue && countType.Value is not (1 or 2))
             {
@@ -119,9 +103,7 @@ internal static class LocationsEndpoints
                 CancellationToken cancellationToken) =>
         {
             if (!TryNormalizeShopId(shopId, out var parsedShopId, out var errorResult))
-            {
                 return errorResult;
-            }
 
             if (request is null)
             {
@@ -233,9 +215,7 @@ internal static class LocationsEndpoints
                 CancellationToken cancellationToken) =>
         {
             if (!TryNormalizeShopId(shopId, out var parsedShopId, out var errorResult))
-            {
                 return errorResult;
-            }
 
             if (request is null)
             {
@@ -377,9 +357,7 @@ internal static class LocationsEndpoints
                 CancellationToken cancellationToken) =>
         {
             if (!TryNormalizeShopId(shopId, out var parsedShopId, out var errorResult))
-            {
                 return errorResult;
-            }
 
             if (request is null || request.IsActive is null)
             {
@@ -465,14 +443,10 @@ WHERE "Id" = @Id AND "ShopId" = @ShopId;
             }
 
             if (disableResult.HasCountConflict)
-            {
                 return BuildCountLinesConflict(locationId, disableResult.ConflictLines);
-            }
 
             if (disableResult.PurgeBlocked)
-            {
                 return BuildPurgeConflict(locationId);
-            }
 
             await auditLogger
                 .LogAsync(
@@ -512,9 +486,7 @@ WHERE "Id" = @Id AND "ShopId" = @ShopId;
                 CancellationToken cancellationToken) =>
         {
             if (!TryNormalizeShopId(shopId, out var parsedShopId, out var errorResult))
-            {
                 return errorResult;
-            }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
 
@@ -548,14 +520,10 @@ WHERE "Id" = @Id AND "ShopId" = @ShopId;
             }
 
             if (disableResult.HasCountConflict)
-            {
                 return BuildCountLinesConflict(locationId, disableResult.ConflictLines);
-            }
 
             if (disableResult.PurgeBlocked)
-            {
                 return BuildPurgeConflict(locationId);
-            }
 
             var disabled = (await QueryLocationsAsync(connection, parsedShopId, null, new[] { locationId }, includeDisabled: true, cancellationToken).ConfigureAwait(false))
                 .FirstOrDefault();
@@ -600,9 +568,7 @@ WHERE "Id" = @Id AND "ShopId" = @ShopId;
         CancellationToken cancellationToken)
     {
         if (connection is not NpgsqlConnection npgsqlConnection)
-        {
             throw new InvalidOperationException("Cette opération requiert une connexion Npgsql.");
-        }
 
         await using var transaction = await npgsqlConnection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 
@@ -833,9 +799,7 @@ ORDER BY l.""Code"" ASC;";
             .ToList();
 
         if (locations.Count == 0)
-        {
-            return Array.Empty<LocationListItemDto>();
-        }
+            return [];
 
         var locationIds = locations.Select(location => location.Id).ToArray();
 
@@ -894,9 +858,7 @@ ORDER BY cr.""LocationId"", cr.""CountType"", cr.""CompletedAtUtc"" DESC;";
         var defaultCountTypes = new short[] { 1, 2 };
 
         if (countType is { } requested)
-        {
             defaultCountTypes = defaultCountTypes.Concat(new[] { (short)requested }).ToArray();
-        }
 
         var targetCountTypes = defaultCountTypes
             .Concat(discoveredCountTypes)

@@ -1,9 +1,4 @@
-using System;
-using System.Collections.Generic;
 using System.Data;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Minimal;
@@ -13,11 +8,6 @@ using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Api.Validation;
 using CineBoutique.Inventory.Infrastructure.Database;
 using Dapper;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.OpenApi;
-using Microsoft.AspNetCore.Routing;
-using Microsoft.OpenApi.Any;
-using Microsoft.OpenApi.Models;
 using Npgsql;
 
 namespace CineBoutique.Inventory.Api.Features.Products;
@@ -271,9 +261,7 @@ internal static class AdminEndpoints
                 CancellationToken cancellationToken) =>
             {
                 if (request is null)
-                {
                     return Results.BadRequest(new { message = "Le corps de la requête est requis." });
-                }
 
                 var sanitizedSku = request.Sku?.Trim();
                 var sanitizedName = request.Name?.Trim();

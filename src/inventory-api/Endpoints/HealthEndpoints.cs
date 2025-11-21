@@ -1,13 +1,6 @@
-using System;
 using System.Data;
-using System.Linq;
 using System.Text.Json;
-using System.Threading.Tasks;
-using System.Threading;
-using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Dapper;
 

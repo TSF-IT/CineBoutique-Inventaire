@@ -1,30 +1,19 @@
-using System;
-using System.Threading;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Endpoints;
 using CineBoutique.Inventory.Api.Infrastructure.Audit;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
 using CineBoutique.Inventory.Infrastructure.Database.Inventory;
-using Microsoft.AspNetCore.Http;
 
 namespace CineBoutique.Inventory.Api.Features.Inventory.Sessions;
 
-internal sealed class ResetShopInventoryHandler
+internal sealed class ResetShopInventoryHandler(
+    ISessionRepository sessionRepository,
+    IAuditLogger auditLogger,
+    IClock clock)
 {
-    private readonly ISessionRepository _sessionRepository;
-    private readonly IAuditLogger _auditLogger;
-    private readonly IClock _clock;
-
-    public ResetShopInventoryHandler(
-        ISessionRepository sessionRepository,
-        IAuditLogger auditLogger,
-        IClock clock)
-    {
-        _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
-        _auditLogger = auditLogger ?? throw new ArgumentNullException(nameof(auditLogger));
-        _clock = clock ?? throw new ArgumentNullException(nameof(clock));
-    }
+    private readonly ISessionRepository _sessionRepository = sessionRepository ?? throw new ArgumentNullException(nameof(sessionRepository));
+    private readonly IAuditLogger _auditLogger = auditLogger ?? throw new ArgumentNullException(nameof(auditLogger));
+    private readonly IClock _clock = clock ?? throw new ArgumentNullException(nameof(clock));
 
     public async Task<IResult> HandleAsync(Guid shopId, HttpContext httpContext, CancellationToken cancellationToken)
     {

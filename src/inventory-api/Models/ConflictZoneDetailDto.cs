@@ -1,17 +1,15 @@
-using System;
-using System.Collections.Generic;
-
-namespace CineBoutique.Inventory.Api.Models;
-
-public sealed class ConflictZoneDetailDto
+namespace CineBoutique.Inventory.Api.Models
 {
-    public Guid LocationId { get; set; }
+    public sealed class ConflictZoneDetailDto
+    {
+        public Guid LocationId { get; set; }
 
-    public string LocationCode { get; set; } = string.Empty;
+        public string LocationCode { get; set; } = string.Empty;
 
-    public string LocationLabel { get; set; } = string.Empty;
+        public string LocationLabel { get; set; } = string.Empty;
 
-    public IReadOnlyList<ConflictRunHeaderDto> Runs { get; set; } = Array.Empty<ConflictRunHeaderDto>();
+        public IReadOnlyList<ConflictRunHeaderDto> Runs { get; set; } = Array.Empty<ConflictRunHeaderDto>();
 
-    public IReadOnlyList<ConflictZoneItemDto> Items { get; set; } = Array.Empty<ConflictZoneItemDto>();
+        public IReadOnlyList<ConflictZoneItemDto> Items { get; set; } = Array.Empty<ConflictZoneItemDto>();
+    }
 }
