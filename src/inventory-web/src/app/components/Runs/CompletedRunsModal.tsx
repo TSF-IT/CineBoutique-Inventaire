@@ -67,7 +67,23 @@ const toValidOwnerName = (name: string | null | undefined) => {
   return trimmed && trimmed.length > 0 ? trimmed : null
 }
 
-const formatOwnerName = (name: string | null | undefined) => toValidOwnerName(name) ?? '—'
+const formatOwnerName = (name: string | null | undefined) => toValidOwnerName(name) ?? '-'
+
+export const mergeRunDetailWithSummary = (detail: CompletedRunDetail, summary?: CompletedRunSummary) => {
+  const mergedOwner =
+    toValidOwnerName(detail.ownerDisplayName) ?? toValidOwnerName(summary?.ownerDisplayName) ?? null
+
+  return {
+    ...detail,
+    ownerDisplayName: mergedOwner,
+    ownerUserId: detail.ownerUserId ?? summary?.ownerUserId ?? null,
+    locationCode: detail.locationCode || summary?.locationCode || '',
+    locationLabel: detail.locationLabel || summary?.locationLabel || '',
+    startedAtUtc: detail.startedAtUtc || summary?.startedAtUtc || '',
+    completedAtUtc: detail.completedAtUtc || summary?.completedAtUtc || '',
+    countType: detail.countType ?? summary?.countType ?? detail.countType,
+  }
+}
 
 const formatOwnerForTitle = (run: CompletedRunSummary, detail?: CompletedRunDetail | null) =>
   toValidOwnerName(detail?.ownerDisplayName ?? run.ownerDisplayName) ?? 'Inconnu'
@@ -408,7 +424,9 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
     if (!bypassCache) {
       const cached = detailsCacheRef.current.get(selectedRun.runId)
       if (cached) {
-        setRunDetail(cached)
+        const merged = mergeRunDetailWithSummary(cached, selectedRun)
+        detailsCacheRef.current.set(merged.runId, merged)
+        setRunDetail(merged)
         setDetailError(null)
         setDetailLoading(false)
         return
@@ -423,9 +441,10 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
     const load = async () => {
       try {
         const detail = await getCompletedRunDetail(selectedRun.runId)
+        const merged = mergeRunDetailWithSummary(detail, selectedRun)
         if (!cancelled) {
-          detailsCacheRef.current.set(detail.runId, detail)
-          setRunDetail(detail)
+          detailsCacheRef.current.set(merged.runId, merged)
+          setRunDetail(merged)
           setDetailError(null)
         }
       } catch (error) {
@@ -503,12 +522,14 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
     try {
       const details: CompletedRunDetail[] = []
       for (const run of orderedCompletedRuns) {
-        let detail = detailsCacheRef.current.get(run.runId)
-        if (!detail) {
-          detail = await getCompletedRunDetail(run.runId)
-          detailsCacheRef.current.set(detail.runId, detail)
-        }
-        details.push(detail)
+        const cached = detailsCacheRef.current.get(run.runId)
+        const detail =
+          cached ??
+          (await getCompletedRunDetail(run.runId))
+
+        const merged = mergeRunDetailWithSummary(detail, run)
+        detailsCacheRef.current.set(merged.runId, merged)
+        details.push(merged)
       }
 
       const csvContent = buildGlobalCsvContent(details)
