@@ -43,14 +43,38 @@ internal static class ConflictsEndpoints
             await sessionRepository.ResolveConflictsForLocationAsync(locationId, cancellationToken).ConfigureAwait(false);
 
             const string runsSql = """
-WITH scoped_runs AS (
+WITH conflict_products AS (
+  SELECT DISTINCT p."Id" AS "ProductId"
+  FROM "Conflict" c
+  JOIN "CountLine" cl ON cl."Id" = c."CountLineId"
+  JOIN "CountingRun" cr ON cr."Id" = cl."CountingRunId"
+  JOIN "Product" p ON p."Id" = cl."ProductId"
+  WHERE c."IsResolved" = FALSE
+    AND cr."LocationId" = @LocationId
+),
+candidate_runs AS (
+  SELECT DISTINCT cr."Id" AS "RunId",
+                  cr."CountType" AS "CountType",
+                  cr."CompletedAtUtc",
+                  cr."InventorySessionId" AS "SessionId"
+  FROM "CountingRun" cr
+  JOIN "CountLine" cl ON cl."CountingRunId" = cr."Id"
+  JOIN conflict_products cp ON cp."ProductId" = cl."ProductId"
+  WHERE cr."LocationId" = @LocationId
+    AND cr."CompletedAtUtc" IS NOT NULL
+),
+sessions_scoped AS (
+  SELECT DISTINCT "SessionId" FROM candidate_runs
+),
+scoped_runs AS (
   SELECT DISTINCT ON (cr."CountType")
-    cr."Id"           AS "RunId",
-    cr."CountType"    AS "CountType",
+    cr."Id"             AS "RunId",
+    cr."CountType"      AS "CountType",
     cr."CompletedAtUtc" AS "CompletedAtUtc"
   FROM "CountingRun" cr
   WHERE cr."LocationId" = @LocationId
     AND cr."CompletedAtUtc" IS NOT NULL
+    AND cr."InventorySessionId" IN (SELECT "SessionId" FROM sessions_scoped)
   ORDER BY cr."CountType", cr."CompletedAtUtc" DESC, cr."Id" DESC
 )
 SELECT sr."RunId",
@@ -92,13 +116,19 @@ WITH conflict_products AS (
     WHERE c."IsResolved" = FALSE
       AND cr."LocationId" = @LocationId
 ),
-completed_runs AS (
+candidate_runs AS (
     SELECT DISTINCT cr."Id" AS "RunId",
                     cr."CountType" AS "CountType",
-                    cr."CompletedAtUtc"
+                    cr."CompletedAtUtc",
+                    cr."InventorySessionId" AS "SessionId"
     FROM "CountingRun" cr
+    JOIN "CountLine" cl ON cl."CountingRunId" = cr."Id"
+    JOIN conflict_products cp ON cp."ProductId" = cl."ProductId"
     WHERE cr."LocationId" = @LocationId
       AND cr."CompletedAtUtc" IS NOT NULL
+),
+sessions_scoped AS (
+    SELECT DISTINCT "SessionId" FROM candidate_runs
 ),
 scoped_runs AS (
     SELECT DISTINCT ON (cr."CountType")
@@ -108,6 +138,7 @@ scoped_runs AS (
     FROM "CountingRun" cr
     WHERE cr."LocationId" = @LocationId
       AND cr."CompletedAtUtc" IS NOT NULL
+      AND cr."InventorySessionId" IN (SELECT "SessionId" FROM sessions_scoped)
     ORDER BY cr."CountType", cr."CompletedAtUtc" DESC, cr."Id" DESC
 ),
 product_runs AS (
