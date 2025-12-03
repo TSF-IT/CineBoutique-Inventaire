@@ -133,6 +133,65 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
     }
 
     [SkippableFact]
+    public async Task ConflictsEndpoint_ResolvesWhenThirdCountMatchesImplicitZero()
+    {
+        Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");
+
+        var seeded = await SeedInventoryContextWithAdditionalProductAsync().ConfigureAwait(false);
+        var client = CreateClient();
+
+        await RunCountAsync(
+            client,
+            seeded.ShopId,
+            seeded.LocationId,
+            seeded.PrimaryUserId,
+            1,
+            new[]
+            {
+                new CompleteRunItemRequest(seeded.ConflictEan, 1m, false),
+                new CompleteRunItemRequest(seeded.StableEan, 3m, false)
+            }).ConfigureAwait(false);
+
+        await RunCountAsync(
+            client,
+            seeded.ShopId,
+            seeded.LocationId,
+            seeded.SecondaryUserId,
+            2,
+            new[]
+            {
+                new CompleteRunItemRequest(seeded.StableEan, 3m, false)
+            }).ConfigureAwait(false);
+
+        var conflictBeforeResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/conflicts/{seeded.LocationId}")
+        ).ConfigureAwait(false);
+        await conflictBeforeResponse.ShouldBeAsync(HttpStatusCode.OK, "conflict should be present before the third count").ConfigureAwait(false);
+        var conflictBefore = await conflictBeforeResponse.Content.ReadFromJsonAsync<ConflictZoneDetailDto>().ConfigureAwait(false);
+        conflictBefore.Should().NotBeNull();
+        conflictBefore!.Items.Should().NotBeEmpty();
+
+        await RunCountAsync(
+            client,
+            seeded.ShopId,
+            seeded.LocationId,
+            seeded.PrimaryUserId,
+            3,
+            new[]
+            {
+                new CompleteRunItemRequest(seeded.ConflictEan, 0m, false)
+            }).ConfigureAwait(false);
+
+        var resolvedResponse = await client.GetAsync(
+            client.CreateRelativeUri($"/api/conflicts/{seeded.LocationId}")
+        ).ConfigureAwait(false);
+        await resolvedResponse.ShouldBeAsync(HttpStatusCode.OK, "conflict should resolve when a later count matches the implicit zero").ConfigureAwait(false);
+        var resolved = await resolvedResponse.Content.ReadFromJsonAsync<ConflictZoneDetailDto>().ConfigureAwait(false);
+        resolved.Should().NotBeNull();
+        resolved!.Items.Should().BeEmpty("deux comptages cons‚cutifs ‚gaux (z‚ro) doivent clore le conflit");
+    }
+
+    [SkippableFact]
     public async Task ConflictsEndpoint_IncludesBaselineCountsForActiveSession()
     {
         Skip.IfNot(TestEnvironment.IsIntegrationBackendAvailable(), "No Docker/Testcontainers and no TEST_DB_CONN provided.");

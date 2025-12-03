@@ -1562,6 +1562,34 @@ WHERE cr."LocationId" = @LocationId;
             var observedCountTypes = new HashSet<short>(observationModels.Select(obs => obs.CountType));
             var hasMissingObservation = baselineCountTypes.Length >= 2 &&
                                         baselineCountTypes.Any(countType => !observedCountTypes.Contains(countType));
+            var missingCountTypes = hasMissingObservation
+                ? baselineCountTypes.Where(countType => !observedCountTypes.Contains(countType)).ToArray()
+                : Array.Empty<short>();
+
+            var extendedProductRows = productRows.ToList();
+            if (missingCountTypes.Length > 0 &&
+                productRows.Any(row => ToIntQuantity(row.Quantity) == 0))
+            {
+                var template = productRows[0];
+                foreach (var missingCountType in missingCountTypes)
+                {
+                    extendedProductRows.Insert(0, new SessionConflictObservationRow
+                    {
+                        ProductId = template.ProductId,
+                        Ean = template.Ean,
+                        Sku = template.Sku,
+                        Name = template.Name,
+                        CountLineId = Guid.Empty,
+                        RunId = Guid.Empty,
+                        InventorySessionId = template.InventorySessionId,
+                        CountType = missingCountType,
+                        OwnerUserId = null,
+                        OperatorDisplayName = null,
+                        CompletedAtUtc = template.CompletedAtUtc,
+                        Quantity = 0m
+                    });
+                }
+            }
 
             if (observationModels.Count < 2 && !hasMissingObservation)
             {
@@ -1572,7 +1600,7 @@ WHERE cr."LocationId" = @LocationId;
                 continue;
             }
 
-            var resolution = observationModels.Count >= 2 ? DetectResolution(productRows) : null;
+            var resolution = extendedProductRows.Count >= 2 ? DetectResolution(extendedProductRows) : null;
             if (resolution is not null)
             {
                 var resolvedQuantity = resolution.Quantity;
