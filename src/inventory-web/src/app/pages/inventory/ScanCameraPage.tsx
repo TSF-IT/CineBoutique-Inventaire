@@ -147,7 +147,7 @@ export const ScanCameraPage = () => {
   const showStatusMessage = useCallback(
     (message: string | null, tone: StatusTone = "info") => {
       if (!message) {
-        showStatusMessage(null);
+        setStatusMessage(null);
         return;
       }
       setStatusMessage({ text: message, tone });

@@ -1,17 +1,10 @@
-using System;
-using System.Collections.Generic;
 using System.Data;
-using System.Linq;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Infrastructure.Time;
 using CineBoutique.Inventory.Api.Models;
-using CineBoutique.Inventory.Api.Services.Products;
 using CineBoutique.Inventory.Api.Validation;
 using CineBoutique.Inventory.Infrastructure.Database.Products;
 using Dapper;
-using Microsoft.Extensions.Logging;
 using Npgsql;
 using NpgsqlTypes;
 
@@ -83,13 +76,9 @@ WHERE "ShopId" = @ShopId
         foreach (var row in rows)
         {
             if (existingSet.Contains(row.Sku))
-            {
                 updated++;
-            }
             else
-            {
                 created++;
-            }
         }
 
         return new ProductImportWriteStatistics(created, updated);
@@ -103,18 +92,14 @@ WHERE "ShopId" = @ShopId
         CancellationToken cancellationToken)
     {
         if (rows.Count == 0)
-        {
             return ProductImportWriteStatistics.Empty;
-        }
 
         if (transaction is not NpgsqlTransaction npgsqlTransaction)
-        {
             throw new InvalidOperationException("Une transaction Npgsql est requise pour l'import produit.");
-        }
 
         Dictionary<string, string>? preloadedAttributes = null;
-        string[] normalizedSkusForDeletion = Array.Empty<string>();
-        string[] normalizedEansForBlocking = Array.Empty<string>();
+        string[] normalizedSkusForDeletion = [];
+        string[] normalizedEansForBlocking = [];
         if (mode == ProductImportMode.ReplaceCatalogue)
         {
             preloadedAttributes = await LoadExistingAttributesBySkuAsync(rows, shopId, npgsqlTransaction, cancellationToken)
@@ -158,9 +143,7 @@ WHERE "ShopId" = @ShopId
         Dictionary<string, string>? preloadedAttributesBySku)
     {
         if (rows.Count == 0)
-        {
             return ProductImportWriteStatistics.Empty;
-        }
 
         var now = _clock.UtcNow;
         var created = 0;
@@ -171,9 +154,7 @@ WHERE "ShopId" = @ShopId
             ?? await LoadExistingAttributesBySkuAsync(rows, shopId, transaction, cancellationToken).ConfigureAwait(false);
 
         if (transaction.Connection is not NpgsqlConnection npgsqlConnection)
-        {
             throw new InvalidOperationException("Une connexion Npgsql est requise pour l'UPSERT produit.");
-        }
 
         const string sql = """
 INSERT INTO "Product" ("ShopId", "Sku", "Name", "Ean", "GroupId", "Attributes", "CodeDigits", "CreatedAtUtc")
@@ -219,14 +200,10 @@ RETURNING (xmax = 0) AS inserted;
             var subGroup = ProductImportFieldNormalizer.NormalizeOptional(row.SubGroup);
 
             if (string.IsNullOrEmpty(sku))
-            {
                 continue;
-            }
 
             if (string.IsNullOrEmpty(name))
-            {
                 name = sku;
-            }
 
             var normalizedEan = NormalizeEan(ean);
             var codeDigits = BuildCodeDigits(ean ?? normalizedEan);
@@ -259,13 +236,9 @@ RETURNING (xmax = 0) AS inserted;
             if (insertedResult is bool inserted)
             {
                 if (inserted)
-                {
                     created++;
-                }
                 else
-                {
                     updated++;
-                }
             }
             else
             {
@@ -286,15 +259,11 @@ RETURNING (xmax = 0) AS inserted;
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrEmpty(group) && string.IsNullOrEmpty(subGroup))
-        {
             return null;
-        }
 
         var key = new ProductImportGroupKey(group, subGroup);
         if (cache.TryGetValue(key, out var cached))
-        {
             return cached;
-        }
 
         var resolved = await _productGroupRepository
             .EnsureGroupAsync(group, subGroup, cancellationToken)
@@ -313,9 +282,7 @@ RETURNING (xmax = 0) AS inserted;
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         if (rows.Count == 0)
-        {
             return result;
-        }
 
         var lowerSkus = rows
             .Select(static row => row.Sku)
@@ -325,9 +292,7 @@ RETURNING (xmax = 0) AS inserted;
             .ToArray();
 
         if (lowerSkus.Length == 0)
-        {
             return result;
-        }
 
         const string sql = """
 SELECT "Sku", COALESCE(CAST("Attributes" AS text), '{}') AS attrs
@@ -349,9 +314,7 @@ WHERE "ShopId" = @ShopId
             .ConfigureAwait(false);
 
         foreach (var (skuValue, attrs) in rowsResult)
-        {
             result[skuValue] = attrs;
-        }
 
         return result;
     }

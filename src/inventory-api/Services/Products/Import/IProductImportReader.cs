@@ -1,7 +1,3 @@
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
-
 namespace CineBoutique.Inventory.Api.Services.Products.Import;
 
 public interface IProductImportReader

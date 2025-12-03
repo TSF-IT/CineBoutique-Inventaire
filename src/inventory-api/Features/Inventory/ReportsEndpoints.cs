@@ -101,7 +101,7 @@ internal static class ReportsEndpoints
                              .ThenBy(i => i.Name, StringComparer.OrdinalIgnoreCase))
                 {
                     var quantity = FormatQuantity(item.Quantity);
-                    builder.Append(EscapeCsv(string.IsNullOrWhiteSpace(item.Ean) ? "—" : item.Ean))
+                    builder.Append(EscapeCsv(FormatCodeForExcel(item.Ean)))
                         .Append(';')
                         .Append(EscapeCsv(string.IsNullOrWhiteSpace(item.Sku) ? "—" : item.Sku))
                         .Append(';')
@@ -171,9 +171,18 @@ internal static class ReportsEndpoints
             return item.Sku.Trim();
 
         if (!string.IsNullOrWhiteSpace(item.Ean))
-            return item.Ean.Trim();
+            return FormatCodeForExcel(item.Ean);
 
         return "—";
+    }
+
+    private static string FormatCodeForExcel(string? value, string emptyPlaceholder = "—")
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return emptyPlaceholder;
+
+        var trimmed = value.Trim();
+        return $"=\"{trimmed}\"";
     }
 
     private static string EscapeCsv(string? value)

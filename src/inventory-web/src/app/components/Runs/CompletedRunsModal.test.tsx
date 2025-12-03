@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { render, screen, within } from '@testing-library/react'
+import { describe, expect, it } from 'vitest'
 
 import type { CompletedRunDetail, CompletedRunSummary } from '../../types/inventory'
 

@@ -538,10 +538,12 @@ LIMIT @Limit OFFSET @Offset;
             foreach (dynamic r in rows)
             {
                 string esc(string? s) => (s ?? string.Empty).Replace("\"", "\"\"");
+                string excelText(string? s) => string.IsNullOrWhiteSpace(s) ? string.Empty : $"=\"{s.Trim()}\"";
+
                 sb.Append('"').Append(esc((string)r.Sku)).Append('"').Append(';')
-                  .Append('"').Append(esc((string?)r.Ean)).Append('"').Append(';')
+                  .Append('"').Append(esc(excelText((string?)r.Ean))).Append('"').Append(';')
                   .Append('"').Append(esc((string)r.Name)).Append('"').Append(';')
-                  .Append('"').Append(esc((string?)r.CodeDigits)).Append('"')
+                  .Append('"').Append(esc(excelText((string?)r.CodeDigits))).Append('"')
                   .AppendLine();
             }
 

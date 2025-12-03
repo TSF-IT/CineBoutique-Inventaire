@@ -69,6 +69,7 @@ const toValidOwnerName = (name: string | null | undefined) => {
 
 const formatOwnerName = (name: string | null | undefined) => toValidOwnerName(name) ?? '-'
 
+// eslint-disable-next-line react-refresh/only-export-components -- helper réutilisé dans les tests
 export const mergeRunDetailWithSummary = (detail: CompletedRunDetail, summary?: CompletedRunSummary) => {
   const mergedOwner =
     toValidOwnerName(detail.ownerDisplayName) ?? toValidOwnerName(summary?.ownerDisplayName) ?? null
@@ -186,6 +187,10 @@ const buildRunTitle = (run: CompletedRunSummary, detail?: CompletedRunDetail | n
 }
 
 const escapeCsvValue = (value: string) => `"${value.replace(/"/g, '""')}"`
+const formatCodeForExcel = (value: string | null | undefined) => {
+  const trimmed = value?.trim() ?? ''
+  return trimmed.length === 0 ? '' : `="${trimmed}"`
+}
 
 const buildCsvContent = (title: string, detail: CompletedRunDetail) => {
   const hasSubGroup = detail.items.some(
@@ -195,7 +200,7 @@ const buildCsvContent = (title: string, detail: CompletedRunDetail) => {
   const header = hasSubGroup ? [...baseHeader, 'Sous-groupe', 'Quantité'] : [...baseHeader, 'Quantité']
   const lines = detail.items.map((item) => {
     const sku = item.sku?.trim() ?? ''
-    const ean = item.ean?.trim() ?? ''
+    const ean = formatCodeForExcel(item.ean)
     const cells = [
       escapeCsvValue(sku),
       escapeCsvValue(ean),
@@ -234,7 +239,7 @@ const buildGlobalCsvContent = (details: CompletedRunDetail[]) => {
 
     return detail.items.map((item) => {
       const sku = item.sku?.trim() ?? ''
-      const ean = item.ean?.trim() ?? ''
+      const ean = formatCodeForExcel(item.ean)
       const cells: string[] = [
         zone,
         countLabel,

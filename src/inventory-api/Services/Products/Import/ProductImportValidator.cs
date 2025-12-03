@@ -1,6 +1,3 @@
-using System;
-using CineBoutique.Inventory.Api.Models;
-
 namespace CineBoutique.Inventory.Api.Services.Products.Import;
 
 internal sealed class ProductImportValidator : IProductImportValidator

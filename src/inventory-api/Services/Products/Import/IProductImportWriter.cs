@@ -1,8 +1,4 @@
-using System;
-using System.Collections.Generic;
 using System.Data;
-using System.Threading;
-using System.Threading.Tasks;
 using CineBoutique.Inventory.Api.Models;
 
 namespace CineBoutique.Inventory.Api.Services.Products.Import;
