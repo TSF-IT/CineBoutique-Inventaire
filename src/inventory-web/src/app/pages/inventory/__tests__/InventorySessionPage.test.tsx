@@ -252,9 +252,6 @@ describe('InventorySessionPage - conflits', () => {
     expect(inputs[1]).toHaveValue('0')
 
     const completeButton = await screen.findByTestId('btn-complete-run')
-    expect(completeButton).toBeDisabled()
-
-    fireEvent.change(inputs[0], { target: { value: '5' } })
     expect(completeButton).not.toBeDisabled()
   })
 
@@ -286,6 +283,53 @@ describe('InventorySessionPage - conflits', () => {
       expect(within(scannedItems[0]).getByText('Produit Rollbar')).toBeInTheDocument()
     })
     expect(fetchProductByEanMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('permet de terminer un comptage de résolution avec des quantités à zéro', async () => {
+    getConflictZoneDetailMock.mockResolvedValue({
+      locationId: baseLocation.id,
+      locationCode: baseLocation.code,
+      locationLabel: baseLocation.label,
+      runs: [
+        { runId: 'run-1', countType: 1, completedAtUtc: '2024-01-01T10:00:00Z', ownerDisplayName: 'Alice' },
+        { runId: 'run-2', countType: 2, completedAtUtc: '2024-01-01T11:00:00Z', ownerDisplayName: 'Bob' },
+      ],
+      items: [
+        { productId: 'prod-1', ean: '0123456789012', qtyC1: 1, qtyC2: 0, delta: 1, sku: 'SKU-1' },
+      ],
+    })
+    fetchProductByEanMock.mockResolvedValue({
+      ean: '0123456789012',
+      name: 'Produit 0123456789012',
+      sku: 'SKU-1',
+    })
+    completeInventoryRunMock.mockResolvedValue({
+      runId: 'run-conflict-complete',
+      inventorySessionId: 'session-conflict',
+      locationId: baseLocation.id,
+      countType: CountType.Count3,
+      completedAtUtc: '2024-01-02T00:00:00.000Z',
+      itemsCount: 1,
+      totalQuantity: 0,
+    })
+
+    const user = userEvent.setup()
+    renderSessionPage(CountType.Count3)
+
+    const completeButton = await screen.findByTestId('btn-complete-run')
+    expect(completeButton).not.toBeDisabled()
+
+    await user.click(completeButton)
+
+    const [confirmButton] = await screen.findAllByTestId('btn-confirm-complete')
+    await user.click(confirmButton)
+
+    await waitFor(() => expect(completeInventoryRunMock).toHaveBeenCalled())
+    const [, payload] = completeInventoryRunMock.mock.calls[0] ?? []
+    expect(payload?.items).toEqual([
+      expect.objectContaining({ ean: '0123456789012', quantity: 0 }),
+    ])
+    expect(payload?.countType).toBe(CountType.Count3)
   })
 })
 
@@ -533,5 +577,28 @@ describe('aggregateItemsForCompletion', () => {
     const result = aggregateItemsForCompletion(items)
 
     expect(result).toEqual([{ ean: '201502810', quantity: 3, isManual: false }])
+  })
+
+  it("inclut les quantités nulles lorsqu'elles sont requises", () => {
+    const now = new Date().toISOString()
+    const items: InventoryItem[] = [
+      createInventoryItem({
+        product: { ean: '0001112223334', name: 'Produit zéro', sku: 'SKU-0' },
+        quantity: 0,
+        lastScanAt: now,
+      }),
+      createInventoryItem({
+        product: { ean: '1234567890123', name: 'Produit 1', sku: 'SKU-1' },
+        quantity: 2,
+        lastScanAt: now,
+      }),
+    ]
+
+    const result = aggregateItemsForCompletion(items, { includeZeroQuantities: true })
+
+    expect(result).toEqual([
+      { ean: '0001112223334', quantity: 0, isManual: false },
+      { ean: '1234567890123', quantity: 2, isManual: false },
+    ])
   })
 })

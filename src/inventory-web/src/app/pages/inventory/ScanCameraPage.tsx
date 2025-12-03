@@ -519,7 +519,7 @@ export const ScanCameraPage = () => {
       showStatusMessage(null);
       statusTimeoutRef.current = null;
     }, 2200);
-  }, [statusMessage]);
+  }, [showStatusMessage, statusMessage]);
 
   const totalQuantity = useMemo(
     () => items.reduce((acc, item) => acc + item.quantity, 0),
@@ -608,11 +608,7 @@ export const ScanCameraPage = () => {
       }
       return result;
     },
-    [
-      addOrIncrementItem,
-      ensureActiveRun,
-      triggerScanDuplicateFeedback,
-    ]
+    [addOrIncrementItem, ensureActiveRun, showStatusMessage, triggerScanDuplicateFeedback]
   );
 
   const armScanLock = useCallback(
@@ -668,7 +664,7 @@ export const ScanCameraPage = () => {
     showStatusMessage(null);
     setErrorMessage("Lecture annulée.");
     armScanLock(null);
-  }, [armScanLock, clearPendingScanState]);
+  }, [armScanLock, clearPendingScanState, showStatusMessage]);
 
   const handleDetected = useCallback(
     async (rawValue: string) => {
@@ -774,6 +770,7 @@ export const ScanCameraPage = () => {
       ensureScanPrerequisites,
       handleProductScanOutcome,
       refreshScanLock,
+      showStatusMessage,
       triggerScanRejectionFeedback,
     ]
   );

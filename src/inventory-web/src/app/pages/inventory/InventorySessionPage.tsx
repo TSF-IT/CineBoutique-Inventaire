@@ -144,14 +144,20 @@ type StatusTone = 'info' | 'warning'
 // eslint-disable-next-line react-refresh/only-export-components
 export const aggregateItemsForCompletion = (
   items: InventoryItem[],
+  options?: { includeZeroQuantities?: boolean },
 ): CompleteInventoryRunItem[] => {
+  const includeZeroQuantities = options?.includeZeroQuantities ?? false
   const aggregated = new Map<string, CompleteInventoryRunItem>()
 
   for (const item of items) {
     const normalizedEan = sanitizeEanForSubmission(item.product.ean)
     const quantity = Number.isFinite(item.quantity) ? item.quantity : 0
 
-    if (!normalizedEan || !isValidEanForSubmission(normalizedEan) || quantity <= 0) {
+    if (!normalizedEan || !isValidEanForSubmission(normalizedEan) || quantity < 0) {
+      continue
+    }
+
+    if (!includeZeroQuantities && quantity === 0) {
       continue
     }
 
@@ -1038,10 +1044,15 @@ export const InventorySessionPage = () => {
         )
       }
 
-      const payloadItems = aggregateItemsForCompletion(items)
+      const payloadItems = aggregateItemsForCompletion(items, {
+        includeZeroQuantities: isConflictResolutionMode,
+      })
 
       if (payloadItems.length === 0) {
-        throw new Error('Ajoutez au moins un article avec une quantité positive pour terminer le comptage.')
+        const message = isConflictResolutionMode
+          ? 'Ajoutez au moins une référence valide (quantité 0 acceptée) pour terminer le comptage.'
+          : 'Ajoutez au moins un article avec une quantité positive pour terminer le comptage.'
+        throw new Error(message)
       }
 
       const payload: CompleteInventoryRunPayload = {
@@ -1373,7 +1384,7 @@ export const InventorySessionPage = () => {
     ownerUserId.length > 0 &&
     shopId.length > 0 &&
     items.length > 0 &&
-    hasPositiveQuantity &&
+    (isConflictResolutionMode || hasPositiveQuantity) &&
     !completionLoading &&
     (!isConflictResolutionMode || conflictPrefillStatus === 'loaded')
 
