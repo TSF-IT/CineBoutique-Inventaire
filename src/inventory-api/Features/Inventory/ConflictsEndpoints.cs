@@ -52,19 +52,10 @@ WITH conflict_products AS (
   WHERE c."IsResolved" = FALSE
     AND cr."LocationId" = @LocationId
 ),
-candidate_runs AS (
-  SELECT DISTINCT cr."Id" AS "RunId",
-                  cr."CountType" AS "CountType",
-                  cr."CompletedAtUtc",
-                  cr."InventorySessionId" AS "SessionId"
-  FROM "CountingRun" cr
-  JOIN "CountLine" cl ON cl."CountingRunId" = cr."Id"
-  JOIN conflict_products cp ON cp."ProductId" = cl."ProductId"
-  WHERE cr."LocationId" = @LocationId
-    AND cr."CompletedAtUtc" IS NOT NULL
-),
-sessions_scoped AS (
-  SELECT DISTINCT "SessionId" FROM candidate_runs
+active_conflicts AS (
+  SELECT 1 AS "Present"
+  FROM conflict_products
+  LIMIT 1
 ),
 scoped_runs AS (
   SELECT DISTINCT ON (cr."CountType")
@@ -74,7 +65,6 @@ scoped_runs AS (
   FROM "CountingRun" cr
   WHERE cr."LocationId" = @LocationId
     AND cr."CompletedAtUtc" IS NOT NULL
-    AND cr."InventorySessionId" IN (SELECT "SessionId" FROM sessions_scoped)
   ORDER BY cr."CountType", cr."CompletedAtUtc" DESC, cr."Id" DESC
 )
 SELECT sr."RunId",
@@ -82,6 +72,7 @@ SELECT sr."RunId",
        sr."CompletedAtUtc",
        COALESCE(su."DisplayName", cr."OperatorDisplayName") AS "OwnerDisplayName"
 FROM scoped_runs sr
+JOIN active_conflicts ac ON TRUE
 JOIN "CountingRun" cr ON cr."Id" = sr."RunId"
 LEFT JOIN "ShopUser" su ON su."Id" = cr."OwnerUserId"
 ORDER BY sr."CountType" ASC, sr."CompletedAtUtc" ASC, sr."RunId" ASC;
@@ -116,20 +107,6 @@ WITH conflict_products AS (
     WHERE c."IsResolved" = FALSE
       AND cr."LocationId" = @LocationId
 ),
-candidate_runs AS (
-    SELECT DISTINCT cr."Id" AS "RunId",
-                    cr."CountType" AS "CountType",
-                    cr."CompletedAtUtc",
-                    cr."InventorySessionId" AS "SessionId"
-    FROM "CountingRun" cr
-    JOIN "CountLine" cl ON cl."CountingRunId" = cr."Id"
-    JOIN conflict_products cp ON cp."ProductId" = cl."ProductId"
-    WHERE cr."LocationId" = @LocationId
-      AND cr."CompletedAtUtc" IS NOT NULL
-),
-sessions_scoped AS (
-    SELECT DISTINCT "SessionId" FROM candidate_runs
-),
 scoped_runs AS (
     SELECT DISTINCT ON (cr."CountType")
         cr."Id"             AS "RunId",
@@ -138,7 +115,6 @@ scoped_runs AS (
     FROM "CountingRun" cr
     WHERE cr."LocationId" = @LocationId
       AND cr."CompletedAtUtc" IS NOT NULL
-      AND cr."InventorySessionId" IN (SELECT "SessionId" FROM sessions_scoped)
     ORDER BY cr."CountType", cr."CompletedAtUtc" DESC, cr."Id" DESC
 ),
 product_runs AS (

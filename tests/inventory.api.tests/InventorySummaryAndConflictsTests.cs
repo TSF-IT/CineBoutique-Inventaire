@@ -117,10 +117,15 @@ public sealed class InventorySummaryAndConflictsTests : IntegrationTestBase
         var conflict = await conflictResponse.Content.ReadFromJsonAsync<ConflictZoneDetailDto>().ConfigureAwait(false);
         conflict.Should().NotBeNull();
         conflict!.Items.Should().HaveCount(2, "les deux références comptées au premier passage doivent apparaître en conflit");
+        conflict.Runs.Should().Contain(run => run.CountType == 1);
+        conflict.Runs.Should().Contain(run => run.CountType == 2);
 
         var missingProduct = conflict.Items.Single(item => item.Ean == seeded.ConflictEan);
         missingProduct.QtyC1.Should().Be(2, "le premier comptage a trouvé 2 unités");
         missingProduct.QtyC2.Should().Be(0, "le second comptage a omis la référence");
+        missingProduct.AllCounts.Should().NotBeNull();
+        missingProduct.AllCounts.Should().Contain(count => count.CountType == 1 && count.Quantity == 2);
+        missingProduct.AllCounts.Should().Contain(count => count.CountType == 2 && count.Quantity == 0);
 
         var sharedProduct = conflict.Items.Single(item => item.Ean == seeded.StableEan);
         sharedProduct.QtyC1.Should().Be(6);
