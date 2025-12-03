@@ -52,6 +52,14 @@ WITH conflict_products AS (
   WHERE c."IsResolved" = FALSE
     AND cr."LocationId" = @LocationId
 ),
+completed_runs AS (
+  SELECT DISTINCT cr."Id" AS "RunId",
+                  cr."CountType" AS "CountType",
+                  cr."CompletedAtUtc"
+  FROM "CountingRun" cr
+  WHERE cr."LocationId" = @LocationId
+    AND cr."CompletedAtUtc" IS NOT NULL
+),
 candidate_runs AS (
   SELECT DISTINCT cr."Id"        AS "RunId",
                   cr."CountType" AS "CountType",
@@ -64,7 +72,7 @@ candidate_runs AS (
 ),
 max_count_type AS (
   SELECT COALESCE(MAX("CountType"), 0) AS "MaxCountType"
-  FROM candidate_runs
+  FROM completed_runs
 ),
 series AS (
   SELECT generate_series(1, m."MaxCountType") AS "CountType"
@@ -77,13 +85,11 @@ series_runs AS (
          cr."CompletedAtUtc"
   FROM series s
   CROSS JOIN LATERAL (
-    SELECT cr."Id",
-           cr."CompletedAtUtc"
-    FROM "CountingRun" cr
-    WHERE cr."LocationId" = @LocationId
-      AND cr."CompletedAtUtc" IS NOT NULL
-      AND cr."CountType" = s."CountType"
-    ORDER BY cr."CompletedAtUtc" DESC, cr."Id" DESC
+    SELECT crs."RunId",
+           crs."CompletedAtUtc"
+    FROM completed_runs crs
+    WHERE crs."CountType" = s."CountType"
+    ORDER BY crs."CompletedAtUtc" DESC, crs."RunId" DESC
     LIMIT 1
   ) cr
 ),
@@ -134,6 +140,14 @@ WITH conflict_products AS (
     WHERE c."IsResolved" = FALSE
       AND cr."LocationId" = @LocationId
 ),
+completed_runs AS (
+    SELECT DISTINCT cr."Id" AS "RunId",
+                    cr."CountType" AS "CountType",
+                    cr."CompletedAtUtc"
+    FROM "CountingRun" cr
+    WHERE cr."LocationId" = @LocationId
+      AND cr."CompletedAtUtc" IS NOT NULL
+),
 candidate_runs AS (
     SELECT DISTINCT cr."Id"        AS "RunId",
                     cr."CountType" AS "CountType",
@@ -146,7 +160,7 @@ candidate_runs AS (
 ),
 max_count_type AS (
     SELECT COALESCE(MAX("CountType"), 0) AS "MaxCountType"
-    FROM candidate_runs
+    FROM completed_runs
 ),
 series AS (
     SELECT generate_series(1, m."MaxCountType") AS "CountType"
@@ -159,13 +173,11 @@ series_runs AS (
            cr."CompletedAtUtc"
     FROM series s
     CROSS JOIN LATERAL (
-        SELECT cr."Id",
-               cr."CompletedAtUtc"
-        FROM "CountingRun" cr
-        WHERE cr."LocationId" = @LocationId
-          AND cr."CompletedAtUtc" IS NOT NULL
-          AND cr."CountType" = s."CountType"
-        ORDER BY cr."CompletedAtUtc" DESC, cr."Id" DESC
+        SELECT crs."RunId",
+               crs."CompletedAtUtc"
+        FROM completed_runs crs
+        WHERE crs."CountType" = s."CountType"
+        ORDER BY crs."CompletedAtUtc" DESC, crs."RunId" DESC
         LIMIT 1
     ) cr
 ),
