@@ -155,6 +155,7 @@ JOIN "Location" l ON l."Id" = cr."LocationId"
 LEFT JOIN "ShopUser" su ON su."Id" = cr."OwnerUserId" AND su."ShopId" = l."ShopId"
 WHERE l."ShopId" = @ShopId
   AND cr."CompletedAtUtc" IS NOT NULL
+  AND EXISTS (SELECT 1 FROM "CountLine" cl WHERE cl."CountingRunId" = cr."Id")
 ORDER BY cr."CompletedAtUtc" DESC
 LIMIT 50;
 """;
@@ -237,6 +238,7 @@ JOIN "Location" l ON l."Id" = cr."LocationId"
 {InventoryOperatorSqlHelper.AppendJoinClause(runOperatorSql.JoinClause)}
 WHERE cr."Id" = @RunId
   AND cr."CompletedAtUtc" IS NOT NULL
+  AND EXISTS (SELECT 1 FROM "CountLine" cl WHERE cl."CountingRunId" = cr."Id")
 LIMIT 1;
 """;
 
@@ -314,6 +316,7 @@ WITH completed_runs AS (
     LEFT JOIN "ShopUser" su ON su."Id" = cr."OwnerUserId" AND su."ShopId" = l."ShopId"
     WHERE l."ShopId" = @ShopId
       AND cr."CompletedAtUtc" IS NOT NULL
+      AND EXISTS (SELECT 1 FROM "CountLine" cl WHERE cl."CountingRunId" = cr."Id")
 )
 SELECT
     "RunId",

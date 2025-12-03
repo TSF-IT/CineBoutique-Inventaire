@@ -115,3 +115,12 @@ internal sealed class ShopRunRow
 
     public Guid LocationId { get; set; }
 }
+
+internal sealed class RestartableRunRow
+{
+    public Guid RunId { get; set; }
+
+    public Guid SessionId { get; set; }
+
+    public bool HasLines { get; set; }
+}

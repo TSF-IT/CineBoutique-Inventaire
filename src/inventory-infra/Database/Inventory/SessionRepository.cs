@@ -1045,40 +1045,179 @@ LIMIT 1;
             };
         }
 
-        const string updateSql = """
-UPDATE "CountingRun"
-SET "CompletedAtUtc" = @NowUtc
-WHERE "LocationId" = @LocationId
-  AND "CompletedAtUtc" IS NULL
-  AND "CountType" = @CountType;
-""";
-
-        var affected = await connection
-            .ExecuteAsync(
-                new CommandDefinition(
-                    updateSql,
-                    new
-                    {
-                        LocationId = parameters.LocationId,
-                        CountType = parameters.CountType,
-                        NowUtc = parameters.RestartedAtUtc
-                    },
-                    cancellationToken: cancellationToken))
+        await using var transaction = await connection
+            .BeginTransactionAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        return new RestartRunResult
+        try
         {
-            Run = new RestartRunInfo
+            const string selectRunsSql = """
+SELECT
+    cr."Id"                 AS "RunId",
+    cr."InventorySessionId" AS "SessionId",
+    EXISTS (
+        SELECT 1
+        FROM "CountLine" cl
+        WHERE cl."CountingRunId" = cr."Id"
+    ) AS "HasLines"
+FROM "CountingRun" cr
+WHERE cr."LocationId" = @LocationId
+  AND cr."CountType" = @CountType
+  AND cr."CompletedAtUtc" IS NULL;
+""";
+
+            var runs = (await connection
+                    .QueryAsync<RestartableRunRow>(
+                        new CommandDefinition(
+                            selectRunsSql,
+                            new { parameters.LocationId, parameters.CountType },
+                            transaction,
+                            cancellationToken: cancellationToken))
+                    .ConfigureAwait(false))
+                .ToArray();
+
+            if (runs.Length == 0)
             {
-                LocationId = location.Id,
-                ShopId = location.ShopId,
-                LocationCode = location.Code,
-                LocationLabel = location.Label,
-                CountType = parameters.CountType,
-                RestartedAtUtc = parameters.RestartedAtUtc,
-                ClosedRuns = affected
+                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+                return new RestartRunResult
+                {
+                    Run = new RestartRunInfo
+                    {
+                        LocationId = location.Id,
+                        ShopId = location.ShopId,
+                        LocationCode = location.Code,
+                        LocationLabel = location.Label,
+                        CountType = parameters.CountType,
+                        RestartedAtUtc = parameters.RestartedAtUtc,
+                        ClosedRuns = 0
+                    }
+                };
             }
-        };
+
+            var runsWithLines = runs.Where(run => run.HasLines).ToArray();
+            var runsWithoutLines = runs.Where(run => !run.HasLines).ToArray();
+
+            var closedRuns = 0;
+
+            if (runsWithLines.Length > 0)
+            {
+                var runIdsWithLines = runsWithLines.Select(run => run.RunId).ToArray();
+
+                const string completeRunsSql = """
+UPDATE "CountingRun"
+SET "CompletedAtUtc" = @NowUtc
+WHERE "Id" = ANY(@RunIds);
+""";
+
+                closedRuns += await connection
+                    .ExecuteAsync(
+                        new CommandDefinition(
+                            completeRunsSql,
+                            new { RunIds = runIdsWithLines, NowUtc = parameters.RestartedAtUtc },
+                            transaction,
+                            cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+
+                var sessionIdsWithLines = runsWithLines
+                    .Select(run => run.SessionId)
+                    .Distinct()
+                    .ToArray();
+
+                if (sessionIdsWithLines.Length > 0)
+                {
+                    const string completeSessionsSql = """
+UPDATE "InventorySession"
+SET "CompletedAtUtc" = @CompletedAtUtc
+WHERE "Id" = ANY(@SessionIds);
+""";
+
+                    await connection
+                        .ExecuteAsync(
+                            new CommandDefinition(
+                                completeSessionsSql,
+                                new { SessionIds = sessionIdsWithLines, CompletedAtUtc = parameters.RestartedAtUtc },
+                                transaction,
+                                cancellationToken: cancellationToken))
+                        .ConfigureAwait(false);
+                }
+            }
+
+            if (runsWithoutLines.Length > 0)
+            {
+                var emptyRunIds = runsWithoutLines.Select(run => run.RunId).ToArray();
+
+                const string deleteRunsSql = """
+DELETE FROM "CountingRun"
+WHERE "Id" = ANY(@RunIds)
+  AND NOT EXISTS (
+        SELECT 1
+        FROM "CountLine" cl
+        WHERE cl."CountingRunId" = "CountingRun"."Id"
+    );
+""";
+
+                closedRuns += await connection
+                    .ExecuteAsync(
+                        new CommandDefinition(
+                            deleteRunsSql,
+                            new { RunIds = emptyRunIds },
+                            transaction,
+                            cancellationToken: cancellationToken))
+                    .ConfigureAwait(false);
+
+                var emptySessionIds = runsWithoutLines
+                    .Select(run => run.SessionId)
+                    .Distinct()
+                    .ToArray();
+
+                if (emptySessionIds.Length > 0)
+                {
+                    const string deleteSessionsSql = """
+DELETE FROM "InventorySession" s
+WHERE s."Id" = ANY(@SessionIds)
+  AND NOT EXISTS (
+        SELECT 1
+        FROM "CountingRun" cr
+        WHERE cr."InventorySessionId" = s."Id"
+    );
+""";
+
+                    await connection
+                        .ExecuteAsync(
+                            new CommandDefinition(
+                                deleteSessionsSql,
+                                new { SessionIds = emptySessionIds },
+                                transaction,
+                                cancellationToken: cancellationToken))
+                        .ConfigureAwait(false);
+                }
+            }
+
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+
+            return new RestartRunResult
+            {
+                Run = new RestartRunInfo
+                {
+                    LocationId = location.Id,
+                    ShopId = location.ShopId,
+                    LocationCode = location.Code,
+                    LocationLabel = location.Label,
+                    CountType = parameters.CountType,
+                    RestartedAtUtc = parameters.RestartedAtUtc,
+                    ClosedRuns = closedRuns
+                }
+            };
+        }
+        catch
+        {
+            await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+            throw;
+        }
+        finally
+        {
+            await transaction.DisposeAsync().ConfigureAwait(false);
+        }
     }
 
     public async Task<ResetShopInventoryResult> ResetShopInventoryAsync(Guid shopId, CancellationToken cancellationToken)
