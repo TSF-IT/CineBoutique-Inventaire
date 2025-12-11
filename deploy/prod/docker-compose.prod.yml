@@ -1,0 +1,47 @@
+services:
+  db:
+    # En prod, DB privée
+    ports: []
+
+  api:
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_DETAILEDERRORS: "false"
+      APPLY_MIGRATIONS: "true"
+      DISABLE_MIGRATIONS: "false"
+      AppSettings__SeedOnStartup: "false"
+      DISABLE_SERILOG: "false"
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      AppSettings__CatalogEndpointsPublic: "true"
+    ports:
+      - "8080:8080" # <— expose l’API sur l’hôte
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.inventory-web
+      args:
+        BASE_REG: public.ecr.aws/docker/library
+    environment:
+      PUBLIC_HOST: "https://192.168.2.29"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certs:/etc/nginx/certs:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      api:
+        condition: service_healthy # <— attend API OK
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
