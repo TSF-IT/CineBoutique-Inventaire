@@ -1237,23 +1237,6 @@ export const InventorySessionPage = () => {
     })
   }, [])
 
-  const promptRemovalConfirmation = useCallback((item: InventoryItem) => {
-    setPendingRemovalItem(item)
-    const dialog = removalConfirmationDialogRef.current
-    if (!dialog) {
-      return
-    }
-
-    if (typeof dialog.showModal === 'function') {
-      if (!dialog.open) {
-        dialog.showModal()
-      }
-      return
-    }
-
-    dialog.setAttribute('open', '')
-  }, [])
-
   const closeRemovalConfirmation = useCallback(() => {
     const dialog = removalConfirmationDialogRef.current
     if (!dialog) {
@@ -1492,7 +1475,7 @@ export const InventorySessionPage = () => {
               <Button
                 type="button"
                 variant="ghost"
-                size="xs"
+                size="sm"
                 data-testid="btn-view-conflicts"
                 onClick={handleToggleConflictPanel}
               >
