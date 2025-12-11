@@ -14,6 +14,11 @@ namespace CineBoutique.Inventory.Api.Features.Inventory;
 
 internal static class LocationsEndpoints
 {
+    private const string InvalidRequestTitle = "Requête invalide";
+    private const string ShopNotFoundTitle = "Boutique introuvable";
+    private const string ZoneNotFoundTitle = "Zone introuvable";
+    private static readonly HashSet<int> AllowedCountTypes = new(new[] { 1, 2, 3 });
+
     public static IEndpointRouteBuilder MapLocationsEndpoints(this IEndpointRouteBuilder app)
     {
         ArgumentNullException.ThrowIfNull(app);
@@ -32,12 +37,9 @@ internal static class LocationsEndpoints
             if (!TryNormalizeShopId(shopId, out var parsedShopId, out var errorResult))
                 return errorResult;
 
-            if (countType.HasValue && countType.Value is not (1 or 2))
+            if (countType.HasValue && !IsAllowedCountType(countType.Value))
             {
-                return Results.BadRequest(new
-                {
-                    message = "Le paramètre countType doit être 1 (premier passage) ou 2 (second passage)."
-                });
+                return InvalidRequest("Le paramètre countType doit être 1 (premier passage), 2 (second passage) ou 3 (contrôle).");
             }
 
             var includeDisabledFlag = includeDisabled ?? false;
@@ -107,28 +109,19 @@ internal static class LocationsEndpoints
 
             if (request is null)
             {
-                return EndpointUtilities.Problem(
-                    "Requête invalide",
-                    "Le corps de la requête est requis pour créer une zone.",
-                    StatusCodes.Status400BadRequest);
+                return InvalidRequest("Le corps de la requête est requis pour créer une zone.");
             }
 
             var normalizedCode = request.Code?.Trim().ToUpperInvariant();
             if (string.IsNullOrWhiteSpace(normalizedCode) || normalizedCode.Length > 32)
             {
-                return EndpointUtilities.Problem(
-                    "Requête invalide",
-                    "Le code zone est requis et doit contenir entre 1 et 32 caractères.",
-                    StatusCodes.Status400BadRequest);
+                return InvalidRequest("Le code zone est requis et doit contenir entre 1 et 32 caractères.");
             }
 
             var normalizedLabel = request.Label?.Trim();
             if (string.IsNullOrWhiteSpace(normalizedLabel) || normalizedLabel.Length > 128)
             {
-                return EndpointUtilities.Problem(
-                    "Requête invalide",
-                    "Le libellé de la zone est requis et doit contenir entre 1 et 128 caractères.",
-                    StatusCodes.Status400BadRequest);
+                return InvalidRequest("Le libellé de la zone est requis et doit contenir entre 1 et 128 caractères.");
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -136,10 +129,7 @@ internal static class LocationsEndpoints
             var shop = await LoadShopAsync(connection, parsedShopId, cancellationToken).ConfigureAwait(false);
             if (shop is null)
             {
-                return EndpointUtilities.Problem(
-                    "Boutique introuvable",
-                    "Impossible de trouver la boutique ciblée.",
-                    StatusCodes.Status404NotFound);
+                return ShopNotFoundProblem();
             }
 
             var locationId = Guid.NewGuid();
@@ -156,10 +146,7 @@ internal static class LocationsEndpoints
             }
             catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
             {
-                return EndpointUtilities.Problem(
-                    "Code déjà utilisé",
-                    $"Impossible de créer cette zone : le code « {normalizedCode} » est déjà attribué dans cette boutique.",
-                    StatusCodes.Status409Conflict);
+                return DuplicateCodeProblem(normalizedCode);
             }
 
             var created = (await QueryLocationsAsync(connection, parsedShopId, null, new[] { locationId }, includeDisabled: true, cancellationToken).ConfigureAwait(false))
@@ -219,10 +206,7 @@ internal static class LocationsEndpoints
 
             if (request is null)
             {
-                return EndpointUtilities.Problem(
-                    "Requête invalide",
-                    "Le corps de la requête est requis pour modifier une zone.",
-                    StatusCodes.Status400BadRequest);
+                return InvalidRequest("Le corps de la requête est requis pour modifier une zone.");
             }
 
             string? normalizedCode = null;
@@ -231,10 +215,7 @@ internal static class LocationsEndpoints
                 normalizedCode = request.Code.Trim().ToUpperInvariant();
                 if (string.IsNullOrWhiteSpace(normalizedCode) || normalizedCode.Length > 32)
                 {
-                    return EndpointUtilities.Problem(
-                        "Requête invalide",
-                        "Le code zone doit contenir entre 1 et 32 caractères lorsqu'il est fourni.",
-                        StatusCodes.Status400BadRequest);
+                    return InvalidRequest("Le code zone doit contenir entre 1 et 32 caractères lorsqu'il est fourni.");
                 }
             }
 
@@ -244,10 +225,7 @@ internal static class LocationsEndpoints
                 normalizedLabel = request.Label.Trim();
                 if (string.IsNullOrWhiteSpace(normalizedLabel) || normalizedLabel.Length > 128)
                 {
-                    return EndpointUtilities.Problem(
-                        "Requête invalide",
-                        "Le libellé doit contenir entre 1 et 128 caractères lorsqu'il est fourni.",
-                        StatusCodes.Status400BadRequest);
+                    return InvalidRequest("Le libellé doit contenir entre 1 et 128 caractères lorsqu'il est fourni.");
                 }
             }
 
@@ -255,10 +233,7 @@ internal static class LocationsEndpoints
 
             if (normalizedCode is null && normalizedLabel is null && requestedDisabled is null)
             {
-                return EndpointUtilities.Problem(
-                    "Requête invalide",
-                    "Aucun champ à mettre à jour n'a été fourni.",
-                    StatusCodes.Status400BadRequest);
+                return InvalidRequest("Aucun champ à mettre à jour n'a été fourni.");
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -266,19 +241,13 @@ internal static class LocationsEndpoints
             var shop = await LoadShopAsync(connection, parsedShopId, cancellationToken).ConfigureAwait(false);
             if (shop is null)
             {
-                return EndpointUtilities.Problem(
-                    "Boutique introuvable",
-                    "Impossible de trouver la boutique ciblée.",
-                    StatusCodes.Status404NotFound);
+                return ShopNotFoundProblem();
             }
 
             var existing = await InventoryLocationQueries.LoadLocationMetadataAsync(connection, parsedShopId, locationId, cancellationToken).ConfigureAwait(false);
             if (existing is null)
             {
-                return EndpointUtilities.Problem(
-                    "Zone introuvable",
-                    "Impossible de trouver cette zone pour la boutique demandée.",
-                    StatusCodes.Status404NotFound);
+                return ZoneNotFoundProblem();
             }
 
             try
@@ -293,18 +262,12 @@ internal static class LocationsEndpoints
 
                 if (affected == 0)
                 {
-                    return EndpointUtilities.Problem(
-                        "Zone introuvable",
-                        "Impossible de trouver cette zone pour la boutique demandée.",
-                        StatusCodes.Status404NotFound);
+                    return ZoneNotFoundProblem();
                 }
             }
             catch (PostgresException ex) when (ex.SqlState == PostgresErrorCodes.UniqueViolation)
             {
-                return EndpointUtilities.Problem(
-                    "Code déjà utilisé",
-                    "Impossible de mettre à jour cette zone : ce code est déjà attribué à une autre zone de la boutique.",
-                    StatusCodes.Status409Conflict);
+                return DuplicateCodeUpdateProblem();
             }
 
             var updated = (await QueryLocationsAsync(connection, parsedShopId, null, new[] { locationId }, includeDisabled: true, cancellationToken).ConfigureAwait(false))
@@ -361,10 +324,7 @@ internal static class LocationsEndpoints
 
             if (request is null || request.IsActive is null)
             {
-                return EndpointUtilities.Problem(
-                    "Requête invalide",
-                    "Le corps de la requête doit contenir le champ isActive.",
-                    StatusCodes.Status400BadRequest);
+                return InvalidRequest("Le corps de la requête doit contenir le champ isActive.");
             }
 
             await EndpointUtilities.EnsureConnectionOpenAsync(connection, cancellationToken).ConfigureAwait(false);
@@ -372,19 +332,13 @@ internal static class LocationsEndpoints
             var shop = await LoadShopAsync(connection, parsedShopId, cancellationToken).ConfigureAwait(false);
             if (shop is null)
             {
-                return EndpointUtilities.Problem(
-                    "Boutique introuvable",
-                    "Impossible de trouver la boutique ciblée.",
-                    StatusCodes.Status404NotFound);
+                return ShopNotFoundProblem();
             }
 
             var existing = await InventoryLocationQueries.LoadLocationMetadataAsync(connection, parsedShopId, locationId, cancellationToken).ConfigureAwait(false);
             if (existing is null)
             {
-                return EndpointUtilities.Problem(
-                    "Zone introuvable",
-                    "Impossible de trouver cette zone pour la boutique demandée.",
-                    StatusCodes.Status404NotFound);
+                return ZoneNotFoundProblem();
             }
 
             var actor = EndpointUtilities.FormatActorLabel(httpContext);
@@ -407,10 +361,7 @@ WHERE "Id" = @Id AND "ShopId" = @ShopId;
 
                 if (affected == 0)
                 {
-                    return EndpointUtilities.Problem(
-                        "Zone introuvable",
-                        "Impossible de trouver cette zone pour la boutique demandée.",
-                        StatusCodes.Status404NotFound);
+                    return ZoneNotFoundProblem();
                 }
 
                 await auditLogger
@@ -436,10 +387,7 @@ WHERE "Id" = @Id AND "ShopId" = @ShopId;
 
             if (disableResult.NotFound)
             {
-                return EndpointUtilities.Problem(
-                    "Zone introuvable",
-                    "Impossible de trouver cette zone pour la boutique demandée.",
-                    StatusCodes.Status404NotFound);
+                return ZoneNotFoundProblem();
             }
 
             if (disableResult.HasCountConflict)
@@ -493,19 +441,13 @@ WHERE "Id" = @Id AND "ShopId" = @ShopId;
             var shop = await LoadShopAsync(connection, parsedShopId, cancellationToken).ConfigureAwait(false);
             if (shop is null)
             {
-                return EndpointUtilities.Problem(
-                    "Boutique introuvable",
-                    "Impossible de trouver la boutique ciblée.",
-                    StatusCodes.Status404NotFound);
+                return ShopNotFoundProblem();
             }
 
             var existing = await InventoryLocationQueries.LoadLocationMetadataAsync(connection, parsedShopId, locationId, cancellationToken).ConfigureAwait(false);
             if (existing is null)
             {
-                return EndpointUtilities.Problem(
-                    "Zone introuvable",
-                    "Impossible de trouver cette zone pour la boutique demandée.",
-                    StatusCodes.Status404NotFound);
+                return ZoneNotFoundProblem();
             }
 
             var disableLogger = loggerFactory.CreateLogger("LocationsEndpoints.Disable");
@@ -513,10 +455,7 @@ WHERE "Id" = @Id AND "ShopId" = @ShopId;
 
             if (disableResult.NotFound)
             {
-                return EndpointUtilities.Problem(
-                    "Zone introuvable",
-                    "Impossible de trouver cette zone pour la boutique demandée.",
-                    StatusCodes.Status404NotFound);
+                return ZoneNotFoundProblem();
             }
 
             if (disableResult.HasCountConflict)
@@ -697,6 +636,29 @@ WHERE "Id" = @LocationId AND "ShopId" = @ShopId;
             locationId
         });
 
+    private static bool IsAllowedCountType(int value) => AllowedCountTypes.Contains(value);
+
+    private static IResult InvalidRequest(string detail) =>
+        EndpointUtilities.Problem(InvalidRequestTitle, detail, StatusCodes.Status400BadRequest);
+
+    private static IResult ShopNotFoundProblem() =>
+        EndpointUtilities.Problem(ShopNotFoundTitle, "Impossible de trouver la boutique ciblée.", StatusCodes.Status404NotFound);
+
+    private static IResult ZoneNotFoundProblem() =>
+        EndpointUtilities.Problem(ZoneNotFoundTitle, "Impossible de trouver cette zone pour la boutique demandée.", StatusCodes.Status404NotFound);
+
+    private static IResult DuplicateCodeProblem(string normalizedCode) =>
+        EndpointUtilities.Problem(
+            "Code déjà utilisé",
+            $"Impossible de créer cette zone : le code « {normalizedCode} » est déjà attribué dans cette boutique.",
+            StatusCodes.Status409Conflict);
+
+    private static IResult DuplicateCodeUpdateProblem() =>
+        EndpointUtilities.Problem(
+            "Code déjà utilisé",
+            "Impossible de mettre à jour cette zone : ce code est déjà attribué à une autre zone de la boutique.",
+            StatusCodes.Status409Conflict);
+
     private static bool TryNormalizeShopId(string? shopId, out Guid parsedShopId, out IResult? errorResult)
     {
         parsedShopId = Guid.Empty;
@@ -704,19 +666,13 @@ WHERE "Id" = @LocationId AND "ShopId" = @ShopId;
 
         if (string.IsNullOrWhiteSpace(shopId))
         {
-            errorResult = EndpointUtilities.Problem(
-                "Requête invalide",
-                "L'identifiant de boutique est requis.",
-                StatusCodes.Status400BadRequest);
+            errorResult = InvalidRequest("L'identifiant de boutique est requis.");
             return false;
         }
 
         if (!Guid.TryParse(shopId, out parsedShopId))
         {
-            errorResult = EndpointUtilities.Problem(
-                "Requête invalide",
-                "L'identifiant de boutique est invalide.",
-                StatusCodes.Status400BadRequest);
+            errorResult = InvalidRequest("L'identifiant de boutique est invalide.");
             return false;
         }
 

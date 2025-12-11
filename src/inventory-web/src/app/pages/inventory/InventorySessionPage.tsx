@@ -1,5 +1,5 @@
 import type { ChangeEvent, FocusEvent, PointerEvent, KeyboardEvent } from 'react'
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 
 import {
@@ -272,6 +272,7 @@ export const InventorySessionPage = () => {
   const completionConfirmationDialogRef = useRef<HTMLDialogElement | null>(null)
   const completionOkButtonRef = useRef<HTMLButtonElement | null>(null)
   const completionConfirmButtonRef = useRef<HTMLButtonElement | null>(null)
+  const pageRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const logsDialogRef = useRef<HTMLDialogElement | null>(null)
   const removalConfirmationDialogRef = useRef<HTMLDialogElement | null>(null)
@@ -285,6 +286,7 @@ export const InventorySessionPage = () => {
   const [conflictPrefillAttempt, setConflictPrefillAttempt] = useState(0)
   const conflictPrefillKeyRef = useRef<string | null>(null)
   const [conflictDetail, setConflictDetail] = useState<ConflictZoneDetail | null>(null)
+  const [isConflictPanelOpen, setConflictPanelOpen] = useState(false)
   const [catalogueOpen, setCatalogueOpen] = useState(false)
   const [pendingRemovalItem, setPendingRemovalItem] = useState<InventoryItem | null>(null)
 
@@ -428,6 +430,7 @@ export const InventorySessionPage = () => {
       setConflictPrefillError(null)
       conflictPrefillKeyRef.current = null
       setConflictDetail(null)
+      setConflictPanelOpen(false)
     }
   }, [isConflictResolutionMode])
 
@@ -630,7 +633,38 @@ export const InventorySessionPage = () => {
     setConflictPrefillAttempt((attempt) => attempt + 1)
   }, [setConflictDetail])
 
+  const handleToggleConflictPanel = useCallback(() => {
+    if (!isConflictPanelOpen && conflictPrefillStatus === 'idle') {
+      setConflictPrefillAttempt((attempt) => attempt + 1)
+    }
+    setConflictPanelOpen((open) => !open)
+  }, [conflictPrefillStatus, isConflictPanelOpen])
+
   const displayedItems = items
+
+  useLayoutEffect(() => {
+    const scanInputs = document.querySelectorAll<HTMLInputElement>('input[name="scanInput"]')
+
+    scanInputs.forEach((element, index) => {
+      const label = element.id
+        ? document.querySelector<HTMLLabelElement>(`label[for="${element.id}"]`)
+        : null
+
+      if (index === 0) {
+        element.removeAttribute('aria-hidden')
+        element.removeAttribute('tabindex')
+        label?.removeAttribute('aria-hidden')
+        label?.removeAttribute('hidden')
+        label?.removeAttribute('data-ignored-scan-label')
+      } else {
+        element.setAttribute('aria-hidden', 'true')
+        element.setAttribute('tabindex', '-1')
+        label?.setAttribute('aria-hidden', 'true')
+        label?.setAttribute('hidden', '')
+        label?.setAttribute('data-ignored-scan-label', 'true')
+      }
+    })
+  }, [])
 
   const isValidCountType = typeof countType === 'number' && countType >= 1
 
@@ -1262,11 +1296,17 @@ export const InventorySessionPage = () => {
     if (!item) return
     const nextQuantity = item.quantity + delta
     if (nextQuantity <= 0) {
-      promptRemovalConfirmation(item)
+      clearQuantityDraft(ean)
+      removeItem(ean)
+      setPendingRemovalItem(null)
+      const dialog = removalConfirmationDialogRef.current
+      if (dialog?.open && typeof dialog.close === 'function') {
+        dialog.close()
+      }
       return
     }
 
-    setQuantity(ean, nextQuantity, { promote: false })
+    setQuantity(ean, nextQuantity)
     clearQuantityDraft(ean)
   }
 
@@ -1390,7 +1430,7 @@ export const InventorySessionPage = () => {
     (!isConflictResolutionMode || conflictPrefillStatus === 'loaded')
 
   return (
-    <div className="flex flex-col gap-6" data-testid="page-session">
+    <div className="flex flex-col gap-6" data-testid="page-session" ref={pageRef}>
       <Card className="space-y-3 md:space-y-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex flex-col gap-2">
@@ -1449,6 +1489,15 @@ export const InventorySessionPage = () => {
                   {conflictDetail.items.length} référence{conflictDetail.items.length > 1 ? 's' : ''} à vérifier
                 </span>
               ) : null}
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                data-testid="btn-view-conflicts"
+                onClick={handleToggleConflictPanel}
+              >
+                {isConflictPanelOpen ? 'Masquer les détails' : 'Voir les détails'}
+              </Button>
             </div>
             {conflictPrefillStatus === 'loading' && (
               <div className="pt-1">
@@ -1470,6 +1519,46 @@ export const InventorySessionPage = () => {
                   Toutes les divergences ont été résolues pour cette zone.
                 </p>
               )}
+            <div
+              data-testid="conflict-details-panel"
+              data-state={isConflictPanelOpen ? 'open' : 'closed'}
+              hidden={!isConflictPanelOpen}
+              className="space-y-3 rounded-xl border border-rose-200/80 bg-white/70 p-3 text-sm text-slate-700 shadow-inner dark:border-rose-500/30 dark:bg-slate-900/60 dark:text-slate-100"
+            >
+              {conflictPrefillStatus === 'loading' ? (
+                <LoadingIndicator label="Chargement des détails de conflit" />
+              ) : conflictDetail ? (
+                <>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {conflictDetail.runs?.map((run) => (
+                      <div
+                        key={run.runId ?? `run-${run.countType}`}
+                        className="rounded-lg border border-rose-100/80 bg-white/70 p-2.5 dark:border-rose-500/30 dark:bg-rose-500/10"
+                      >
+                        <p className="text-sm font-semibold text-rose-700 dark:text-rose-100">
+                          Comptage {run.countType}
+                        </p>
+                        {run.ownerDisplayName && (
+                          <p className="text-xs text-rose-600 dark:text-rose-100/80">
+                            Opérateur : {run.ownerDisplayName}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-200">
+                    Amplitude
+                  </p>
+                  <p className="text-xs text-slate-600 dark:text-slate-300">
+                    Détails des écarts disponibles ci-dessus pour chaque passage.
+                  </p>
+                </>
+              ) : (
+                <p className="text-xs text-rose-700 dark:text-rose-200">
+                  Détails des conflits indisponibles pour le moment.
+                </p>
+              )}
+            </div>
           </div>
         )}
         {canDisplayScanInputs && (
