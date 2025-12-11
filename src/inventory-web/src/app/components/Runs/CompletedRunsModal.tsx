@@ -48,6 +48,45 @@ const describeCountType = (value: number) => {
   }
 }
 
+type CountTypeValue = number | string | Array<number | string> | null | undefined
+
+const normalizeCountTypes = (value: CountTypeValue): number[] => {
+  if (value === null || value === undefined) {
+    return []
+  }
+
+  const rawValues = Array.isArray(value) ? value : [value]
+  const parsed = rawValues.flatMap((item) => {
+    if (typeof item === 'number') {
+      return [item]
+    }
+    if (typeof item === 'string') {
+      return item
+        .split(/[^0-9]+/)
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0)
+        .map((part) => Number.parseInt(part, 10))
+    }
+    return []
+  })
+
+  const normalized = parsed
+    .map((num) => Math.trunc(num))
+    .filter((num) => Number.isFinite(num) && num > 0)
+
+  const unique = Array.from(new Set(normalized))
+  return unique.sort((a, b) => a - b)
+}
+
+// eslint-disable-next-line react-refresh/only-export-components -- util partagé avec les exports/tests
+export const formatCountTypeCode = (value: CountTypeValue) => {
+  const counts = normalizeCountTypes(value)
+  if (counts.length === 0) {
+    return '-'
+  }
+  return counts.map((count) => `C${count}`).join('/')
+}
+
 const formatDateTime = (value: string | null | undefined) => {
   if (!value) {
     return 'Non disponible'
@@ -180,10 +219,17 @@ const formatZoneLabel = (detail: CompletedRunSummary | CompletedRunDetail) => {
   return code ?? label ?? ''
 }
 
-const buildRunTitle = (run: CompletedRunSummary, detail?: CompletedRunDetail | null) => {
+type CountTypeFormatter = (value: number) => string
+
+const buildRunTitle = (
+  run: CompletedRunSummary,
+  detail?: CompletedRunDetail | null,
+  formatCountType: CountTypeFormatter = describeCountType,
+) => {
   const owner = formatOwnerForTitle(run, detail)
   const completedOn = formatDateOnly(detail?.completedAtUtc ?? run.completedAtUtc)
-  return `${describeCountType(run.countType)} de la zone ${run.locationCode} par ${owner} le ${completedOn}`
+  const countLabel = formatCountType(detail?.countType ?? run.countType)
+  return `${countLabel} de la zone ${run.locationCode} par ${owner} le ${completedOn}`
 }
 
 const escapeCsvValue = (value: string) => `"${value.replace(/"/g, '""')}"`
@@ -227,7 +273,7 @@ const buildGlobalCsvContent = (details: CompletedRunDetail[]) => {
 
   const lines = details.flatMap((detail) => {
     const zone = formatZoneLabel(detail)
-    const countLabel = describeCountType(detail.countType)
+    const countLabel = formatCountTypeCode(detail.countType)
     const owner = formatOwnerName(detail.ownerDisplayName)
     const completed = formatDateTime(detail.completedAtUtc)
 
@@ -506,7 +552,7 @@ export const CompletedRunsModal = ({ open, completedRuns, onClose }: CompletedRu
       return
     }
 
-    const title = buildRunTitle(selectedRun, runDetail)
+    const title = buildRunTitle(selectedRun, runDetail, (value) => formatCountTypeCode(value))
     const csv = `\ufeff${buildCsvContent(title, runDetail)}`
     triggerCsvDownload(`${slugify(title)}.csv`, csv, 'csv-download-link')
   }, [runDetail, selectedRun])

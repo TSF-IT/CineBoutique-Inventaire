@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { CompletedRunDetail, CompletedRunSummary } from '../../types/inventory'
 
-import { CompletedRunsModal, mergeRunDetailWithSummary } from './CompletedRunsModal'
+import { CompletedRunsModal, formatCountTypeCode, mergeRunDetailWithSummary } from './CompletedRunsModal'
 
 const buildRun = (overrides: Partial<CompletedRunSummary>): CompletedRunSummary => ({
   runId: 'run-default',
@@ -22,6 +22,23 @@ const getLatestModalContainer = () => {
   const modals = document.querySelectorAll<HTMLElement>('[data-modal-container]')
   return modals.length > 0 ? modals[modals.length - 1] : null
 }
+
+describe('formatCountTypeCode', () => {
+  it('formate un comptage unique avec le préfixe C', () => {
+    expect(formatCountTypeCode(1)).toBe('C1')
+    expect(formatCountTypeCode(3)).toBe('C3')
+  })
+
+  it('concatène plusieurs comptages avec un slash', () => {
+    expect(formatCountTypeCode([1, 2])).toBe('C1/C2')
+    expect(formatCountTypeCode('1/3')).toBe('C1/C3')
+    expect(formatCountTypeCode([2, 1, 2])).toBe('C1/C2')
+  })
+
+  it('renvoie un tiret si aucun comptage valide', () => {
+    expect(formatCountTypeCode(null)).toBe('-')
+  })
+})
 
 describe('CompletedRunsModal', () => {
   it('classe les comptages par libell\u00e9 de zone et masque le code dans le titre', () => {
