@@ -1090,6 +1090,7 @@ export const InventorySessionPage = () => {
     clearSession,
     countType,
     existingRunId,
+    isConflictResolutionMode,
     isValidCountType,
     items,
     locationId,
