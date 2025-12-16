@@ -271,7 +271,11 @@ export const ConflictZoneModal = ({ open, zone, onClose, onStartExtraCount }: Co
               <span aria-hidden="true">✕</span>
             </button>
           </header>
-          <div className={bodyClassName} data-conflict-modal-body="">
+          <div
+            className={bodyClassName}
+            data-conflict-modal-body=""
+            style={{ overflowY: "auto" }}
+          >
             {status === 'loading' && (
               <div className="flex justify-center py-8">
                 <LoadingIndicator label="Chargement des divergences" />

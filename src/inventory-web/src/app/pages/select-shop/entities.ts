@@ -76,6 +76,11 @@ export const resolveEntityIdForShop = (shop: Shop): EntityId => {
     return 'lumiere'
   }
 
+  // Fallback déterministe : les shops marqués "boutique" sont rattachés à CinéBoutique, le reste à Lumière.
+  if (shop.kind === 'boutique') {
+    return 'cineboutique'
+  }
+
   return 'lumiere'
 }
 

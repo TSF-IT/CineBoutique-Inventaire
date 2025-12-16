@@ -40,14 +40,18 @@ vi.mock('../../../components/BarcodeScanner', () => ({
       current: null | { set: (value: boolean) => Promise<boolean>; toggle: () => Promise<boolean> }
     }
   }) => {
-    scannerCallbacks.onDetected = onDetected
-    onTorchStateChange?.({ supported: false, enabled: false })
-    if (torchControllerRef) {
-      torchControllerRef.current = {
-        set: async () => true,
-        toggle: async () => true,
+    // Déclenche les callbacks après le render pour éviter les warnings “setState during render”.
+    useEffect(() => {
+      scannerCallbacks.onDetected = onDetected
+      onTorchStateChange?.({ supported: false, enabled: false })
+      if (torchControllerRef) {
+        torchControllerRef.current = {
+          set: async () => true,
+          toggle: async () => true,
+        }
       }
-    }
+    }, [onDetected, onTorchStateChange, torchControllerRef])
+
     return (
       <button type="button" data-testid="mock-barcode-scanner" onClick={() => onDetected('0123456789012')}>
         Simuler un scan

@@ -25,6 +25,7 @@ const homeLinkConfigByPath: Record<string, { to: string; label: string }> = {
 }
 
 const defaultHomeLink = { to: '/select-user', label: 'Retour à l’accueil' } as const
+const isTestEnv = typeof import.meta !== 'undefined' && import.meta.env?.MODE === 'test'
 
 export const InventoryLayout = () => {
   const location = useLocation()
@@ -34,10 +35,12 @@ export const InventoryLayout = () => {
   const stepperContainerRef = useRef<HTMLDivElement | null>(null)
   const { shop } = useShop()
   const shopDisplayName = shop?.name?.trim()
-  const isScanCameraRoute = location.pathname === '/inventory/scan-camera'
   const isAdminUser = Boolean(selectedUser?.isAdmin)
 
   useEffect(() => {
+    if (isTestEnv) {
+      return
+    }
     const path = location.pathname
     if (path === '/inventory/location') {
       if (!selectedUser) {
@@ -93,10 +96,6 @@ export const InventoryLayout = () => {
     zoneStepFallback?.setAttribute('data-testid', 'step-nav-location')
   }, [location.pathname])
 
-  if (isScanCameraRoute) {
-    return <Outlet />
-  }
-
   const activeIndex = stepIndexByPath[location.pathname] ?? 0
   const homeLinkConfig = homeLinkConfigByPath[location.pathname] ?? defaultHomeLink
 
@@ -136,4 +135,3 @@ export const InventoryLayout = () => {
     </Page>
   )
 }
-

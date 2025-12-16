@@ -762,15 +762,7 @@ export const fetchProductByEan = async (
       const resolutionCandidates =
         matchingCandidates.length > 0 ? matchingCandidates : searchCandidates;
       if (resolutionCandidates.length > 0) {
-        const resolvedFromSearch = await tryResolveAmbiguousProduct(
-          null,
-          resolutionCandidates,
-          rawCode,
-          requestWithBudget
-        );
-        if (resolvedFromSearch) {
-          return resolvedFromSearch;
-        }
+        searchCandidates = resolutionCandidates;
       }
     } catch (error) {
       if (isHttpError(error) && error.status === 404) {

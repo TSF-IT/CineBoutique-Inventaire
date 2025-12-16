@@ -555,6 +555,8 @@ export const SelectShopPage = () => {
                           <li key={shopOption.id} className="h-full">
                             <button
                               type="button"
+                              data-testid={`shop-${shopOption.id}`}
+                              data-shop-id={shopOption.id}
                               onClick={() => handleShopSelection(shopOption)}
                               className={clsx(
                                 "tile focus-ring flex h-full w-full items-center justify-between rounded-2xl border border-(--cb-border-soft) bg-(--cb-surface-soft) px-4 py-3 text-left text-sm font-medium transition hover:-translate-y-0.5 hover:shadow-panel-soft",

@@ -58,6 +58,7 @@ type CountTypeValue =
   | null
   | undefined;
 
+// Normalise les variantes de comptage (nombre, liste ou chaîne "1/2/3") pour stabiliser l'affichage et les exports.
 const normalizeCountTypes = (value: CountTypeValue): number[] => {
   if (value === null || value === undefined) {
     return [];
@@ -122,6 +123,7 @@ export const mergeRunDetailWithSummary = (
   detail: CompletedRunDetail,
   summary?: CompletedRunSummary
 ) => {
+  // Conserve les champs fiables de la liste pour éviter de perdre des métadonnées si l'API détail est partielle.
   const mergedOwner =
     toValidOwnerName(detail.ownerDisplayName) ??
     toValidOwnerName(summary?.ownerDisplayName) ??
@@ -428,6 +430,7 @@ export const CompletedRunsModal = ({
   onClose,
 }: CompletedRunsModalProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // Cache mémoire pour limiter les appels API lors des retours liste/détail et réutiliser les données dans les exports.
   const detailsCacheRef = useRef<Map<string, CompletedRunDetail>>(new Map());
   const [selectedRun, setSelectedRun] = useState<CompletedRunSummary | null>(
     null

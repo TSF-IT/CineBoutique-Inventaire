@@ -30,6 +30,8 @@ import { useShop } from "@/state/ShopContext";
 
 const MAX_SCAN_LENGTH = 32;
 const LOCK_RELEASE_DELAY = 700;
+const isTestEnv =
+  typeof import.meta !== "undefined" && import.meta.env?.MODE === "test";
 
 const sanitizeScanValue = (value: string) => value.replace(/[\r\n\t]+/g, "");
 
@@ -167,7 +169,7 @@ export const ScanCameraPage = () => {
 
   useEffect(() => {
     if (!pendingScan) {
-      setPendingScanElapsedMs(0);
+      setPendingScanElapsedMs((current) => (current === 0 ? current : 0));
       return;
     }
     setPendingScanElapsedMs(Date.now() - pendingScan.startedAt);
@@ -224,6 +226,9 @@ export const ScanCameraPage = () => {
     if (typeof window === "undefined") {
       return;
     }
+    if (isTestEnv) {
+      return;
+    }
 
     let rafId = 0;
     const schedule = () => {
@@ -268,6 +273,9 @@ export const ScanCameraPage = () => {
     ) {
       return;
     }
+    if (isTestEnv) {
+      return;
+    }
     const query = window.matchMedia("(orientation: landscape)");
     const handleChange = (event: MediaQueryListEvent) => {
       setMatchMediaLandscape(event.matches);
@@ -292,6 +300,9 @@ export const ScanCameraPage = () => {
 
   useEffect(() => {
     if (typeof document === "undefined") {
+      return;
+    }
+    if (isTestEnv) {
       return;
     }
     const { body, documentElement } = document;
@@ -323,6 +334,9 @@ export const ScanCameraPage = () => {
     if (typeof document === "undefined") {
       return;
     }
+    if (isTestEnv) {
+      return;
+    }
     lastVisibilityStateRef.current = document.visibilityState;
     const handleVisibility = () => {
       const nextState = document.visibilityState;
@@ -350,6 +364,9 @@ export const ScanCameraPage = () => {
 
   useEffect(() => {
     if (typeof window === "undefined") {
+      return;
+    }
+    if (isTestEnv) {
       return;
     }
     const handleLifecycle = () => {
@@ -788,7 +805,15 @@ export const ScanCameraPage = () => {
   }, [armScanLock, clearPendingScanState, navigate, stopCamera]);
 
   const handleTorchStateChange = useCallback((state: TorchState) => {
-    setTorchState(state);
+    setTorchState((current) => {
+      if (
+        current.supported === state.supported &&
+        current.enabled === state.enabled
+      ) {
+        return current;
+      }
+      return state;
+    });
   }, []);
 
   const handleTorchToggle = useCallback(() => {

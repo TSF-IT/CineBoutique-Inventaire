@@ -233,7 +233,11 @@ export const OpenRunsModal = ({ open, openRuns, onClose, ownedRunIds, onResumeRu
                           {formatZoneTitle(run)}
                         </p>
                         <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">
-                          {describeCountType(run.countType)} • Opérateur : {formatOwnerName(run.ownerDisplayName)} • Démarré le {formatDateTime(run.startedAtUtc)}
+                          <span className="inline-block" data-testid="open-run-count-label">
+                            {describeCountType(run.countType)}
+                          </span>{" "}
+                          • Opérateur : {formatOwnerName(run.ownerDisplayName)} • Démarré le{" "}
+                          {formatDateTime(run.startedAtUtc)}
                         </p>
                       </div>
                       {ownedRunsSet.has(run.runId) && typeof onResumeRun === 'function' && (

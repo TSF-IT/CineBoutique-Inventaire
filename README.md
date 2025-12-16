@@ -2,6 +2,62 @@
 
 Ce dépôt monorepo regroupe l'ensemble des composants nécessaires à la future application d'inventaire CinéBoutique.
 
+## Guide de démarrage zéro friction
+
+### Prérequis
+- .NET SDK 8.0.415 (voir `global.json`), SDK installé via `dotnet` ou `./scripts/bootstrap-dotnet.sh`.
+- Node.js ≥ 20.10 + npm ≥ 10.8 (workspaces activés), PNPM optionnel.
+- PostgreSQL 16 (local) ou Docker/Compose installé pour utiliser `docker compose`.
+
+### Configuration essentielle
+- Chaîne de connexion unique : `ConnectionStrings__Default=Host=<host>;Port=5432;Database=inventory;Username=<user>;Password=<pwd>`.
+- Auth : `Authentication:UseAdminHeader=true` pour le dev (entêtes `X-Admin: true` + `X-App-Token` optionnel). En production, désactivez-le et renseignez `Authentication:Authority` + `Authentication:Audience`.
+- Seeds/migrations : `APPLY_MIGRATIONS=true` et `AppSettings__SeedOnStartup=true` en dev. En production, `APPLY_MIGRATIONS` ponctuel lors des montées de version et `AppSettings__SeedOnStartup=false`.
+- CORS : ajouter vos origines via `AllowedOrigins__0=https://...`.
+- Front : `DEV_BACKEND_ORIGIN=http://localhost:8080` (proxy Vite), `VITE_API_BASE=/api` par défaut, `VITE_DISABLE_DEV_FIXTURES=true` pour désactiver les fixtures de secours.
+
+### Démarrage local (sans Docker)
+```bash
+# 0. Dépendances
+npm ci
+dotnet restore
+
+# 1. API (terminal 1) – migrations + seed de démo
+export ConnectionStrings__Default='Host=localhost;Port=5432;Database=inventory;Username=postgres;Password=postgres'
+export APPLY_MIGRATIONS=true
+export AppSettings__SeedOnStartup=true
+dotnet run --project src/inventory-api
+
+# 2. Front (terminal 2)
+DEV_BACKEND_ORIGIN=http://localhost:8080 npm -w src/inventory-web run dev
+# Accès : http://localhost:5173 (proxy /api vers l'API)
+```
+
+### Démarrage via Docker Compose
+```bash
+export PUBLIC_HOST=localhost   # hôte public pour Nginx (front)
+docker compose up --build
+# Front : http://localhost (Nginx)
+# API : http://localhost:8080/swagger, health : /health /ready, metrics : /metrics
+```
+
+### Tests
+- Back : `./run_tests.sh` (démarre un Postgres Docker si besoin) ou `dotnet test` avec `ConnectionStrings__Default` ou `TEST_DB_CONN` renseignée. Exemple rapide sans compose : `docker run -d --name cb-inventory-tests -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=inventory_tests -p 5433:5432 postgres:16-alpine` puis `TEST_DB_CONN="Host=localhost;Port=5433;Database=inventory_tests;Username=postgres;Password=postgres" dotnet test`.
+- Front unitaire : `npm -w src/inventory-web run test`.
+- Front e2e (Playwright) : `npx playwright test` depuis `src/inventory-web` après `npm install` et `npx playwright install`.
+- Lint front : `npm -w src/inventory-web run lint`.
+
+### Dépannage rapide
+- Migrations bloquées : vérifier `APPLY_MIGRATIONS`/`DISABLE_MIGRATIONS` et la connectivité Postgres.
+- Seed indésirable : mettre `AppSettings__SeedOnStartup=false`.
+- CORS : compléter `AllowedOrigins__*` ou utiliser le proxy Vite (`DEV_BACKEND_ORIGIN`) en dev.
+- Ports : 8080 (API), 5173 (Vite), 80/443 (Nginx via Docker Compose), 55432 (Postgres via Compose).
+
+### Références
+- Architecture : `docs/ARCHITECTURE.md`
+- Base de données : `docs/BDD/MODELE.md`, `docs/BDD/MIGRATIONS.md`, `docs/BDD/CONVENTIONS.md`, `docs/BDD/diagramme.md`
+- Audit & décisions : `docs/AUDIT.md`, `docs/DECISIONS.md`, `docs/CHANGELOG_NETTOYAGE.md`
+
 ## Structure
 
 - `src/inventory-api` : projet ASP.NET Core minimal API exposant les endpoints d'inventaire et gérant l'authentification JWT.
@@ -316,5 +372,3 @@ Pour vérifier les mises à jour disponibles, exécutez la commande suivante :
 ```bash
 dotnet list package --outdated
 ```
-
-
