@@ -1273,13 +1273,6 @@ WHERE EXISTS (
         JOIN "Location" l ON l."Id" = cr."LocationId"
         WHERE cl."Id" = c."CountLineId"
           AND l."ShopId" = @ShopId
-    )
-   OR EXISTS (
-        SELECT 1
-        FROM "CountLine" cl
-        JOIN "Product" p ON p."Id" = cl."ProductId"
-        WHERE cl."Id" = c."CountLineId"
-          AND p."ShopId" = @ShopId
     );
 """;
 
@@ -1299,12 +1292,6 @@ WHERE EXISTS (
         JOIN "Location" l ON l."Id" = cr."LocationId"
         WHERE cr."Id" = cl."CountingRunId"
           AND l."ShopId" = @ShopId
-    )
-   OR EXISTS (
-        SELECT 1
-        FROM "Product" p
-        WHERE p."Id" = cl."ProductId"
-          AND p."ShopId" = @ShopId
     );
 """;
 
@@ -2060,4 +2047,3 @@ WHERE "Id" = @ownerUserId
         return await connection.ExecuteScalarAsync<int?>(command).ConfigureAwait(false) is 1;
     }
 }
-
